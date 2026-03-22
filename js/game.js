@@ -23,7 +23,8 @@ import {
   unsubscribe,
   getServerTimeOffset,
   createPresenceChannel,
-  removePlayerBeacon
+  removePlayerBeacon,
+  upsertQuestionFeedback
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -67,7 +68,8 @@ const state = {
   serverTimeOffset: 0,  // serverTime - clientTime in ms
   questionStartedAt: null, // ISO timestamp from DB — single source of truth for timer
   presenceChannel: null,
-  awayPlayers: new Set()
+  awayPlayers: new Set(),
+  feedbackFadeTimer: null
 };
 
 // Guard: prevent overlapping screen transitions (causes flash/blink)
@@ -164,6 +166,7 @@ async function init() {
 
   loadChatMessages();
   attachChatListeners();
+  initFeedbackListeners();
 
   if (state.room.isHost) {
     await initHostGame();
@@ -716,6 +719,9 @@ async function showRevealScreen() {
   $('#reveal-difficulty').textContent = getDifficulty(q);
   $('.reveal__correct').style.display = 'none';
 
+  // Reset feedback UI
+  resetFeedbackUI();
+
   // Fetch existing answers (some players may not have submitted yet) and cache them
   state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
   renderRevealAnswers(state.currentAnswers);
@@ -855,6 +861,9 @@ async function doReveal() {
 
   // Show correct answer and difficulty
   $('.reveal__correct').style.display = '';
+
+  // Show feedback icons and start fade timer
+  showFeedbackUI();
 
   // Refresh answers from DB
   state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
@@ -1331,6 +1340,120 @@ async function handleSendGameChat() {
   if (!text) return;
   input.value = '';
   await sendMessage(state.room.id, getDisplayName(), text);
+}
+
+// ============================================
+// QUESTION FEEDBACK
+// ============================================
+
+function resetFeedbackUI() {
+  if (state.feedbackFadeTimer) {
+    clearTimeout(state.feedbackFadeTimer);
+    state.feedbackFadeTimer = null;
+  }
+  const container = $('#reveal-feedback');
+  container.style.display = 'none';
+  container.classList.remove('reveal__feedback--faded');
+  container.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('feedback-btn--active'));
+  container.querySelector('.feedback-flag-menu').style.display = 'none';
+}
+
+function showFeedbackUI() {
+  const container = $('#reveal-feedback');
+  container.style.display = '';
+  container.classList.remove('reveal__feedback--faded');
+  state.feedbackFadeTimer = setTimeout(() => {
+    container.classList.add('reveal__feedback--faded');
+  }, 5000);
+}
+
+function startFeedbackFadeTimer() {
+  if (state.feedbackFadeTimer) clearTimeout(state.feedbackFadeTimer);
+  const container = $('#reveal-feedback');
+  container.classList.remove('reveal__feedback--faded');
+  state.feedbackFadeTimer = setTimeout(() => {
+    container.classList.add('reveal__feedback--faded');
+  }, 5000);
+}
+
+function initFeedbackListeners() {
+  // Tap question text to bring feedback icons back to full opacity
+  $('#reveal-question-text').addEventListener('click', () => {
+    const container = $('#reveal-feedback');
+    if (container.style.display !== 'none') {
+      startFeedbackFadeTimer();
+    }
+  });
+
+  // Thumbs up / down
+  document.querySelectorAll('.feedback-btn[data-type="thumbs_up"], .feedback-btn[data-type="thumbs_down"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      const otherType = type === 'thumbs_up' ? 'thumbs_down' : 'thumbs_up';
+      const otherBtn = document.querySelector(`.feedback-btn[data-type="${otherType}"]`);
+
+      // Toggle: if already active, deactivate; otherwise activate and deactivate other
+      const wasActive = btn.classList.contains('feedback-btn--active');
+      if (otherBtn) otherBtn.classList.remove('feedback-btn--active');
+
+      if (wasActive) {
+        btn.classList.remove('feedback-btn--active');
+      } else {
+        btn.classList.add('feedback-btn--active');
+        const q = state.questions[state.currentQuestion];
+        if (q) {
+          upsertQuestionFeedback({
+            questionId: q.id,
+            roomId: state.room.id,
+            playerName: getDisplayName(),
+            feedbackType: type,
+            flagReason: null
+          });
+        }
+      }
+
+      startFeedbackFadeTimer();
+    });
+  });
+
+  // Flag button — toggle dropdown
+  const flagBtn = document.querySelector('.feedback-btn[data-type="flag"]');
+  const flagMenu = document.querySelector('.feedback-flag-menu');
+
+  flagBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isVisible = flagMenu.style.display !== 'none';
+    flagMenu.style.display = isVisible ? 'none' : '';
+    startFeedbackFadeTimer();
+  });
+
+  // Flag menu options
+  flagMenu.querySelectorAll('button[data-reason]').forEach(option => {
+    option.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const reason = option.dataset.reason;
+      flagBtn.classList.add('feedback-btn--active');
+      flagMenu.style.display = 'none';
+
+      const q = state.questions[state.currentQuestion];
+      if (q) {
+        upsertQuestionFeedback({
+          questionId: q.id,
+          roomId: state.room.id,
+          playerName: getDisplayName(),
+          feedbackType: 'flag',
+          flagReason: reason
+        });
+      }
+
+      startFeedbackFadeTimer();
+    });
+  });
+
+  // Close flag menu on outside click
+  document.addEventListener('click', () => {
+    flagMenu.style.display = 'none';
+  });
 }
 
 // ============================================

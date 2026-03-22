@@ -25,6 +25,7 @@ export async function fetchCategories() {
     const { data, error } = await supabase
       .from('questions')
       .select('categories')
+      .eq('format', 'open')
       .range(offset, offset + PAGE_SIZE - 1);
 
     if (error) {
@@ -584,4 +585,22 @@ export async function testConnection() {
     console.error('[Supabase] Connection failed:', err);
     return false;
   }
+}
+
+// ============================================
+// QUESTION FEEDBACK
+// ============================================
+
+export async function upsertQuestionFeedback({ questionId, roomId, playerName, feedbackType, flagReason }) {
+  const { error } = await supabase
+    .from('question_feedback')
+    .upsert({
+      question_id: questionId,
+      room_id: roomId,
+      player_name: playerName,
+      feedback_type: feedbackType,
+      flag_reason: flagReason || null
+    }, { onConflict: 'question_id,room_id,player_name' });
+
+  if (error) console.error('[Supabase] upsertQuestionFeedback failed:', error.message);
 }

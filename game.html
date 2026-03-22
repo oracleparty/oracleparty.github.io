@@ -93,6 +93,18 @@
           <p class="reveal__correct-label">Correct Answer</p>
           <p id="reveal-answer" class="reveal__correct-answer"></p>
           <span id="reveal-difficulty" class="reveal__difficulty"></span>
+          <!-- Question Feedback -->
+          <div id="reveal-feedback" class="reveal__feedback" style="display:none;">
+            <button class="feedback-btn" data-type="thumbs_up" aria-label="Thumbs up">👍</button>
+            <button class="feedback-btn" data-type="thumbs_down" aria-label="Thumbs down">👎</button>
+            <button class="feedback-btn feedback-btn--flag" data-type="flag" aria-label="Flag question">🚩</button>
+            <div class="feedback-flag-menu" style="display:none;">
+              <button data-reason="wrong_answer">Wrong answer</button>
+              <button data-reason="ambiguous">Ambiguous</button>
+              <button data-reason="offensive">Offensive</button>
+              <button data-reason="other">Other</button>
+            </div>
+          </div>
         </div>
 
         <!-- Player Answers -->
