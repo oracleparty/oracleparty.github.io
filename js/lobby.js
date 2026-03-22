@@ -92,17 +92,8 @@ async function init() {
     loadMessages()
   ]);
 
-  // Re-add current player if missing (e.g. page refresh triggered removePlayerBeacon)
-  const me = players.find(p => String(p.id) === String(room.playerId));
-  if (!me) {
-    const displayName = getDisplayName();
-    const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost);
-    if (rejoinedPlayer) {
-      room.playerId = rejoinedPlayer.id;
-      sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-      await loadPlayers();
-    }
-  }
+  // Ensure current player exists (may have been removed by a stale beacon on refresh)
+  await ensureCurrentPlayer();
 
   // Subscribe to Realtime
   const playerChannel = subscribeToPlayers(room.id, handlePlayerChange);
@@ -232,9 +223,28 @@ function renderPlayers() {
   }
 }
 
-function handlePlayerChange() {
-  // Re-fetch full player list on any change
-  loadPlayers();
+async function handlePlayerChange() {
+  await loadPlayers();
+  // If current player was removed (e.g. stale beacon from refresh), re-add
+  await ensureCurrentPlayer();
+}
+
+/**
+ * Check if the current player is in the fetched player list.
+ * If missing, re-add them (handles page refresh where removePlayerBeacon
+ * deleted the record) and update sessionStorage with the new player ID.
+ */
+async function ensureCurrentPlayer() {
+  const me = players.find(p => String(p.id) === String(room.playerId));
+  if (me) return;
+
+  const displayName = getDisplayName();
+  const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost);
+  if (rejoinedPlayer) {
+    room.playerId = rejoinedPlayer.id;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    await loadPlayers();
+  }
 }
 
 // --- Chat ---
