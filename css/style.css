@@ -360,16 +360,6 @@ body::after {
   animation: title-enter 1.2s var(--ease-out) both;
 }
 
-.splash__subtitle {
-  font-family: var(--font-heading);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  margin-top: var(--space-lg);
-  animation: fade-up 0.8s var(--ease-out) 0.6s both;
-}
-
 .splash__loader {
   margin-top: var(--space-2xl);
   animation: fade-up 0.8s var(--ease-out) 1s both;
