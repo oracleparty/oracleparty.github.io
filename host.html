@@ -4,14 +4,107 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#1a1612">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Host Game — Oracle Party</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="screen active" style="display: flex;">
-    <h1 class="font-heading" style="color: var(--color-primary); font-size: var(--text-2xl); margin-bottom: var(--space-xl);">Host Game</h1>
-    <p style="color: var(--color-text-dim); margin-bottom: var(--space-2xl);">Coming in Phase 2</p>
-    <a href="index.html" class="btn btn-secondary">← Back to Home</a>
+
+  <!-- ===== CHOOSE CATEGORY SCREEN ===== -->
+  <div id="category-screen" class="screen active" style="display: flex;">
+    <header class="page-header">
+      <button id="btn-back-home" class="back-btn" aria-label="Back to Home">←</button>
+      <h1 class="page-header__title">Choose Category</h1>
+    </header>
+    <div class="page-content">
+      <div class="category-search">
+        <input
+          type="text"
+          id="category-search"
+          class="input"
+          placeholder="Search categories..."
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </div>
+      <div id="category-grid" class="category-grid">
+        <!-- JS populates category cards -->
+      </div>
+      <div class="placeholder-section">
+        <p class="placeholder-section__title">Community Packs</p>
+        <p class="placeholder-section__text">Coming soon</p>
+      </div>
+    </div>
   </div>
+
+  <!-- ===== HOST SETTINGS SCREEN ===== -->
+  <div id="settings-screen" class="screen" style="display: none;">
+    <header class="page-header">
+      <button id="btn-back-category" class="back-btn" aria-label="Back to Categories">←</button>
+      <h1 class="page-header__title">Game Settings</h1>
+    </header>
+    <div class="page-content page-content--centered">
+      <div id="selected-category" class="selected-category">
+        <div class="selected-category__icon"></div>
+        <div class="selected-category__name"></div>
+        <div class="selected-category__count"></div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Who Can Join</div>
+        <div class="toggle-group" data-setting="whoCanJoin">
+          <button class="toggle-option" data-value="invite">Invite Only</button>
+          <button class="toggle-option" data-value="friends">Friends</button>
+          <button class="toggle-option active" data-value="anyone">Anyone</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Questions Per Game</div>
+        <div class="toggle-group" data-setting="questionsPerGame">
+          <button class="toggle-option" data-value="5">5</button>
+          <button class="toggle-option active" data-value="10">10</button>
+          <button class="toggle-option" data-value="15">15</button>
+          <button class="toggle-option" data-value="20">20</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Question Timer</div>
+        <div class="toggle-group" data-setting="questionTimer">
+          <button class="toggle-option" data-value="15">15s</button>
+          <button class="toggle-option active" data-value="30">30s</button>
+          <button class="toggle-option" data-value="45">45s</button>
+          <button class="toggle-option" data-value="60">60s</button>
+        </div>
+      </div>
+
+      <button id="btn-host-game" class="btn btn-primary btn-block">Host Game</button>
+      <p id="host-error" class="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- ===== DISPLAY NAME MODAL (for direct navigation) ===== -->
+  <div id="display-name-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">Who Goes There?</h2>
+      <input
+        type="text"
+        id="display-name-input"
+        class="input"
+        placeholder="Enter your name"
+        maxlength="20"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+      <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
+    </div>
+  </div>
+
+  <!-- ===== SCRIPTS ===== -->
+  <script type="module" src="js/host.js"></script>
+
 </body>
 </html>
