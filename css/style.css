@@ -1298,6 +1298,15 @@ body::after {
   pointer-events: none;
 }
 
+@keyframes input-flash-red {
+  0%   { border-color: var(--color-danger); box-shadow: 0 0 0 2px rgba(196, 92, 92, 0.3); }
+  100% { border-color: var(--color-surface-light); box-shadow: none; }
+}
+
+.input--flash {
+  animation: input-flash-red 0.5s ease;
+}
+
 .waiting-text {
   text-align: center;
   font-size: var(--text-sm);
@@ -1669,41 +1678,93 @@ body::after {
   margin-bottom: var(--space-lg);
 }
 
-.final-wager__input-group {
+.final-wager__options {
   display: flex;
-  align-items: center;
+  gap: var(--space-md);
   justify-content: center;
-  gap: var(--space-lg);
   margin-bottom: var(--space-lg);
 }
 
-.final-wager__stepper {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-surface-light);
+.fw-option {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--color-surface-light);
   background: var(--color-surface);
-  color: var(--color-text);
+  font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--color-text);
   cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fw-option:active {
+  transform: scale(0.95);
+}
+
+.fw-option--selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
+  color: var(--color-primary);
+}
+
+.fw-option--locked {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.fw-player-list {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs) 0;
+}
+
+.fw-player-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform var(--duration-fast) var(--ease-out);
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
 }
 
-.final-wager__stepper:active {
-  transform: scale(0.9);
+.fw-player-row__name {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.final-wager__value {
-  font-family: var(--font-display);
-  font-size: var(--text-5xl);
-  font-weight: 900;
+.fw-player-row__score {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.fw-player-row__wager {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 700;
   color: var(--color-primary);
-  min-width: 80px;
+  min-width: 50px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.fw-player-row__wager--waiting {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-style: italic;
 }
 
 /* --- Results Screen --- */

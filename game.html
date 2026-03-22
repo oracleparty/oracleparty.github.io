@@ -170,15 +170,17 @@
           <p class="final-wager__score">Your score: <span id="fw-current-score">0</span></p>
           <p class="final-wager__warning">Wrong answers lose wagered points!</p>
 
-          <div class="final-wager__input-group">
-            <button id="fw-minus" class="final-wager__stepper">&minus;</button>
-            <span id="fw-wager-value" class="final-wager__value">10</span>
-            <button id="fw-plus" class="final-wager__stepper">+</button>
+          <div class="final-wager__options">
+            <button class="fw-option" data-wager="0">0</button>
+            <button class="fw-option" data-wager="10">10</button>
+            <button class="fw-option" data-wager="20">20</button>
           </div>
 
-          <button id="btn-fw-lock" class="btn btn-primary btn-block">Lock In Wager</button>
           <p id="fw-status" class="waiting-text hidden">Wager locked &mdash; waiting for others...</p>
         </div>
+
+        <!-- Player wager list (shows wagers as they come in) -->
+        <div id="fw-player-list" class="fw-player-list"></div>
       </div>
 
       <div class="game-footer">
@@ -209,7 +211,7 @@
       </div>
 
       <div class="game-footer results-footer">
-        <button id="btn-play-again" class="btn btn-primary btn-block">Play Again</button>
+        <button id="btn-play-again" class="btn btn-primary btn-block">Back to Lobby</button>
         <div class="results-footer__row">
           <button id="btn-review-questions" class="btn btn-secondary">Review</button>
           <button id="btn-quit-game" class="btn btn-secondary btn-danger-text">Quit</button>

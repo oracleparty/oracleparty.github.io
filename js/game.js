@@ -76,6 +76,13 @@ const state = {
   finalWagerLocked: false
 };
 
+// Guard: prevent duplicate scores screen rendering
+let _lastScoresRenderedForQuestion = -1;
+
+// Guard: countdown active — defer phase transitions until complete
+let _countdownActive = false;
+let _deferredPhase = null;
+
 // Guard: prevent overlapping screen transitions (causes flash/blink)
 let _screenTransitioning = false;
 
@@ -306,7 +313,14 @@ async function initPlayerGame() {
 
 function handleRoomChange(payload) {
   if (!payload.new) return;
-  const { game_phase, current_question, question_ids, question_started_at } = payload.new;
+  const { game_phase, current_question, question_ids, question_started_at, status } = payload.new;
+
+  // Host returned everyone to lobby
+  if (status === 'lobby') {
+    cleanup();
+    window.location.href = 'lobby.html';
+    return;
+  }
 
   // Track server timer start timestamp
   if (question_started_at) {
@@ -353,6 +367,12 @@ function revealQuestionAndStartTimer() {
 
 function handlePhaseTransition(phase) {
   if (!phase) return; // guard against null/undefined game_phase
+
+  // During countdown, defer other phase transitions until countdown completes
+  if (_countdownActive && phase !== 'countdown') {
+    _deferredPhase = phase;
+    return;
+  }
 
   // 'question' phase with new current_question always resets
   if (phase === 'question') {
@@ -456,6 +476,9 @@ function handlePhaseTransition(phase) {
 // ============================================
 
 function showCountdownScreen() {
+  _countdownActive = true;
+  _deferredPhase = null;
+
   const currentScreen = document.querySelector('.screen.active');
   const countdownScreen = $('#countdown-screen');
   if (currentScreen && currentScreen !== countdownScreen) {
@@ -472,12 +495,19 @@ function showCountdownScreen() {
 
   function showNext() {
     if (i >= steps.length) {
-      // Countdown finished — host advances to first question
+      _countdownActive = false;
+
+      // Host advances to first question
       if (state.room.isHost) {
         updateGameState(state.room.id, {
           game_phase: 'question',
           current_question: 0
         });
+      } else if (_deferredPhase) {
+        // Non-host: process any phase transition that arrived during countdown
+        const deferred = _deferredPhase;
+        _deferredPhase = null;
+        handlePhaseTransition(deferred);
       }
       return;
     }
@@ -599,7 +629,7 @@ function showQuestionScreen() {
     $('#btn-submit-answer').disabled = !$('#answer-input').value.length;
   };
   $('#answer-input').onkeydown = (e) => {
-    if (e.key === 'Enter' && !state.hasSubmitted && $('#answer-input').value.length) {
+    if (e.key === 'Enter' && !state.hasSubmitted) {
       handleSubmitAnswer();
     }
   };
@@ -773,6 +803,13 @@ function handleTimerExpired() {
 async function handleSubmitAnswer() {
   if (state.hasSubmitted) return;
   const answer = $('#answer-input').value.trim();
+  if (!answer) {
+    const input = $('#answer-input');
+    input.classList.remove('input--flash');
+    void input.offsetHeight;
+    input.classList.add('input--flash');
+    return;
+  }
   await doSubmitAnswer(answer);
 }
 
@@ -1072,11 +1109,17 @@ async function handleShowScores() {
 }
 
 async function showScoresScreen() {
+  // Guard: prevent rendering the same question's scores twice
+  if (state.currentQuestion === _lastScoresRenderedForQuestion) return;
+  _lastScoresRenderedForQuestion = state.currentQuestion;
+
   state.onRevealScreen = false;
 
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#scores-category').textContent = `${meta.icon} ${meta.label}`;
-  $('#scores-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
+  $('#scores-progress').textContent = state.isFinalWagerRound
+    ? 'Final Question'
+    : `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
 
   // Calculate new scores
   await updateScores();
@@ -1279,27 +1322,43 @@ function showFinalWagerScreen() {
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#fw-category').textContent = `${meta.icon} ${meta.label}`;
   $('#fw-current-score').textContent = state.scores[state.room.playerId] || 0;
-  $('#fw-wager-value').textContent = state.finalWager;
 
-  const lockBtn = $('#btn-fw-lock');
   const status = $('#fw-status');
   const revealBtn = $('#btn-fw-reveal');
+  const options = document.querySelectorAll('.fw-option');
+
+  // Render player wager list (initial "Waiting..." for all, then fetch actual state)
+  renderFinalWagerPlayers();
+  updateFinalWagerPlayerList();
+
+  // Option buttons (0 / 10 / 20)
+  options.forEach(btn => {
+    btn.classList.remove('fw-option--selected', 'fw-option--locked');
+    btn.onclick = () => {
+      if (state.finalWagerLocked) return;
+      options.forEach(b => b.classList.remove('fw-option--selected'));
+      btn.classList.add('fw-option--selected');
+      state.finalWager = parseInt(btn.dataset.wager, 10);
+
+      // Auto lock-in on tap
+      lockInFinalWager();
+    };
+  });
 
   if (state.finalWagerLocked) {
     // Already locked in (reconnect)
-    lockBtn.disabled = true;
-    lockBtn.textContent = 'Locked In';
-    lockBtn.style.opacity = '0.5';
     status.classList.remove('hidden');
-    disableFinalWagerStepper();
+    options.forEach(btn => {
+      btn.classList.add('fw-option--locked');
+      if (parseInt(btn.dataset.wager, 10) === state.finalWager) {
+        btn.classList.add('fw-option--selected');
+      }
+    });
   } else {
-    lockBtn.disabled = false;
-    lockBtn.textContent = 'Lock In Wager';
-    lockBtn.style.opacity = '1';
     status.classList.add('hidden');
   }
 
-  // Host: show reveal button (hidden initially, always available)
+  // Host: show reveal button
   if (state.room.isHost) {
     revealBtn.classList.remove('hidden');
     revealBtn.onclick = handleRevealFinalQuestion;
@@ -1309,42 +1368,6 @@ function showFinalWagerScreen() {
 
   showChatToggle();
 
-  // Stepper controls
-  $('#fw-minus').onclick = () => {
-    if (state.finalWagerLocked) return;
-    state.finalWager = Math.max(0, state.finalWager - 1);
-    $('#fw-wager-value').textContent = state.finalWager;
-  };
-  $('#fw-plus').onclick = () => {
-    if (state.finalWagerLocked) return;
-    state.finalWager = Math.min(20, state.finalWager + 1);
-    $('#fw-wager-value').textContent = state.finalWager;
-  };
-
-  // Lock in button
-  lockBtn.onclick = async () => {
-    if (state.finalWagerLocked) return;
-    state.finalWagerLocked = true;
-    lockBtn.disabled = true;
-    lockBtn.textContent = 'Locked In';
-    lockBtn.style.opacity = '0.5';
-    status.classList.remove('hidden');
-    disableFinalWagerStepper();
-
-    // Submit a placeholder answer row so the host knows this player locked in
-    const q = state.questions[state.totalQuestions];
-    await submitAnswer({
-      roomId: state.room.id,
-      playerId: state.room.playerId,
-      questionNumber: state.totalQuestions,
-      questionId: q ? q.id : null,
-      wager: state.finalWager,
-      submittedAnswer: '__WAGER_LOCKED__',
-      isCorrect: false,
-      scoreEarned: 0
-    });
-  };
-
   // Transition
   const currentScreen = document.querySelector('.screen.active');
   const fwScreen = $('#final-wager-screen');
@@ -1353,11 +1376,62 @@ function showFinalWagerScreen() {
   }
 }
 
-function disableFinalWagerStepper() {
-  $('#fw-minus').style.opacity = '0.3';
-  $('#fw-minus').style.pointerEvents = 'none';
-  $('#fw-plus').style.opacity = '0.3';
-  $('#fw-plus').style.pointerEvents = 'none';
+async function lockInFinalWager() {
+  if (state.finalWagerLocked) return;
+  state.finalWagerLocked = true;
+
+  $('#fw-status').classList.remove('hidden');
+  document.querySelectorAll('.fw-option').forEach(b => b.classList.add('fw-option--locked'));
+
+  // Submit placeholder so others see the wager via Realtime
+  const q = state.questions[state.totalQuestions];
+  await submitAnswer({
+    roomId: state.room.id,
+    playerId: state.room.playerId,
+    questionNumber: state.totalQuestions,
+    questionId: q ? q.id : null,
+    wager: state.finalWager,
+    submittedAnswer: '__WAGER_LOCKED__',
+    isCorrect: false,
+    scoreEarned: 0
+  });
+}
+
+function renderFinalWagerPlayers(lockedWagers) {
+  const wagers = lockedWagers || {};
+  const sorted = [...state.players].sort((a, b) =>
+    (state.scores[b.id] || 0) - (state.scores[a.id] || 0)
+  );
+
+  $('#fw-player-list').innerHTML = sorted.map(p => {
+    const hue = getAvatarHue(p.display_name);
+    const initial = (p.display_name || '?')[0].toUpperCase();
+    const score = state.scores[p.id] || 0;
+    const wagerVal = wagers[String(p.id)];
+    const wagerDisplay = wagerVal !== undefined
+      ? `<span class="fw-player-row__wager">${wagerVal}</span>`
+      : `<span class="fw-player-row__wager fw-player-row__wager--waiting">Waiting...</span>`;
+
+    return `
+      <div class="fw-player-row">
+        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+        <span class="fw-player-row__name">${escapeHtml(p.display_name)}</span>
+        <span class="fw-player-row__score">${score}</span>
+        ${wagerDisplay}
+      </div>
+    `;
+  }).join('');
+}
+
+async function updateFinalWagerPlayerList() {
+  const answers = await fetchAnswersForQuestion(state.room.id, state.totalQuestions);
+  const wagers = {};
+  for (const a of answers) {
+    if (a.submitted_answer === '__WAGER_LOCKED__') {
+      wagers[String(a.player_id)] = a.wager;
+    }
+  }
+  renderFinalWagerPlayers(wagers);
 }
 
 async function handleRevealFinalQuestion() {
@@ -1576,8 +1650,13 @@ function handleAnswerChange(payload) {
   // Ignore answer changes on the scores screen
   if (state.gamePhase === 'scores_reveal') return;
 
-  // During final wager screen, track lock-ins (no reveal screen processing needed)
-  if (state.gamePhase === 'final_wager') return;
+  // During final wager screen, update the player wager list
+  if (state.gamePhase === 'final_wager') {
+    if (payload.eventType === 'INSERT' && payload.new && payload.new.submitted_answer === '__WAGER_LOCKED__') {
+      updateFinalWagerPlayerList();
+    }
+    return;
+  }
 
   if (!state.onRevealScreen) return;
 
