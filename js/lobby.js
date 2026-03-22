@@ -184,14 +184,17 @@ function attachListeners() {
 // --- Players ---
 async function loadPlayers() {
   players = await fetchPlayers(room.id);
-  // Sort by join time ascending (host first) — client-side insurance
-  // in case joined_at is null or DB sort is unreliable
+  sortPlayers();
+  renderPlayers();
+}
+
+function sortPlayers() {
+  // Sort by join time ascending (host first)
   players.sort((a, b) => {
     const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
     const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
     return ta - tb;
   });
-  renderPlayers();
 }
 
 function renderPlayers() {
@@ -223,8 +226,31 @@ function renderPlayers() {
   }
 }
 
-async function handlePlayerChange() {
-  await loadPlayers();
+async function handlePlayerChange(payload) {
+  const event = payload.eventType;
+
+  // Apply change instantly from the payload (no DB round-trip)
+  if (event === 'INSERT' && payload.new) {
+    // Avoid duplicates (e.g. if we just re-added ourselves)
+    if (!players.some(p => String(p.id) === String(payload.new.id))) {
+      players.push(payload.new);
+      sortPlayers();
+      renderPlayers();
+    }
+  } else if (event === 'UPDATE' && payload.new) {
+    const idx = players.findIndex(p => String(p.id) === String(payload.new.id));
+    if (idx !== -1) {
+      players[idx] = payload.new;
+      renderPlayers();
+    }
+  } else if (event === 'DELETE' && payload.old) {
+    players = players.filter(p => String(p.id) !== String(payload.old.id));
+    renderPlayers();
+  } else {
+    // Fallback: full re-fetch for unknown event shapes
+    await loadPlayers();
+  }
+
   // If current player was removed (e.g. stale beacon from refresh), re-add
   await ensureCurrentPlayer();
 }
