@@ -8,7 +8,6 @@ import {
   fetchPlayers,
   fetchQuestionsByCategory,
   fetchQuestionsByIds,
-  saveQuestionIds,
   updateGameState,
   submitAnswer,
   fetchAnswersForQuestion,
@@ -169,9 +168,8 @@ async function initHostGame() {
   resolveFieldMap(questions[0]);
 
   const questionIds = questions.map(q => q.id);
-  await saveQuestionIds(state.room.id, questionIds);
-
   await updateGameState(state.room.id, {
+    question_ids: questionIds,
     game_phase: 'question',
     current_question: 0
   });
@@ -183,7 +181,7 @@ async function initPlayerGame() {
   let roomData = null;
   for (let attempt = 0; attempt < 10; attempt++) {
     const { data } = await fetchRoom(state.room.id);
-    if (data && data.question_ids && data.question_ids.length > 0) {
+    if (data && data.question_ids && data.question_ids.length > 0 && data.game_phase) {
       roomData = data;
       break;
     }
@@ -243,7 +241,7 @@ function handleRoomChange(payload) {
     fetchQuestionsByIds(question_ids).then(qs => {
       state.questions = qs;
       if (qs.length > 0) resolveFieldMap(qs[0]);
-      handlePhaseTransition(game_phase);
+      if (game_phase) handlePhaseTransition(game_phase);
     });
     return;
   }
@@ -252,7 +250,7 @@ function handleRoomChange(payload) {
     state.currentQuestion = current_question;
   }
 
-  handlePhaseTransition(game_phase);
+  if (game_phase) handlePhaseTransition(game_phase);
 }
 
 /**
@@ -271,6 +269,8 @@ function revealQuestionAndStartTimer() {
 }
 
 function handlePhaseTransition(phase) {
+  if (!phase) return; // guard against null/undefined game_phase
+
   // 'question' phase with new current_question always resets
   if (phase === 'question') {
     state.currentWager = null;
