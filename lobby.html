@@ -22,7 +22,10 @@
 
       <!-- Top: Code + Category -->
       <div class="lobby-top">
-        <p id="lobby-category" class="lobby-category"></p>
+        <div class="lobby-category-row">
+          <p id="lobby-category" class="lobby-category"></p>
+          <button id="btn-settings" class="settings-trigger-btn hidden">Settings</button>
+        </div>
         <div class="room-code-display">
           <span id="lobby-code" class="room-code-display__code"></span>
           <button id="btn-copy-code" class="copy-btn">Copy</button>
@@ -59,6 +62,49 @@
         <button id="btn-ready" class="btn btn-secondary btn-block hidden">Ready Up</button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- Settings Modal (host only) -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal settings-modal">
+      <h2 class="modal__title">Game Settings</h2>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Category</div>
+        <div id="settings-category-grid" class="category-grid settings-category-grid"></div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Who Can Join</div>
+        <div class="toggle-group" data-setting="whoCanJoin">
+          <button class="toggle-option" data-value="invite">Invite Only</button>
+          <button class="toggle-option" data-value="friends">Friends</button>
+          <button class="toggle-option" data-value="anyone">Anyone</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Questions Per Game</div>
+        <div class="toggle-group" data-setting="questionsPerGame">
+          <button class="toggle-option" data-value="5">5</button>
+          <button class="toggle-option" data-value="10">10</button>
+          <button class="toggle-option" data-value="15">15</button>
+          <button class="toggle-option" data-value="20">20</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Question Timer</div>
+        <div class="toggle-group" data-setting="questionTimer">
+          <button class="toggle-option" data-value="15">15s</button>
+          <button class="toggle-option" data-value="30">30s</button>
+          <button class="toggle-option" data-value="45">45s</button>
+          <button class="toggle-option" data-value="60">60s</button>
+        </div>
+      </div>
+
+      <button id="btn-close-settings" class="btn btn-primary btn-block" style="margin-top: var(--space-lg);">Done</button>
     </div>
   </div>
 

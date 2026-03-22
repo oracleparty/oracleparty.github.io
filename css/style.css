@@ -967,7 +967,65 @@ body::after {
   text-align: center;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
+  margin-bottom: 0;
+}
+
+.lobby-category-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
   margin-bottom: var(--space-sm);
+}
+
+.settings-trigger-btn {
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  padding: 2px var(--space-sm);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.settings-modal {
+  max-height: 85dvh;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.settings-modal .settings-group {
+  max-width: 100%;
+}
+
+.settings-category-grid {
+  max-height: 200px;
+  overflow-y: auto;
+  gap: var(--space-sm) !important;
+}
+
+.settings-category-grid .category-card {
+  padding: var(--space-sm) var(--space-xs);
+}
+
+.settings-category-grid .category-card__icon {
+  font-size: var(--text-lg);
+  margin-bottom: 2px;
+}
+
+.settings-category-grid .category-card__name {
+  font-size: var(--text-xs);
+}
+
+.settings-category-grid .category-card__count {
+  display: none;
+}
+
+.settings-category-grid .category-card.selected {
+  border-color: var(--color-primary);
+  background: rgba(200, 164, 92, 0.1);
 }
 
 /* --- Leave Button --- */

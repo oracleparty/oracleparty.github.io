@@ -166,7 +166,7 @@ async function loadPublicGames() {
       <span class="public-game-row__icon">${meta.icon}</span>
       <div class="public-game-row__info">
         <div class="public-game-row__host">${escapeHtml(room.host_name)}'s game</div>
-        <div class="public-game-row__category">${meta.label}</div>
+        <div class="public-game-row__category">${meta.label} &middot; ${room.questions_per_game}Q &middot; ${room.question_timer}s</div>
       </div>
       <div class="public-game-row__meta">
         <div class="public-game-row__code">${room.code}</div>

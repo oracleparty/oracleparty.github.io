@@ -12,6 +12,7 @@ import {
   removePlayerBeacon,
   toggleReady,
   updateRoomStatus,
+  updateGameState,
   subscribeToPlayers,
   subscribeToMessages,
   subscribeToRoom,
@@ -54,6 +55,10 @@ const btnStartGame = $('#btn-start-game');
 const btnReady = $('#btn-ready');
 const btnCopyCode = $('#btn-copy-code');
 const btnLeave = $('#btn-leave');
+const btnSettings = $('#btn-settings');
+const settingsModal = $('#settings-modal');
+const btnCloseSettings = $('#btn-close-settings');
+const settingsCategoryGrid = $('#settings-category-grid');
 
 // --- Init ---
 async function init() {
@@ -69,13 +74,13 @@ async function init() {
   room = JSON.parse(stored);
 
   // Render static info
-  const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
-  lobbyCategory.textContent = `${meta.icon} ${meta.label}`;
+  updateCategoryDisplay();
   lobbyCode.textContent = room.code;
 
   // Show correct action button
   if (room.isHost) {
     btnStartGame.classList.remove('hidden');
+    btnSettings.classList.remove('hidden');
   } else {
     btnReady.classList.remove('hidden');
   }
@@ -130,6 +135,42 @@ function attachListeners() {
 
   // Leave
   btnLeave.addEventListener('click', handleLeave);
+
+  // Settings modal (host only)
+  if (room.isHost) {
+    btnSettings.addEventListener('click', openSettingsModal);
+    btnCloseSettings.addEventListener('click', closeSettingsModal);
+
+    // Close on overlay click
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) closeSettingsModal();
+    });
+
+    // Category selection
+    settingsCategoryGrid.addEventListener('click', (e) => {
+      const card = e.target.closest('.category-card');
+      if (!card) return;
+      settingsCategoryGrid.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      handleSettingChange('category', card.dataset.category);
+    });
+
+    // Toggle groups
+    settingsModal.querySelectorAll('.toggle-group').forEach(group => {
+      group.addEventListener('click', (e) => {
+        const option = e.target.closest('.toggle-option');
+        if (!option) return;
+        group.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
+        option.classList.add('active');
+        const key = group.dataset.setting;
+        let value = option.dataset.value;
+        if (key === 'questionsPerGame' || key === 'questionTimer') {
+          value = parseInt(value, 10);
+        }
+        handleSettingChange(key, value);
+      });
+    });
+  }
 
   // Cleanup + remove player on page unload (tab close / disconnect)
   window.addEventListener('beforeunload', handleUnload);
@@ -245,12 +286,114 @@ async function handleStartGame() {
   // Room subscription will trigger navigation for everyone including host
 }
 
-// --- Room status change ---
+// --- Settings Modal (host) ---
+function updateCategoryDisplay() {
+  const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
+  lobbyCategory.textContent = `${meta.icon} ${meta.label}`;
+}
+
+function openSettingsModal() {
+  renderSettingsCategories();
+  syncTogglesToSettings();
+  settingsModal.classList.add('active');
+}
+
+function closeSettingsModal() {
+  settingsModal.classList.remove('active');
+}
+
+function renderSettingsCategories() {
+  settingsCategoryGrid.innerHTML = Object.entries(CATEGORY_META).map(([name, meta]) => {
+    const selected = name === room.category ? 'selected' : '';
+    return `
+      <button class="category-card ${selected}" data-category="${name}">
+        <div class="category-card__icon">${meta.icon}</div>
+        <div class="category-card__name">${meta.label}</div>
+      </button>
+    `;
+  }).join('');
+}
+
+function syncTogglesToSettings() {
+  settingsModal.querySelectorAll('.toggle-group').forEach(group => {
+    const key = group.dataset.setting;
+    const currentValue = String(room.settings[key]);
+    group.querySelectorAll('.toggle-option').forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.value === currentValue);
+    });
+  });
+}
+
+async function handleSettingChange(key, value) {
+  const columnMap = {
+    category: 'category',
+    whoCanJoin: 'who_can_join',
+    questionsPerGame: 'questions_per_game',
+    questionTimer: 'question_timer'
+  };
+  const column = columnMap[key];
+  if (!column) return;
+
+  // Update local state
+  if (key === 'category') {
+    room.category = value;
+    updateCategoryDisplay();
+  } else {
+    room.settings[key] = value;
+  }
+
+  // Persist to sessionStorage
+  sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+
+  // Push to Supabase (triggers Realtime for other players)
+  await updateGameState(room.id, { [column]: value });
+}
+
+// --- Room change handler ---
 function handleRoomChange(payload) {
-  if (payload.new && payload.new.status === 'playing') {
-    isLeaving = true; // prevent unload from removing player
+  const newRoom = payload.new;
+  if (!newRoom) return;
+
+  // Game start — navigate all players
+  if (newRoom.status === 'playing') {
+    isLeaving = true;
     cleanup();
     window.location.href = 'game.html';
+    return;
+  }
+
+  // Settings changed (non-host players update from Realtime)
+  if (!room.isHost) {
+    let changed = false;
+
+    if (newRoom.category && newRoom.category !== room.category) {
+      room.category = newRoom.category;
+      updateCategoryDisplay();
+      const meta = CATEGORY_META[room.category] || { label: room.category };
+      addSystemMessage(`Host changed category to ${meta.label}`);
+      changed = true;
+    }
+
+    if (newRoom.who_can_join && newRoom.who_can_join !== room.settings.whoCanJoin) {
+      room.settings.whoCanJoin = newRoom.who_can_join;
+      changed = true;
+    }
+
+    if (newRoom.questions_per_game && newRoom.questions_per_game !== room.settings.questionsPerGame) {
+      room.settings.questionsPerGame = newRoom.questions_per_game;
+      addSystemMessage(`Host changed to ${room.settings.questionsPerGame} questions`);
+      changed = true;
+    }
+
+    if (newRoom.question_timer && newRoom.question_timer !== room.settings.questionTimer) {
+      room.settings.questionTimer = newRoom.question_timer;
+      addSystemMessage(`Host changed timer to ${room.settings.questionTimer}s`);
+      changed = true;
+    }
+
+    if (changed) {
+      sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    }
   }
 }
 
