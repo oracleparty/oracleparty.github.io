@@ -427,15 +427,6 @@ body::after {
   padding: 0 var(--space-lg);
 }
 
-.home__tagline {
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  text-align: center;
-  margin-top: var(--space-3xl);
-  font-style: italic;
-}
-
 /* Home entrance animations */
 .home.active .home__brand {
   animation: fade-up 0.6s var(--ease-out) 0.1s both;
@@ -443,10 +434,6 @@ body::after {
 
 .home.active .home__actions {
   animation: fade-up 0.6s var(--ease-out) 0.25s both;
-}
-
-.home.active .home__tagline {
-  animation: fade-up 0.6s var(--ease-out) 0.4s both;
 }
 
 /* --- Utility --- */
