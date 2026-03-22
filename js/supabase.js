@@ -516,6 +516,33 @@ export async function fetchRoom(roomId) {
 }
 
 /**
+ * Get the approximate server time by making a lightweight request.
+ * Uses the Date header from the Supabase response.
+ * Returns { serverNow: Date, offset: number } where offset = serverTime - clientTime in ms.
+ */
+export async function getServerTimeOffset() {
+  try {
+    const before = Date.now();
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rooms?select=id&limit=0`, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+    const after = Date.now();
+    const dateHeader = response.headers.get('date');
+    if (dateHeader) {
+      const serverTime = new Date(dateHeader).getTime();
+      const clientMidpoint = (before + after) / 2;
+      return serverTime - clientMidpoint;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Test the Supabase connection by making a simple request.
  * Returns true if connected, false otherwise.
  */

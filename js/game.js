@@ -21,7 +21,8 @@ import {
   subscribeToRoom,
   subscribeToAnswers,
   subscribeToMessages,
-  unsubscribe
+  unsubscribe,
+  getServerTimeOffset
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -58,7 +59,9 @@ const state = {
   scores: {},
   timerId: null,
   channels: [],
-  chatOpen: false
+  chatOpen: false,
+  serverTimeOffset: 0,  // serverTime - clientTime in ms
+  questionStartedAt: null  // ISO timestamp from DB — single source of truth for timer
 };
 
 // --- Question field name resolution ---
@@ -105,6 +108,9 @@ async function init() {
   state.totalQuestions = state.room.settings?.questionsPerGame || 10;
   state.timerSeconds = state.room.settings?.questionTimer || 30;
 
+  // Calibrate clock offset between client and server
+  state.serverTimeOffset = await getServerTimeOffset();
+
   state.players = await fetchPlayers(state.room.id);
 
   for (const p of state.players) {
@@ -127,6 +133,30 @@ async function init() {
 }
 
 async function initHostGame() {
+  // Check if there's already a game in progress (host refreshed mid-game)
+  const { data: roomData } = await fetchRoom(state.room.id);
+  if (roomData && roomData.question_ids && roomData.question_ids.length > 0 && roomData.game_phase && roomData.game_phase !== 'lobby') {
+    // Reconnect to existing game
+    state.totalQuestions = roomData.question_ids.length;
+    state.questions = await fetchQuestionsByIds(roomData.question_ids);
+    if (state.questions.length > 0) resolveFieldMap(state.questions[0]);
+    state.currentQuestion = roomData.current_question || 0;
+
+    // Rebuild used wagers from existing answers
+    const allAnswers = await fetchAllAnswers(state.room.id);
+    const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+    for (const a of myAnswers) {
+      state.usedWagers.add(a.wager);
+    }
+
+    if (roomData.question_started_at) {
+      state.questionStartedAt = roomData.question_started_at;
+    }
+
+    handlePhaseTransition(roomData.game_phase);
+    return;
+  }
+
   const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions);
 
   if (questions.length === 0) {
@@ -173,6 +203,19 @@ async function initPlayerGame() {
   }
 
   state.currentQuestion = roomData.current_question || 0;
+
+  // Rebuild used wagers from existing answers
+  const allAnswers = await fetchAllAnswers(state.room.id);
+  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+  for (const a of myAnswers) {
+    state.usedWagers.add(a.wager);
+  }
+
+  // Store server timer start for reconnect scenarios
+  if (roomData.question_started_at) {
+    state.questionStartedAt = roomData.question_started_at;
+  }
+
   handlePhaseTransition(roomData.game_phase);
 }
 
@@ -182,7 +225,18 @@ async function initPlayerGame() {
 
 function handleRoomChange(payload) {
   if (!payload.new) return;
-  const { game_phase, current_question, question_ids } = payload.new;
+  const { game_phase, current_question, question_ids, question_started_at } = payload.new;
+
+  // Track server timer start timestamp
+  if (question_started_at) {
+    state.questionStartedAt = question_started_at;
+  }
+
+  // Non-host: when host writes question_started_at, reveal the question and start timer
+  if (!state.room.isHost && question_started_at && state.gamePhase === 'question' && !state.hasSubmitted && !state.timerId) {
+    revealQuestionAndStartTimer();
+    return;
+  }
 
   if (!state.room.isHost && state.questions.length === 0 && question_ids && question_ids.length > 0) {
     state.totalQuestions = question_ids.length;
@@ -201,24 +255,44 @@ function handleRoomChange(payload) {
   handlePhaseTransition(game_phase);
 }
 
+/**
+ * Reveal the hidden question elements and start the server-synced timer.
+ * Called on non-host clients when they receive question_started_at from host.
+ */
+function revealQuestionAndStartTimer() {
+  $('.question-card').style.visibility = '';
+  $('#wager-grid').style.visibility = '';
+  $('#answer-form').style.visibility = '';
+  $('#wager-error').style.visibility = '';
+  $('.timer').style.visibility = '';
+
+  startTimer();
+  $('#answer-input').focus();
+}
+
 function handlePhaseTransition(phase) {
   // 'question' phase with new current_question always resets
   if (phase === 'question') {
-    // Only reset if it's actually a new question (avoid resetting if we're already on this question)
-    if (state.gamePhase !== 'question' || !state.onRevealScreen) {
-      state.currentWager = null;
-      state.hasSubmitted = false;
-      state.onRevealScreen = false;
-      state.timerExpired = false;
-      state.gamePhase = phase;
-      showQuestionScreen();
+    state.currentWager = null;
+    state.hasSubmitted = false;
+    state.onRevealScreen = false;
+    state.timerExpired = false;
+    state.gamePhase = phase;
+
+    // On reconnect (questionStartedAt present), check if we already answered
+    if (state.questionStartedAt) {
+      fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
+        const myAnswer = answers.find(a => a.player_id === state.room.playerId);
+        if (myAnswer) {
+          // Already submitted — go straight to reveal
+          state.hasSubmitted = true;
+          state.questionStartedAt = null;
+          showRevealScreen();
+        } else {
+          showQuestionScreen();
+        }
+      });
     } else {
-      // We're on reveal screen viewing answers for current question, new question incoming
-      state.currentWager = null;
-      state.hasSubmitted = false;
-      state.onRevealScreen = false;
-      state.timerExpired = false;
-      state.gamePhase = phase;
       showQuestionScreen();
     }
     return;
@@ -281,13 +355,18 @@ function showQuestionScreen() {
   }
   showChatToggle();
 
-  // Hide interactive elements during sync buffer
-  $('.question-card').style.visibility = 'hidden';
-  $('#wager-grid').style.visibility = 'hidden';
-  $('#answer-form').style.visibility = 'hidden';
-  $('#wager-error').style.visibility = 'hidden';
-  $('#btn-skip-timer').classList.add('hidden');
-  $('.timer').style.visibility = 'hidden';
+  // Determine if we should skip the sync buffer (reconnect with existing timer)
+  const isReconnect = !!state.questionStartedAt;
+
+  if (!isReconnect) {
+    // Hide interactive elements during sync buffer
+    $('.question-card').style.visibility = 'hidden';
+    $('#wager-grid').style.visibility = 'hidden';
+    $('#answer-form').style.visibility = 'hidden';
+    $('#wager-error').style.visibility = 'hidden';
+    $('#btn-skip-timer').classList.add('hidden');
+    $('.timer').style.visibility = 'hidden';
+  }
 
   const currentScreen = document.querySelector('.screen.active');
   const questionScreen = $('#question-screen');
@@ -303,26 +382,43 @@ function showQuestionScreen() {
     }
   }
 
-  // 1-second sync buffer: only category + question number visible
-  // This ensures all players receive the state update before anyone sees the question
-  setTimeout(() => {
-    // Reveal everything
-    $('.question-card').style.visibility = '';
-    $('#wager-grid').style.visibility = '';
-    $('#answer-form').style.visibility = '';
-    $('#wager-error').style.visibility = '';
-    $('.timer').style.visibility = '';
-
+  if (isReconnect) {
+    // Reconnect: skip sync buffer, resume timer from server timestamp
     if (state.room.isHost) {
       $('#btn-skip-timer').classList.remove('hidden');
+    } else {
+      $('#btn-skip-timer').classList.add('hidden');
     }
-
-    // Start timer only after reveal
     startTimer();
-
-    // Focus the answer input for quick typing
     $('#answer-input').focus();
-  }, 1000);
+  } else {
+    // Normal flow: 1-second sync buffer before revealing question
+    setTimeout(async () => {
+      // Host: write the server-authoritative timer start timestamp
+      if (state.room.isHost) {
+        const startedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
+        state.questionStartedAt = startedAt;
+        await updateGameState(state.room.id, { question_started_at: startedAt });
+      }
+
+      // Reveal everything
+      $('.question-card').style.visibility = '';
+      $('#wager-grid').style.visibility = '';
+      $('#answer-form').style.visibility = '';
+      $('#wager-error').style.visibility = '';
+      $('.timer').style.visibility = '';
+
+      if (state.room.isHost) {
+        $('#btn-skip-timer').classList.remove('hidden');
+      }
+
+      // Start timer from server timestamp
+      startTimer();
+
+      // Focus the answer input for quick typing
+      $('#answer-input').focus();
+    }, 1000);
+  }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
   $('#answer-input').onkeydown = (e) => {
@@ -365,39 +461,68 @@ function selectWager(value, btnEl) {
 }
 
 // ============================================
-// TIMER
+// TIMER (purely server-timestamp-based)
 // ============================================
 
+/**
+ * Calculate remaining seconds from the server-authoritative timestamp.
+ * timeLeft = questionTimer - (now - question_started_at)
+ * Returns fractional seconds for precise bar rendering.
+ */
+function getServerTimeLeft() {
+  if (!state.questionStartedAt) return state.timerSeconds;
+  const startMs = new Date(state.questionStartedAt).getTime();
+  const nowServerMs = Date.now() + state.serverTimeOffset;
+  const elapsedMs = nowServerMs - startMs;
+  return Math.max(0, state.timerSeconds - elapsedMs / 1000);
+}
+
+/**
+ * Start the timer display loop. Every tick recalculates from the server
+ * timestamp — no client-side countdown state. Refreshing, disconnecting,
+ * or reconnecting changes nothing; the timer keeps counting from
+ * question_started_at stored in Supabase.
+ */
 function startTimer() {
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
   }
 
-  let remaining = state.timerSeconds;
   const timerEl = $('#timer-text');
   const timerBar = $('#timer-bar');
   const timerWrapper = timerBar.closest('.timer');
 
-  timerWrapper.classList.remove('timer--warning');
-  timerEl.textContent = remaining;
-  timerBar.style.width = '100%';
+  // Immediate first render
+  const initial = getServerTimeLeft();
+  if (initial <= 0) {
+    timerEl.textContent = '0';
+    timerBar.style.width = '0%';
+    timerWrapper.classList.add('timer--warning');
+    handleTimerExpired();
+    return;
+  }
 
+  const display = Math.ceil(initial);
+  timerEl.textContent = display;
+  timerBar.style.width = `${(initial / state.timerSeconds) * 100}%`;
+  timerWrapper.classList.toggle('timer--warning', display <= 5);
+
+  // Tick every 250ms for smooth bar + accurate expiry
   state.timerId = setInterval(() => {
-    remaining--;
-    timerEl.textContent = remaining;
-    timerBar.style.width = `${(remaining / state.timerSeconds) * 100}%`;
+    const timeLeft = getServerTimeLeft();
+    const secs = Math.ceil(timeLeft);
 
-    if (remaining <= 5) {
-      timerWrapper.classList.add('timer--warning');
-    }
+    timerEl.textContent = Math.max(0, secs);
+    timerBar.style.width = `${Math.max(0, (timeLeft / state.timerSeconds) * 100)}%`;
+    timerWrapper.classList.toggle('timer--warning', secs <= 5);
 
-    if (remaining <= 0) {
+    if (timeLeft <= 0) {
       clearInterval(state.timerId);
       state.timerId = null;
       handleTimerExpired();
     }
-  }, 1000);
+  }, 250);
 }
 
 function handleTimerExpired() {
