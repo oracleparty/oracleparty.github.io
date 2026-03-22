@@ -201,6 +201,10 @@ function attachListeners() {
     });
   }
 
+  // Trap browser back button — clean leave instead of broken nav
+  history.pushState({ inGame: true }, '');
+  window.addEventListener('popstate', handleBackButton);
+
   // Cleanup + remove player on page unload (tab close / disconnect)
   window.addEventListener('beforeunload', handleUnload);
   window.addEventListener('pagehide', handleUnload);
@@ -500,6 +504,11 @@ async function handleLeave() {
   window.location.href = 'index.html';
 }
 
+// --- Browser back button ---
+function handleBackButton() {
+  handleLeave();
+}
+
 // --- Visibility change (away/presence) ---
 function handleVisibilityChange() {
   if (presenceChannel) {
@@ -518,6 +527,7 @@ function handleUnload() {
 
 // --- Cleanup ---
 function cleanup() {
+  window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   for (const ch of channels) {
     unsubscribe(ch);

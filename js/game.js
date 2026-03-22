@@ -22,7 +22,8 @@ import {
   subscribeToMessages,
   unsubscribe,
   getServerTimeOffset,
-  createPresenceChannel
+  createPresenceChannel,
+  removePlayerBeacon
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -156,6 +157,10 @@ async function init() {
     });
   state.channels.push(state.presenceChannel);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  // Trap browser back button — clean leave instead of broken nav
+  history.pushState({ inGame: true }, '');
+  window.addEventListener('popstate', handleBackButton);
 
   loadChatMessages();
   attachChatListeners();
@@ -1338,7 +1343,15 @@ function handleVisibilityChange() {
   }
 }
 
+function handleBackButton() {
+  cleanup();
+  removePlayerBeacon(state.room.playerId);
+  sessionStorage.removeItem('oracle_party_room');
+  window.location.href = 'index.html';
+}
+
 function cleanup() {
+  window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   if (state.timerId) {
     clearInterval(state.timerId);
