@@ -1385,6 +1385,17 @@ body::after {
   font-weight: 600;
   color: var(--color-text-muted);
   flex-shrink: 0;
+  transition: background 0.6s ease, color 0.6s ease;
+}
+
+.answer-row__wager--correct {
+  background: rgba(92, 196, 92, 0.2);
+  color: var(--color-success);
+}
+
+.answer-row__wager--incorrect {
+  background: rgba(196, 92, 92, 0.2);
+  color: var(--color-danger);
 }
 
 /* --- Answer text coloring (post-reveal) --- */

@@ -290,6 +290,11 @@ function handlePhaseTransition(phase) {
     state.timerExpired = false;
     state.currentAnswers = [];
     state.previousScores = {};
+    // Clear stale questionStartedAt on normal transitions (not init reconnect)
+    // Reconnects from init set questionStartedAt BEFORE calling handlePhaseTransition
+    if (state.gamePhase !== 'loading') {
+      state.questionStartedAt = null;
+    }
     state.gamePhase = phase;
 
     // On reconnect (questionStartedAt present), check if we already answered
@@ -391,7 +396,6 @@ function showQuestionScreen() {
     $('#wager-grid').style.visibility = 'hidden';
     $('#answer-form').style.visibility = 'hidden';
     $('#wager-error').style.visibility = 'hidden';
-    $('#btn-skip-timer').classList.add('hidden');
     $('.timer').style.visibility = 'hidden';
   }
 
@@ -411,11 +415,6 @@ function showQuestionScreen() {
 
   if (isReconnect) {
     // Reconnect: skip sync buffer, resume timer from server timestamp
-    if (state.room.isHost) {
-      $('#btn-skip-timer').classList.remove('hidden');
-    } else {
-      $('#btn-skip-timer').classList.add('hidden');
-    }
     startTimer();
     $('#answer-input').focus();
   } else {
@@ -435,10 +434,6 @@ function showQuestionScreen() {
       $('#wager-error').style.visibility = '';
       $('.timer').style.visibility = '';
 
-      if (state.room.isHost) {
-        $('#btn-skip-timer').classList.remove('hidden');
-      }
-
       // Start timer from server timestamp
       startTimer();
 
@@ -456,7 +451,6 @@ function showQuestionScreen() {
       handleSubmitAnswer();
     }
   };
-  $('#btn-skip-timer').onclick = handleSkipTimer;
 }
 
 function renderWagerGrid() {
@@ -566,6 +560,32 @@ function handleTimerExpired() {
     doSubmitAnswer(currentAnswer);
   }
 
+  // Host: auto-submit blank for any players who didn't answer, then broadcast reveal
+  if (state.room.isHost) {
+    const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
+    // Also count ourselves even if doSubmitAnswer hasn't added to currentAnswers yet
+    submittedIds.add(String(state.room.playerId));
+    const q = state.questions[state.currentQuestion];
+    if (q) {
+      for (const p of state.players) {
+        if (!submittedIds.has(String(p.id))) {
+          submitAnswer({
+            roomId: state.room.id,
+            playerId: p.id,
+            questionNumber: state.currentQuestion,
+            questionId: q.id,
+            wager: 1,
+            submittedAnswer: '',
+            isCorrect: false,
+            scoreEarned: 0
+          });
+        }
+      }
+    }
+    // Broadcast reveal phase so all clients transition
+    updateGameState(state.room.id, { game_phase: 'reveal' });
+  }
+
   // If host and already on reveal, enable the appropriate button
   if (state.room.isHost && state.onRevealScreen) {
     if (state.resultsRevealed) {
@@ -618,32 +638,13 @@ async function doSubmitAnswer(answer) {
   showRevealScreen();
 }
 
-async function handleSkipTimer() {
-  if (!state.room.isHost) return;
-
-  if (state.timerId) {
-    clearInterval(state.timerId);
-    state.timerId = null;
-  }
-
-  state.timerExpired = true;
-
-  // Broadcast reveal phase so non-submitted players auto-submit
-  await updateGameState(state.room.id, { game_phase: 'reveal' });
-
-  // If host already submitted and on reveal, enable Reveal Results
-  if (state.onRevealScreen && !state.resultsRevealed) {
-    enableRevealButton();
-  }
-}
-
 // ============================================
 // REVEAL SCREEN
 // ============================================
 
 async function showRevealScreen() {
   // Don't clear the timer — it's still running for other players
-  // (it gets cleared in handleTimerExpired or handleSkipTimer)
+  // (it gets cleared in handleTimerExpired)
 
   state.onRevealScreen = true;
 
@@ -671,8 +672,9 @@ async function showRevealScreen() {
     btn.textContent = 'Reveal Results';
     btn.onclick = handleRevealResults;
 
-    // Enable if timer expired or all players have submitted
-    if (state.timerExpired || state.currentAnswers.length >= state.players.length) {
+    // Enable if (timer expired or all players submitted) AND host has submitted
+    const hostSubmitted = state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
+    if ((state.timerExpired || state.currentAnswers.length >= state.players.length) && hostSubmitted) {
       btn.disabled = false;
       btn.style.opacity = '1';
     } else {
@@ -731,13 +733,18 @@ function renderRevealAnswers(answers) {
            </div>`
         : '';
 
+      // Wager badge: colored after reveal, neutral before
+      const wagerColorClass = state.resultsRevealed
+        ? (isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect')
+        : '';
+
       row.innerHTML = `
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
         <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
         <span class="answer-row__answer ${colorClass}${emptyClass}">
           ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
         </span>
-        <span class="answer-row__wager">${wager}</span>
+        <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
         ${toggleHtml}
       `;
     } else {
@@ -769,6 +776,9 @@ function enableNextQuestion() {
 
 function enableRevealButton() {
   if (!state.room.isHost || state.resultsRevealed) return;
+  // Host must have submitted their own answer
+  const hostSubmitted = state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
+  if (!hostSubmitted) return;
   const btn = $('#btn-next-question');
   if (btn) {
     btn.disabled = false;
@@ -798,9 +808,14 @@ async function doReveal() {
     document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
       const answer = state.currentAnswers.find(a => String(a.player_id) === String(row.dataset.playerId));
       if (!answer) return;
+      const isCorrect = answer.is_correct || false;
       const el = row.querySelector('.answer-row__answer');
       if (el) {
-        el.classList.add(answer.is_correct ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect');
+        el.classList.add(isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect');
+      }
+      const wagerEl = row.querySelector('.answer-row__wager');
+      if (wagerEl) {
+        wagerEl.classList.add(isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect');
       }
     });
   });
@@ -1114,6 +1129,33 @@ function handleAnswerChange(payload) {
     if (idx !== -1) {
       state.currentAnswers[idx] = { ...state.currentAnswers[idx], ...payload.new };
     }
+    // Try in-place DOM patch (avoids full re-render for single answer change)
+    const answerId = String(payload.new.id);
+    const row = document.querySelector(`#reveal-answers .answer-row[data-answer-id="${answerId}"]`);
+    if (row && idx !== -1) {
+      const answer = state.currentAnswers[idx];
+      const isCorrect = answer.is_correct || false;
+      // Patch answer text color
+      const answerEl = row.querySelector('.answer-row__answer');
+      if (answerEl && state.resultsRevealed) {
+        answerEl.classList.toggle('answer-row__answer--correct', isCorrect);
+        answerEl.classList.toggle('answer-row__answer--incorrect', !isCorrect);
+      }
+      // Patch wager badge color
+      const wagerEl = row.querySelector('.answer-row__wager');
+      if (wagerEl && state.resultsRevealed) {
+        wagerEl.classList.toggle('answer-row__wager--correct', isCorrect);
+        wagerEl.classList.toggle('answer-row__wager--incorrect', !isCorrect);
+      }
+      // Patch toggle switch (host only)
+      const toggle = row.querySelector('.answer-toggle');
+      if (toggle) {
+        toggle.classList.toggle('answer-toggle--correct', isCorrect);
+        toggle.classList.toggle('answer-toggle--incorrect', !isCorrect);
+      }
+      return;
+    }
+    // Fallback: full re-render
     renderRevealAnswers(state.currentAnswers);
     return;
   }
