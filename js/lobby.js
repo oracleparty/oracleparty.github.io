@@ -5,6 +5,7 @@
 
 import { $, escapeHtml } from './utils.js';
 import {
+  addPlayer,
   fetchPlayers,
   fetchMessages,
   sendMessage,
@@ -90,6 +91,18 @@ async function init() {
     loadPlayers(),
     loadMessages()
   ]);
+
+  // Re-add current player if missing (e.g. page refresh triggered removePlayerBeacon)
+  const me = players.find(p => String(p.id) === String(room.playerId));
+  if (!me) {
+    const displayName = getDisplayName();
+    const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost);
+    if (rejoinedPlayer) {
+      room.playerId = rejoinedPlayer.id;
+      sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+      await loadPlayers();
+    }
+  }
 
   // Subscribe to Realtime
   const playerChannel = subscribeToPlayers(room.id, handlePlayerChange);

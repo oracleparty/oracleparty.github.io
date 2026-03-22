@@ -175,7 +175,7 @@ export async function fetchPublicRooms() {
 export async function addPlayer(roomId, displayName, isHost = false) {
   const { data, error } = await supabase
     .from('players')
-    .insert({ room_id: roomId, display_name: displayName, is_host: isHost })
+    .insert({ room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString() })
     .select()
     .single();
 
