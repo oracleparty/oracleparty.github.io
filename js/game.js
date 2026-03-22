@@ -54,6 +54,7 @@ const state = {
   currentWager: null,
   hasSubmitted: false,
   onRevealScreen: false,
+  resultsRevealed: false,
   timerExpired: false,
   scores: {},
   timerId: null,
@@ -276,6 +277,7 @@ function handlePhaseTransition(phase) {
     state.currentWager = null;
     state.hasSubmitted = false;
     state.onRevealScreen = false;
+    state.resultsRevealed = false;
     state.timerExpired = false;
     state.gamePhase = phase;
 
@@ -311,6 +313,15 @@ function handlePhaseTransition(phase) {
         showRevealScreen();
       }
       break;
+    case 'answer_reveal':
+      // Host clicked "Reveal Results" — show correct answer, judgments, scores
+      state.resultsRevealed = true;
+      if (!state.onRevealScreen) {
+        showRevealScreen(); // will call doReveal() since resultsRevealed is true
+      } else {
+        doReveal();
+      }
+      break;
     case 'results':
       showResultsScreen();
       break;
@@ -343,6 +354,7 @@ function showQuestionScreen() {
 
   state.hasSubmitted = false;
   state.onRevealScreen = false;
+  state.resultsRevealed = false;
   state.timerExpired = false;
 
   // Default wager to lowest available value
@@ -539,9 +551,13 @@ function handleTimerExpired() {
     doSubmitAnswer(currentAnswer);
   }
 
-  // If host and already on reveal, enable Next Question
+  // If host and already on reveal, enable the appropriate button
   if (state.room.isHost && state.onRevealScreen) {
-    enableNextQuestion();
+    if (state.resultsRevealed) {
+      enableNextQuestion();
+    } else {
+      enableRevealButton();
+    }
   }
 }
 
@@ -600,9 +616,9 @@ async function handleSkipTimer() {
   // Broadcast reveal phase so non-submitted players auto-submit
   await updateGameState(state.room.id, { game_phase: 'reveal' });
 
-  // If host already submitted and on reveal, enable next
-  if (state.onRevealScreen) {
-    enableNextQuestion();
+  // If host already submitted and on reveal, enable Reveal Results
+  if (state.onRevealScreen && !state.resultsRevealed) {
+    enableRevealButton();
   }
 }
 
@@ -623,31 +639,31 @@ async function showRevealScreen() {
   $('#reveal-category').textContent = `${meta.icon} ${meta.label}`;
   $('#reveal-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
   $('#reveal-question-text').textContent = getQuestionText(q);
+
+  // Populate correct answer text (for later reveal), but hide the container
   $('#reveal-answer').textContent = getCorrectAnswer(q);
   $('#reveal-difficulty').textContent = getDifficulty(q);
+  $('.reveal__correct').style.display = 'none';
+  $('.scores-panel').style.display = 'none';
 
   // Fetch existing answers (some players may not have submitted yet)
   const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
   renderRevealAnswers(answers);
 
-  await updateScores();
-  renderScores();
-
-  // Host: show Next Question button (initially disabled, enabled when timer expires or all submitted)
+  // Host: show action button (Reveal Results first, then Next Question after reveal)
   if (state.room.isHost) {
-    const nextBtn = $('#btn-next-question');
-    nextBtn.classList.remove('hidden');
-    const isLastQuestion = state.currentQuestion >= state.totalQuestions - 1;
-    nextBtn.textContent = isLastQuestion ? 'Show Results' : 'Next Question';
-    nextBtn.onclick = handleNextQuestion;
+    const btn = $('#btn-next-question');
+    btn.classList.remove('hidden');
+    btn.textContent = 'Reveal Results';
+    btn.onclick = handleRevealResults;
 
-    // Check if we can enable it immediately
+    // Enable if timer expired or all players have submitted
     if (state.timerExpired || answers.length >= state.players.length) {
-      nextBtn.disabled = false;
-      nextBtn.style.opacity = '1';
+      btn.disabled = false;
+      btn.style.opacity = '1';
     } else {
-      nextBtn.disabled = true;
-      nextBtn.style.opacity = '0.5';
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
     }
   }
 
@@ -656,6 +672,11 @@ async function showRevealScreen() {
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
     transitionScreens(currentScreen, revealScreen);
+  }
+
+  // If results were already revealed (reconnect), show them immediately
+  if (state.resultsRevealed) {
+    await doReveal();
   }
 }
 
@@ -676,21 +697,34 @@ function renderRevealAnswers(answers) {
       // Player has submitted
       row.dataset.answerId = answer.id;
       const submittedText = answer.submitted_answer || '';
-      const isCorrect = answer.is_correct || false;
       const wager = answer.wager || 0;
 
-      const judgmentClass = isCorrect ? 'answer-row__judgment--correct' : 'answer-row__judgment--incorrect';
-      const judgmentText = isCorrect ? '+' + (answer.score_earned || 0) : 'Wrong';
-      const overrideClass = state.room.isHost ? ' answer-row__judgment--overridable' : '';
+      if (state.resultsRevealed) {
+        // Post-reveal: show colored judgments
+        const isCorrect = answer.is_correct || false;
+        const judgmentClass = isCorrect ? 'answer-row__judgment--correct' : 'answer-row__judgment--incorrect';
+        const judgmentText = isCorrect ? '+' + (answer.score_earned || 0) : 'Wrong';
+        const overrideClass = state.room.isHost ? ' answer-row__judgment--overridable' : '';
 
-      row.innerHTML = `
-        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
-        <span class="answer-row__answer ${!submittedText ? 'answer-row__answer--empty' : ''}">
-          ${submittedText ? escapeHtml(submittedText) : 'No answer'}
-        </span>
-        <span class="answer-row__wager">${wager} pts</span>
-        <span class="answer-row__judgment ${judgmentClass}${overrideClass}" data-answer-id="${answer.id}">${judgmentText}</span>
-      `;
+        row.innerHTML = `
+          <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+          <span class="answer-row__answer ${!submittedText ? 'answer-row__answer--empty' : ''}">
+            ${submittedText ? escapeHtml(submittedText) : 'No answer'}
+          </span>
+          <span class="answer-row__wager">${wager} pts</span>
+          <span class="answer-row__judgment ${judgmentClass}${overrideClass}" data-answer-id="${answer.id}">${judgmentText}</span>
+        `;
+      } else {
+        // Pre-reveal: plain text answers, no judgment coloring
+        row.innerHTML = `
+          <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+          <span class="answer-row__answer ${!submittedText ? 'answer-row__answer--empty' : ''}">
+            ${submittedText ? escapeHtml(submittedText) : 'No answer'}
+          </span>
+          <span class="answer-row__wager">${wager} pts</span>
+          <span class="answer-row__judgment"></span>
+        `;
+      }
     } else {
       // Player hasn't submitted yet — show waiting state
       row.innerHTML = `
@@ -717,6 +751,46 @@ function enableNextQuestion() {
     nextBtn.disabled = false;
     nextBtn.style.opacity = '1';
   }
+}
+
+function enableRevealButton() {
+  if (!state.room.isHost || state.resultsRevealed) return;
+  const btn = $('#btn-next-question');
+  if (btn) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+async function doReveal() {
+  state.resultsRevealed = true;
+
+  // Show correct answer and difficulty
+  $('.reveal__correct').style.display = '';
+
+  // Re-render answers with judgment coloring
+  const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+  renderRevealAnswers(answers);
+
+  // Calculate and show scores
+  await updateScores();
+  renderScores();
+  $('.scores-panel').style.display = '';
+
+  // Host: swap button to Next Question
+  if (state.room.isHost) {
+    const btn = $('#btn-next-question');
+    const isLast = state.currentQuestion >= state.totalQuestions - 1;
+    btn.textContent = isLast ? 'Show Results' : 'Next Question';
+    btn.onclick = handleNextQuestion;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+async function handleRevealResults() {
+  await doReveal();
+  await updateGameState(state.room.id, { game_phase: 'answer_reveal' });
 }
 
 async function handleJudgmentOverride(e) {
@@ -832,11 +906,19 @@ function handleAnswerChange(payload) {
   if (state.onRevealScreen) {
     fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
       renderRevealAnswers(answers);
-      updateScores().then(() => renderScores());
 
-      // Host: check if all players have submitted — enable Next Question
+      // Only update scores if results have been revealed
+      if (state.resultsRevealed) {
+        updateScores().then(() => renderScores());
+      }
+
+      // Host: enable the appropriate button when all players have submitted
       if (state.room.isHost && answers.length >= state.players.length) {
-        enableNextQuestion();
+        if (state.resultsRevealed) {
+          enableNextQuestion();
+        } else {
+          enableRevealButton();
+        }
       }
     });
   }
