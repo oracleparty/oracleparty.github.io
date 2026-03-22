@@ -9,6 +9,7 @@ import {
   fetchMessages,
   sendMessage,
   removePlayer,
+  removePlayerBeacon,
   toggleReady,
   updateRoomStatus,
   subscribeToPlayers,
@@ -38,6 +39,7 @@ const CATEGORY_META = {
 let room = null;
 let players = [];
 let isReady = false;
+let isLeaving = false;
 let channels = [];
 
 // --- DOM refs ---
@@ -129,8 +131,9 @@ function attachListeners() {
   // Leave
   btnLeave.addEventListener('click', handleLeave);
 
-  // Cleanup on page unload
-  window.addEventListener('beforeunload', cleanup);
+  // Cleanup + remove player on page unload (tab close / disconnect)
+  window.addEventListener('beforeunload', handleUnload);
+  window.addEventListener('pagehide', handleUnload);
 }
 
 // --- Players ---
@@ -245,6 +248,7 @@ async function handleStartGame() {
 // --- Room status change ---
 function handleRoomChange(payload) {
   if (payload.new && payload.new.status === 'playing') {
+    isLeaving = true; // prevent unload from removing player
     cleanup();
     window.location.href = 'game.html';
   }
@@ -252,10 +256,20 @@ function handleRoomChange(payload) {
 
 // --- Leave ---
 async function handleLeave() {
+  isLeaving = true;
   cleanup();
   await removePlayer(room.playerId);
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
+}
+
+// --- Unload ---
+function handleUnload() {
+  if (isLeaving) return;
+  cleanup();
+  if (room && room.playerId) {
+    removePlayerBeacon(room.playerId);
+  }
 }
 
 // --- Cleanup ---

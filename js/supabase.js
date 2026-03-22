@@ -200,6 +200,21 @@ export async function removePlayer(playerId) {
 }
 
 /**
+ * Fire-and-forget player removal using fetch with keepalive.
+ * Reliable during page unload (beforeunload / pagehide).
+ */
+export function removePlayerBeacon(playerId) {
+  fetch(`${SUPABASE_URL}/rest/v1/players?id=eq.${playerId}`, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    },
+    keepalive: true
+  });
+}
+
+/**
  * Fetch all players in a room.
  */
 export async function fetchPlayers(roomId) {

@@ -337,7 +337,7 @@ function showQuestionScreen() {
   $('#answer-form').classList.remove('answer-input--submitted');
   $('#answer-input').value = '';
   $('#answer-input').disabled = false;
-  $('#btn-submit-answer').disabled = false;
+  $('#btn-submit-answer').disabled = true;
   $('#submit-status').classList.add('hidden');
   $('#wager-error').textContent = '';
 
@@ -421,8 +421,13 @@ function showQuestionScreen() {
   }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
+  $('#answer-input').oninput = () => {
+    $('#btn-submit-answer').disabled = !$('#answer-input').value.trim();
+  };
   $('#answer-input').onkeydown = (e) => {
-    if (e.key === 'Enter') handleSubmitAnswer();
+    if (e.key === 'Enter' && !state.hasSubmitted && $('#answer-input').value.trim()) {
+      handleSubmitAnswer();
+    }
   };
   $('#btn-skip-timer').onclick = handleSkipTimer;
 }
