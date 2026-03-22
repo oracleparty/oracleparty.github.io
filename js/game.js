@@ -735,8 +735,8 @@ function renderRevealAnswers(answers) {
         : '';
       const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
 
-      // Toggle: host only (both pre- and post-reveal for overriding)
-      const toggleHtml = state.room.isHost
+      // Toggle: host only, visible only after reveal (prevents host seeing correct/incorrect early)
+      const toggleHtml = (state.room.isHost && state.resultsRevealed)
         ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
              <div class="answer-toggle__thumb"></div>
            </div>`
@@ -806,7 +806,7 @@ async function doReveal() {
   state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
 
   // Render answers in NEUTRAL color first (resultsRevealed still false)
-  // Host already has toggles from pre-reveal render
+  // Toggles are NOT rendered yet — they appear post-reveal in the animation frame
   renderRevealAnswers(state.currentAnswers);
 
   // Now mark revealed — subsequent renders will apply colors immediately
@@ -825,6 +825,14 @@ async function doReveal() {
       const wagerEl = row.querySelector('.answer-row__wager');
       if (wagerEl) {
         wagerEl.classList.add(isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect');
+      }
+      // Host: inject toggle switches now that results are revealed
+      if (state.room.isHost && answer.id && !row.querySelector('.answer-toggle')) {
+        const toggleDiv = document.createElement('div');
+        toggleDiv.className = `answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host`;
+        toggleDiv.dataset.answerId = answer.id;
+        toggleDiv.innerHTML = '<div class="answer-toggle__thumb"></div>';
+        row.appendChild(toggleDiv);
       }
     });
   });
