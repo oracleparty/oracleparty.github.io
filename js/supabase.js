@@ -367,6 +367,7 @@ export async function fetchQuestionsByCategory(category, limit) {
     .from('questions')
     .select('*')
     .contains('categories', [category])
+    .eq('format', 'open')
     .limit(fetchCount);
 
   if (error) {
