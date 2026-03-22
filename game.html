@@ -93,16 +93,35 @@
 
         <!-- Player Answers -->
         <div id="reveal-answers" class="reveal__answers"></div>
-
-        <!-- Scores -->
-        <div class="scores-panel">
-          <div class="scores-panel__title">Scores</div>
-          <div id="scores-list"></div>
-        </div>
       </div>
 
       <div class="game-footer">
         <button id="btn-next-question" class="btn btn-primary btn-block hidden">Next Question</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================
+       SCREEN: Scores Reveal (animated)
+       ============================== -->
+  <div id="scores-screen" class="screen" style="display: none;">
+    <div class="game-body">
+      <div class="game-header">
+        <div class="game-progress">
+          <span id="scores-category" class="game-progress__category"></span>
+          <span id="scores-progress" class="game-progress__count"></span>
+        </div>
+      </div>
+
+      <div class="game-content" style="justify-content: flex-start; padding-top: var(--space-md);">
+        <div class="scores-animated">
+          <div class="scores-animated__title">Scores</div>
+          <div id="scores-animated-list"></div>
+        </div>
+      </div>
+
+      <div class="game-footer">
+        <button id="btn-scores-action" class="btn btn-primary btn-block hidden">Update Scores</button>
       </div>
     </div>
   </div>

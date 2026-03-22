@@ -57,6 +57,8 @@ const state = {
   resultsRevealed: false,
   timerExpired: false,
   scores: {},
+  previousScores: {},   // scores before current round (for animation delta)
+  currentAnswers: [],   // cached answers for current question (avoids re-fetch)
   timerId: null,
   channels: [],
   chatOpen: false,
@@ -279,6 +281,8 @@ function handlePhaseTransition(phase) {
     state.onRevealScreen = false;
     state.resultsRevealed = false;
     state.timerExpired = false;
+    state.currentAnswers = [];
+    state.previousScores = {};
     state.gamePhase = phase;
 
     // On reconnect (questionStartedAt present), check if we already answered
@@ -321,6 +325,10 @@ function handlePhaseTransition(phase) {
       } else {
         doReveal();
       }
+      break;
+    case 'scores_reveal':
+      state.onRevealScreen = false;
+      showScoresScreen();
       break;
     case 'results':
       showResultsScreen();
@@ -644,11 +652,10 @@ async function showRevealScreen() {
   $('#reveal-answer').textContent = getCorrectAnswer(q);
   $('#reveal-difficulty').textContent = getDifficulty(q);
   $('.reveal__correct').style.display = 'none';
-  $('.scores-panel').style.display = 'none';
 
-  // Fetch existing answers (some players may not have submitted yet)
-  const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-  renderRevealAnswers(answers);
+  // Fetch existing answers (some players may not have submitted yet) and cache them
+  state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+  renderRevealAnswers(state.currentAnswers);
 
   // Host: show action button (Reveal Results first, then Next Question after reveal)
   if (state.room.isHost) {
@@ -658,7 +665,7 @@ async function showRevealScreen() {
     btn.onclick = handleRevealResults;
 
     // Enable if timer expired or all players have submitted
-    if (state.timerExpired || answers.length >= state.players.length) {
+    if (state.timerExpired || state.currentAnswers.length >= state.players.length) {
       btn.disabled = false;
       btn.style.opacity = '1';
     } else {
@@ -696,33 +703,33 @@ function renderRevealAnswers(answers) {
     if (answer) {
       // Player has submitted
       row.dataset.answerId = answer.id;
-      const submittedText = answer.submitted_answer || '';
-      const wager = answer.wager || 0;
+      const submittedText = (answer.submitted_answer || '').trim();
+      const isEmpty = !submittedText;
 
       if (state.resultsRevealed) {
-        // Post-reveal: show colored judgments
+        // Post-reveal: colored answer text + toggle switch
         const isCorrect = answer.is_correct || false;
-        const judgmentClass = isCorrect ? 'answer-row__judgment--correct' : 'answer-row__judgment--incorrect';
-        const judgmentText = isCorrect ? '+' + (answer.score_earned || 0) : 'Wrong';
-        const overrideClass = state.room.isHost ? ' answer-row__judgment--overridable' : '';
+        const answerColorClass = isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect';
+        const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
+        const toggleState = isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect';
+        const hostClass = state.room.isHost ? ' answer-toggle--host' : '';
 
         row.innerHTML = `
           <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
-          <span class="answer-row__answer ${!submittedText ? 'answer-row__answer--empty' : ''}">
-            ${submittedText ? escapeHtml(submittedText) : 'No answer'}
+          <span class="answer-row__answer ${answerColorClass}${emptyClass}">
+            ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
           </span>
-          <span class="answer-row__wager">${wager} pts</span>
-          <span class="answer-row__judgment ${judgmentClass}${overrideClass}" data-answer-id="${answer.id}">${judgmentText}</span>
+          <div class="answer-toggle ${toggleState}${hostClass}" data-answer-id="${answer.id}">
+            <div class="answer-toggle__thumb"></div>
+          </div>
         `;
       } else {
-        // Pre-reveal: plain text answers, no judgment coloring
+        // Pre-reveal: plain text answers, no toggle
         row.innerHTML = `
           <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
-          <span class="answer-row__answer ${!submittedText ? 'answer-row__answer--empty' : ''}">
-            ${submittedText ? escapeHtml(submittedText) : 'No answer'}
+          <span class="answer-row__answer ${isEmpty ? 'answer-row__answer--empty' : ''}">
+            ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
           </span>
-          <span class="answer-row__wager">${wager} pts</span>
-          <span class="answer-row__judgment"></span>
         `;
       }
     } else {
@@ -730,16 +737,14 @@ function renderRevealAnswers(answers) {
       row.innerHTML = `
         <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
         <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
-        <span class="answer-row__wager"></span>
-        <span class="answer-row__judgment answer-row__judgment--waiting"></span>
       `;
     }
 
     newContainer.appendChild(row);
   }
 
-  // Host: attach override listeners
-  if (state.room.isHost) {
+  // Host: attach toggle click listeners for override
+  if (state.room.isHost && state.resultsRevealed) {
     newContainer.addEventListener('click', handleJudgmentOverride);
   }
 }
@@ -765,24 +770,21 @@ function enableRevealButton() {
 async function doReveal() {
   state.resultsRevealed = true;
 
+  // Snapshot scores before this round (for animation on scores screen)
+  state.previousScores = { ...state.scores };
+
   // Show correct answer and difficulty
   $('.reveal__correct').style.display = '';
 
-  // Re-render answers with judgment coloring
-  const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-  renderRevealAnswers(answers);
+  // Re-render answers with judgment coloring + toggle switches
+  state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+  renderRevealAnswers(state.currentAnswers);
 
-  // Calculate and show scores
-  await updateScores();
-  renderScores();
-  $('.scores-panel').style.display = '';
-
-  // Host: swap button to Next Question
+  // Host: swap button to "Show Scores"
   if (state.room.isHost) {
     const btn = $('#btn-next-question');
-    const isLast = state.currentQuestion >= state.totalQuestions - 1;
-    btn.textContent = isLast ? 'Show Results' : 'Next Question';
-    btn.onclick = handleNextQuestion;
+    btn.textContent = 'Show Scores';
+    btn.onclick = handleShowScores;
     btn.disabled = false;
     btn.style.opacity = '1';
   }
@@ -794,27 +796,26 @@ async function handleRevealResults() {
 }
 
 async function handleJudgmentOverride(e) {
-  const badge = e.target.closest('.answer-row__judgment--overridable');
-  if (!badge) return;
+  const toggle = e.target.closest('.answer-toggle--host');
+  if (!toggle) return;
 
-  const answerId = badge.dataset.answerId;
+  const answerId = toggle.dataset.answerId;
   if (!answerId) return;
 
-  const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-  const answer = answers.find(a => a.id === answerId);
+  // Use cached answers — no DB fetch
+  const answer = state.currentAnswers.find(a => String(a.id) === String(answerId));
   if (!answer) return;
 
   const newCorrect = !answer.is_correct;
   const newScore = newCorrect ? answer.wager : 0;
 
+  // Update local cache immediately for instant host feedback
+  answer.is_correct = newCorrect;
+  answer.score_earned = newScore;
+  renderRevealAnswers(state.currentAnswers);
+
+  // Persist to DB — Realtime event will update other clients
   await updateAnswerJudgment(answerId, newCorrect, newScore);
-
-  const judgmentClass = newCorrect ? 'answer-row__judgment--correct' : 'answer-row__judgment--incorrect';
-  badge.className = `answer-row__judgment ${judgmentClass} answer-row__judgment--overridable`;
-  badge.textContent = newCorrect ? '+' + newScore : 'Wrong';
-
-  await updateScores();
-  renderScores();
 }
 
 async function handleNextQuestion() {
@@ -828,6 +829,192 @@ async function handleNextQuestion() {
       current_question: state.currentQuestion + 1
     });
   }
+}
+
+// ============================================
+// SCORES SCREEN (animated reveal)
+// ============================================
+
+async function handleShowScores() {
+  await updateGameState(state.room.id, { game_phase: 'scores_reveal' });
+}
+
+async function showScoresScreen() {
+  state.onRevealScreen = false;
+
+  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
+  $('#scores-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#scores-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
+
+  // Calculate new scores
+  await updateScores();
+
+  // If previousScores is empty (reconnect), skip animation — show final scores directly
+  const hasPreviousScores = Object.keys(state.previousScores).length > 0;
+
+  // Sort players by previous ranking (or current if no previous)
+  const sortScores = hasPreviousScores ? state.previousScores : state.scores;
+  const sorted = [...state.players].sort((a, b) =>
+    (sortScores[b.id] || 0) - (sortScores[a.id] || 0)
+  );
+
+  const list = $('#scores-animated-list');
+  list.innerHTML = sorted.map(p => {
+    const prevScore = hasPreviousScores ? (state.previousScores[p.id] || 0) : (state.scores[p.id] || 0);
+    const newScore = state.scores[p.id] || 0;
+    const delta = newScore - prevScore;
+    const deltaSign = delta > 0 ? '+' : '';
+    const deltaClass = delta > 0 ? 'score-anim-row__delta--positive' :
+                       delta < 0 ? 'score-anim-row__delta--negative' :
+                       'score-anim-row__delta--zero';
+
+    return `
+      <div class="score-anim-row" data-player-id="${p.id}" data-new-score="${newScore}">
+        <span class="score-anim-row__name">${escapeHtml(p.display_name)}</span>
+        <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
+        <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
+      </div>
+    `;
+  }).join('');
+
+  // Transition to scores screen
+  const currentScreen = document.querySelector('.screen.active');
+  const scoresScreen = $('#scores-screen');
+  if (currentScreen && currentScreen !== scoresScreen) {
+    transitionScreens(currentScreen, scoresScreen);
+  }
+
+  // Host: show "Update Scores" button; non-host: auto-animate after delay
+  const btn = $('#btn-scores-action');
+  if (state.room.isHost) {
+    if (hasPreviousScores) {
+      btn.classList.remove('hidden');
+      btn.textContent = 'Update Scores';
+      btn.onclick = () => animateScores();
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    } else {
+      // Reconnect: show final state immediately
+      showFinalScoresState();
+    }
+  } else {
+    btn.classList.add('hidden');
+    if (hasPreviousScores) {
+      setTimeout(() => animateScores(), 1500);
+    } else {
+      showFinalScoresState();
+    }
+  }
+}
+
+function animateScores() {
+  const btn = $('#btn-scores-action');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+
+  const rows = document.querySelectorAll('.score-anim-row');
+  const scoreEls = document.querySelectorAll('.score-anim-row__score');
+
+  // Phase 1: Count animation (~1s)
+  const duration = 1000;
+  const startTime = performance.now();
+
+  function easeOut(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function countStep(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = easeOut(progress);
+
+    scoreEls.forEach(el => {
+      const from = parseInt(el.dataset.from, 10);
+      const to = parseInt(el.dataset.to, 10);
+      const current = Math.round(from + (to - from) * eased);
+      el.textContent = current;
+    });
+
+    if (progress < 1) {
+      requestAnimationFrame(countStep);
+    } else {
+      // Phase 2: Reorder animation after a brief pause
+      setTimeout(() => reorderRows(), 300);
+    }
+  }
+
+  requestAnimationFrame(countStep);
+}
+
+function reorderRows() {
+  const container = $('#scores-animated-list');
+  const rows = Array.from(container.querySelectorAll('.score-anim-row'));
+  if (rows.length === 0) return;
+
+  // FLIP Step 1 (First): Record current positions keyed by player ID
+  const firstPositions = {};
+  rows.forEach(row => {
+    firstPositions[row.dataset.playerId] = row.getBoundingClientRect().top;
+  });
+
+  // Sort rows by new score descending and re-append in new order
+  const sorted = [...rows].sort((a, b) =>
+    parseInt(b.dataset.newScore, 10) - parseInt(a.dataset.newScore, 10)
+  );
+  sorted.forEach(row => container.appendChild(row));
+
+  // FLIP Step 2 (Last): Record new positions, apply inverse transform
+  sorted.forEach(row => {
+    const pid = row.dataset.playerId;
+    const lastTop = row.getBoundingClientRect().top;
+    const delta = firstPositions[pid] - lastTop;
+    if (delta !== 0) {
+      row.style.transition = 'none';
+      row.style.transform = `translateY(${delta}px)`;
+    }
+  });
+
+  // FLIP Step 3 (Invert → Play): Remove inverse transform with transition
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      sorted.forEach(row => {
+        row.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        row.style.transform = '';
+      });
+    });
+  });
+
+  // After transition completes, show next button
+  setTimeout(() => showNextButtonOnScores(), 700);
+}
+
+function showFinalScoresState() {
+  // Show scores in final order (no animation)
+  const container = $('#scores-animated-list');
+  const rows = Array.from(container.querySelectorAll('.score-anim-row'));
+
+  // Update displayed scores to final values
+  rows.forEach(row => {
+    const scoreEl = row.querySelector('.score-anim-row__score');
+    if (scoreEl) scoreEl.textContent = scoreEl.dataset.to;
+  });
+
+  // Sort by new score
+  rows.sort((a, b) => parseInt(b.dataset.newScore, 10) - parseInt(a.dataset.newScore, 10));
+  rows.forEach(row => container.appendChild(row));
+
+  showNextButtonOnScores();
+}
+
+function showNextButtonOnScores() {
+  if (!state.room.isHost) return;
+  const btn = $('#btn-scores-action');
+  const isLast = state.currentQuestion >= state.totalQuestions - 1;
+  btn.textContent = isLast ? 'Show Results' : 'Next Question';
+  btn.onclick = handleNextQuestion;
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.classList.remove('hidden');
 }
 
 // ============================================
@@ -881,47 +1068,52 @@ async function updateScores() {
   }
 }
 
-function renderScores() {
-  const list = $('#scores-list');
-  if (!list) return;
-
-  const sorted = [...state.players].sort((a, b) =>
-    (state.scores[b.id] || 0) - (state.scores[a.id] || 0)
-  );
-
-  list.innerHTML = sorted.map(p => `
-    <div class="score-row">
-      <span class="score-row__name">${escapeHtml(p.display_name)}</span>
-      <span class="score-row__points">${state.scores[p.id] || 0} pts</span>
-    </div>
-  `).join('');
-}
-
 // ============================================
 // ANSWER CHANGE HANDLER (Realtime)
 // ============================================
 
 function handleAnswerChange(payload) {
-  // Re-render reveal screen whenever we're viewing it
-  if (state.onRevealScreen) {
-    fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
-      renderRevealAnswers(answers);
+  // Ignore answer changes on the scores screen
+  if (state.gamePhase === 'scores_reveal') return;
 
-      // Only update scores if results have been revealed
-      if (state.resultsRevealed) {
-        updateScores().then(() => renderScores());
-      }
+  if (!state.onRevealScreen) return;
 
-      // Host: enable the appropriate button when all players have submitted
-      if (state.room.isHost && answers.length >= state.players.length) {
-        if (state.resultsRevealed) {
-          enableNextQuestion();
-        } else {
-          enableRevealButton();
-        }
-      }
-    });
+  const event = payload.eventType;
+
+  if (event === 'UPDATE' && payload.new) {
+    // Targeted update: patch single answer in cached array (host override)
+    const idx = state.currentAnswers.findIndex(a => String(a.id) === String(payload.new.id));
+    if (idx !== -1) {
+      state.currentAnswers[idx] = { ...state.currentAnswers[idx], ...payload.new };
+    }
+    renderRevealAnswers(state.currentAnswers);
+    return;
   }
+
+  if (event === 'INSERT' && payload.new) {
+    // New answer submitted — add to cache if for current question
+    if (payload.new.question_number === state.currentQuestion) {
+      const existing = state.currentAnswers.findIndex(a => String(a.id) === String(payload.new.id));
+      if (existing === -1) {
+        state.currentAnswers.push(payload.new);
+      } else {
+        state.currentAnswers[existing] = payload.new;
+      }
+    }
+    renderRevealAnswers(state.currentAnswers);
+
+    // Host: check if all submitted → enable reveal button
+    if (state.room.isHost && !state.resultsRevealed && state.currentAnswers.length >= state.players.length) {
+      enableRevealButton();
+    }
+    return;
+  }
+
+  // Fallback for DELETE or unknown events: full re-fetch
+  fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
+    state.currentAnswers = answers;
+    renderRevealAnswers(answers);
+  });
 }
 
 // ============================================
