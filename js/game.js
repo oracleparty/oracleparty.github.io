@@ -66,6 +66,13 @@ const state = {
   questionStartedAt: null  // ISO timestamp from DB — single source of truth for timer
 };
 
+// --- Avatar color helper ---
+function getAvatarHue(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return Math.abs(hash) % 360;
+}
+
 // --- Question field name resolution ---
 let FIELD_MAP = null;
 
@@ -700,41 +707,43 @@ function renderRevealAnswers(answers) {
     row.className = 'answer-row';
     row.dataset.playerId = player.id;
 
+    // Avatar
+    const hue = getAvatarHue(player.display_name);
+    const initial = (player.display_name || '?')[0].toUpperCase();
+
     if (answer) {
-      // Player has submitted
       row.dataset.answerId = answer.id;
       const submittedText = (answer.submitted_answer || '').trim();
       const isEmpty = !submittedText;
+      const isCorrect = answer.is_correct || false;
+      const wager = answer.wager || 0;
 
-      if (state.resultsRevealed) {
-        // Post-reveal: colored answer text + toggle switch
-        const isCorrect = answer.is_correct || false;
-        const answerColorClass = isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect';
-        const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
-        const toggleState = isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect';
-        const hostClass = state.room.isHost ? ' answer-toggle--host' : '';
+      // Answer text color: only colored post-reveal (doReveal animates this)
+      const colorClass = state.resultsRevealed
+        ? (isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect')
+        : '';
+      const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
 
-        row.innerHTML = `
-          <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
-          <span class="answer-row__answer ${answerColorClass}${emptyClass}">
-            ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
-          </span>
-          <div class="answer-toggle ${toggleState}${hostClass}" data-answer-id="${answer.id}">
-            <div class="answer-toggle__thumb"></div>
-          </div>
-        `;
-      } else {
-        // Pre-reveal: plain text answers, no toggle
-        row.innerHTML = `
-          <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
-          <span class="answer-row__answer ${isEmpty ? 'answer-row__answer--empty' : ''}">
-            ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
-          </span>
-        `;
-      }
+      // Toggle: host only (both pre- and post-reveal for overriding)
+      const toggleHtml = state.room.isHost
+        ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
+             <div class="answer-toggle__thumb"></div>
+           </div>`
+        : '';
+
+      row.innerHTML = `
+        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+        <span class="answer-row__answer ${colorClass}${emptyClass}">
+          ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
+        </span>
+        <span class="answer-row__wager">${wager}</span>
+        ${toggleHtml}
+      `;
     } else {
       // Player hasn't submitted yet — show waiting state
       row.innerHTML = `
+        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
         <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
         <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
       `;
@@ -743,8 +752,8 @@ function renderRevealAnswers(answers) {
     newContainer.appendChild(row);
   }
 
-  // Host: attach toggle click listeners for override
-  if (state.room.isHost && state.resultsRevealed) {
+  // Host: attach toggle click listeners (pre- and post-reveal)
+  if (state.room.isHost) {
     newContainer.addEventListener('click', handleJudgmentOverride);
   }
 }
@@ -768,17 +777,33 @@ function enableRevealButton() {
 }
 
 async function doReveal() {
-  state.resultsRevealed = true;
-
   // Snapshot scores before this round (for animation on scores screen)
   state.previousScores = { ...state.scores };
 
   // Show correct answer and difficulty
   $('.reveal__correct').style.display = '';
 
-  // Re-render answers with judgment coloring + toggle switches
+  // Refresh answers from DB
   state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+
+  // Render answers in NEUTRAL color first (resultsRevealed still false)
+  // Host already has toggles from pre-reveal render
   renderRevealAnswers(state.currentAnswers);
+
+  // Now mark revealed — subsequent renders will apply colors immediately
+  state.resultsRevealed = true;
+
+  // Animate: add color classes on next frame so CSS transition fires
+  requestAnimationFrame(() => {
+    document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
+      const answer = state.currentAnswers.find(a => String(a.player_id) === String(row.dataset.playerId));
+      if (!answer) return;
+      const el = row.querySelector('.answer-row__answer');
+      if (el) {
+        el.classList.add(answer.is_correct ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect');
+      }
+    });
+  });
 
   // Host: swap button to "Show Scores"
   if (state.room.isHost) {
@@ -867,9 +892,12 @@ async function showScoresScreen() {
     const deltaClass = delta > 0 ? 'score-anim-row__delta--positive' :
                        delta < 0 ? 'score-anim-row__delta--negative' :
                        'score-anim-row__delta--zero';
+    const hue = getAvatarHue(p.display_name);
+    const initial = (p.display_name || '?')[0].toUpperCase();
 
     return `
       <div class="score-anim-row" data-player-id="${p.id}" data-new-score="${newScore}">
+        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
         <span class="score-anim-row__name">${escapeHtml(p.display_name)}</span>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
         <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
