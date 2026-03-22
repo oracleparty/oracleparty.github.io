@@ -1092,6 +1092,10 @@ body::after {
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
 }
 
+.game-footer:empty {
+  padding: 0;
+}
+
 /* --- Game Progress Bar --- */
 .game-progress {
   display: flex;
