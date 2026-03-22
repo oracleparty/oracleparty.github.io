@@ -141,6 +141,13 @@ async function init() {
           if (p.is_away) state.awayPlayers.add(String(p.player_id));
         }
       }
+      // Update away classes on visible rows without full re-render
+      document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
+        row.classList.toggle('answer-row--away', state.awayPlayers.has(String(row.dataset.playerId)));
+      });
+      document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
+        row.classList.toggle('score-anim-row--away', state.awayPlayers.has(String(row.dataset.playerId)));
+      });
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
@@ -394,7 +401,7 @@ function showQuestionScreen() {
   $('#answer-form').classList.remove('answer-input--submitted');
   $('#answer-input').value = '';
   $('#answer-input').disabled = false;
-  $('#btn-submit-answer').disabled = false;
+  $('#btn-submit-answer').disabled = true;
   $('#submit-status').classList.add('hidden');
   $('#wager-error').textContent = '';
 
@@ -468,8 +475,11 @@ function showQuestionScreen() {
   }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
+  $('#answer-input').oninput = () => {
+    $('#btn-submit-answer').disabled = !$('#answer-input').value.length;
+  };
   $('#answer-input').onkeydown = (e) => {
-    if (e.key === 'Enter' && !state.hasSubmitted) {
+    if (e.key === 'Enter' && !state.hasSubmitted && $('#answer-input').value.length) {
       handleSubmitAnswer();
     }
   };
