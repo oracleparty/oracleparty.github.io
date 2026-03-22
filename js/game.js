@@ -518,39 +518,53 @@ function getServerTimeLeft() {
  * or reconnecting changes nothing; the timer keeps counting from
  * question_started_at stored in Supabase.
  */
+/** Update both question-screen and reveal-screen timer displays */
+function updateTimerDisplay(timeLeft) {
+  const secs = Math.max(0, Math.ceil(timeLeft));
+  const pct = `${Math.max(0, (timeLeft / state.timerSeconds) * 100)}%`;
+  const warn = secs <= 5;
+
+  // Question screen timer
+  const timerEl = $('#timer-text');
+  const timerBar = $('#timer-bar');
+  if (timerEl) timerEl.textContent = secs;
+  if (timerBar) {
+    timerBar.style.width = pct;
+    const wrapper = timerBar.closest('.timer');
+    if (wrapper) wrapper.classList.toggle('timer--warning', warn);
+  }
+
+  // Reveal screen timer (mirrors question timer while waiting for others)
+  const revealEl = $('#reveal-timer-text');
+  const revealBar = $('#reveal-timer-bar');
+  if (revealEl) revealEl.textContent = secs;
+  if (revealBar) {
+    revealBar.style.width = pct;
+    const wrapper = revealBar.closest('.timer');
+    if (wrapper) wrapper.classList.toggle('timer--warning', warn);
+  }
+}
+
 function startTimer() {
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
   }
 
-  const timerEl = $('#timer-text');
-  const timerBar = $('#timer-bar');
-  const timerWrapper = timerBar.closest('.timer');
-
   // Immediate first render
   const initial = getServerTimeLeft();
   if (initial <= 0) {
-    timerEl.textContent = '0';
-    timerBar.style.width = '0%';
-    timerWrapper.classList.add('timer--warning');
+    updateTimerDisplay(0);
     handleTimerExpired();
     return;
   }
 
-  const display = Math.ceil(initial);
-  timerEl.textContent = display;
-  timerBar.style.width = `${(initial / state.timerSeconds) * 100}%`;
-  timerWrapper.classList.toggle('timer--warning', display <= 5);
+  updateTimerDisplay(initial);
 
   // Tick every 250ms for smooth bar + accurate expiry
   state.timerId = setInterval(() => {
     const timeLeft = getServerTimeLeft();
-    const secs = Math.ceil(timeLeft);
-
-    timerEl.textContent = Math.max(0, secs);
-    timerBar.style.width = `${Math.max(0, (timeLeft / state.timerSeconds) * 100)}%`;
-    timerWrapper.classList.toggle('timer--warning', secs <= 5);
+    updateTimerDisplay(timeLeft);
 
     if (timeLeft <= 0) {
       clearInterval(state.timerId);
@@ -562,6 +576,10 @@ function startTimer() {
 
 function handleTimerExpired() {
   state.timerExpired = true;
+
+  // Hide the reveal screen timer (round is over)
+  const revealTimer = $('#reveal-timer');
+  if (revealTimer) revealTimer.style.display = 'none';
 
   // Auto-submit with whatever is currently typed
   if (!state.hasSubmitted) {
@@ -673,6 +691,14 @@ async function showRevealScreen() {
   // Fetch existing answers (some players may not have submitted yet) and cache them
   state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
   renderRevealAnswers(state.currentAnswers);
+
+  // Show countdown timer on reveal screen if the round isn't over yet
+  const revealTimer = $('#reveal-timer');
+  if (!state.timerExpired && state.currentAnswers.length < state.players.length) {
+    revealTimer.style.display = '';
+  } else {
+    revealTimer.style.display = 'none';
+  }
 
   // Host: show action button (Reveal Results first, then Next Question after reveal)
   if (state.room.isHost) {
@@ -1188,6 +1214,12 @@ function handleAnswerChange(payload) {
       }
     }
     renderRevealAnswers(state.currentAnswers);
+
+    // Hide reveal timer once all players have submitted
+    if (state.currentAnswers.length >= state.players.length) {
+      const revealTimer = $('#reveal-timer');
+      if (revealTimer) revealTimer.style.display = 'none';
+    }
 
     // Host: check if all submitted → enable reveal button
     if (state.room.isHost && !state.resultsRevealed && state.currentAnswers.length >= state.players.length) {
