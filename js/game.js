@@ -511,8 +511,9 @@ function showCountdownScreen() {
   }
 
   const steps = ['3', '2', '1', 'GO!'];
-  const STEP_MS = 750;
-  const TOTAL_MS = steps.length * STEP_MS; // 3000ms
+  const DELAY_MS = 500;  // Brief pause before "3" so everyone sees the countdown screen
+  const STEP_MS = 900;   // Time each number stays on screen
+  const TOTAL_MS = DELAY_MS + (steps.length * STEP_MS); // 4100ms
   let lastShownStep = -1;
 
   function getElapsedMs() {
@@ -554,15 +555,21 @@ function showCountdownScreen() {
       return;
     }
 
+    // During initial delay, no step shown yet
+    if (elapsed < DELAY_MS) {
+      setTimeout(tick, Math.max(16, DELAY_MS - elapsed));
+      return;
+    }
+
     // Which step should we be on?
-    const stepIndex = Math.min(Math.floor(elapsed / STEP_MS), steps.length - 1);
+    const stepIndex = Math.min(Math.floor((elapsed - DELAY_MS) / STEP_MS), steps.length - 1);
 
     if (stepIndex > lastShownStep) {
       showStep(stepIndex);
     }
 
     // Schedule next tick — align to next step boundary for precision
-    const nextStepAt = (stepIndex + 1) * STEP_MS;
+    const nextStepAt = DELAY_MS + (stepIndex + 1) * STEP_MS;
     const delay = Math.max(16, nextStepAt - elapsed);
     setTimeout(tick, delay);
   }
@@ -961,9 +968,9 @@ async function showRevealScreen() {
     btn.textContent = 'Reveal Results';
     btn.onclick = handleRevealResults;
 
-    // Enable if (timer expired or all players submitted) AND host has submitted
-    const hostSubmitted = state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
-    if ((state.timerExpired || state.currentAnswers.length >= state.players.length) && hostSubmitted) {
+    // Enable as soon as host has submitted — host controls the pace
+    const hostSubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
+    if (hostSubmitted) {
       btn.disabled = false;
       btn.style.opacity = '1';
     } else {
@@ -1069,8 +1076,8 @@ function enableNextQuestion() {
 
 function enableRevealButton() {
   if (!state.room.isHost || state.resultsRevealed) return;
-  // Host must have submitted their own answer
-  const hostSubmitted = state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
+  // Host must have submitted their own answer (check local flag + DB cache)
+  const hostSubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
   if (!hostSubmitted) return;
   const btn = $('#btn-next-question');
   if (btn) {
