@@ -12,26 +12,36 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /**
  * Fetch distinct categories from the questions table with counts.
  * Questions have a `categories` text[] array column.
+ * Paginates through all rows to ensure accurate counts.
  * Returns [{ name: 'history', count: 142 }, ...] sorted alphabetically.
  */
 export async function fetchCategories() {
-  const { data, error } = await supabase
-    .from('questions')
-    .select('categories')
-    .limit(2000);
-
-  if (error) {
-    console.error('[Supabase] Failed to fetch categories:', error.message);
-    return [];
-  }
-
+  const PAGE_SIZE = 1000;
   const counts = {};
-  for (const row of data) {
-    if (Array.isArray(row.categories)) {
-      for (const cat of row.categories) {
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('categories')
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) {
+      console.error('[Supabase] Failed to fetch categories:', error.message);
+      return [];
+    }
+
+    for (const row of data) {
+      // Supabase returns text[] as a JS array
+      const cats = Array.isArray(row.categories) ? row.categories : [];
+      for (const cat of cats) {
         counts[cat] = (counts[cat] || 0) + 1;
       }
     }
+
+    hasMore = data.length === PAGE_SIZE;
+    offset += PAGE_SIZE;
   }
 
   return Object.entries(counts)
@@ -51,46 +61,42 @@ export function generateRoomCode() {
  * Retries once on code collision.
  */
 export async function createRoom({ hostName, category, whoCanJoin, questionsPerGame, questionTimer }) {
-  const code = generateRoomCode();
+  const roomPayload = {
+    code: generateRoomCode(),
+    host_name: hostName,
+    category,
+    who_can_join: whoCanJoin,
+    questions_per_game: questionsPerGame,
+    question_timer: questionTimer,
+    status: 'lobby'
+  };
+
+  console.log('[Supabase] Creating room:', roomPayload);
 
   const { data, error } = await supabase
     .from('rooms')
-    .insert({
-      code,
-      host_name: hostName,
-      category,
-      who_can_join: whoCanJoin,
-      questions_per_game: questionsPerGame,
-      question_timer: questionTimer,
-      status: 'lobby'
-    })
+    .insert(roomPayload)
     .select()
     .single();
 
   if (error) {
+    console.error('[Supabase] Room creation failed:', error.code, error.message, error.details, error.hint);
+
     // Retry once on unique constraint violation (code collision)
     if (error.code === '23505') {
-      const retryCode = generateRoomCode();
+      roomPayload.code = generateRoomCode();
       const { data: d2, error: e2 } = await supabase
         .from('rooms')
-        .insert({
-          code: retryCode,
-          host_name: hostName,
-          category,
-          who_can_join: whoCanJoin,
-          questions_per_game: questionsPerGame,
-          question_timer: questionTimer,
-          status: 'lobby'
-        })
+        .insert(roomPayload)
         .select()
         .single();
       if (e2) {
-        console.error('[Supabase] Room creation failed on retry:', e2.message);
+        console.error('[Supabase] Room creation retry failed:', e2.code, e2.message, e2.details, e2.hint);
         return { data: null, error: e2 };
       }
       return { data: d2, error: null };
     }
-    console.error('[Supabase] Room creation failed:', error.message);
+
     return { data: null, error };
   }
 

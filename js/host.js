@@ -155,7 +155,10 @@ async function handleHostGame() {
   if (error) {
     btnHostGame.classList.remove('is-loading');
     btnHostGame.textContent = 'Host Game';
-    hostError.textContent = 'Failed to create room. Try again.';
+    // Show specific error for debugging; common cause is missing RLS policy
+    const msg = error.message || 'Unknown error';
+    hostError.textContent = `Failed to create room: ${msg}`;
+    console.error('[Host] Room creation error:', error);
     return;
   }
 
