@@ -25,6 +25,8 @@ import {
   createPresenceChannel,
   removePlayer,
   removePlayerBeacon,
+  deleteRoom,
+  deleteRoomBeacon,
   upsertQuestionFeedback
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
@@ -245,10 +247,13 @@ async function initHostGame() {
   resolveFieldMap(questions[0]);
 
   const questionIds = questions.map(q => q.id);
+  const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
+  state.countdownStartedAt = countdownStartedAt;
   await updateGameState(state.room.id, {
     question_ids: questionIds,
     game_phase: 'countdown',
-    current_question: 0
+    current_question: 0,
+    countdown_started_at: countdownStartedAt
   });
 
   state.gamePhase = 'countdown';
@@ -303,6 +308,9 @@ async function initPlayerGame() {
   if (roomData.question_started_at) {
     state.questionStartedAt = roomData.question_started_at;
   }
+  if (roomData.countdown_started_at) {
+    state.countdownStartedAt = roomData.countdown_started_at;
+  }
 
   handlePhaseTransition(roomData.game_phase);
 }
@@ -312,8 +320,16 @@ async function initPlayerGame() {
 // ============================================
 
 function handleRoomChange(payload) {
+  // Room deleted (host left) — kick everyone to home
+  if (payload.eventType === 'DELETE') {
+    cleanup();
+    sessionStorage.removeItem('oracle_party_room');
+    window.location.href = 'index.html?msg=host_left';
+    return;
+  }
+
   if (!payload.new) return;
-  const { game_phase, current_question, question_ids, question_started_at, status } = payload.new;
+  const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status } = payload.new;
 
   // Host returned everyone to lobby
   if (status === 'lobby') {
@@ -325,6 +341,11 @@ function handleRoomChange(payload) {
   // Track server timer start timestamp
   if (question_started_at) {
     state.questionStartedAt = question_started_at;
+  }
+
+  // Track countdown start timestamp
+  if (countdown_started_at) {
+    state.countdownStartedAt = countdown_started_at;
   }
 
   // Non-host: when host writes question_started_at, reveal the question and start timer
@@ -422,7 +443,7 @@ function handlePhaseTransition(phase) {
       // Host skipped timer — if we haven't submitted yet, auto-submit with current input
       if (!state.hasSubmitted) {
         const currentAnswer = ($('#answer-input')?.value || '').trim();
-        doSubmitAnswer(currentAnswer);
+        doSubmitAnswer(currentAnswer, { autoSubmit: true });
       } else if (!state.onRevealScreen) {
         showRevealScreen();
       }
@@ -490,44 +511,79 @@ function showCountdownScreen() {
   }
 
   const steps = ['3', '2', '1', 'GO!'];
-  let i = 0;
+  const STEP_MS = 750;
+  const TOTAL_MS = steps.length * STEP_MS; // 3000ms
+  let lastShownStep = -1;
 
-  function showNext() {
-    if (i >= steps.length) {
-      _countdownActive = false;
+  function getElapsedMs() {
+    if (!state.countdownStartedAt) return 0;
+    const startMs = new Date(state.countdownStartedAt).getTime();
+    const nowServerMs = Date.now() + state.serverTimeOffset;
+    return nowServerMs - startMs;
+  }
 
-      // Host advances to first question
-      if (state.room.isHost) {
-        updateGameState(state.room.id, {
-          game_phase: 'question',
-          current_question: 0
-        });
-      } else if (_deferredPhase) {
-        // Non-host: process any phase transition that arrived during countdown
-        const deferred = _deferredPhase;
-        _deferredPhase = null;
-        handlePhaseTransition(deferred);
+  function finishCountdown() {
+    _countdownActive = false;
+
+    // Host advances to first question
+    if (state.room.isHost) {
+      updateGameState(state.room.id, {
+        game_phase: 'question',
+        current_question: 0
+      });
+    } else if (_deferredPhase) {
+      // Non-host: process any phase transition that arrived during countdown
+      const deferred = _deferredPhase;
+      _deferredPhase = null;
+      handlePhaseTransition(deferred);
+    }
+  }
+
+  function tick() {
+    const elapsed = getElapsedMs();
+
+    // Countdown finished
+    if (elapsed >= TOTAL_MS) {
+      // Show GO! briefly if we haven't shown it yet
+      if (lastShownStep < steps.length - 1) {
+        showStep(steps.length - 1);
+        setTimeout(finishCountdown, 300);
+      } else {
+        finishCountdown();
       }
       return;
     }
-    console.log('[Countdown]', steps[i]);
+
+    // Which step should we be on?
+    const stepIndex = Math.min(Math.floor(elapsed / STEP_MS), steps.length - 1);
+
+    if (stepIndex > lastShownStep) {
+      showStep(stepIndex);
+    }
+
+    // Schedule next tick — align to next step boundary for precision
+    const nextStepAt = (stepIndex + 1) * STEP_MS;
+    const delay = Math.max(16, nextStepAt - elapsed);
+    setTimeout(tick, delay);
+  }
+
+  function showStep(stepIndex) {
+    lastShownStep = stepIndex;
+    console.log('[Countdown]', steps[stepIndex]);
 
     // Replace element entirely — fresh DOM element always plays animation from scratch
     const container = document.querySelector('.countdown');
     const fresh = document.createElement('span');
     fresh.id = 'countdown-number';
-    fresh.className = 'countdown__number' + (steps[i] === 'GO!' ? ' countdown__number--go' : '');
-    fresh.textContent = steps[i];
+    fresh.className = 'countdown__number' + (steps[stepIndex] === 'GO!' ? ' countdown__number--go' : '');
+    fresh.textContent = steps[stepIndex];
 
     const old = container.querySelector('#countdown-number');
     if (old) container.removeChild(old);
     container.appendChild(fresh);
-
-    i++;
-    setTimeout(showNext, 750);
   }
 
-  showNext();
+  tick();
 }
 
 // ============================================
@@ -765,7 +821,7 @@ function handleTimerExpired() {
   // Auto-submit with whatever is currently typed
   if (!state.hasSubmitted) {
     const currentAnswer = ($('#answer-input')?.value || '').trim();
-    doSubmitAnswer(currentAnswer);
+    doSubmitAnswer(currentAnswer, { autoSubmit: true });
   }
 
   // Host: auto-submit blank for any players who didn't answer, then broadcast reveal
@@ -821,9 +877,20 @@ async function handleSubmitAnswer() {
   await doSubmitAnswer(answer);
 }
 
-async function doSubmitAnswer(answer) {
+async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   if (state.hasSubmitted) return;
   state.hasSubmitted = true;
+
+  // Disable question UI (in case transition is slow)
+  $('#answer-input').disabled = true;
+  $('#btn-submit-answer').disabled = true;
+
+  // If auto-submit (timer expired / host skipped) with no answer, skip DB write.
+  // The reveal screen handles missing answer records gracefully (shows "No answer").
+  if (autoSubmit && !answer) {
+    showRevealScreen();
+    return;
+  }
 
   const q = state.questions[state.currentQuestion];
   const correctAnswer = getCorrectAnswer(q);
@@ -833,10 +900,6 @@ async function doSubmitAnswer(answer) {
   const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
 
   state.usedWagers.add(wager);
-
-  // Disable question UI (in case transition is slow)
-  $('#answer-input').disabled = true;
-  $('#btn-submit-answer').disabled = true;
 
   await submitAnswer({
     roomId: state.room.id,
@@ -907,6 +970,10 @@ async function showRevealScreen() {
       btn.disabled = true;
       btn.style.opacity = '0.5';
     }
+    $('#reveal-waiting-host').classList.add('hidden');
+  } else {
+    // Non-host: show "Waiting for host..." message
+    $('#reveal-waiting-host').classList.remove('hidden');
   }
 
   // Transition to reveal screen
@@ -1293,7 +1360,12 @@ function showFinalScoresState() {
 }
 
 function showNextButtonOnScores() {
-  if (!state.room.isHost) return;
+  if (!state.room.isHost) {
+    // Non-host: show "Waiting for host..." message
+    $('#scores-waiting-host').classList.remove('hidden');
+    return;
+  }
+  $('#scores-waiting-host').classList.add('hidden');
   const btn = $('#btn-scores-action');
   const isLast = state.currentQuestion >= state.totalQuestions - 1;
 
@@ -1545,7 +1617,11 @@ async function handlePlayAgain() {
 
 async function handleQuitGame() {
   cleanup();
-  await removePlayer(state.room.playerId);
+  if (state.room.isHost) {
+    await deleteRoom(state.room.id);
+  } else {
+    await removePlayer(state.room.playerId);
+  }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
 }
@@ -1935,7 +2011,11 @@ function handleVisibilityChange() {
 
 function handleBackButton() {
   cleanup();
-  removePlayerBeacon(state.room.playerId);
+  if (state.room.isHost) {
+    deleteRoomBeacon(state.room.id);
+  } else {
+    removePlayerBeacon(state.room.playerId);
+  }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
 }
@@ -1953,7 +2033,14 @@ function cleanup() {
   state.channels = [];
 }
 
-window.addEventListener('beforeunload', cleanup);
+window.addEventListener('beforeunload', () => {
+  cleanup();
+  if (state.room.isHost) {
+    deleteRoomBeacon(state.room.id);
+  } else if (state.room.playerId) {
+    removePlayerBeacon(state.room.playerId);
+  }
+});
 
 // ============================================
 // START

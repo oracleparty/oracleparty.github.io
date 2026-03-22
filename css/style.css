@@ -430,6 +430,27 @@ body::after {
 }
 
 /* --- Home Screen --- */
+.home-toast {
+  position: absolute;
+  top: var(--space-lg);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  z-index: 10;
+  transition: opacity 0.3s ease;
+  white-space: nowrap;
+}
+
+.home-toast.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .home__brand {
   font-family: var(--font-display);
   font-size: var(--text-3xl);
@@ -1313,6 +1334,15 @@ body::after {
   color: var(--color-text-muted);
   font-style: italic;
   margin-top: var(--space-md);
+}
+
+.waiting-host-text {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: var(--space-sm) 0;
+  animation: pulse-waiting 1.5s ease-in-out infinite;
 }
 
 /* --- Reveal Screen --- */

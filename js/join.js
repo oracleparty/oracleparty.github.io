@@ -43,6 +43,10 @@ async function init() {
 
   // Refresh public games every 10s
   refreshInterval = setInterval(loadPublicGames, 10000);
+
+  // Trap browser back button — always go to index.html
+  history.pushState({ page: 'join' }, '');
+  window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
 }
 
 // --- Listeners ---

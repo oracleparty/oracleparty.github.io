@@ -26,6 +26,7 @@
 
   <!-- ===== HOME SCREEN ===== -->
   <div id="home" class="screen home" style="display: none;">
+    <div id="home-toast" class="home-toast hidden"></div>
     <h1 class="home__brand">Oracle Party</h1>
     <div class="home__actions">
       <button class="btn btn-primary btn-block" id="btn-host">Host Game</button>
@@ -86,6 +87,16 @@
       await ensureDisplayName();
       window.location.href = 'join.html';
     });
+
+    // --- Show toast from URL params (e.g., host_left) ---
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('msg') === 'host_left') {
+      const toast = $('#home-toast');
+      toast.textContent = 'The host left the game';
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 4000);
+      history.replaceState(null, '', window.location.pathname);
+    }
 
     // --- Start ---
     init();

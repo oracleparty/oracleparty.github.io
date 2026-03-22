@@ -51,6 +51,10 @@ async function init() {
   }
   // Always attach listeners even if data fetch fails
   attachListeners();
+
+  // Trap browser back button — always go to index.html
+  history.pushState({ page: 'host' }, '');
+  window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
 }
 
 // --- Render category cards ---

@@ -216,6 +216,34 @@ export function removePlayerBeacon(playerId) {
 }
 
 /**
+ * Delete a room (host leaving). Cascade-deletes players/answers via DB constraints.
+ */
+export async function deleteRoom(roomId) {
+  const { error } = await supabase
+    .from('rooms')
+    .delete()
+    .eq('id', roomId);
+
+  if (error) console.error('[Supabase] deleteRoom failed:', error.message);
+  return { error };
+}
+
+/**
+ * Fire-and-forget room deletion using fetch with keepalive.
+ * Reliable during page unload (beforeunload / pagehide).
+ */
+export function deleteRoomBeacon(roomId) {
+  fetch(`${SUPABASE_URL}/rest/v1/rooms?id=eq.${roomId}`, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    },
+    keepalive: true
+  });
+}
+
+/**
  * Fetch all players in a room.
  */
 export async function fetchPlayers(roomId) {
@@ -313,12 +341,12 @@ export function subscribeToMessages(roomId, callback) {
 }
 
 /**
- * Subscribe to room status changes (e.g., game start).
+ * Subscribe to room changes (UPDATE for game state, DELETE for host leaving).
  */
 export function subscribeToRoom(roomId, callback) {
   return supabase.channel(`room-${roomId}-status`)
     .on('postgres_changes', {
-      event: 'UPDATE',
+      event: '*',
       schema: 'public',
       table: 'rooms',
       filter: `id=eq.${roomId}`

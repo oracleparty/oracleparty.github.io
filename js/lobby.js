@@ -11,6 +11,8 @@ import {
   sendMessage,
   removePlayer,
   removePlayerBeacon,
+  deleteRoom,
+  deleteRoomBeacon,
   toggleReady,
   updateRoomStatus,
   updateGameState,
@@ -278,6 +280,14 @@ async function handlePlayerChange(payload) {
       renderPlayers();
     }
   } else if (event === 'DELETE' && payload.old) {
+    // If the host left, kick everyone to home
+    if (payload.old.is_host && String(payload.old.id) !== String(room.playerId)) {
+      isLeaving = true;
+      cleanup();
+      sessionStorage.removeItem('oracle_party_room');
+      window.location.href = 'index.html?msg=host_left';
+      return;
+    }
     players = players.filter(p => String(p.id) !== String(payload.old.id));
     renderPlayers();
   } else {
@@ -449,6 +459,15 @@ async function handleSettingChange(key, value) {
 
 // --- Room change handler ---
 function handleRoomChange(payload) {
+  // Room deleted (host left) — kick everyone to home
+  if (payload.eventType === 'DELETE') {
+    isLeaving = true;
+    cleanup();
+    sessionStorage.removeItem('oracle_party_room');
+    window.location.href = 'index.html?msg=host_left';
+    return;
+  }
+
   const newRoom = payload.new;
   if (!newRoom) return;
 
@@ -499,7 +518,12 @@ function handleRoomChange(payload) {
 async function handleLeave() {
   isLeaving = true;
   cleanup();
-  await removePlayer(room.playerId);
+  if (room.isHost) {
+    // Host leaving: delete the room (cascade-deletes players)
+    await deleteRoom(room.id);
+  } else {
+    await removePlayer(room.playerId);
+  }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
 }
@@ -520,7 +544,9 @@ function handleVisibilityChange() {
 function handleUnload() {
   if (isLeaving) return;
   cleanup();
-  if (room && room.playerId) {
+  if (room && room.isHost) {
+    deleteRoomBeacon(room.id);
+  } else if (room && room.playerId) {
     removePlayerBeacon(room.playerId);
   }
 }
