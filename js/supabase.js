@@ -326,6 +326,13 @@ export function subscribeToRoom(roomId, callback) {
 }
 
 /**
+ * Create a Presence channel for tracking player away/active state.
+ */
+export function createPresenceChannel(roomId) {
+  return supabase.channel(`room-${roomId}-presence`);
+}
+
+/**
  * Update room status.
  */
 export async function updateRoomStatus(roomId, status) {

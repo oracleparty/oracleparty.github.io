@@ -868,6 +868,19 @@ body::after {
   gap: var(--space-xs);
 }
 
+/* --- Away/Presence Fading --- */
+.player-item,
+.answer-row,
+.score-anim-row {
+  transition: opacity 0.3s ease;
+}
+
+.player-item--away,
+.answer-row--away,
+.score-anim-row--away {
+  opacity: 0.4;
+}
+
 /* --- Chat --- */
 .chat-area {
   display: flex;

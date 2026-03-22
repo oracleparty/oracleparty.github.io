@@ -3,7 +3,7 @@
 // Gameplay loop: question (with wager) → submit → reveal (live) → repeat
 // ============================================
 
-import { $, transitionScreens, escapeHtml, fuzzyMatch } from './utils.js';
+import { $, transitionScreens, escapeHtml, fuzzyMatch, getAvatarHue } from './utils.js';
 import {
   fetchPlayers,
   fetchQuestionsByCategory,
@@ -21,7 +21,8 @@ import {
   subscribeToAnswers,
   subscribeToMessages,
   unsubscribe,
-  getServerTimeOffset
+  getServerTimeOffset,
+  createPresenceChannel
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -63,18 +64,13 @@ const state = {
   channels: [],
   chatOpen: false,
   serverTimeOffset: 0,  // serverTime - clientTime in ms
-  questionStartedAt: null  // ISO timestamp from DB — single source of truth for timer
+  questionStartedAt: null, // ISO timestamp from DB — single source of truth for timer
+  presenceChannel: null,
+  awayPlayers: new Set()
 };
 
 // Guard: prevent overlapping screen transitions (causes flash/blink)
 let _screenTransitioning = false;
-
-// --- Avatar color helper ---
-function getAvatarHue(name) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return Math.abs(hash) % 360;
-}
 
 // --- Question field name resolution ---
 let FIELD_MAP = null;
@@ -133,6 +129,26 @@ async function init() {
   const answerCh = subscribeToAnswers(state.room.id, handleAnswerChange);
   const msgCh = subscribeToMessages(state.room.id, handleNewMessage);
   state.channels = [roomCh, answerCh, msgCh];
+
+  // Presence tracking (away/active state)
+  state.presenceChannel = createPresenceChannel(state.room.id);
+  state.presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      const ps = state.presenceChannel.presenceState();
+      state.awayPlayers.clear();
+      for (const key of Object.keys(ps)) {
+        for (const p of ps[key]) {
+          if (p.is_away) state.awayPlayers.add(String(p.player_id));
+        }
+      }
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await state.presenceChannel.track({ player_id: state.room.playerId, is_away: false });
+      }
+    });
+  state.channels.push(state.presenceChannel);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 
   loadChatMessages();
   attachChatListeners();
@@ -378,7 +394,7 @@ function showQuestionScreen() {
   $('#answer-form').classList.remove('answer-input--submitted');
   $('#answer-input').value = '';
   $('#answer-input').disabled = false;
-  $('#btn-submit-answer').disabled = true;
+  $('#btn-submit-answer').disabled = false;
   $('#submit-status').classList.add('hidden');
   $('#wager-error').textContent = '';
 
@@ -452,11 +468,8 @@ function showQuestionScreen() {
   }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
-  $('#answer-input').oninput = () => {
-    $('#btn-submit-answer').disabled = !$('#answer-input').value.trim();
-  };
   $('#answer-input').onkeydown = (e) => {
-    if (e.key === 'Enter' && !state.hasSubmitted && $('#answer-input').value.trim()) {
+    if (e.key === 'Enter' && !state.hasSubmitted) {
       handleSubmitAnswer();
     }
   };
@@ -741,7 +754,7 @@ function renderRevealAnswers(answers) {
   for (const player of state.players) {
     const answer = answers.find(a => a.player_id === player.id);
     const row = document.createElement('div');
-    row.className = 'answer-row';
+    row.className = 'answer-row' + (state.awayPlayers.has(String(player.id)) ? ' answer-row--away' : '');
     row.dataset.playerId = player.id;
 
     // Avatar
@@ -954,7 +967,7 @@ async function showScoresScreen() {
     const initial = (p.display_name || '?')[0].toUpperCase();
 
     return `
-      <div class="score-anim-row" data-player-id="${p.id}" data-new-score="${newScore}">
+      <div class="score-anim-row${state.awayPlayers.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}">
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
         <span class="score-anim-row__name">${escapeHtml(p.display_name)}</span>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
@@ -1309,7 +1322,14 @@ async function handleSendGameChat() {
 // CLEANUP
 // ============================================
 
+function handleVisibilityChange() {
+  if (state.presenceChannel) {
+    state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
+  }
+}
+
 function cleanup() {
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;

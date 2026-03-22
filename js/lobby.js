@@ -3,7 +3,7 @@
 // Persistent hub with Realtime chat, players, game start
 // ============================================
 
-import { $, escapeHtml } from './utils.js';
+import { $, escapeHtml, getAvatarHue } from './utils.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -17,7 +17,8 @@ import {
   subscribeToPlayers,
   subscribeToMessages,
   subscribeToRoom,
-  unsubscribe
+  unsubscribe,
+  createPresenceChannel
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -43,6 +44,8 @@ let players = [];
 let isReady = false;
 let isLeaving = false;
 let channels = [];
+let presenceChannel = null;
+let awayPlayers = new Set();
 
 // --- DOM refs ---
 const lobbyCategory = $('#lobby-category');
@@ -100,6 +103,28 @@ async function init() {
   const messageChannel = subscribeToMessages(room.id, handleNewMessage);
   const roomChannel = subscribeToRoom(room.id, handleRoomChange);
   channels = [playerChannel, messageChannel, roomChannel];
+
+  // Presence tracking (away/active state)
+  presenceChannel = createPresenceChannel(room.id);
+  presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      const ps = presenceChannel.presenceState();
+      awayPlayers.clear();
+      for (const key of Object.keys(ps)) {
+        for (const p of ps[key]) {
+          if (p.is_away) awayPlayers.add(String(p.player_id));
+        }
+      }
+      renderPlayers();
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await presenceChannel.track({ player_id: room.playerId, is_away: false });
+      }
+    });
+  channels.push(presenceChannel);
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 
   attachListeners();
 
@@ -211,8 +236,13 @@ function renderPlayers() {
     const isMe = String(p.id) === String(room.playerId);
     const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (You)' : '');
 
+    const hue = getAvatarHue(p.display_name);
+    const initial = (p.display_name || '?')[0].toUpperCase();
+    const isAway = awayPlayers.has(String(p.id));
+
     return `
-      <div class="player-item">
+      <div class="player-item${isAway ? ' player-item--away' : ''}">
+        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
         <span class="player-item__name">${nameDisplay}</span>
         <span class="player-item__badges">${badges.join('')}</span>
       </div>
@@ -470,6 +500,13 @@ async function handleLeave() {
   window.location.href = 'index.html';
 }
 
+// --- Visibility change (away/presence) ---
+function handleVisibilityChange() {
+  if (presenceChannel) {
+    presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
+  }
+}
+
 // --- Unload ---
 function handleUnload() {
   if (isLeaving) return;
@@ -481,6 +518,7 @@ function handleUnload() {
 
 // --- Cleanup ---
 function cleanup() {
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   for (const ch of channels) {
     unsubscribe(ch);
   }
