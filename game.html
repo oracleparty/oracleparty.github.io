@@ -24,6 +24,15 @@
   </div>
 
   <!-- ==============================
+       SCREEN: Countdown (3... 2... 1... GO!)
+       ============================== -->
+  <div id="countdown-screen" class="screen" style="display: none;">
+    <div class="countdown">
+      <span id="countdown-number" class="countdown__number"></span>
+    </div>
+  </div>
+
+  <!-- ==============================
        SCREEN: Question (with inline wager)
        ============================== -->
   <div id="question-screen" class="screen" style="display: none;">
@@ -147,11 +156,33 @@
        ============================== -->
   <div id="final-wager-screen" class="screen" style="display: none;">
     <div class="game-body">
-      <div class="game-content">
-        <div class="placeholder-screen">
-          <h2 class="placeholder-screen__title">Final Wager</h2>
-          <p class="placeholder-screen__text">Coming in Phase 5</p>
+      <div class="game-header">
+        <div class="game-progress">
+          <span id="fw-category" class="game-progress__category"></span>
+          <span class="game-progress__count">Final Wager</span>
         </div>
+      </div>
+
+      <div class="game-content" style="justify-content: center;">
+        <div class="final-wager">
+          <h2 class="final-wager__title">Final Wager</h2>
+          <p class="final-wager__subtitle">How confident are you?</p>
+          <p class="final-wager__score">Your score: <span id="fw-current-score">0</span></p>
+          <p class="final-wager__warning">Wrong answers lose wagered points!</p>
+
+          <div class="final-wager__input-group">
+            <button id="fw-minus" class="final-wager__stepper">&minus;</button>
+            <span id="fw-wager-value" class="final-wager__value">10</span>
+            <button id="fw-plus" class="final-wager__stepper">+</button>
+          </div>
+
+          <button id="btn-fw-lock" class="btn btn-primary btn-block">Lock In Wager</button>
+          <p id="fw-status" class="waiting-text hidden">Wager locked &mdash; waiting for others...</p>
+        </div>
+      </div>
+
+      <div class="game-footer">
+        <button id="btn-fw-reveal" class="btn btn-primary btn-block hidden">Reveal Question</button>
       </div>
     </div>
   </div>
@@ -161,13 +192,42 @@
        ============================== -->
   <div id="results-screen" class="screen" style="display: none;">
     <div class="game-body">
-      <div class="game-content">
-        <div class="placeholder-screen">
-          <h2 class="placeholder-screen__title">Results</h2>
-          <p class="placeholder-screen__text">Coming in Phase 5</p>
-          <button id="btn-back-lobby" class="btn btn-primary">Back to Lobby</button>
+      <div class="game-header">
+        <div class="game-progress">
+          <span id="results-category" class="game-progress__category"></span>
+          <span class="game-progress__count">Final Results</span>
         </div>
       </div>
+
+      <div class="game-content" style="justify-content: flex-start; padding-top: var(--space-md);">
+        <div id="results-winner" class="results-winner"></div>
+
+        <div class="results-scoreboard">
+          <div class="scores-animated__title">Scoreboard</div>
+          <div id="results-list"></div>
+        </div>
+      </div>
+
+      <div class="game-footer results-footer">
+        <button id="btn-play-again" class="btn btn-primary btn-block">Play Again</button>
+        <div class="results-footer__row">
+          <button id="btn-review-questions" class="btn btn-secondary">Review</button>
+          <button id="btn-quit-game" class="btn btn-secondary btn-danger-text">Quit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================
+       Review Questions Overlay
+       ============================== -->
+  <div id="review-overlay" class="modal-overlay">
+    <div class="modal review-modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Review Questions</h2>
+        <button id="btn-close-review" class="modal__close">&times;</button>
+      </div>
+      <div id="review-list" class="review-list"></div>
     </div>
   </div>
 
