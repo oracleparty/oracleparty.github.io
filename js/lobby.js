@@ -3,7 +3,7 @@
 // Persistent hub with Realtime chat, players, game start
 // ============================================
 
-import { $ } from './utils.js';
+import { $, escapeHtml } from './utils.js';
 import {
   fetchPlayers,
   fetchMessages,
@@ -264,13 +264,6 @@ function cleanup() {
     unsubscribe(ch);
   }
   channels = [];
-}
-
-// --- Helpers ---
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 // --- Start ---

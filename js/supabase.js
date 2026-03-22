@@ -330,6 +330,191 @@ export function unsubscribe(channel) {
   if (channel) supabase.removeChannel(channel);
 }
 
+// ============================================
+// Questions
+// ============================================
+
+/**
+ * Fetch questions for a category.
+ * Fetches extra and shuffles client-side since PostgREST has no random order.
+ * Tries common column names for question text/answer fields.
+ */
+export async function fetchQuestionsByCategory(category, limit) {
+  const fetchCount = Math.min(limit * 3, 100);
+  const { data, error } = await supabase
+    .from('questions')
+    .select('*')
+    .contains('categories', [category])
+    .limit(fetchCount);
+
+  if (error) {
+    console.error('[Supabase] fetchQuestionsByCategory failed:', error.message);
+    return [];
+  }
+
+  // Shuffle and take requested count
+  for (let i = data.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [data[i], data[j]] = [data[j], data[i]];
+  }
+  return data.slice(0, limit);
+}
+
+/**
+ * Fetch questions by their IDs (preserves order via client-side sort).
+ */
+export async function fetchQuestionsByIds(questionIds) {
+  const { data, error } = await supabase
+    .from('questions')
+    .select('*')
+    .in('id', questionIds);
+
+  if (error) {
+    console.error('[Supabase] fetchQuestionsByIds failed:', error.message);
+    return [];
+  }
+
+  // Preserve order of questionIds
+  const idMap = {};
+  for (const q of data) idMap[q.id] = q;
+  return questionIds.map(id => idMap[id]).filter(Boolean);
+}
+
+/**
+ * Save the selected question IDs to the room.
+ */
+export async function saveQuestionIds(roomId, questionIds) {
+  const { error } = await supabase
+    .from('rooms')
+    .update({ question_ids: questionIds })
+    .eq('id', roomId);
+
+  if (error) console.error('[Supabase] saveQuestionIds failed:', error.message);
+  return { error };
+}
+
+/**
+ * Update game state on the room (game_phase, current_question).
+ * Only the host should call this.
+ */
+export async function updateGameState(roomId, updates) {
+  const { error } = await supabase
+    .from('rooms')
+    .update(updates)
+    .eq('id', roomId);
+
+  if (error) console.error('[Supabase] updateGameState failed:', error.message);
+  return { error };
+}
+
+// ============================================
+// Answers
+// ============================================
+
+/**
+ * Submit or update an answer for a question.
+ * Uses upsert on (room_id, player_id, question_number).
+ */
+export async function submitAnswer({ roomId, playerId, questionNumber, questionId, wager, submittedAnswer, isCorrect, scoreEarned }) {
+  const { data, error } = await supabase
+    .from('answers')
+    .upsert({
+      room_id: roomId,
+      player_id: playerId,
+      question_number: questionNumber,
+      question_id: questionId,
+      wager,
+      submitted_answer: submittedAnswer || '',
+      is_correct: isCorrect,
+      score_earned: scoreEarned
+    }, { onConflict: 'room_id,player_id,question_number' })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[Supabase] submitAnswer failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Fetch all answers for a specific question in a room.
+ */
+export async function fetchAnswersForQuestion(roomId, questionNumber) {
+  const { data, error } = await supabase
+    .from('answers')
+    .select('*')
+    .eq('room_id', roomId)
+    .eq('question_number', questionNumber);
+
+  if (error) {
+    console.error('[Supabase] fetchAnswersForQuestion failed:', error.message);
+    return [];
+  }
+  return data;
+}
+
+/**
+ * Update an answer's judgment (host override).
+ */
+export async function updateAnswerJudgment(answerId, isCorrect, scoreEarned) {
+  const { error } = await supabase
+    .from('answers')
+    .update({ is_correct: isCorrect, score_earned: scoreEarned })
+    .eq('id', answerId);
+
+  if (error) console.error('[Supabase] updateAnswerJudgment failed:', error.message);
+  return { error };
+}
+
+/**
+ * Fetch all answers for a room (for computing scores).
+ */
+export async function fetchAllAnswers(roomId) {
+  const { data, error } = await supabase
+    .from('answers')
+    .select('*')
+    .eq('room_id', roomId);
+
+  if (error) {
+    console.error('[Supabase] fetchAllAnswers failed:', error.message);
+    return [];
+  }
+  return data;
+}
+
+/**
+ * Subscribe to answer changes in a room (inserts + updates for host override).
+ */
+export function subscribeToAnswers(roomId, callback) {
+  return supabase.channel(`room-${roomId}-answers`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'answers',
+      filter: `room_id=eq.${roomId}`
+    }, (payload) => callback(payload))
+    .subscribe();
+}
+
+/**
+ * Fetch current room data (for non-host to get question_ids after game start).
+ */
+export async function fetchRoom(roomId) {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('id', roomId)
+    .single();
+
+  if (error) {
+    console.error('[Supabase] fetchRoom failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
 /**
  * Test the Supabase connection by making a simple request.
  * Returns true if connected, false otherwise.

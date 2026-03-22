@@ -2,7 +2,7 @@
 // Oracle Party — Join Game Flow
 // ============================================
 
-import { $, $$ } from './utils.js';
+import { $, $$, escapeHtml } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -176,12 +176,6 @@ async function loadPublicGames() {
     fragment.appendChild(row);
   }
   publicGamesEl.appendChild(fragment);
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 // --- Start ---

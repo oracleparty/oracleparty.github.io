@@ -4,13 +4,203 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#1a1612">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Game — Oracle Party</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="screen active" style="display: flex;">
-    <h1 class="font-heading" style="color: var(--color-primary); font-size: var(--text-2xl);">Game</h1>
-    <p style="color: var(--color-text-dim); margin-top: var(--space-md);">Coming in Phase 4</p>
+
+  <!-- ==============================
+       SCREEN: Loading
+       ============================== -->
+  <div id="game-loading" class="screen active" style="display: flex;">
+    <div class="game-loading">
+      <div class="loading-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <p class="game-loading__text">Loading game...</p>
+    </div>
   </div>
+
+  <!-- ==============================
+       SCREEN: Wager Select
+       ============================== -->
+  <div id="wager-screen" class="screen" style="display: none;">
+    <div class="game-body">
+      <div class="game-header">
+        <div class="game-progress">
+          <span id="wager-category" class="game-progress__category"></span>
+          <span id="wager-progress" class="game-progress__count"></span>
+        </div>
+      </div>
+
+      <div class="game-content">
+        <p class="wager-instruction">How confident are you? Bet high on what you know.</p>
+        <div id="wager-grid" class="wager-grid"></div>
+      </div>
+
+      <div class="game-footer">
+        <button id="btn-lock-wager" class="btn btn-primary btn-block" disabled>Lock In</button>
+        <!-- Host: status indicator for who has wagered -->
+        <p id="wager-status" class="waiting-text hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================
+       SCREEN: Question
+       ============================== -->
+  <div id="question-screen" class="screen" style="display: none;">
+    <div class="game-body">
+      <div class="game-header">
+        <div class="game-progress">
+          <span id="question-category" class="game-progress__category"></span>
+          <span id="question-progress" class="game-progress__count"></span>
+        </div>
+        <div class="timer">
+          <div class="timer__bar-wrapper">
+            <div id="timer-bar" class="timer__bar" style="width: 100%;"></div>
+          </div>
+          <div id="timer-text" class="timer__text"></div>
+        </div>
+      </div>
+
+      <div class="game-content">
+        <span id="question-wager" class="wager-badge"></span>
+        <div class="question-card">
+          <p id="question-text" class="question-card__text"></p>
+        </div>
+        <div id="answer-form" class="answer-input">
+          <input
+            type="text"
+            id="answer-input"
+            class="input"
+            placeholder="Type your answer..."
+            maxlength="200"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="btn-submit-answer" class="btn btn-primary">Submit</button>
+        </div>
+        <p id="submit-status" class="waiting-text hidden">Answer submitted — waiting for others...</p>
+      </div>
+
+      <div class="game-footer">
+        <button id="btn-skip-timer" class="btn btn-secondary btn-block hidden">Skip Timer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================
+       SCREEN: Answer Reveal
+       ============================== -->
+  <div id="reveal-screen" class="screen" style="display: none;">
+    <div class="game-body">
+      <div class="game-header">
+        <div class="game-progress">
+          <span id="reveal-category" class="game-progress__category"></span>
+          <span id="reveal-progress" class="game-progress__count"></span>
+        </div>
+      </div>
+
+      <div class="game-content" style="justify-content: flex-start; padding-top: var(--space-lg);">
+        <!-- Correct Answer -->
+        <div class="reveal__correct">
+          <p class="reveal__correct-label">Correct Answer</p>
+          <p id="reveal-answer" class="reveal__correct-answer"></p>
+          <span id="reveal-difficulty" class="reveal__difficulty"></span>
+        </div>
+
+        <!-- Player Answers -->
+        <div id="reveal-answers" class="reveal__answers"></div>
+
+        <!-- Scores -->
+        <div class="scores-panel">
+          <div class="scores-panel__title">Scores</div>
+          <div id="scores-list"></div>
+        </div>
+      </div>
+
+      <div class="game-footer">
+        <button id="btn-next-question" class="btn btn-primary btn-block hidden">Next Question</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================
+       SCREEN: Final Wager (Phase 5 Placeholder)
+       ============================== -->
+  <div id="final-wager-screen" class="screen" style="display: none;">
+    <div class="game-body">
+      <div class="game-content">
+        <div class="placeholder-screen">
+          <h2 class="placeholder-screen__title">Final Wager</h2>
+          <p class="placeholder-screen__text">Coming in Phase 5</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================
+       SCREEN: Results (Phase 5 Placeholder)
+       ============================== -->
+  <div id="results-screen" class="screen" style="display: none;">
+    <div class="game-body">
+      <div class="game-content">
+        <div class="placeholder-screen">
+          <h2 class="placeholder-screen__title">Results</h2>
+          <p class="placeholder-screen__text">Coming in Phase 5</p>
+          <button id="btn-back-lobby" class="btn btn-primary">Back to Lobby</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================
+       Chat Overlay
+       ============================== -->
+  <div id="chat-backdrop" class="chat-backdrop"></div>
+  <div id="chat-panel" class="chat-panel">
+    <div class="chat-panel__header">
+      <span class="chat-panel__title">Chat</span>
+      <button id="btn-close-chat" class="chat-panel__close">&times;</button>
+    </div>
+    <div id="game-chat-messages" class="chat-messages"></div>
+    <div class="chat-input-bar">
+      <input
+        type="text"
+        id="game-chat-input"
+        class="input"
+        placeholder="Say something..."
+        maxlength="200"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <button id="btn-game-chat-send" class="btn btn-primary">Send</button>
+    </div>
+  </div>
+  <button id="btn-chat-toggle" class="chat-toggle hidden">&#128172;</button>
+
+  <!-- Display Name Modal (fallback) -->
+  <div id="display-name-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">Who Goes There?</h2>
+      <input
+        type="text"
+        id="display-name-input"
+        class="input"
+        placeholder="Enter your name"
+        maxlength="20"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+      <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/game.js"></script>
+
 </body>
 </html>
