@@ -180,6 +180,13 @@ function attachListeners() {
 // --- Players ---
 async function loadPlayers() {
   players = await fetchPlayers(room.id);
+  // Sort by join time ascending (host first) — client-side insurance
+  // in case joined_at is null or DB sort is unreliable
+  players.sort((a, b) => {
+    const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
+    const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
+    return ta - tb;
+  });
   renderPlayers();
 }
 
@@ -194,8 +201,8 @@ function renderPlayers() {
     } else if (!p.is_host) {
       badges.push('<span class="badge badge--not-ready">Not Ready</span>');
     }
-    const isMe = p.id === room.playerId;
-    const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (you)' : '');
+    const isMe = String(p.id) === String(room.playerId);
+    const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (You)' : '');
 
     return `
       <div class="player-item">
@@ -272,6 +279,14 @@ async function handleToggleReady() {
   btnReady.className = isReady
     ? 'btn btn-primary btn-block'
     : 'btn btn-secondary btn-block';
+
+  // Immediately update local player list for instant feedback
+  const me = players.find(p => String(p.id) === String(room.playerId));
+  if (me) {
+    me.is_ready = isReady;
+    renderPlayers();
+  }
+
   await toggleReady(room.playerId, isReady);
 }
 
