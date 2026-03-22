@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1612">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Oracle Party</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ===== SPLASH SCREEN ===== -->
+  <div id="splash" class="screen active" style="display: flex;">
+    <div class="splash__line"></div>
+    <h1 class="splash__title">Oracle<br>Party</h1>
+    <p class="splash__subtitle">Defy the Algorithm</p>
+    <div class="splash__loader">
+      <div class="loading-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== HOME SCREEN ===== -->
+  <div id="home" class="screen home" style="display: none;">
+    <h1 class="home__brand">Oracle Party</h1>
+    <div class="home__actions">
+      <button class="btn btn-primary btn-block" id="btn-host">Host Game</button>
+      <button class="btn btn-secondary btn-block" id="btn-join">Join Game</button>
+    </div>
+    <p class="home__tagline">The truth is out there — if you know where to dig.</p>
+  </div>
+
+  <!-- ===== DISPLAY NAME MODAL ===== -->
+  <div id="display-name-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">Who Goes There?</h2>
+      <input
+        type="text"
+        id="display-name-input"
+        class="input"
+        placeholder="Enter your name"
+        maxlength="20"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+      <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
+    </div>
+  </div>
+
+  <!-- ===== SCRIPTS ===== -->
+  <script type="module">
+    import { $, transitionScreens, delay } from './js/utils.js';
+    import { testConnection } from './js/supabase.js';
+    import { ensureDisplayName } from './js/auth.js';
+
+    // --- Init: Splash → Home ---
+    async function init() {
+      const splash = $('#splash');
+      const home = $('#home');
+
+      // Run both in parallel: minimum splash time + Supabase connection test
+      const [, connected] = await Promise.all([
+        delay(2500),
+        testConnection()
+      ]);
+
+      if (!connected) {
+        console.warn('[Oracle Party] Supabase connection issue — proceeding anyway.');
+      }
+
+      // Transition splash → home
+      await transitionScreens(splash, home);
+    }
+
+    // --- Navigation with display name check ---
+    $('#btn-host').addEventListener('click', async () => {
+      await ensureDisplayName();
+      window.location.href = 'host.html';
+    });
+
+    $('#btn-join').addEventListener('click', async () => {
+      await ensureDisplayName();
+      window.location.href = 'join.html';
+    });
+
+    // --- Start ---
+    init();
+  </script>
+
+</body>
+</html>
