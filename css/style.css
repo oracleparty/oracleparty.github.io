@@ -1205,6 +1205,14 @@ body::after {
 }
 
 /* --- Reveal Screen --- */
+.reveal__question-text {
+  text-align: center;
+  font-size: var(--text-base);
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-md);
+  line-height: 1.4;
+}
+
 .reveal__correct {
   text-align: center;
   margin-bottom: var(--space-lg);
@@ -1277,6 +1285,21 @@ body::after {
 .answer-row__answer--empty {
   font-style: italic;
   color: var(--color-text-muted);
+}
+
+.answer-row__answer--waiting {
+  font-style: italic;
+  color: var(--color-text-muted);
+  animation: pulse-waiting 1.5s ease-in-out infinite;
+}
+
+.answer-row__judgment--waiting {
+  visibility: hidden;
+}
+
+@keyframes pulse-waiting {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 .answer-row__wager {
