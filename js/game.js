@@ -489,7 +489,6 @@ function showCountdownScreen() {
     countdownScreen.classList.add('active');
   }
 
-  const el = $('#countdown-number');
   const steps = ['3', '2', '1', 'GO!'];
   let i = 0;
 
@@ -513,19 +512,16 @@ function showCountdownScreen() {
     }
     console.log('[Countdown]', steps[i]);
 
-    // Remove animation class first so re-adding it restarts the animation
-    el.classList.remove('countdown__number');
-    el.classList.remove('countdown__number--go');
-    el.textContent = steps[i];
+    // Replace element entirely — fresh DOM element always plays animation from scratch
+    const container = document.querySelector('.countdown');
+    const fresh = document.createElement('span');
+    fresh.id = 'countdown-number';
+    fresh.className = 'countdown__number' + (steps[i] === 'GO!' ? ' countdown__number--go' : '');
+    fresh.textContent = steps[i];
 
-    // Force reflow so browser registers the class removal
-    void el.offsetHeight;
-
-    // Re-add the base class (carries the animation) + GO variant
-    el.classList.add('countdown__number');
-    if (steps[i] === 'GO!') {
-      el.classList.add('countdown__number--go');
-    }
+    const old = container.querySelector('#countdown-number');
+    if (old) container.removeChild(old);
+    container.appendChild(fresh);
 
     i++;
     setTimeout(showNext, 750);
