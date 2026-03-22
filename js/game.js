@@ -267,12 +267,6 @@ function showQuestionScreen() {
   $('#submit-status').classList.add('hidden');
   $('#wager-error').textContent = '';
 
-  if (state.room.isHost) {
-    $('#btn-skip-timer').classList.remove('hidden');
-  } else {
-    $('#btn-skip-timer').classList.add('hidden');
-  }
-
   state.hasSubmitted = false;
   state.onRevealScreen = false;
   state.timerExpired = false;
@@ -286,6 +280,14 @@ function showQuestionScreen() {
     }
   }
   showChatToggle();
+
+  // Hide interactive elements during sync buffer
+  $('.question-card').style.visibility = 'hidden';
+  $('#wager-grid').style.visibility = 'hidden';
+  $('#answer-form').style.visibility = 'hidden';
+  $('#wager-error').style.visibility = 'hidden';
+  $('#btn-skip-timer').classList.add('hidden');
+  $('.timer').style.visibility = 'hidden';
 
   const currentScreen = document.querySelector('.screen.active');
   const questionScreen = $('#question-screen');
@@ -301,7 +303,26 @@ function showQuestionScreen() {
     }
   }
 
-  startTimer();
+  // 1-second sync buffer: only category + question number visible
+  // This ensures all players receive the state update before anyone sees the question
+  setTimeout(() => {
+    // Reveal everything
+    $('.question-card').style.visibility = '';
+    $('#wager-grid').style.visibility = '';
+    $('#answer-form').style.visibility = '';
+    $('#wager-error').style.visibility = '';
+    $('.timer').style.visibility = '';
+
+    if (state.room.isHost) {
+      $('#btn-skip-timer').classList.remove('hidden');
+    }
+
+    // Start timer only after reveal
+    startTimer();
+
+    // Focus the answer input for quick typing
+    $('#answer-input').focus();
+  }, 1000);
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
   $('#answer-input').onkeydown = (e) => {
