@@ -103,6 +103,233 @@ export async function createRoom({ hostName, category, whoCanJoin, questionsPerG
   return { data, error: null };
 }
 
+// ============================================
+// Room Lookup
+// ============================================
+
+/**
+ * Find a room by its 6-digit code (only lobbies).
+ */
+export async function findRoomByCode(code) {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('code', code.trim())
+    .eq('status', 'lobby')
+    .single();
+
+  if (error) {
+    console.error('[Supabase] findRoomByCode failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Fetch public rooms in lobby status with player counts.
+ */
+export async function fetchPublicRooms() {
+  const { data: rooms, error } = await supabase
+    .from('rooms')
+    .select('id, code, host_name, category, who_can_join, questions_per_game, question_timer, status, created_at')
+    .eq('status', 'lobby')
+    .eq('who_can_join', 'anyone')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error('[Supabase] fetchPublicRooms failed:', error.message);
+    return [];
+  }
+
+  // Get player counts for each room
+  const roomIds = rooms.map(r => r.id);
+  if (roomIds.length === 0) return [];
+
+  const { data: players, error: pErr } = await supabase
+    .from('players')
+    .select('room_id')
+    .in('room_id', roomIds);
+
+  if (pErr) {
+    console.error('[Supabase] fetchPublicRooms player count failed:', pErr.message);
+    // Return rooms without counts
+    return rooms.map(r => ({ ...r, player_count: '?' }));
+  }
+
+  const countMap = {};
+  for (const p of players) {
+    countMap[p.room_id] = (countMap[p.room_id] || 0) + 1;
+  }
+
+  return rooms.map(r => ({ ...r, player_count: countMap[r.id] || 0 }));
+}
+
+// ============================================
+// Player Management
+// ============================================
+
+/**
+ * Add a player to a room.
+ */
+export async function addPlayer(roomId, displayName, isHost = false) {
+  const { data, error } = await supabase
+    .from('players')
+    .insert({ room_id: roomId, display_name: displayName, is_host: isHost })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[Supabase] addPlayer failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Remove a player from a room.
+ */
+export async function removePlayer(playerId) {
+  const { error } = await supabase
+    .from('players')
+    .delete()
+    .eq('id', playerId);
+
+  if (error) console.error('[Supabase] removePlayer failed:', error.message);
+  return { error };
+}
+
+/**
+ * Fetch all players in a room.
+ */
+export async function fetchPlayers(roomId) {
+  const { data, error } = await supabase
+    .from('players')
+    .select('*')
+    .eq('room_id', roomId)
+    .order('joined_at', { ascending: true });
+
+  if (error) {
+    console.error('[Supabase] fetchPlayers failed:', error.message);
+    return [];
+  }
+  return data;
+}
+
+/**
+ * Toggle a player's ready status.
+ */
+export async function toggleReady(playerId, isReady) {
+  const { error } = await supabase
+    .from('players')
+    .update({ is_ready: isReady })
+    .eq('id', playerId);
+
+  if (error) console.error('[Supabase] toggleReady failed:', error.message);
+  return { error };
+}
+
+// ============================================
+// Chat
+// ============================================
+
+/**
+ * Send a chat message.
+ */
+export async function sendMessage(roomId, playerName, message) {
+  const { error } = await supabase
+    .from('chat_messages')
+    .insert({ room_id: roomId, player_name: playerName, message });
+
+  if (error) console.error('[Supabase] sendMessage failed:', error.message);
+  return { error };
+}
+
+/**
+ * Fetch chat messages for a room.
+ */
+export async function fetchMessages(roomId) {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: true })
+    .limit(100);
+
+  if (error) {
+    console.error('[Supabase] fetchMessages failed:', error.message);
+    return [];
+  }
+  return data;
+}
+
+// ============================================
+// Realtime Subscriptions
+// ============================================
+
+/**
+ * Subscribe to player changes in a room.
+ * callback receives { eventType, new, old } on INSERT/UPDATE/DELETE.
+ */
+export function subscribeToPlayers(roomId, callback) {
+  return supabase.channel(`room-${roomId}-players`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'players',
+      filter: `room_id=eq.${roomId}`
+    }, (payload) => callback(payload))
+    .subscribe();
+}
+
+/**
+ * Subscribe to new chat messages in a room.
+ */
+export function subscribeToMessages(roomId, callback) {
+  return supabase.channel(`room-${roomId}-messages`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'chat_messages',
+      filter: `room_id=eq.${roomId}`
+    }, (payload) => callback(payload))
+    .subscribe();
+}
+
+/**
+ * Subscribe to room status changes (e.g., game start).
+ */
+export function subscribeToRoom(roomId, callback) {
+  return supabase.channel(`room-${roomId}-status`)
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'rooms',
+      filter: `id=eq.${roomId}`
+    }, (payload) => callback(payload))
+    .subscribe();
+}
+
+/**
+ * Update room status.
+ */
+export async function updateRoomStatus(roomId, status) {
+  const { error } = await supabase
+    .from('rooms')
+    .update({ status })
+    .eq('id', roomId);
+
+  if (error) console.error('[Supabase] updateRoomStatus failed:', error.message);
+  return { error };
+}
+
+/**
+ * Remove a Supabase Realtime channel.
+ */
+export function unsubscribe(channel) {
+  if (channel) supabase.removeChannel(channel);
+}
+
 /**
  * Test the Supabase connection by making a simple request.
  * Returns true if connected, false otherwise.

@@ -4,14 +4,74 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#1a1612">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Join Game — Oracle Party</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="screen active" style="display: flex;">
-    <h1 class="font-heading" style="color: var(--color-primary); font-size: var(--text-2xl); margin-bottom: var(--space-xl);">Join Game</h1>
-    <p style="color: var(--color-text-dim); margin-bottom: var(--space-2xl);">Coming in Phase 3</p>
-    <a href="index.html" class="btn btn-secondary">← Back to Home</a>
+
+  <div id="join-screen" class="screen active" style="display: flex;">
+    <header class="page-header">
+      <button id="btn-back-home" class="back-btn" aria-label="Back to Home">&#8592;</button>
+      <h1 class="page-header__title">Join Game</h1>
+    </header>
+    <div class="page-content">
+
+      <!-- Room Code Entry -->
+      <div class="code-entry">
+        <input
+          type="text"
+          id="code-input"
+          class="input"
+          placeholder="000000"
+          maxlength="6"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button id="btn-join" class="btn btn-primary">Join</button>
+      </div>
+      <p id="join-error" class="error-msg"></p>
+
+      <div class="divider"></div>
+
+      <!-- Friends Playing (placeholder) -->
+      <div class="placeholder-section" style="margin-top: 0; padding-top: 0; border-top: none;">
+        <p class="placeholder-section__title">Friends Playing</p>
+        <p class="placeholder-section__text">Coming soon</p>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Public Games -->
+      <p class="section-title">Public Games</p>
+      <div id="public-games" class="public-games">
+        <p class="empty-state" id="public-games-empty">Looking for games...</p>
+      </div>
+    </div>
   </div>
+
+  <!-- Display Name Modal -->
+  <div id="display-name-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">Who Goes There?</h2>
+      <input
+        type="text"
+        id="display-name-input"
+        class="input"
+        placeholder="Enter your name"
+        maxlength="20"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+      <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/join.js"></script>
+
 </body>
 </html>

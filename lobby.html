@@ -4,13 +4,83 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#1a1612">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Lobby — Oracle Party</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="screen active" style="display: flex;">
-    <h1 class="font-heading" style="color: var(--color-primary); font-size: var(--text-2xl);">Lobby</h1>
-    <p style="color: var(--color-text-dim); margin-top: var(--space-md);">Coming in Phase 3</p>
+
+  <div id="lobby-screen" class="screen active" style="display: flex;">
+    <div class="lobby-body">
+
+      <!-- Header -->
+      <header class="page-header">
+        <h1 class="page-header__title">Lobby</h1>
+        <button id="btn-leave" class="leave-btn">Leave</button>
+      </header>
+
+      <!-- Top: Code + Category -->
+      <div class="lobby-top">
+        <p id="lobby-category" class="lobby-category"></p>
+        <div class="room-code-display">
+          <span id="lobby-code" class="room-code-display__code"></span>
+          <button id="btn-copy-code" class="copy-btn">Copy</button>
+        </div>
+      </div>
+
+      <!-- Middle: Players + Chat -->
+      <div class="lobby-middle">
+        <!-- Player List -->
+        <div class="section-title" style="padding: 0;">Players <span id="player-count"></span></div>
+        <div id="player-list" class="player-list" style="max-height: 140px; margin-bottom: var(--space-sm);"></div>
+
+        <!-- Chat -->
+        <div class="chat-area">
+          <div id="chat-messages" class="chat-messages"></div>
+          <div class="chat-input-bar">
+            <input
+              type="text"
+              id="chat-input"
+              class="input"
+              placeholder="Say something..."
+              maxlength="200"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button id="btn-send" class="btn btn-primary">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer: Action button -->
+      <div class="lobby-footer">
+        <button id="btn-start-game" class="btn btn-primary btn-block hidden">Start Game</button>
+        <button id="btn-ready" class="btn btn-secondary btn-block hidden">Ready Up</button>
+      </div>
+
+    </div>
   </div>
+
+  <!-- Display Name Modal (fallback) -->
+  <div id="display-name-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">Who Goes There?</h2>
+      <input
+        type="text"
+        id="display-name-input"
+        class="input"
+        placeholder="Enter your name"
+        maxlength="20"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+      <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/lobby.js"></script>
+
 </body>
 </html>

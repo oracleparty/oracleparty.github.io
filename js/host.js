@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens } from './utils.js';
-import { fetchCategories, createRoom } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
 // --- Category display config ---
@@ -173,13 +173,23 @@ async function handleHostGame() {
       return;
     }
 
-    // Store room data for lobby
+    // Add host as a player in the room
+    const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true);
+    if (playerErr || !player) {
+      hostError.textContent = 'Room created but failed to join. Try again.';
+      console.error('[Host] addPlayer failed:', playerErr);
+      resetHostButton();
+      return;
+    }
+
+    // Store room + player data for lobby
     sessionStorage.setItem('oracle_party_room', JSON.stringify({
       id: data.id,
       code: data.code,
       hostName: data.host_name,
       category: data.category,
       isHost: true,
+      playerId: player.id,
       settings: {
         whoCanJoin: data.who_can_join,
         questionsPerGame: data.questions_per_game,
