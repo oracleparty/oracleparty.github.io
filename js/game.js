@@ -66,6 +66,9 @@ const state = {
   questionStartedAt: null  // ISO timestamp from DB — single source of truth for timer
 };
 
+// Guard: prevent overlapping screen transitions (causes flash/blink)
+let _screenTransitioning = false;
+
 // --- Avatar color helper ---
 function getAvatarHue(name) {
   let hash = 0;
@@ -184,6 +187,8 @@ async function initHostGame() {
     current_question: 0
   });
 
+  state.gamePhase = 'question';
+  state._lastProcessedQuestion = 0;
   showQuestionScreen();
 }
 
@@ -283,6 +288,11 @@ function handlePhaseTransition(phase) {
 
   // 'question' phase with new current_question always resets
   if (phase === 'question') {
+    // Guard: skip if we already processed this exact question transition
+    if (state.gamePhase === 'question' && state._lastProcessedQuestion === state.currentQuestion) {
+      return;
+    }
+    state._lastProcessedQuestion = state.currentQuestion;
     state.currentWager = null;
     state.hasSubmitted = false;
     state.onRevealScreen = false;
@@ -401,16 +411,15 @@ function showQuestionScreen() {
 
   const currentScreen = document.querySelector('.screen.active');
   const questionScreen = $('#question-screen');
-  if (currentScreen && currentScreen !== questionScreen) {
-    transitionScreens(currentScreen, questionScreen);
-  } else {
+  if (currentScreen && currentScreen !== questionScreen && !_screenTransitioning) {
+    _screenTransitioning = true;
+    transitionScreens(currentScreen, questionScreen).then(() => {
+      _screenTransitioning = false;
+    });
+  } else if (!currentScreen || currentScreen === questionScreen) {
     questionScreen.style.display = '';
     void questionScreen.offsetHeight;
     questionScreen.classList.add('active');
-    if (currentScreen && currentScreen !== questionScreen) {
-      currentScreen.classList.remove('active');
-      currentScreen.style.display = 'none';
-    }
   }
 
   if (isReconnect) {
