@@ -42,9 +42,14 @@ const hostError = $('#host-error');
 
 // --- Init ---
 async function init() {
-  await ensureDisplayName();
-  categories = await fetchCategories();
-  renderCategories(categories);
+  try {
+    await ensureDisplayName();
+    categories = await fetchCategories();
+    renderCategories(categories);
+  } catch (err) {
+    console.error('[Host] Init error:', err);
+  }
+  // Always attach listeners even if data fetch fails
   attachListeners();
 }
 
@@ -143,40 +148,56 @@ async function handleHostGame() {
   btnHostGame.textContent = 'Creating...';
   hostError.textContent = '';
 
-  const hostName = getDisplayName();
-  const { data, error } = await createRoom({
-    hostName,
-    category: selectedCategory.name,
-    whoCanJoin: settings.whoCanJoin,
-    questionsPerGame: settings.questionsPerGame,
-    questionTimer: settings.questionTimer
-  });
+  try {
+    const hostName = getDisplayName();
+    const { data, error } = await createRoom({
+      hostName,
+      category: selectedCategory.name,
+      whoCanJoin: settings.whoCanJoin,
+      questionsPerGame: settings.questionsPerGame,
+      questionTimer: settings.questionTimer
+    });
 
-  if (error) {
-    btnHostGame.classList.remove('is-loading');
-    btnHostGame.textContent = 'Host Game';
-    // Show specific error for debugging; common cause is missing RLS policy
-    const msg = error.message || 'Unknown error';
-    hostError.textContent = `Failed to create room: ${msg}`;
-    console.error('[Host] Room creation error:', error);
-    return;
-  }
-
-  // Store room data for lobby
-  sessionStorage.setItem('oracle_party_room', JSON.stringify({
-    id: data.id,
-    code: data.code,
-    hostName: data.host_name,
-    category: data.category,
-    isHost: true,
-    settings: {
-      whoCanJoin: data.who_can_join,
-      questionsPerGame: data.questions_per_game,
-      questionTimer: data.question_timer
+    if (error) {
+      const msg = error.message || 'Unknown error';
+      hostError.textContent = `Failed to create room: ${msg}`;
+      console.error('[Host] Room creation error:', error);
+      resetHostButton();
+      return;
     }
-  }));
 
-  window.location.href = 'lobby.html';
+    if (!data) {
+      hostError.textContent = 'Room was not created. Check Supabase RLS policies on the rooms table.';
+      console.error('[Host] createRoom returned null data with no error — likely an RLS policy issue.');
+      resetHostButton();
+      return;
+    }
+
+    // Store room data for lobby
+    sessionStorage.setItem('oracle_party_room', JSON.stringify({
+      id: data.id,
+      code: data.code,
+      hostName: data.host_name,
+      category: data.category,
+      isHost: true,
+      settings: {
+        whoCanJoin: data.who_can_join,
+        questionsPerGame: data.questions_per_game,
+        questionTimer: data.question_timer
+      }
+    }));
+
+    window.location.href = 'lobby.html';
+  } catch (err) {
+    console.error('[Host] Unexpected error in handleHostGame:', err);
+    hostError.textContent = `Unexpected error: ${err.message}`;
+    resetHostButton();
+  }
+}
+
+function resetHostButton() {
+  btnHostGame.classList.remove('is-loading');
+  btnHostGame.textContent = 'Host Game';
 }
 
 // --- Start ---

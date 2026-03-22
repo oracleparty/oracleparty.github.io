@@ -19,7 +19,9 @@ export function transitionScreens(fromEl, toEl, duration = 600) {
 
     setTimeout(() => {
       fromEl.style.display = 'none';
+      fromEl.classList.remove('fade-out');
       toEl.style.display = '';
+      toEl.classList.remove('fade-out');
       // Force reflow so the browser registers the display change
       void toEl.offsetHeight;
       toEl.classList.add('active');
