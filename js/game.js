@@ -1,9 +1,9 @@
 // ============================================
 // Oracle Party — Game
-// Gameplay loop: wager → question → reveal → repeat
+// Gameplay loop: question (with wager) → reveal → repeat
 // ============================================
 
-import { $, transitionScreens, escapeHtml, fuzzyMatch, shuffleArray } from './utils.js';
+import { $, transitionScreens, escapeHtml, fuzzyMatch } from './utils.js';
 import {
   fetchPlayers,
   fetchQuestionsByCategory,
@@ -60,8 +60,6 @@ const state = {
 };
 
 // --- Question field name resolution ---
-// Different Supabase schemas may use different column names.
-// We detect these once from the first question object.
 let FIELD_MAP = null;
 
 function resolveFieldMap(question) {
@@ -88,7 +86,10 @@ function getCorrectAnswer(q) { return q[FIELD_MAP.correct] || ''; }
 function getAlternates(q) { return q[FIELD_MAP.alternates] || []; }
 function getDifficulty(q) { return q[FIELD_MAP.difficulty] || 'medium'; }
 
-// --- Init ---
+// ============================================
+// INIT
+// ============================================
+
 async function init() {
   await ensureDisplayName();
 
@@ -128,7 +129,6 @@ async function init() {
 }
 
 async function initHostGame() {
-  // Fetch random questions for this category
   const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions);
 
   if (questions.length === 0) {
@@ -136,29 +136,23 @@ async function initHostGame() {
     return;
   }
 
-  // If we got fewer questions than requested, adjust
   state.totalQuestions = Math.min(state.totalQuestions, questions.length);
   state.questions = questions;
-
-  // Resolve field names from first question
   resolveFieldMap(questions[0]);
 
-  // Save question IDs to room
   const questionIds = questions.map(q => q.id);
   await saveQuestionIds(state.room.id, questionIds);
 
-  // Set game state to wager phase
+  // Go directly to question phase (no separate wager phase)
   await updateGameState(state.room.id, {
-    game_phase: 'wager',
+    game_phase: 'question',
     current_question: 0
   });
 
-  // Show wager screen
-  showWagerScreen();
+  showQuestionScreen();
 }
 
 async function initPlayerGame() {
-  // Wait briefly for room data to have question_ids populated
   let roomData = null;
   for (let attempt = 0; attempt < 10; attempt++) {
     const { data } = await fetchRoom(state.room.id);
@@ -171,7 +165,6 @@ async function initPlayerGame() {
 
   if (!roomData || !roomData.question_ids) {
     $('#game-loading .game-loading__text').textContent = 'Waiting for host...';
-    // Will be driven by room subscription
     return;
   }
 
@@ -183,12 +176,13 @@ async function initPlayerGame() {
   }
 
   state.currentQuestion = roomData.current_question || 0;
-
-  // Show correct screen based on current game_phase
   handlePhaseTransition(roomData.game_phase);
 }
 
-// --- Room Change Handler ---
+// ============================================
+// ROOM CHANGE HANDLER
+// ============================================
+
 function handleRoomChange(payload) {
   if (!payload.new) return;
   const { game_phase, current_question, question_ids } = payload.new;
@@ -212,17 +206,16 @@ function handleRoomChange(payload) {
 }
 
 function handlePhaseTransition(phase) {
-  if (phase === state.gamePhase) return;
+  if (phase === state.gamePhase && phase !== 'question') return;
   state.gamePhase = phase;
 
-  // Reset per-question state on new question
-  if (phase === 'wager') {
+  // Reset per-question state when entering question phase
+  if (phase === 'question') {
     state.currentWager = null;
     state.hasSubmitted = false;
   }
 
   switch (phase) {
-    case 'wager':    showWagerScreen(); break;
     case 'question': showQuestionScreen(); break;
     case 'reveal':   showRevealScreen(); break;
     case 'results':  showResultsScreen(); break;
@@ -231,41 +224,64 @@ function handlePhaseTransition(phase) {
 }
 
 // ============================================
-// WAGER SCREEN
+// QUESTION SCREEN (with inline wager)
 // ============================================
 
-function showWagerScreen() {
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#wager-category').textContent = `${meta.icon} ${meta.label}`;
-  $('#wager-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
+function showQuestionScreen() {
+  const q = state.questions[state.currentQuestion];
+  if (!q) return;
 
+  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
+  $('#question-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#question-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
+  $('#question-text').textContent = getQuestionText(q);
+
+  // Render wager grid inline
   renderWagerGrid();
+
+  // Reset answer form
+  $('#answer-form').classList.remove('answer-input--submitted');
+  $('#answer-input').value = '';
+  $('#answer-input').disabled = false;
+  $('#btn-submit-answer').disabled = false;
+  $('#submit-status').classList.add('hidden');
+  $('#wager-error').textContent = '';
+
+  // Host controls
+  if (state.room.isHost) {
+    $('#btn-skip-timer').classList.remove('hidden');
+  } else {
+    $('#btn-skip-timer').classList.add('hidden');
+  }
+
+  state.hasSubmitted = false;
+  state.currentWager = null;
   showChatToggle();
 
+  // Transition
   const currentScreen = document.querySelector('.screen.active');
-  const wagerScreen = $('#wager-screen');
-  if (currentScreen && currentScreen !== wagerScreen) {
-    transitionScreens(currentScreen, wagerScreen);
+  const questionScreen = $('#question-screen');
+  if (currentScreen && currentScreen !== questionScreen) {
+    transitionScreens(currentScreen, questionScreen);
   } else {
-    wagerScreen.style.display = '';
-    void wagerScreen.offsetHeight;
-    wagerScreen.classList.add('active');
-    if (currentScreen && currentScreen !== wagerScreen) {
+    questionScreen.style.display = '';
+    void questionScreen.offsetHeight;
+    questionScreen.classList.add('active');
+    if (currentScreen && currentScreen !== questionScreen) {
       currentScreen.classList.remove('active');
       currentScreen.style.display = 'none';
     }
   }
 
-  // Host: show wager status
-  if (state.room.isHost) {
-    $('#wager-status').classList.remove('hidden');
-    $('#wager-status').textContent = 'Waiting for all players to wager...';
-  }
+  // Start timer
+  startTimer();
 
-  // Attach wager listeners
-  const lockBtn = $('#btn-lock-wager');
-  lockBtn.disabled = true;
-  lockBtn.onclick = handleLockWager;
+  // Attach listeners
+  $('#btn-submit-answer').onclick = handleSubmitAnswer;
+  $('#answer-input').onkeydown = (e) => {
+    if (e.key === 'Enter') handleSubmitAnswer();
+  };
+  $('#btn-skip-timer').onclick = handleSkipTimer;
 }
 
 function renderWagerGrid() {
@@ -289,118 +305,19 @@ function renderWagerGrid() {
 }
 
 function selectWager(value, btnEl) {
-  // Deselect previous
   const prev = $('#wager-grid .wager-btn--selected');
   if (prev) prev.classList.remove('wager-btn--selected');
 
   btnEl.classList.add('wager-btn--selected');
   state.currentWager = value;
-  $('#btn-lock-wager').disabled = false;
-}
-
-async function handleLockWager() {
-  if (state.currentWager === null) return;
-
-  const lockBtn = $('#btn-lock-wager');
-  lockBtn.disabled = true;
-  lockBtn.textContent = 'Locked In';
-  lockBtn.classList.add('is-loading');
-
-  state.usedWagers.add(state.currentWager);
-
-  const q = state.questions[state.currentQuestion];
-
-  // Submit wager as answer with empty submitted_answer (will be filled during question phase)
-  await submitAnswer({
-    roomId: state.room.id,
-    playerId: state.room.playerId,
-    questionNumber: state.currentQuestion,
-    questionId: q.id,
-    wager: state.currentWager,
-    submittedAnswer: '',
-    isCorrect: false,
-    scoreEarned: 0
-  });
-
-  // Reset button text for next time
-  setTimeout(() => {
-    lockBtn.textContent = 'Lock In';
-    lockBtn.classList.remove('is-loading');
-  }, 500);
-
-  // If host, check if all wagers are in
-  if (state.room.isHost) {
-    checkAllWagersIn();
-  }
-}
-
-async function checkAllWagersIn() {
-  // Brief delay to let the DB catch up
-  await new Promise(r => setTimeout(r, 300));
-  const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-  const wagerCount = answers.filter(a => a.wager > 0).length;
-
-  if (wagerCount >= state.players.length) {
-    $('#wager-status').textContent = 'All wagers in!';
-    // Auto-advance to question phase
-    await updateGameState(state.room.id, { game_phase: 'question' });
-  } else {
-    $('#wager-status').textContent = `${wagerCount} of ${state.players.length} wagers in`;
-  }
+  $('#wager-error').textContent = '';
 }
 
 // ============================================
-// QUESTION SCREEN
+// TIMER
 // ============================================
-
-function showQuestionScreen() {
-  const q = state.questions[state.currentQuestion];
-  if (!q) return;
-
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#question-category').textContent = `${meta.icon} ${meta.label}`;
-  $('#question-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
-  $('#question-text').textContent = getQuestionText(q);
-  $('#question-wager').textContent = `Wagered: ${state.currentWager || '?'} pts`;
-
-  // Reset answer form
-  const answerForm = $('#answer-form');
-  answerForm.classList.remove('answer-input--submitted');
-  const answerInput = $('#answer-input');
-  answerInput.value = '';
-  answerInput.disabled = false;
-  $('#btn-submit-answer').disabled = false;
-  $('#submit-status').classList.add('hidden');
-
-  // Host controls
-  if (state.room.isHost) {
-    $('#btn-skip-timer').classList.remove('hidden');
-  } else {
-    $('#btn-skip-timer').classList.add('hidden');
-  }
-
-  state.hasSubmitted = false;
-
-  // Transition
-  const currentScreen = document.querySelector('.screen.active');
-  const questionScreen = $('#question-screen');
-  if (currentScreen && currentScreen !== questionScreen) {
-    transitionScreens(currentScreen, questionScreen);
-  }
-
-  // Start timer
-  startTimer();
-
-  // Attach listeners
-  $('#btn-submit-answer').onclick = handleSubmitAnswer;
-  $('#answer-input').onkeydown = (e) => {
-    if (e.key === 'Enter') handleSubmitAnswer();
-  };
-  $('#btn-skip-timer').onclick = handleSkipTimer;
-}
 
 function startTimer() {
-  // Clear any existing timer
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
@@ -434,7 +351,15 @@ function startTimer() {
 
 function handleTimerExpired() {
   if (!state.hasSubmitted) {
-    // Auto-submit empty answer
+    // Auto-pick lowest available wager if none selected
+    if (state.currentWager === null) {
+      for (let i = 1; i <= state.totalQuestions; i++) {
+        if (!state.usedWagers.has(i)) {
+          state.currentWager = i;
+          break;
+        }
+      }
+    }
     doSubmitAnswer('');
   }
 
@@ -446,11 +371,20 @@ function handleTimerExpired() {
   }
 }
 
+// ============================================
+// ANSWER SUBMISSION
+// ============================================
+
 async function handleSubmitAnswer() {
   if (state.hasSubmitted) return;
 
-  const answerInput = $('#answer-input');
-  const answer = answerInput.value.trim();
+  // Require wager selection
+  if (state.currentWager === null) {
+    $('#wager-error').textContent = 'Pick a wager first';
+    return;
+  }
+
+  const answer = $('#answer-input').value.trim();
   await doSubmitAnswer(answer);
 }
 
@@ -462,7 +396,11 @@ async function doSubmitAnswer(answer) {
   const correctAnswer = getCorrectAnswer(q);
   const alternates = getAlternates(q);
   const isCorrect = answer ? fuzzyMatch(answer, correctAnswer, alternates) : false;
-  const scoreEarned = isCorrect ? (state.currentWager || 0) : 0;
+  const wager = state.currentWager || 1;
+  const scoreEarned = isCorrect ? wager : 0;
+
+  // Mark wager as used
+  state.usedWagers.add(wager);
 
   // Update UI
   $('#answer-form').classList.add('answer-input--submitted');
@@ -470,12 +408,16 @@ async function doSubmitAnswer(answer) {
   $('#btn-submit-answer').disabled = true;
   $('#submit-status').classList.remove('hidden');
 
+  // Disable wager grid
+  const wagerBtns = $('#wager-grid').querySelectorAll('.wager-btn');
+  wagerBtns.forEach(btn => { btn.style.pointerEvents = 'none'; });
+
   await submitAnswer({
     roomId: state.room.id,
     playerId: state.room.playerId,
     questionNumber: state.currentQuestion,
     questionId: q.id,
-    wager: state.currentWager || 0,
+    wager,
     submittedAnswer: answer,
     isCorrect,
     scoreEarned
@@ -485,13 +427,11 @@ async function doSubmitAnswer(answer) {
 async function handleSkipTimer() {
   if (!state.room.isHost) return;
 
-  // Stop timer
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
   }
 
-  // Advance to reveal
   await updateGameState(state.room.id, { game_phase: 'reveal' });
 }
 
@@ -500,7 +440,6 @@ async function handleSkipTimer() {
 // ============================================
 
 async function showRevealScreen() {
-  // Stop any running timer
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
@@ -515,15 +454,12 @@ async function showRevealScreen() {
   $('#reveal-answer').textContent = getCorrectAnswer(q);
   $('#reveal-difficulty').textContent = getDifficulty(q);
 
-  // Fetch all answers for this question
   const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
   renderRevealAnswers(answers);
 
-  // Update scores
   await updateScores();
   renderScores();
 
-  // Host: show Next Question button
   if (state.room.isHost) {
     const nextBtn = $('#btn-next-question');
     nextBtn.classList.remove('hidden');
@@ -532,7 +468,6 @@ async function showRevealScreen() {
     nextBtn.onclick = handleNextQuestion;
   }
 
-  // Transition
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
@@ -571,7 +506,6 @@ function renderRevealAnswers(answers) {
     container.appendChild(row);
   }
 
-  // Host: attach override listeners
   if (state.room.isHost) {
     container.addEventListener('click', handleJudgmentOverride);
   }
@@ -584,10 +518,6 @@ async function handleJudgmentOverride(e) {
   const answerId = badge.dataset.answerId;
   if (!answerId) return;
 
-  const row = badge.closest('.answer-row');
-  const playerId = row.dataset.playerId;
-
-  // Find current answer state
   const answers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
   const answer = answers.find(a => a.id === answerId);
   if (!answer) return;
@@ -597,12 +527,10 @@ async function handleJudgmentOverride(e) {
 
   await updateAnswerJudgment(answerId, newCorrect, newScore);
 
-  // Update UI immediately for host
   const judgmentClass = newCorrect ? 'answer-row__judgment--correct' : 'answer-row__judgment--incorrect';
   badge.className = `answer-row__judgment ${judgmentClass} answer-row__judgment--overridable`;
   badge.textContent = newCorrect ? '+' + newScore : 'Wrong';
 
-  // Update scores
   await updateScores();
   renderScores();
 }
@@ -611,12 +539,10 @@ async function handleNextQuestion() {
   const isLastQuestion = state.currentQuestion >= state.totalQuestions - 1;
 
   if (isLastQuestion) {
-    // Go to results
     await updateGameState(state.room.id, { game_phase: 'results' });
   } else {
-    // Next question
     await updateGameState(state.room.id, {
-      game_phase: 'wager',
+      game_phase: 'question',
       current_question: state.currentQuestion + 1
     });
   }
@@ -645,7 +571,6 @@ async function handleBackToLobby() {
   cleanup();
   await updateRoomStatus(state.room.id, 'lobby');
 
-  // Reset game state on room
   if (state.room.isHost) {
     await updateGameState(state.room.id, {
       game_phase: 'lobby',
@@ -676,7 +601,6 @@ function renderScores() {
   const list = $('#scores-list');
   if (!list) return;
 
-  // Sort by score descending
   const sorted = [...state.players].sort((a, b) =>
     (state.scores[b.id] || 0) - (state.scores[a.id] || 0)
   );
@@ -694,17 +618,11 @@ function renderScores() {
 // ============================================
 
 function handleAnswerChange(payload) {
-  // On reveal screen: re-render answers when they change (host override)
   if (state.gamePhase === 'reveal') {
     fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
       renderRevealAnswers(answers);
       updateScores().then(() => renderScores());
     });
-  }
-
-  // On wager screen (host): check if all wagers are in
-  if (state.gamePhase === 'wager' && state.room.isHost) {
-    checkAllWagersIn();
   }
 }
 

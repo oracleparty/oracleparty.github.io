@@ -1097,9 +1097,10 @@ body::after {
 .wager-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-sm);
+  gap: var(--space-xs);
   width: 100%;
-  max-width: 320px;
+  max-width: 280px;
+  margin-bottom: var(--space-sm);
 }
 
 .wager-btn {
@@ -1111,7 +1112,7 @@ body::after {
   border: 1.5px solid var(--color-surface-light);
   border-radius: var(--radius-md);
   font-family: var(--font-heading);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text);
   cursor: pointer;
@@ -1137,13 +1138,6 @@ body::after {
   pointer-events: none;
   background: var(--color-bg);
   text-decoration: line-through;
-}
-
-.wager-instruction {
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-lg);
 }
 
 /* --- Question Card --- */

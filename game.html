@@ -24,32 +24,7 @@
   </div>
 
   <!-- ==============================
-       SCREEN: Wager Select
-       ============================== -->
-  <div id="wager-screen" class="screen" style="display: none;">
-    <div class="game-body">
-      <div class="game-header">
-        <div class="game-progress">
-          <span id="wager-category" class="game-progress__category"></span>
-          <span id="wager-progress" class="game-progress__count"></span>
-        </div>
-      </div>
-
-      <div class="game-content">
-        <p class="wager-instruction">How confident are you? Bet high on what you know.</p>
-        <div id="wager-grid" class="wager-grid"></div>
-      </div>
-
-      <div class="game-footer">
-        <button id="btn-lock-wager" class="btn btn-primary btn-block" disabled>Lock In</button>
-        <!-- Host: status indicator for who has wagered -->
-        <p id="wager-status" class="waiting-text hidden"></p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==============================
-       SCREEN: Question
+       SCREEN: Question (with inline wager)
        ============================== -->
   <div id="question-screen" class="screen" style="display: none;">
     <div class="game-body">
@@ -66,11 +41,12 @@
         </div>
       </div>
 
-      <div class="game-content">
-        <span id="question-wager" class="wager-badge"></span>
+      <div class="game-content" style="justify-content: flex-start; padding-top: var(--space-sm);">
         <div class="question-card">
           <p id="question-text" class="question-card__text"></p>
         </div>
+        <div id="wager-grid" class="wager-grid"></div>
+        <p id="wager-error" class="error-msg" style="min-height: 0;"></p>
         <div id="answer-form" class="answer-input">
           <input
             type="text"
