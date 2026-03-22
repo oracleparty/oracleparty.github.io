@@ -229,17 +229,10 @@ function handlePhaseTransition(phase) {
 
   switch (phase) {
     case 'reveal':
-      // Host skipped timer — if we haven't submitted yet, auto-submit
+      // Host skipped timer — if we haven't submitted yet, auto-submit with current input
       if (!state.hasSubmitted) {
-        if (state.currentWager === null) {
-          for (let i = 1; i <= state.totalQuestions; i++) {
-            if (!state.usedWagers.has(i)) {
-              state.currentWager = i;
-              break;
-            }
-          }
-        }
-        doSubmitAnswer('');
+        const currentAnswer = ($('#answer-input')?.value || '').trim();
+        doSubmitAnswer(currentAnswer);
       } else if (!state.onRevealScreen) {
         showRevealScreen();
       }
@@ -281,9 +274,17 @@ function showQuestionScreen() {
   }
 
   state.hasSubmitted = false;
-  state.currentWager = null;
   state.onRevealScreen = false;
   state.timerExpired = false;
+
+  // Default wager to lowest available value
+  state.currentWager = null;
+  for (let i = 1; i <= state.totalQuestions; i++) {
+    if (!state.usedWagers.has(i)) {
+      state.currentWager = i;
+      break;
+    }
+  }
   showChatToggle();
 
   const currentScreen = document.querySelector('.screen.active');
@@ -322,6 +323,10 @@ function renderWagerGrid() {
     if (state.usedWagers.has(i)) {
       btn.classList.add('wager-btn--used');
     } else {
+      // Pre-select the default wager
+      if (i === state.currentWager) {
+        btn.classList.add('wager-btn--selected');
+      }
       btn.addEventListener('click', () => selectWager(i, btn));
     }
 
@@ -377,17 +382,10 @@ function startTimer() {
 function handleTimerExpired() {
   state.timerExpired = true;
 
-  // Auto-submit if this player hasn't yet
+  // Auto-submit with whatever is currently typed
   if (!state.hasSubmitted) {
-    if (state.currentWager === null) {
-      for (let i = 1; i <= state.totalQuestions; i++) {
-        if (!state.usedWagers.has(i)) {
-          state.currentWager = i;
-          break;
-        }
-      }
-    }
-    doSubmitAnswer('');
+    const currentAnswer = ($('#answer-input')?.value || '').trim();
+    doSubmitAnswer(currentAnswer);
   }
 
   // If host and already on reveal, enable Next Question
@@ -402,12 +400,6 @@ function handleTimerExpired() {
 
 async function handleSubmitAnswer() {
   if (state.hasSubmitted) return;
-
-  if (state.currentWager === null) {
-    $('#wager-error').textContent = 'Pick a wager first';
-    return;
-  }
-
   const answer = $('#answer-input').value.trim();
   await doSubmitAnswer(answer);
 }
@@ -425,12 +417,9 @@ async function doSubmitAnswer(answer) {
 
   state.usedWagers.add(wager);
 
-  // Disable question UI
-  $('#answer-form').classList.add('answer-input--submitted');
+  // Disable question UI (in case transition is slow)
   $('#answer-input').disabled = true;
   $('#btn-submit-answer').disabled = true;
-  const wagerBtns = $('#wager-grid').querySelectorAll('.wager-btn');
-  wagerBtns.forEach(btn => { btn.style.pointerEvents = 'none'; });
 
   await submitAnswer({
     roomId: state.room.id,
