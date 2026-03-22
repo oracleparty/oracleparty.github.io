@@ -511,10 +511,22 @@ function showCountdownScreen() {
       }
       return;
     }
-    el.className = 'countdown__number' + (steps[i] === 'GO!' ? ' countdown__number--go' : '');
+    console.log('[Countdown]', steps[i]);
+
+    // Remove animation class first so re-adding it restarts the animation
+    el.classList.remove('countdown__number');
+    el.classList.remove('countdown__number--go');
     el.textContent = steps[i];
-    // Force reflow to restart animation
+
+    // Force reflow so browser registers the class removal
     void el.offsetHeight;
+
+    // Re-add the base class (carries the animation) + GO variant
+    el.classList.add('countdown__number');
+    if (steps[i] === 'GO!') {
+      el.classList.add('countdown__number--go');
+    }
+
     i++;
     setTimeout(showNext, 750);
   }
