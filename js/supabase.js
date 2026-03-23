@@ -33,7 +33,7 @@ export async function fetchCategories() {
       return [];
     }
 
-    for (const row of data) {
+    for (const row of (data || [])) {
       // Supabase returns text[] as a JS array
       const cats = Array.isArray(row.categories) ? row.categories : [];
       for (const cat of cats) {
@@ -41,7 +41,7 @@ export async function fetchCategories() {
       }
     }
 
-    hasMore = data.length === PAGE_SIZE;
+    hasMore = data && data.length === PAGE_SIZE;
     offset += PAGE_SIZE;
   }
 
@@ -144,7 +144,7 @@ export async function fetchPublicRooms() {
   }
 
   // Get player counts for each room
-  const roomIds = rooms.map(r => r.id);
+  const roomIds = (rooms || []).map(r => r.id);
   if (roomIds.length === 0) return [];
 
   const { data: players, error: pErr } = await supabase
@@ -159,7 +159,7 @@ export async function fetchPublicRooms() {
   }
 
   const countMap = {};
-  for (const p of players) {
+  for (const p of (players || [])) {
     countMap[p.room_id] = (countMap[p.room_id] || 0) + 1;
   }
 
@@ -447,7 +447,7 @@ export async function fetchQuestionsByIds(questionIds) {
 
   // Preserve order of questionIds
   const idMap = {};
-  for (const q of data) idMap[q.id] = q;
+  for (const q of (data || [])) idMap[q.id] = q;
   return questionIds.map(id => idMap[id]).filter(Boolean);
 }
 

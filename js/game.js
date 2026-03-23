@@ -571,6 +571,7 @@ function handlePhaseTransition(phase) {
     // Reset scores guard on first question (new game / play again)
     if (state.currentQuestion === 0) {
       _lastScoresRenderedForQuestion = -1;
+      state._gamePlayCompleted = false;
       // Track game play start
       insertGamePlay({
         roomId: state.room.id,
@@ -1097,8 +1098,10 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     scoreEarned
   });
 
-  // Track question answered (fire-and-forget)
-  incrementQuestionsAnswered(state.room.id, state.room.playerId);
+  // Track question answered (fire-and-forget, skip final wager round)
+  if (!state.isFinalWagerRound) {
+    incrementQuestionsAnswered(state.room.id, state.room.playerId);
+  }
 
   // Immediately transition to reveal screen
   showRevealScreen();
@@ -1808,12 +1811,15 @@ async function showResultsScreen() {
 
   await updateScores();
 
-  // Mark game play as completed (fire-and-forget)
-  completeGamePlay({
-    roomId: state.room.id,
-    playerId: state.room.playerId,
-    finalScore: state.scores[state.room.playerId] || 0
-  });
+  // Mark game play as completed (fire-and-forget, guard against re-entry)
+  if (!state._gamePlayCompleted) {
+    state._gamePlayCompleted = true;
+    completeGamePlay({
+      roomId: state.room.id,
+      playerId: state.room.playerId,
+      finalScore: state.scores[state.room.playerId] || 0
+    });
+  }
 
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#results-category').textContent = `${meta.icon} ${meta.label}`;

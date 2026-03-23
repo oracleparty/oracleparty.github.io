@@ -39,7 +39,7 @@ async function init() {
     console.error('[Join] ensureDisplayName error:', err);
   }
   attachListeners();
-  loadPublicGames();
+  loadPublicGames().catch(e => console.warn('[Join] loadPublicGames failed:', e));
 
   // Refresh public games every 10s
   refreshInterval = setInterval(loadPublicGames, 10000);
@@ -229,6 +229,9 @@ _pageContent.addEventListener('touchend', () => {
     _ptrIndicator.querySelector('.ptr-indicator__text').textContent = 'Refreshing...';
     _ptrIndicator.style.height = '40px';
     loadPublicGames().then(() => {
+      _ptrIndicator.style.height = '0';
+      _ptrIndicator.style.opacity = '0';
+    }).catch(() => {
       _ptrIndicator.style.height = '0';
       _ptrIndicator.style.opacity = '0';
     });
