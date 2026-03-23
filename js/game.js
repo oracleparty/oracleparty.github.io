@@ -981,13 +981,6 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   $('#answer-input').disabled = true;
   $('#btn-submit-answer').disabled = true;
 
-  // If auto-submit (timer expired / host skipped) with no answer, skip DB write.
-  // The reveal screen handles missing answer records gracefully (shows "No answer").
-  if (autoSubmit && !answer) {
-    showRevealScreen();
-    return;
-  }
-
   const q = state.questions[state.currentQuestion];
   const correctAnswer = getCorrectAnswer(q);
   const alternates = getAlternates(q);
