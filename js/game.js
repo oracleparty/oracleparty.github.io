@@ -345,12 +345,18 @@ async function handlePlayerChange(payload) {
   const event = payload.eventType;
 
   if (event === 'DELETE' && payload.old) {
+    // Check local state for is_host BEFORE removing (payload.old may only have id
+    // if table REPLICA IDENTITY is not FULL)
+    const deletedId = String(payload.old.id);
+    const localPlayer = state.players.find(p => String(p.id) === deletedId);
+    const wasHost = localPlayer ? localPlayer.is_host : payload.old.is_host;
+
     // Remove player from local state
-    state.players = state.players.filter(p => String(p.id) !== String(payload.old.id));
-    delete state.scores[payload.old.id];
+    state.players = state.players.filter(p => String(p.id) !== deletedId);
+    delete state.scores[deletedId];
 
     // If the deleted player was the host, promote next player
-    if (payload.old.is_host && state.players.length > 0) {
+    if (wasHost && state.players.length > 0) {
       const sorted = [...state.players].sort((a, b) => {
         const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
         const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
@@ -361,6 +367,9 @@ async function handlePlayerChange(payload) {
       if (String(nextHost.id) === String(state.room.playerId)) {
         state.room.isHost = true;
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+        // Update local player state immediately so host badge renders
+        const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
+        if (localIdx !== -1) state.players[localIdx].is_host = true;
         await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
         // Re-render current phase to show host controls
         handlePhaseTransition(state.gamePhase);

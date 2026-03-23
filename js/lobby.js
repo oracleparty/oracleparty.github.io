@@ -256,11 +256,17 @@ async function handlePlayerChange(payload) {
         renderPlayers();
       }
     } else if (event === 'DELETE' && payload.old) {
+      // Check local state for is_host BEFORE removing (payload.old may only have id
+      // if table REPLICA IDENTITY is not FULL)
+      const deletedId = String(payload.old.id);
+      const localPlayer = players.find(p => String(p.id) === deletedId);
+      const wasHost = localPlayer ? localPlayer.is_host : payload.old.is_host;
+
       // Remove the player from local list
-      players = players.filter(p => String(p.id) !== String(payload.old.id));
+      players = players.filter(p => String(p.id) !== deletedId);
 
       // If the deleted player was the host, promote the next player
-      if (payload.old.is_host && players.length > 0) {
+      if (wasHost && players.length > 0) {
         await handleHostPromotion();
       }
       renderPlayers();
@@ -297,8 +303,12 @@ async function handleHostPromotion() {
   if (String(nextHost.id) === String(room.playerId)) {
     room.isHost = true;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    // Update local player state immediately so badge renders
+    const localIdx = players.findIndex(p => String(p.id) === String(room.playerId));
+    if (localIdx !== -1) players[localIdx].is_host = true;
     await promoteToHost(room.id, room.playerId, getDisplayName());
     activateHostUI();
+    renderPlayers();
   }
 }
 
