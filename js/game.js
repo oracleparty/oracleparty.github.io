@@ -1675,10 +1675,14 @@ function showFinalWagerScreen() {
     status.classList.add('hidden');
   }
 
-  // Host: show reveal button
+  // Host: show reveal button ONLY after they've locked in their own wager
   if (state.room.isHost) {
-    revealBtn.classList.remove('hidden');
     revealBtn.onclick = handleRevealFinalQuestion;
+    if (state.finalWagerLocked) {
+      revealBtn.classList.remove('hidden');
+    } else {
+      revealBtn.classList.add('hidden');
+    }
   } else {
     revealBtn.classList.add('hidden');
   }
@@ -1699,6 +1703,11 @@ async function lockInFinalWager() {
 
   $('#fw-status').classList.remove('hidden');
   document.querySelectorAll('.fw-option').forEach(b => b.classList.add('fw-option--locked'));
+
+  // Host: now show the reveal button (was hidden until wager locked)
+  if (state.room.isHost) {
+    $('#btn-fw-reveal').classList.remove('hidden');
+  }
 
   // Submit placeholder so others see the wager via Realtime
   const q = state.questions[state.totalQuestions];

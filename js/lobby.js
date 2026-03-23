@@ -674,7 +674,8 @@ async function handleLeave() {
     await removePlayer(room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
-  window.location.href = 'index.html';
+  // Non-host goes to join page (find another game), host goes home
+  window.location.href = room.isHost ? 'index.html' : 'join.html';
 }
 
 function handleBackButton() {
@@ -686,7 +687,7 @@ function handleBackButton() {
     removePlayerBeacon(room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
-  window.location.href = 'index.html';
+  window.location.href = room.isHost ? 'index.html' : 'join.html';
 }
 
 function handleUnload() {

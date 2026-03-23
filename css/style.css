@@ -75,6 +75,10 @@
   padding: 0;
 }
 
+* {
+  touch-action: manipulation;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
@@ -754,6 +758,26 @@ body::after {
 /* --- Public Games List --- */
 .public-games {
   width: 100%;
+}
+
+/* --- Pull-to-Refresh --- */
+.ptr-indicator {
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: height 0.2s ease, opacity 0.2s ease;
+  opacity: 0;
+}
+
+.ptr-indicator__text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .public-game-row {

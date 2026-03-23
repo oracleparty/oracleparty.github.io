@@ -184,5 +184,59 @@ async function loadPublicGames() {
   publicGamesEl.appendChild(fragment);
 }
 
+// --- Pull-to-Refresh ---
+const _pageContent = document.querySelector('.page-content');
+let _ptrStartY = 0;
+let _ptrActive = false;
+let _ptrIndicator = null;
+
+function createPtrIndicator() {
+  const el = document.createElement('div');
+  el.className = 'ptr-indicator';
+  el.innerHTML = '<span class="ptr-indicator__text">Pull to refresh</span>';
+  _pageContent.prepend(el);
+  return el;
+}
+
+_pageContent.addEventListener('touchstart', (e) => {
+  if (_pageContent.scrollTop <= 0) {
+    _ptrStartY = e.touches[0].clientY;
+    _ptrActive = true;
+    if (!_ptrIndicator) _ptrIndicator = createPtrIndicator();
+    // Disable transition during drag for immediate feedback
+    _ptrIndicator.style.transition = 'none';
+  }
+}, { passive: true });
+
+_pageContent.addEventListener('touchmove', (e) => {
+  if (!_ptrActive) return;
+  const dy = e.touches[0].clientY - _ptrStartY;
+  if (dy < 0) { _ptrActive = false; return; }
+  const pull = Math.min(dy, 80);
+  _ptrIndicator.style.height = pull + 'px';
+  _ptrIndicator.style.opacity = Math.min(pull / 60, 1);
+  _ptrIndicator.querySelector('.ptr-indicator__text').textContent =
+    pull >= 60 ? 'Release to refresh' : 'Pull to refresh';
+}, { passive: true });
+
+_pageContent.addEventListener('touchend', () => {
+  if (!_ptrActive) return;
+  _ptrActive = false;
+  const height = parseInt(_ptrIndicator.style.height) || 0;
+  // Re-enable transition for smooth collapse
+  _ptrIndicator.style.transition = '';
+  if (height >= 60) {
+    _ptrIndicator.querySelector('.ptr-indicator__text').textContent = 'Refreshing...';
+    _ptrIndicator.style.height = '40px';
+    loadPublicGames().then(() => {
+      _ptrIndicator.style.height = '0';
+      _ptrIndicator.style.opacity = '0';
+    });
+  } else {
+    _ptrIndicator.style.height = '0';
+    _ptrIndicator.style.opacity = '0';
+  }
+});
+
 // --- Start ---
 init();
