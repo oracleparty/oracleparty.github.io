@@ -2157,51 +2157,13 @@ function showChatToggle() {
 }
 
 function attachChatListeners() {
-  initChatDrag($('#btn-chat-toggle'));
+  $('#btn-chat-toggle').addEventListener('click', toggleChat);
   $('#btn-close-chat').addEventListener('click', toggleChat);
   $('#chat-backdrop').addEventListener('click', toggleChat);
 
   $('#btn-game-chat-send').addEventListener('click', handleSendGameChat);
   $('#game-chat-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendGameChat();
-  });
-}
-
-function initChatDrag(el) {
-  let startX, startY, origX, origY, dragging;
-
-  el.addEventListener('pointerdown', (e) => {
-    dragging = false;
-    startX = e.clientX;
-    startY = e.clientY;
-    const rect = el.getBoundingClientRect();
-    origX = rect.left;
-    origY = rect.top;
-    el.setPointerCapture(e.pointerId);
-  });
-
-  el.addEventListener('pointermove', (e) => {
-    if (startX == null) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    if (!dragging && Math.abs(dx) + Math.abs(dy) < 8) return;
-    dragging = true;
-    el.classList.add('chat-toggle--dragging');
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const size = 48;
-    const x = Math.max(0, Math.min(vw - size, origX + dx));
-    const y = Math.max(0, Math.min(vh - size, origY + dy));
-    el.style.left = x + 'px';
-    el.style.top = y + 'px';
-    el.style.right = 'auto';
-    el.style.bottom = 'auto';
-  });
-
-  el.addEventListener('pointerup', () => {
-    if (!dragging) toggleChat();
-    el.classList.remove('chat-toggle--dragging');
-    startX = null;
   });
 }
 
@@ -2213,6 +2175,11 @@ function toggleChat() {
   if (state.chatOpen) {
     scrollGameChatToBottom();
     $('#game-chat-input').focus();
+    // Clear unread badge
+    state.unreadCount = 0;
+    const badge = $('#chat-badge');
+    badge.textContent = '0';
+    badge.classList.add('hidden');
   }
 }
 
@@ -2230,7 +2197,34 @@ function handleNewMessage(payload) {
   if (payload.new) {
     appendGameChatMessage(payload.new.player_name, payload.new.message);
     scrollGameChatToBottom();
+
+    // Show unread badge + toast when chat is closed
+    if (!state.chatOpen) {
+      state.unreadCount = (state.unreadCount || 0) + 1;
+      const badge = $('#chat-badge');
+      badge.textContent = state.unreadCount;
+      badge.classList.remove('hidden');
+      showChatToast(payload.new.player_name, payload.new.message);
+    }
   }
+}
+
+function showChatToast(name, text) {
+  const toast = $('#chat-toast');
+  const truncated = text.length > 50 ? text.slice(0, 50) + '...' : text;
+  toast.innerHTML = `
+    <div class="chat-toast__name">${escapeHtml(name)}</div>
+    <div class="chat-toast__text">${escapeHtml(truncated)}</div>
+  `;
+  toast.classList.remove('hidden', 'chat-toast--fade-out');
+
+  // Clear any existing toast timer
+  if (state.chatToastTimer) clearTimeout(state.chatToastTimer);
+
+  state.chatToastTimer = setTimeout(() => {
+    toast.classList.add('chat-toast--fade-out');
+    setTimeout(() => toast.classList.add('hidden'), 400);
+  }, 3000);
 }
 
 function appendGameChatMessage(name, text) {

@@ -54,7 +54,7 @@
         <div class="question-card">
           <p id="question-text" class="question-card__text"></p>
         </div>
-        <p class="wager-label">Wager</p>
+        <p class="wager-label">Wager:</p>
         <div id="wager-grid" class="wager-grid"></div>
         <p id="wager-error" class="error-msg" style="min-height: 0;"></p>
         <div id="answer-form" class="answer-input">
@@ -62,7 +62,7 @@
             type="text"
             id="answer-input"
             class="input"
-            placeholder="Type your answer..."
+            placeholder="Type your answer"
             maxlength="200"
             autocomplete="off"
             spellcheck="false"
@@ -268,7 +268,8 @@
       <button id="btn-game-chat-send" class="btn btn-primary">Send</button>
     </div>
   </div>
-  <button id="btn-chat-toggle" class="chat-toggle hidden">&#128172;</button>
+  <button id="btn-chat-toggle" class="chat-toggle hidden">&#128172;<span id="chat-badge" class="chat-badge hidden">0</span></button>
+  <div id="chat-toast" class="chat-toast hidden"></div>
 
   <!-- Display Name Modal (fallback) -->
   <div id="display-name-modal" class="modal-overlay">
