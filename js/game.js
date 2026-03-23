@@ -75,13 +75,14 @@ const state = {
   questionStartedAt: null, // ISO timestamp from DB — single source of truth for timer
   presenceChannel: null,
   presenceReady: false,
-  awayPlayers: new Set(),
+  awayTimestamps: new Map(), // player ID → Date.now() when first seen as away
   feedbackFadeTimer: null,
   isFinalWagerRound: false,
   finalWager: 10,
   finalWagerLocked: false,
   countdownStartedAt: null,
-  _lastProcessedQuestion: -1
+  _lastProcessedQuestion: -1,
+  stalePollId: null
 };
 
 // Guard: prevent duplicate scores screen rendering
@@ -189,17 +190,22 @@ async function init() {
           if (!p.is_away) connectedActive.add(String(p.player_id));
         }
       }
-      // Any DB player NOT connected+active is away (tab hidden OR disconnected)
-      state.awayPlayers.clear();
+      // Track when each player first went away (preserve existing timestamps)
+      const newAway = new Map();
       for (const p of state.players) {
-        if (!connectedActive.has(String(p.id))) state.awayPlayers.add(String(p.id));
+        const id = String(p.id);
+        if (!connectedActive.has(id)) {
+          newAway.set(id, state.awayTimestamps.get(id) || Date.now());
+        }
       }
+      state.awayTimestamps = newAway;
+      checkStalePresence();
       // Update away classes on visible rows without full re-render
       document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
-        row.classList.toggle('answer-row--away', state.awayPlayers.has(String(row.dataset.playerId)));
+        row.classList.toggle('answer-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
       });
       document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
-        row.classList.toggle('score-anim-row--away', state.awayPlayers.has(String(row.dataset.playerId)));
+        row.classList.toggle('score-anim-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
       });
     })
     .subscribe(async (status) => {
@@ -212,6 +218,9 @@ async function init() {
     });
   state.channels.push(state.presenceChannel);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  // Poll for stale disconnected players (auto-kick after 5 min)
+  state.stalePollId = setInterval(checkStalePresence, 30000);
 
   loadChatMessages();
   attachChatListeners();
@@ -1106,7 +1115,7 @@ function renderRevealAnswers(answers) {
   for (const player of state.players) {
     const answer = answers.find(a => a.player_id === player.id);
     const row = document.createElement('div');
-    row.className = 'answer-row' + (state.awayPlayers.has(String(player.id)) ? ' answer-row--away' : '');
+    row.className = 'answer-row' + (state.awayTimestamps.has(String(player.id)) ? ' answer-row--away' : '');
     row.dataset.playerId = player.id;
 
     // Avatar
@@ -1391,7 +1400,7 @@ async function showScoresScreen() {
     const initial = (p.display_name || '?')[0].toUpperCase();
 
     return `
-      <div class="score-anim-row${state.awayPlayers.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}">
+      <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}">
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
         <span class="score-anim-row__name">${escapeHtml(p.display_name)}</span>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
@@ -2179,6 +2188,35 @@ function initFeedbackListeners() {
 }
 
 // ============================================
+// STALE PLAYER AUTO-KICK (5 min disconnect → removed)
+// ============================================
+const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+function checkStalePresence() {
+  const now = Date.now();
+  for (const [id, since] of state.awayTimestamps) {
+    if (now - since < STALE_TIMEOUT) continue;
+    if (id === String(state.room.playerId)) continue;
+
+    const stalePlayer = state.players.find(p => String(p.id) === id);
+    if (!stalePlayer) continue;
+
+    if (stalePlayer.is_host) {
+      // Stale host: earliest connected player kicks them (deterministic)
+      const connected = state.players
+        .filter(p => !state.awayTimestamps.has(String(p.id)))
+        .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
+      if (connected[0] && String(connected[0].id) === String(state.room.playerId)) {
+        removePlayer(id);
+      }
+    } else if (state.room.isHost) {
+      // Stale non-host: host kicks them
+      removePlayer(id);
+    }
+  }
+}
+
+// ============================================
 // EXIT PATHS (player leaves the game permanently)
 // ============================================
 // Four ways a player leaves:
@@ -2262,10 +2300,15 @@ function cleanup() {
     clearInterval(state.timerId);
     state.timerId = null;
   }
+  if (state.stalePollId) {
+    clearInterval(state.stalePollId);
+    state.stalePollId = null;
+  }
   for (const ch of state.channels) unsubscribe(ch);
   state.channels = [];
   state.presenceReady = false;
   state.presenceChannel = null;
+  state.awayTimestamps = new Map();
 }
 
 // ============================================

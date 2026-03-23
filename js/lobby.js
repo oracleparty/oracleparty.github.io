@@ -49,7 +49,7 @@ let isLeaving = false;
 let channels = [];
 let presenceChannel = null;
 let presenceReady = false;
-let awayPlayers = new Set();
+let awayTimestamps = new Map(); // player ID → Date.now() when first seen as away
 let playerPollInterval = null;
 
 // --- DOM refs ---
@@ -109,8 +109,11 @@ async function init() {
   const roomChannel = subscribeToRoom(room.id, handleRoomChange);
   channels = [playerChannel, messageChannel, roomChannel];
 
-  // Poll players as a fallback in case Realtime silently fails
-  playerPollInterval = setInterval(loadPlayers, 5000);
+  // Poll players as fallback + check for stale disconnected players
+  playerPollInterval = setInterval(() => {
+    loadPlayers();
+    checkStalePresence();
+  }, 5000);
 
   // Presence tracking (away/active state)
   presenceChannel = createPresenceChannel(room.id);
@@ -124,12 +127,17 @@ async function init() {
           if (!p.is_away) connectedActive.add(String(p.player_id));
         }
       }
-      // Any DB player NOT connected+active is away (tab hidden OR disconnected)
-      awayPlayers.clear();
+      // Track when each player first went away (preserve existing timestamps)
+      const newAway = new Map();
       for (const p of players) {
-        if (!connectedActive.has(String(p.id))) awayPlayers.add(String(p.id));
+        const id = String(p.id);
+        if (!connectedActive.has(id)) {
+          newAway.set(id, awayTimestamps.get(id) || Date.now());
+        }
       }
+      awayTimestamps = newAway;
       renderPlayers();
+      checkStalePresence();
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
@@ -231,7 +239,7 @@ function renderPlayers() {
 
     const hue = getAvatarHue(p.display_name);
     const initial = (p.display_name || '?')[0].toUpperCase();
-    const isAway = awayPlayers.has(String(p.id));
+    const isAway = awayTimestamps.has(String(p.id));
 
     return `
       <div class="player-item${isAway ? ' player-item--away' : ''}">
@@ -583,6 +591,36 @@ function handleRoomChange(payload) {
 }
 
 // ============================================
+// STALE PLAYER AUTO-KICK (5 min disconnect → removed)
+// ============================================
+const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+function checkStalePresence() {
+  const now = Date.now();
+  for (const [id, since] of awayTimestamps) {
+    if (now - since < STALE_TIMEOUT) continue;
+    // Don't kick ourselves
+    if (id === String(room.playerId)) continue;
+
+    const stalePlayer = players.find(p => String(p.id) === id);
+    if (!stalePlayer) continue;
+
+    if (stalePlayer.is_host) {
+      // Stale host: earliest connected player kicks them (deterministic)
+      const connected = players
+        .filter(p => !awayTimestamps.has(String(p.id)))
+        .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
+      if (connected[0] && String(connected[0].id) === String(room.playerId)) {
+        removePlayer(id);
+      }
+    } else if (room.isHost) {
+      // Stale non-host: host kicks them
+      removePlayer(id);
+    }
+  }
+}
+
+// ============================================
 // EXIT PATHS (player leaves the game permanently)
 // ============================================
 // Three ways a player leaves:
@@ -673,6 +711,7 @@ function cleanup() {
   channels = [];
   presenceReady = false;
   presenceChannel = null;
+  awayTimestamps.clear();
 }
 
 // --- Start ---
