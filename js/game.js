@@ -1146,7 +1146,10 @@ async function showRevealScreen() {
 
   // Fetch existing answers (some players may not have submitted yet) and cache them
   state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-  renderRevealAnswers(state.currentAnswers);
+  // Skip render if doReveal() will be called immediately (it re-renders with colors)
+  if (!state.resultsRevealed) {
+    renderRevealAnswers(state.currentAnswers);
+  }
 
   // Show countdown timer on reveal screen if the round isn't over yet
   const revealTimer = $('#reveal-timer');
