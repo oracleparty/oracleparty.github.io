@@ -1543,6 +1543,10 @@ a {
   color: var(--color-text);
   flex-shrink: 0;
   min-width: 0;
+  max-width: 5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .answer-row__answer {
