@@ -34,9 +34,11 @@ import {
   fetchQuestionFeedback,
   insertGamePlay,
   incrementQuestionsAnswered,
-  completeGamePlay
+  completeGamePlay,
+  archiveChatMessages
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
+import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -233,12 +235,36 @@ async function init() {
   state.channels.push(state.presenceChannel);
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
+  // Heartbeat: re-track presence every 15s so transient failures self-heal
+  state.presenceHeartbeatId = setInterval(() => {
+    if (state.presenceChannel) {
+      state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
+        .catch(() => {});
+    }
+  }, 15000);
+
   // Poll for stale disconnected players (auto-kick after 5 min)
   state.stalePollId = setInterval(checkStalePresence, 10000);
 
   loadChatMessages();
   attachChatListeners();
   initFeedbackListeners();
+
+  // Honk system
+  initHonkSystem(state.room.id, state.room.playerId, () => {
+    // Re-render visible player rows to update honk badges
+    updateHonkBadges();
+  });
+
+  // Honk click handler (event delegation on reveal + scores containers)
+  for (const sel of ['#reveal-answers', '#scores-animated-list', '#results-list']) {
+    const el = document.querySelector(sel);
+    if (el) el.addEventListener('click', (e) => {
+      const btn = e.target.closest('.honk-btn');
+      if (!btn) return;
+      sendHonk(btn.dataset.honkTarget);
+    });
+  }
 
   if (state.room.isHost) {
     await initHostGame();
@@ -1199,6 +1225,30 @@ async function showRevealScreen() {
   }
 }
 
+function updateHonkBadges() {
+  document.querySelectorAll('.honk-badge[data-honk-player]').forEach(badge => {
+    const pid = badge.dataset.honkPlayer;
+    const count = getHonkCount(pid);
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
+function honkAvatarHtml(player, hue, initial) {
+  const isMe = String(player.id) === String(state.room.playerId);
+  const honks = getHonkCount(player.id);
+  const badge = `<span class="honk-badge" data-honk-player="${player.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
+  const btn = isMe ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Honk">&#x1F4E2;</button>`;
+  return `<div class="avatar-wrap">
+    <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+    ${badge}
+  </div>${btn}`;
+}
+
 function renderRevealAnswers(answers) {
   const container = $('#reveal-answers');
 
@@ -1245,7 +1295,7 @@ function renderRevealAnswers(answers) {
 
       row.innerHTML = `
         <div class="answer-row__top">
-          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${honkAvatarHtml(player, hue, initial)}
           <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
           <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
           ${toggleHtml}
@@ -1261,7 +1311,7 @@ function renderRevealAnswers(answers) {
       const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
       row.innerHTML = `
         <div class="answer-row__top">
-          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${honkAvatarHtml(player, hue, initial)}
           <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
         </div>
         <div class="answer-row__bottom">
@@ -1272,6 +1322,12 @@ function renderRevealAnswers(answers) {
 
     newContainer.appendChild(row);
   }
+
+  // Honk click handler on cloned container
+  newContainer.addEventListener('click', (e) => {
+    const btn = e.target.closest('.honk-btn');
+    if (btn) sendHonk(btn.dataset.honkTarget);
+  });
 
   // Host: attach toggle click listeners (pre- and post-reveal)
   if (state.room.isHost) {
@@ -1516,12 +1572,21 @@ async function showScoresScreen() {
     const hue = getAvatarHue(p.display_name);
     const initial = (p.display_name || '?')[0].toUpperCase();
 
+    const isMe = String(p.id) === String(state.room.playerId);
+    const honks = getHonkCount(p.id);
+    const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
+    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Honk">&#x1F4E2;</button>`;
+
     return `
       <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}">
-        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+        <div class="avatar-wrap">
+          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${honkBadge}
+        </div>
         <span class="score-anim-row__name">${escapeHtml(p.display_name)}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
         <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
+        ${honkBtn}
       </div>
     `;
   }).join('');
@@ -1853,6 +1918,8 @@ async function showResultsScreen() {
       playerId: state.room.playerId,
       finalScore: state.scores[state.room.playerId] || 0
     });
+    // Archive chat messages before room might be deleted
+    archiveChatMessages(state.room.id);
   }
 
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
@@ -1894,13 +1961,22 @@ async function showResultsScreen() {
     const placeLabel = PLACE_LABELS[i] || `${i + 1}th`;
     const placeClass = i < 3 ? `results-row__place--${PLACE_LABELS[i]}` : '';
 
+    const isMe = String(p.id) === String(state.room.playerId);
+    const honks = getHonkCount(p.id);
+    const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
+    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Honk">&#x1F4E2;</button>`;
+
     return `
-      <div class="results-row">
+      <div class="results-row" data-player-id="${p.id}">
         <span class="results-row__place ${placeClass}">${placeLabel}</span>
-        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+        <div class="avatar-wrap">
+          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${honkBadge}
+        </div>
         <span class="results-row__name">${escapeHtml(p.display_name)}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="results-row__fw-delta ${fwClass}">${fwSign}${fwDelta}</span>
         <span class="results-row__score">${state.scores[p.id] || 0}</span>
+        ${honkBtn}
       </div>
     `;
   }).join('');
@@ -1994,7 +2070,8 @@ async function handleReviewQuestions() {
     }
 
     const item = document.createElement('div');
-    item.className = 'review-item';
+    const isFlagged = existing === 'thumbs_down' || existing === 'flag';
+    item.className = 'review-item' + (isFlagged ? ' review-item--flagged' : '');
     item.innerHTML = `
       <div class="review-item__num">${label}</div>
       <div class="review-item__q">${escapeHtml(getQuestionText(q))}</div>
@@ -2016,6 +2093,8 @@ async function handleReviewQuestions() {
       const type = btn.dataset.type;
       const qid = btn.dataset.qid;
 
+      const reviewItem = btn.closest('.review-item');
+
       if (type === 'flag') {
         const wasActive = btn.classList.contains('feedback-btn--active');
         btn.classList.toggle('feedback-btn--active');
@@ -2031,6 +2110,9 @@ async function handleReviewQuestions() {
         } else {
           _qbFeedback[qid] = null;
         }
+        // Update flagged highlight
+        const fb = _qbFeedback[qid];
+        reviewItem.classList.toggle('review-item--flagged', fb === 'flag' || fb === 'thumbs_down');
         return;
       }
 
@@ -2054,6 +2136,9 @@ async function handleReviewQuestions() {
       } else {
         _qbFeedback[qid] = null;
       }
+      // Update flagged highlight
+      const fb = _qbFeedback[qid];
+      reviewItem.classList.toggle('review-item--flagged', fb === 'flag' || fb === 'thumbs_down');
     });
   });
 
@@ -2620,15 +2705,10 @@ window.addEventListener('pagehide', handleUnload);
 
 function handleVisibilityChange() {
   if (!state.presenceChannel) return;
-  if (!document.hidden) {
-    // Coming back — always try, even if channel was degraded
-    state.presenceChannel.track({ player_id: state.room.playerId, is_away: false })
-      .catch(() => {});
-  } else if (state.presenceReady) {
-    // Going away — only if channel is healthy
-    state.presenceChannel.track({ player_id: state.room.playerId, is_away: true })
-      .catch(() => { state.presenceReady = false; });
-  }
+  // Always attempt to track — swallow errors so transient failures
+  // don't permanently break away detection.
+  state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
+    .catch(() => {});
 }
 
 // ============================================
@@ -2638,6 +2718,7 @@ function handleVisibilityChange() {
 function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
+  destroyHonkSystem();
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
@@ -2649,6 +2730,10 @@ function cleanup() {
   if (state._hotJoinPollId) {
     clearInterval(state._hotJoinPollId);
     state._hotJoinPollId = null;
+  }
+  if (state.presenceHeartbeatId) {
+    clearInterval(state.presenceHeartbeatId);
+    state.presenceHeartbeatId = null;
   }
   for (const ch of state.channels) unsubscribe(ch);
   state.channels = [];

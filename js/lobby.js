@@ -25,6 +25,7 @@ import {
   createPresenceChannel
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
+import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -52,6 +53,7 @@ let presenceChannel = null;
 let presenceReady = false;
 let awayTimestamps = new Map(); // player ID → Date.now() when first seen as away
 let playerPollInterval = null;
+let presenceHeartbeatId = null;
 
 // --- DOM refs ---
 const lobbyCategory = $('#lobby-category');
@@ -164,9 +166,34 @@ async function init() {
     });
   channels.push(presenceChannel);
 
+  // Heartbeat: re-track presence every 15s so transient failures self-heal
+  presenceHeartbeatId = setInterval(() => {
+    if (presenceChannel) {
+      presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
+        .catch(() => {});
+    }
+  }, 15000);
+
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
   attachListeners();
+
+  // Honk system
+  initHonkSystem(room.id, room.playerId, (targetId, count) => {
+    // Update honk badges on visible player rows
+    playerListEl.querySelectorAll('.honk-badge').forEach(badge => {
+      const wrap = badge.closest('.player-item');
+      // Refresh all badges via re-render (simple approach)
+    });
+    renderPlayers();
+  });
+
+  // Honk click handler (event delegation)
+  playerListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.honk-btn');
+    if (!btn) return;
+    sendHonk(btn.dataset.honkTarget);
+  });
 
   // System message
   addSystemMessage(`You joined the lobby`);
@@ -255,12 +282,19 @@ function renderPlayers() {
     const hue = getAvatarHue(p.display_name);
     const initial = (p.display_name || '?')[0].toUpperCase();
     const isAway = awayTimestamps.has(String(p.id));
+    const honks = getHonkCount(p.id);
+    const honkBadge = honks > 0 ? `<span class="honk-badge">${honks}</span>` : '';
+    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Honk">&#x1F4E2;</button>`;
 
     return `
       <div class="player-item${isAway ? ' player-item--away' : ''}">
-        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+        <div class="avatar-wrap">
+          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${honkBadge}
+        </div>
         <span class="player-item__name">${nameDisplay}</span>
         <span class="player-item__badges">${badges.join('')}</span>
+        ${honkBtn}
       </div>
     `;
   }).join('');
@@ -720,15 +754,10 @@ function handleUnload() {
 
 function handleVisibilityChange() {
   if (!presenceChannel) return;
-  if (!document.hidden) {
-    // Coming back — always try, even if channel was degraded
-    presenceChannel.track({ player_id: room.playerId, is_away: false })
-      .catch(() => {});
-  } else if (presenceReady) {
-    // Going away — only if channel is healthy
-    presenceChannel.track({ player_id: room.playerId, is_away: true })
-      .catch(() => { presenceReady = false; });
-  }
+  // Always attempt to track — swallow errors so transient failures
+  // don't permanently break away detection.
+  presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
+    .catch(() => {});
 }
 
 // ============================================
@@ -738,8 +767,11 @@ function handleVisibilityChange() {
 function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
+  destroyHonkSystem();
   clearInterval(playerPollInterval);
   playerPollInterval = null;
+  clearInterval(presenceHeartbeatId);
+  presenceHeartbeatId = null;
   for (const ch of channels) unsubscribe(ch);
   channels = [];
   presenceReady = false;

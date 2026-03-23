@@ -327,6 +327,36 @@ export async function sendMessage(roomId, playerName, message) {
 }
 
 /**
+ * Archive chat messages for a room into chat_archive table.
+ * Called when the game ends (before room might be deleted).
+ */
+export async function archiveChatMessages(roomId) {
+  try {
+    // Fetch room info
+    const { data: roomData } = await fetchRoom(roomId);
+    if (!roomData) return;
+
+    // Fetch all messages
+    const messages = await fetchMessages(roomId);
+    if (!messages || messages.length === 0) return;
+
+    // Insert archive
+    const { error } = await supabase
+      .from('chat_archive')
+      .insert({
+        room_code: roomData.code || null,
+        category: roomData.category || null,
+        archived_at: new Date().toISOString(),
+        messages
+      });
+
+    if (error) console.error('[Supabase] archiveChatMessages failed:', error.message);
+  } catch (err) {
+    console.error('[Supabase] archiveChatMessages error:', err);
+  }
+}
+
+/**
  * Fetch chat messages for a room.
  */
 export async function fetchMessages(roomId) {
@@ -403,6 +433,13 @@ export function subscribeToRoom(roomId, callback) {
  */
 export function createPresenceChannel(roomId) {
   return supabase.channel(`room-${roomId}-presence`);
+}
+
+/**
+ * Create a broadcast channel for honks.
+ */
+export function createHonkChannel(roomId) {
+  return supabase.channel(`room-${roomId}-honks`);
 }
 
 /**
