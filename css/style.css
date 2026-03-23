@@ -1521,6 +1521,10 @@ a {
 /* --- Answer Rows (Reveal) --- */
 .reveal__answers {
   width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   margin-bottom: var(--space-md);
 }
 
