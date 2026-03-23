@@ -455,6 +455,10 @@ function handlePhaseTransition(phase) {
     state.timerExpired = false;
     state.currentAnswers = [];
     state.previousScores = {};
+    // Reset scores guard on first question (new game / play again)
+    if (state.currentQuestion === 0) {
+      _lastScoresRenderedForQuestion = -1;
+    }
     // Clear stale questionStartedAt on normal transitions (not init reconnect)
     // Reconnects from init set questionStartedAt BEFORE calling handlePhaseTransition
     if (state.gamePhase !== 'loading') {
@@ -497,7 +501,12 @@ function handlePhaseTransition(phase) {
     case 'answer_reveal':
       // Host clicked "Reveal Results" — show correct answer, judgments, scores
       state.resultsRevealed = true;
-      if (!state.onRevealScreen) {
+      if (!state.hasSubmitted) {
+        // Auto-submit whatever the player has typed (host revealed early)
+        const currentAnswer = ($('#answer-input')?.value || '').trim();
+        doSubmitAnswer(currentAnswer, { autoSubmit: true });
+        // showRevealScreen() → doReveal() will follow since resultsRevealed is true
+      } else if (!state.onRevealScreen) {
         showRevealScreen(); // will call doReveal() since resultsRevealed is true
       } else {
         doReveal();
@@ -903,12 +912,13 @@ function handleTimerExpired() {
     updateGameState(state.room.id, { game_phase: 'reveal' });
   }
 
-  // If host and already on reveal, enable the appropriate button
+  // If host and already on reveal, enable the appropriate button and update text
   if (state.room.isHost && state.onRevealScreen) {
     if (state.resultsRevealed) {
       enableNextQuestion();
     } else {
       enableRevealButton();
+      updateRevealButtonText();
     }
   }
 }
@@ -1011,8 +1021,8 @@ async function showRevealScreen() {
   if (state.room.isHost) {
     const btn = $('#btn-next-question');
     btn.classList.remove('hidden');
-    btn.textContent = 'Reveal Results';
     btn.onclick = handleRevealResults;
+    updateRevealButtonText();
 
     // Enable as soon as host has submitted — host controls the pace
     const hostSubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
@@ -1132,9 +1142,25 @@ function enableRevealButton() {
   }
 }
 
+/**
+ * Update reveal button text based on whether all players have submitted.
+ * Shows "Reveal Early" if some players are still answering, "Reveal Results" otherwise.
+ */
+function updateRevealButtonText() {
+  if (!state.room.isHost || state.resultsRevealed) return;
+  const btn = $('#btn-next-question');
+  if (!btn) return;
+  const allSubmitted = state.currentAnswers.length >= state.players.length;
+  btn.textContent = (!state.timerExpired && !allSubmitted) ? 'Reveal Early' : 'Reveal Results';
+}
+
 async function doReveal() {
   // Snapshot scores before this round (for animation on scores screen)
   state.previousScores = { ...state.scores };
+
+  // Hide the reveal timer — the round is over once results are shown
+  const revealTimer = $('#reveal-timer');
+  if (revealTimer) revealTimer.style.display = 'none';
 
   // Show correct answer and difficulty
   $('.reveal__correct').style.display = '';
@@ -1188,6 +1214,10 @@ async function doReveal() {
 }
 
 async function handleRevealResults() {
+  // Set gamePhase BEFORE broadcasting so the Realtime echo is rejected
+  // by the `if (phase === state.gamePhase) return` guard in handlePhaseTransition.
+  // This prevents doReveal() from running twice on the host.
+  state.gamePhase = 'answer_reveal';
   await doReveal();
   await updateGameState(state.room.id, { game_phase: 'answer_reveal' });
 }
@@ -1856,9 +1886,12 @@ function handleAnswerChange(payload) {
       if (revealTimer) revealTimer.style.display = 'none';
     }
 
-    // Host: check if all submitted → enable reveal button
-    if (state.room.isHost && !state.resultsRevealed && state.currentAnswers.length >= state.players.length) {
-      enableRevealButton();
+    // Host: check if all submitted → enable reveal button and update text
+    if (state.room.isHost && !state.resultsRevealed) {
+      if (state.currentAnswers.length >= state.players.length) {
+        enableRevealButton();
+      }
+      updateRevealButtonText();
     }
     return;
   }
