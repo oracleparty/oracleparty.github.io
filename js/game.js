@@ -142,6 +142,8 @@ async function init() {
   history.replaceState({ inGame: true }, '');
   history.pushState({ inGame: true }, '');
   window.addEventListener('popstate', handleBackButton);
+  // Safari bfcache: if this page is restored from cache after navigating away, go home
+  window.addEventListener('pageshow', (e) => { if (e.persisted) window.location.href = 'index.html'; });
 
   await ensureDisplayName();
 
@@ -2177,12 +2179,12 @@ function handleVisibilityChange() {
   }
 }
 
-async function handleBackButton() {
+function handleBackButton() {
   _isLeaving = true;
   cleanup();
-  // Remove self from the game so other players don't see a ghost player
+  // Fire-and-forget beacon removal — no await so Safari navigates immediately
   if (state.room && state.room.playerId) {
-    await removePlayer(state.room.playerId);
+    removePlayerBeacon(state.room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';

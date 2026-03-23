@@ -181,6 +181,8 @@ function attachListeners() {
   history.replaceState({ inLobby: true }, '');
   history.pushState({ inLobby: true }, '');
   window.addEventListener('popstate', handleBackButton);
+  // Safari bfcache: if this page is restored from cache after navigating away, go home
+  window.addEventListener('pageshow', (e) => { if (e.persisted) window.location.href = 'index.html'; });
 
   // Cleanup + remove player on page unload (tab close / disconnect)
   window.addEventListener('beforeunload', handleUnload);
@@ -586,8 +588,17 @@ async function handleLeave() {
 }
 
 // --- Browser back button ---
+// Must be synchronous — Safari's back gesture races async handlers
 function handleBackButton() {
-  handleLeave();
+  isLeaving = true;
+  cleanup();
+  if (players.length <= 1) {
+    deleteRoomBeacon(room.id);
+  } else {
+    removePlayerBeacon(room.playerId);
+  }
+  sessionStorage.removeItem('oracle_party_room');
+  window.location.href = 'index.html';
 }
 
 // --- Visibility change (away/presence) ---
