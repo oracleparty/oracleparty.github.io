@@ -2177,8 +2177,14 @@ function initFeedbackListeners() {
 // ============================================
 
 function handleVisibilityChange() {
-  if (state.presenceChannel && state.presenceReady) {
-    state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
+  if (!state.presenceChannel) return;
+  if (!document.hidden) {
+    // Coming back — always try, even if channel was degraded
+    state.presenceChannel.track({ player_id: state.room.playerId, is_away: false })
+      .catch(() => {});
+  } else if (state.presenceReady) {
+    // Going away — only if channel is healthy
+    state.presenceChannel.track({ player_id: state.room.playerId, is_away: true })
       .catch(() => { state.presenceReady = false; });
   }
 }

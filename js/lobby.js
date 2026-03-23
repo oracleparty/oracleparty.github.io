@@ -614,8 +614,14 @@ function handleBackButton() {
 
 // --- Visibility change (away/presence) ---
 function handleVisibilityChange() {
-  if (presenceChannel && presenceReady) {
-    presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
+  if (!presenceChannel) return;
+  if (!document.hidden) {
+    // Coming back — always try, even if channel was degraded
+    presenceChannel.track({ player_id: room.playerId, is_away: false })
+      .catch(() => {});
+  } else if (presenceReady) {
+    // Going away — only if channel is healthy
+    presenceChannel.track({ player_id: room.playerId, is_away: true })
       .catch(() => { presenceReady = false; });
   }
 }
