@@ -179,12 +179,7 @@ async function init() {
   attachListeners();
 
   // Honk system
-  initHonkSystem(room.id, room.playerId, (targetId, count) => {
-    // Update honk badges on visible player rows
-    playerListEl.querySelectorAll('.honk-badge').forEach(badge => {
-      const wrap = badge.closest('.player-item');
-      // Refresh all badges via re-render (simple approach)
-    });
+  initHonkSystem(room.id, room.playerId, () => {
     renderPlayers();
   });
 
@@ -283,7 +278,7 @@ function renderPlayers() {
     const initial = (p.display_name || '?')[0].toUpperCase();
     const isAway = awayTimestamps.has(String(p.id));
     const honks = getHonkCount(p.id);
-    const honkBadge = honks > 0 ? `<span class="honk-badge">${honks}</span>` : '';
+    const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
     const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Honk">&#x1F4E2;</button>`;
 
     return `

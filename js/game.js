@@ -89,6 +89,7 @@ const state = {
   countdownStartedAt: null,
   _lastProcessedQuestion: -1,
   stalePollId: null,
+  presenceHeartbeatId: null,
   shownQuestionIndices: []
 };
 
@@ -256,8 +257,10 @@ async function init() {
     updateHonkBadges();
   });
 
-  // Honk click handler (event delegation on reveal + scores containers)
-  for (const sel of ['#reveal-answers', '#scores-animated-list', '#results-list']) {
+  // Honk click handler (event delegation on scores + results containers)
+  // Note: #reveal-answers is NOT included here because renderRevealAnswers()
+  // clones the container (destroying this listener). It attaches its own.
+  for (const sel of ['#scores-animated-list', '#results-list']) {
     const el = document.querySelector(sel);
     if (el) el.addEventListener('click', (e) => {
       const btn = e.target.closest('.honk-btn');
@@ -1239,14 +1242,17 @@ function updateHonkBadges() {
 }
 
 function honkAvatarHtml(player, hue, initial) {
-  const isMe = String(player.id) === String(state.room.playerId);
   const honks = getHonkCount(player.id);
   const badge = `<span class="honk-badge" data-honk-player="${player.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-  const btn = isMe ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Honk">&#x1F4E2;</button>`;
   return `<div class="avatar-wrap">
     <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
     ${badge}
-  </div>${btn}`;
+  </div>`;
+}
+
+function honkBtnHtml(player) {
+  const isMe = String(player.id) === String(state.room.playerId);
+  return isMe ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Honk">&#x1F4E2;</button>`;
 }
 
 function renderRevealAnswers(answers) {
@@ -1299,6 +1305,7 @@ function renderRevealAnswers(answers) {
           <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
           <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
           ${toggleHtml}
+          ${honkBtnHtml(player)}
         </div>
         <div class="answer-row__bottom">
           <span class="answer-row__answer ${colorClass}${emptyClass}">
@@ -1313,6 +1320,7 @@ function renderRevealAnswers(answers) {
         <div class="answer-row__top">
           ${honkAvatarHtml(player, hue, initial)}
           <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
+          ${honkBtnHtml(player)}
         </div>
         <div class="answer-row__bottom">
           <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
