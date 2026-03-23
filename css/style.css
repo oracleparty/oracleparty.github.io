@@ -1372,6 +1372,8 @@ a {
   min-width: 0;
   text-align: left;
   font-size: var(--text-base);
+  padding-left: var(--space-md);
+  padding-right: var(--space-md);
 }
 
 .answer-input .btn {
@@ -1534,8 +1536,8 @@ a {
 .answer-row {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
-  padding: var(--space-md);
+  gap: var(--space-sm);
+  padding: var(--space-lg) var(--space-md);
   border-bottom: 1px solid var(--color-surface-light);
 }
 

@@ -1058,15 +1058,17 @@ function handleTimerExpired() {
 
 async function handleSubmitAnswer() {
   if (state.hasSubmitted) return;
-  const answer = $('#answer-input').value.trim();
-  if (!answer) {
+  const raw = $('#answer-input').value;
+  if (raw.length === 0) {
+    // Only block if completely empty (nothing typed at all)
     const input = $('#answer-input');
     input.classList.remove('input--flash');
     void input.offsetHeight;
     input.classList.add('input--flash');
     return;
   }
-  await doSubmitAnswer(answer);
+  // Trim for storage — spaces-only becomes '' which shows "No answer" on reveal
+  await doSubmitAnswer(raw.trim());
 }
 
 async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
@@ -2194,18 +2196,27 @@ async function loadChatMessages() {
 }
 
 function handleNewMessage(payload) {
-  if (payload.new) {
-    appendGameChatMessage(payload.new.player_name, payload.new.message);
-    scrollGameChatToBottom();
+  if (!payload.new) return;
+  const { player_name, message } = payload.new;
 
-    // Show unread badge + toast when chat is closed
-    if (!state.chatOpen) {
-      state.unreadCount = (state.unreadCount || 0) + 1;
-      const badge = $('#chat-badge');
-      badge.textContent = state.unreadCount;
-      badge.classList.remove('hidden');
-      showChatToast(payload.new.player_name, payload.new.message);
-    }
+  // Dedup: skip if this is the Realtime echo of our own optimistic append
+  const last = state.lastSentChat;
+  if (last && last.name === player_name && last.text === message && Date.now() - last.ts < 5000) {
+    state.lastSentChat = null;
+    // Still show badge/toast for own messages? No — sender already sees it.
+    return;
+  }
+
+  appendGameChatMessage(player_name, message);
+  scrollGameChatToBottom();
+
+  // Show unread badge + toast when chat is closed
+  if (!state.chatOpen) {
+    state.unreadCount = (state.unreadCount || 0) + 1;
+    const badge = $('#chat-badge');
+    badge.textContent = state.unreadCount;
+    badge.classList.remove('hidden');
+    showChatToast(player_name, message);
   }
 }
 
@@ -2247,7 +2258,16 @@ async function handleSendGameChat() {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
-  await sendMessage(state.room.id, getDisplayName(), text);
+  const name = getDisplayName();
+
+  // Optimistic append — show instantly for the sender
+  appendGameChatMessage(name, text);
+  scrollGameChatToBottom();
+
+  // Track for dedup when Realtime echo arrives
+  state.lastSentChat = { name, text, ts: Date.now() };
+
+  await sendMessage(state.room.id, name, text);
 }
 
 // ============================================
