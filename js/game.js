@@ -820,6 +820,7 @@ function showQuestionScreen() {
       }
     }
   }
+  state.wagerExplicitlySelected = false;
   showChatToggle();
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
@@ -917,6 +918,7 @@ function selectWager(value, btnEl) {
 
   btnEl.classList.add('wager-btn--selected');
   state.currentWager = value;
+  state.wagerExplicitlySelected = true;
   $('#wager-error').textContent = '';
 }
 
@@ -1067,6 +1069,13 @@ async function handleSubmitAnswer() {
     input.classList.add('input--flash');
     return;
   }
+  // Nudge: briefly highlight wager grid if player didn't explicitly pick one
+  if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
+    const grid = $('#wager-grid');
+    grid.classList.remove('wager-grid--highlight');
+    void grid.offsetHeight;
+    grid.classList.add('wager-grid--highlight');
+  }
   // Trim for storage — spaces-only becomes '' which shows "No answer" on reveal
   await doSubmitAnswer(raw.trim());
 }
@@ -1129,7 +1138,7 @@ async function showRevealScreen() {
 
   // Populate correct answer text (for later reveal), but hide the container
   $('#reveal-answer').textContent = getCorrectAnswer(q);
-  $('#reveal-difficulty').textContent = getDifficulty(q);
+  $('#reveal-difficulty').style.display = 'none';
   $('.reveal__correct').style.display = 'none';
 
   // Reset feedback UI
@@ -1354,7 +1363,9 @@ function doReveal() {
 
   // Background re-fetch to catch any answers missed by Realtime
   fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
-    if (answers.length > state.currentAnswers.length) {
+    const cachedIds = state.currentAnswers.map(a => String(a.id)).sort().join(',');
+    const fetchedIds = answers.map(a => String(a.id)).sort().join(',');
+    if (fetchedIds !== cachedIds) {
       state.currentAnswers = answers;
       renderRevealAnswers(state.currentAnswers);
     }
@@ -1375,15 +1386,15 @@ async function handleRevealResults() {
   state.timerExpired = true;
 
   // Submit blank answers for players who haven't answered yet.
-  // This avoids a 3-hop delay (broadcast → non-host auto-submit → Realtime INSERT back)
-  // and makes answers appear instantly on the reveal screen.
+  // Await all inserts so they're committed before non-hosts fetch answers.
   const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
   submittedIds.add(String(state.room.playerId));
   const q = state.questions[state.currentQuestion];
   if (q) {
+    const autoSubmits = [];
     for (const p of state.players) {
       if (!submittedIds.has(String(p.id))) {
-        submitAnswer({
+        autoSubmits.push(submitAnswer({
           roomId: state.room.id,
           playerId: p.id,
           questionNumber: state.currentQuestion,
@@ -1392,9 +1403,10 @@ async function handleRevealResults() {
           submittedAnswer: '',
           isCorrect: false,
           scoreEarned: 0
-        });
+        }));
       }
     }
+    if (autoSubmits.length) await Promise.all(autoSubmits);
   }
 
   // Broadcast phase change so non-hosts transition to reveal
@@ -2221,6 +2233,9 @@ function handleNewMessage(payload) {
 }
 
 function showChatToast(name, text) {
+  // Don't show toast previews during active question phases (timer running)
+  if (state.gamePhase === 'question' || state.gamePhase === 'final_question') return;
+
   const toast = $('#chat-toast');
   const truncated = text.length > 50 ? text.slice(0, 50) + '...' : text;
   toast.innerHTML = `

@@ -1268,12 +1268,21 @@ a {
 
 /* --- Wager Grid --- */
 .wager-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: var(--space-xs);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+  margin-bottom: var(--space-sm);
   text-align: center;
+}
+
+@keyframes wager-highlight {
+  0%   { box-shadow: 0 0 0 4px var(--color-primary-glow); }
+  100% { box-shadow: none; }
+}
+.wager-grid--highlight {
+  animation: wager-highlight 0.8s ease;
 }
 
 .wager-grid {
