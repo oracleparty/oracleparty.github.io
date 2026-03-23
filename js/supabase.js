@@ -133,7 +133,7 @@ export async function fetchPublicRooms() {
   const { data: rooms, error } = await supabase
     .from('rooms')
     .select('id, code, host_name, category, who_can_join, questions_per_game, question_timer, status, created_at')
-    .eq('status', 'lobby')
+    .in('status', ['lobby', 'playing'])
     .eq('who_can_join', 'anyone')
     .order('created_at', { ascending: false })
     .limit(20);

@@ -318,9 +318,26 @@ async function initPlayerGame() {
 
   if (!roomData || !roomData.question_ids) {
     $('#game-loading .game-loading__text').textContent = 'Waiting for host...';
+    // Keep polling — Realtime handleRoomChange may also catch it, but this is a safety net
+    state._hotJoinPollId = setInterval(async () => {
+      const { data } = await fetchRoom(state.room.id);
+      if (data && data.question_ids && data.question_ids.length > 0 && data.game_phase) {
+        clearInterval(state._hotJoinPollId);
+        state._hotJoinPollId = null;
+        await applyGameState(data);
+      }
+    }, 3000);
     return;
   }
 
+  await applyGameState(roomData);
+}
+
+/**
+ * Apply fetched room data to local state and transition to the correct phase.
+ * Used by both initPlayerGame (initial load) and hot-join fallback poll.
+ */
+async function applyGameState(roomData) {
   // question_ids has N+1 entries (N regular + 1 final wager)
   state.totalQuestions = Math.max(1, roomData.question_ids.length - 1);
   state.questions = await fetchQuestionsByIds(roomData.question_ids);
@@ -356,6 +373,9 @@ async function initPlayerGame() {
   if (roomData.countdown_started_at) {
     state.countdownStartedAt = roomData.countdown_started_at;
   }
+
+  // Hydrate scores from DB so existing players' scores are correct
+  await updateScores();
 
   handlePhaseTransition(roomData.game_phase);
 }
@@ -453,10 +473,16 @@ function handleRoomChange(payload) {
   }
 
   if (!state.room.isHost && state.questions.length === 0 && question_ids && question_ids.length > 0) {
+    // Clear hot-join fallback poll if running — Realtime delivered the data first
+    if (state._hotJoinPollId) {
+      clearInterval(state._hotJoinPollId);
+      state._hotJoinPollId = null;
+    }
     state.totalQuestions = Math.max(1, question_ids.length - 1);
-    fetchQuestionsByIds(question_ids).then(qs => {
+    fetchQuestionsByIds(question_ids).then(async qs => {
       state.questions = qs;
       if (qs.length > 0) resolveFieldMap(qs[0]);
+      await updateScores();
       if (game_phase) handlePhaseTransition(game_phase);
     });
     return;
@@ -2240,9 +2266,9 @@ function handleBackButton() {
   cleanup();
   if (state.room && state.room.playerId) {
     if (state.players.length <= 1) {
-      deleteRoom(state.room.id);
+      deleteRoomBeacon(state.room.id);
     } else {
-      removePlayer(state.room.playerId);
+      removePlayerBeacon(state.room.playerId);
     }
   }
   sessionStorage.removeItem('oracle_party_room');
@@ -2306,6 +2332,10 @@ function cleanup() {
   if (state.stalePollId) {
     clearInterval(state.stalePollId);
     state.stalePollId = null;
+  }
+  if (state._hotJoinPollId) {
+    clearInterval(state._hotJoinPollId);
+    state._hotJoinPollId = null;
   }
   for (const ch of state.channels) unsubscribe(ch);
   state.channels = [];

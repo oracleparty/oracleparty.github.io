@@ -817,6 +817,21 @@ body::after {
   color: var(--color-text-muted);
 }
 
+.public-game-row__status {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.public-game-row__status--lobby {
+  color: var(--color-success);
+}
+
+.public-game-row__status--playing {
+  color: var(--color-primary);
+}
+
 .empty-state {
   text-align: center;
   color: var(--color-text-muted);

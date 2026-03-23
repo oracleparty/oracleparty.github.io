@@ -17,6 +17,7 @@ import {
   toggleReady,
   updateRoomStatus,
   updateGameState,
+  fetchRoom,
   subscribeToPlayers,
   subscribeToMessages,
   subscribeToRoom,
@@ -102,6 +103,13 @@ async function init() {
 
   // Ensure current player exists (may have been removed by a stale beacon on refresh)
   await ensureCurrentPlayer();
+
+  // If game is already in progress (hot-join landed on lobby, or browser forward), redirect
+  const { data: currentRoom } = await fetchRoom(room.id);
+  if (currentRoom && currentRoom.status === 'playing') {
+    window.location.href = 'game.html';
+    return;
+  }
 
   // Subscribe to Realtime (with status monitoring)
   const playerChannel = subscribeToPlayers(room.id, handlePlayerChange);
@@ -651,9 +659,9 @@ function handleBackButton() {
   isLeaving = true;
   cleanup();
   if (players.length <= 1) {
-    deleteRoom(room.id);
+    deleteRoomBeacon(room.id);
   } else {
-    removePlayer(room.playerId);
+    removePlayerBeacon(room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';

@@ -176,6 +176,7 @@ async function loadPublicGames() {
       <div class="public-game-row__meta">
         <div class="public-game-row__code">${room.code}</div>
         <div class="public-game-row__players">${room.player_count} player${room.player_count !== 1 ? 's' : ''}</div>
+        ${room.status === 'playing' ? '<div class="public-game-row__status public-game-row__status--playing">In Progress</div>' : '<div class="public-game-row__status public-game-row__status--lobby">In Lobby</div>'}
       </div>
     `;
     fragment.appendChild(row);
