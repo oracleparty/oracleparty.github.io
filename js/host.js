@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens } from './utils.js';
-import { fetchCategories, createRoom, addPlayer } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
 // --- Category display config ---
@@ -25,6 +25,7 @@ const CATEGORY_META = {
 
 // --- State ---
 let categories = [];
+let categoryPlayCounts = {};
 let selectedCategory = null;
 let settings = {
   whoCanJoin: 'anyone',
@@ -44,8 +45,13 @@ const hostError = $('#host-error');
 async function init() {
   try {
     await ensureDisplayName();
-    categories = await fetchCategories();
-    renderCategories(categories);
+    const [cats, playCounts] = await Promise.all([
+      fetchCategories(),
+      fetchCategoryPlayCounts()
+    ]);
+    categories = cats;
+    categoryPlayCounts = playCounts;
+    renderCategories(categories, categoryPlayCounts);
   } catch (err) {
     console.error('[Host] Init error:', err);
   }
@@ -58,14 +64,16 @@ async function init() {
 }
 
 // --- Render category cards ---
-function renderCategories(cats) {
+function renderCategories(cats, playCounts = {}) {
   categoryGrid.innerHTML = cats.map(cat => {
     const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
+    const plays = playCounts[cat.name] || 0;
     return `
       <button class="category-card" data-category="${cat.name}">
         <div class="category-card__icon">${meta.icon}</div>
         <div class="category-card__name">${meta.label}</div>
         <div class="category-card__count">${cat.count} questions</div>
+        <div class="category-card__plays">${plays.toLocaleString()} plays</div>
       </button>
     `;
   }).join('');
@@ -87,14 +95,14 @@ function attachListeners() {
   searchInput.addEventListener('input', () => {
     const query = searchInput.value.trim().toLowerCase();
     if (!query) {
-      renderCategories(categories);
+      renderCategories(categories, categoryPlayCounts);
       return;
     }
     const filtered = categories.filter(cat => {
       const meta = CATEGORY_META[cat.name] || { label: cat.name };
       return meta.label.toLowerCase().includes(query) || cat.name.toLowerCase().includes(query);
     });
-    renderCategories(filtered);
+    renderCategories(filtered, categoryPlayCounts);
   });
 
   // Category card selection (event delegation)

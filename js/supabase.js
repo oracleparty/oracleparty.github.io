@@ -665,3 +665,78 @@ export async function fetchQuestionFeedback(roomId, playerName) {
   }
   return data;
 }
+
+// ============================================
+// GAME PLAYS (play/completion tracking)
+// ============================================
+
+export async function insertGamePlay({ roomId, playerId, playerName, category, totalQuestions }) {
+  const { error } = await supabase
+    .from('game_plays')
+    .upsert({
+      room_id: roomId,
+      player_id: playerId,
+      player_name: playerName,
+      category,
+      total_questions: totalQuestions,
+      questions_answered: 0,
+      started_at: new Date().toISOString(),
+      completed: false
+    }, { onConflict: 'room_id,player_id' });
+
+  if (error) console.error('[Supabase] insertGamePlay failed:', error.message);
+}
+
+export async function incrementQuestionsAnswered(roomId, playerId) {
+  // Fetch current count, then increment
+  const { data, error: fetchErr } = await supabase
+    .from('game_plays')
+    .select('questions_answered')
+    .eq('room_id', roomId)
+    .eq('player_id', playerId)
+    .single();
+
+  if (fetchErr || !data) {
+    console.error('[Supabase] incrementQuestionsAnswered fetch failed:', fetchErr?.message);
+    return;
+  }
+
+  const { error } = await supabase
+    .from('game_plays')
+    .update({ questions_answered: (data.questions_answered || 0) + 1 })
+    .eq('room_id', roomId)
+    .eq('player_id', playerId);
+
+  if (error) console.error('[Supabase] incrementQuestionsAnswered update failed:', error.message);
+}
+
+export async function completeGamePlay({ roomId, playerId, finalScore }) {
+  const { error } = await supabase
+    .from('game_plays')
+    .update({
+      completed: true,
+      completed_at: new Date().toISOString(),
+      final_score: finalScore
+    })
+    .eq('room_id', roomId)
+    .eq('player_id', playerId);
+
+  if (error) console.error('[Supabase] completeGamePlay failed:', error.message);
+}
+
+export async function fetchCategoryPlayCounts() {
+  const { data, error } = await supabase
+    .from('game_plays')
+    .select('category');
+
+  if (error) {
+    console.error('[Supabase] fetchCategoryPlayCounts failed:', error.message);
+    return {};
+  }
+
+  const counts = {};
+  for (const row of data) {
+    counts[row.category] = (counts[row.category] || 0) + 1;
+  }
+  return counts;
+}

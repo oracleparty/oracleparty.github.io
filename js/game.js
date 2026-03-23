@@ -31,7 +31,10 @@ import {
   promoteToHost,
   subscribeToPlayers,
   upsertQuestionFeedback,
-  fetchQuestionFeedback
+  fetchQuestionFeedback,
+  insertGamePlay,
+  incrementQuestionsAnswered,
+  completeGamePlay
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -568,6 +571,14 @@ function handlePhaseTransition(phase) {
     // Reset scores guard on first question (new game / play again)
     if (state.currentQuestion === 0) {
       _lastScoresRenderedForQuestion = -1;
+      // Track game play start
+      insertGamePlay({
+        roomId: state.room.id,
+        playerId: state.room.playerId,
+        playerName: getDisplayName(),
+        category: state.room.category,
+        totalQuestions: state.totalQuestions
+      });
     }
     // Clear stale questionStartedAt on normal transitions (not init reconnect)
     // Reconnects from init set questionStartedAt BEFORE calling handlePhaseTransition
@@ -1085,6 +1096,9 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     isCorrect,
     scoreEarned
   });
+
+  // Track question answered (fire-and-forget)
+  incrementQuestionsAnswered(state.room.id, state.room.playerId);
 
   // Immediately transition to reveal screen
   showRevealScreen();
@@ -1793,6 +1807,13 @@ async function showResultsScreen() {
   state.onRevealScreen = false;
 
   await updateScores();
+
+  // Mark game play as completed (fire-and-forget)
+  completeGamePlay({
+    roomId: state.room.id,
+    playerId: state.room.playerId,
+    finalScore: state.scores[state.room.playerId] || 0
+  });
 
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#results-category').textContent = `${meta.icon} ${meta.label}`;
