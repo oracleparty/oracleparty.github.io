@@ -192,7 +192,7 @@ function attachListeners() {
   history.pushState({ inLobby: true }, '');
   window.addEventListener('popstate', handleBackButton);
   // Safari bfcache: if this page is restored from cache after navigating away, go home
-  window.addEventListener('pageshow', (e) => { if (e.persisted) window.location.href = 'index.html'; });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) { cleanup(); window.location.href = 'index.html'; } });
 
   // Cleanup + remove player on page unload (tab close / disconnect)
   window.addEventListener('beforeunload', handleUnload);
@@ -582,27 +582,36 @@ function handleRoomChange(payload) {
   }
 }
 
-// --- Leave ---
+// ============================================
+// EXIT PATHS (player leaves the game permanently)
+// ============================================
+// Three ways a player leaves:
+//   1. Leave button  → handleLeave()      → awaits DB delete, then navigates
+//   2. Browser back  → handleBackButton()  → fire-and-forget DB delete, navigates immediately
+//   3. Tab close     → handleUnload()      → beacon delete (survives page teardown)
+//
+// Two non-leaving transitions (player stays in the room):
+//   4. Game starts   → handleRoomChange()  → navigates to game.html
+//   5. Room deleted  → handleRoomChange()  → navigates to index.html
+//
+// isLeaving prevents handleUnload from double-removing after an
+// explicit leave or non-leaving transition.
+
 async function handleLeave() {
   isLeaving = true;
   cleanup();
   if (players.length <= 1) {
-    // Last player leaving: delete the room entirely
     await deleteRoom(room.id);
   } else {
-    // Remove self — if host, remaining players will auto-promote
     await removePlayer(room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
 }
 
-// --- Browser back button ---
-// Must be synchronous — Safari's back gesture races async handlers
 function handleBackButton() {
+  isLeaving = true;
   cleanup();
-  // Use Supabase client (fire-and-forget, no await) — beacons silently fail.
-  // Don't set isLeaving so handleUnload also fires beacon as backup.
   if (players.length <= 1) {
     deleteRoom(room.id);
   } else {
@@ -612,7 +621,32 @@ function handleBackButton() {
   window.location.href = 'index.html';
 }
 
-// --- Visibility change (away/presence) ---
+function handleUnload() {
+  if (isLeaving) return;
+  cleanup();
+  if (!room || !room.playerId) return;
+  if (players.length <= 1) {
+    deleteRoomBeacon(room.id);
+  } else {
+    removePlayerBeacon(room.playerId);
+  }
+}
+
+// ============================================
+// AFK DETECTION (player temporarily inactive)
+// ============================================
+// Uses Supabase Realtime Presence (ephemeral, not DB).
+// Each connected client tracks { player_id, is_away }.
+//
+// The sync handler compares presence against the DB players list:
+//   - Connected + active tab  → normal icon
+//   - Connected + hidden tab  → faded icon
+//   - Disconnected (not in presence) → faded icon
+//
+// presenceReady guards .track() calls. On channel error it
+// resets to false; on auto-reconnect subscribe fires again
+// and re-tracks current visibility state (self-healing).
+
 function handleVisibilityChange() {
   if (!presenceChannel) return;
   if (!document.hidden) {
@@ -626,25 +660,16 @@ function handleVisibilityChange() {
   }
 }
 
-// --- Unload ---
-function handleUnload() {
-  if (isLeaving) return;
-  cleanup();
-  // Always remove self as player — remaining players handle host promotion
-  if (room && room.playerId) {
-    removePlayerBeacon(room.playerId);
-  }
-}
+// ============================================
+// CLEANUP (shared teardown for all exit paths)
+// ============================================
 
-// --- Cleanup ---
 function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   clearInterval(playerPollInterval);
   playerPollInterval = null;
-  for (const ch of channels) {
-    unsubscribe(ch);
-  }
+  for (const ch of channels) unsubscribe(ch);
   channels = [];
   presenceReady = false;
   presenceChannel = null;

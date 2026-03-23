@@ -79,7 +79,9 @@ const state = {
   feedbackFadeTimer: null,
   isFinalWagerRound: false,
   finalWager: 10,
-  finalWagerLocked: false
+  finalWagerLocked: false,
+  countdownStartedAt: null,
+  _lastProcessedQuestion: -1
 };
 
 // Guard: prevent duplicate scores screen rendering
@@ -144,7 +146,7 @@ async function init() {
   history.pushState({ inGame: true }, '');
   window.addEventListener('popstate', handleBackButton);
   // Safari bfcache: if this page is restored from cache after navigating away, go home
-  window.addEventListener('pageshow', (e) => { if (e.persisted) window.location.href = 'index.html'; });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) { cleanup(); window.location.href = 'index.html'; } });
 
   await ensureDisplayName();
 
@@ -407,6 +409,7 @@ async function handlePlayerChange(payload) {
 function handleRoomChange(payload) {
   // Room deleted (last player left) — kick to home
   if (payload.eventType === 'DELETE') {
+    _isLeaving = true; // Room already gone — prevent handleUnload beacon
     cleanup();
     sessionStorage.removeItem('oracle_party_room');
     window.location.href = 'index.html';
@@ -418,6 +421,7 @@ function handleRoomChange(payload) {
 
   // Host returned everyone to lobby
   if (status === 'lobby') {
+    _isLeaving = true; // Transitioning to lobby — prevent handleUnload beacon
     cleanup();
     window.location.href = 'lobby.html';
     return;
@@ -755,7 +759,7 @@ function showQuestionScreen() {
   const questionScreen = $('#question-screen');
   if (currentScreen && currentScreen !== questionScreen && !_screenTransitioning) {
     _screenTransitioning = true;
-    transitionScreens(currentScreen, questionScreen).then(() => {
+    transitionScreens(currentScreen, questionScreen).finally(() => {
       _screenTransitioning = false;
     });
   } else if (!currentScreen || currentScreen === questionScreen) {
@@ -917,6 +921,9 @@ function startTimer() {
 }
 
 function handleTimerExpired() {
+  // Guard: timer callback can fire after cleanup if already queued
+  if (!state.room || state.gamePhase === 'loading') return;
+
   state.timerExpired = true;
 
   // Hide the reveal screen timer (round is over)
@@ -992,6 +999,7 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   $('#btn-submit-answer').disabled = true;
 
   const q = state.questions[state.currentQuestion];
+  if (!q) return;
   const correctAnswer = getCorrectAnswer(q);
   const alternates = getAlternates(q);
   const isCorrect = answer ? fuzzyMatch(answer, correctAnswer, alternates) : false;
@@ -1768,6 +1776,7 @@ async function showResultsScreen() {
 }
 
 async function handlePlayAgain() {
+  _isLeaving = true; // Player stays in room — prevent handleUnload from removing
   cleanup();
   await updateRoomStatus(state.room.id, 'lobby');
 
@@ -1876,10 +1885,7 @@ function handleReviewQuestions() {
   };
 }
 
-// Keep old reference for back button handler
-async function handleBackToLobby() {
-  await handlePlayAgain();
-}
+
 
 // ============================================
 // SCORES
@@ -2173,8 +2179,64 @@ function initFeedbackListeners() {
 }
 
 // ============================================
-// CLEANUP
+// EXIT PATHS (player leaves the game permanently)
 // ============================================
+// Four ways a player leaves:
+//   1. Quit button   → handleQuitGame()    → awaits DB delete, then navigates home
+//   2. Browser back  → handleBackButton()  → fire-and-forget DB delete, navigates home
+//   3. Tab close     → handleUnload()      → beacon delete (survives page teardown)
+//   4. Room deleted  → handleRoomChange()  → navigates home (room already gone)
+//
+// Two non-leaving transitions (player stays in the room):
+//   5. Play Again    → handlePlayAgain()   → navigates to lobby
+//   6. Back to lobby → handleRoomChange()  → navigates to lobby
+//
+// _isLeaving prevents handleUnload from double-removing after an
+// explicit leave or non-leaving transition.
+
+function handleBackButton() {
+  _isLeaving = true;
+  cleanup();
+  if (state.room && state.room.playerId) {
+    if (state.players.length <= 1) {
+      deleteRoom(state.room.id);
+    } else {
+      removePlayer(state.room.playerId);
+    }
+  }
+  sessionStorage.removeItem('oracle_party_room');
+  window.location.href = 'index.html';
+}
+
+function handleUnload() {
+  if (_isLeaving) return;
+  cleanup();
+  if (!state.room || !state.room.playerId) return;
+  if (state.players.length <= 1) {
+    deleteRoomBeacon(state.room.id);
+  } else {
+    removePlayerBeacon(state.room.playerId);
+  }
+}
+
+// Safari doesn't reliably fire beforeunload — pagehide is the fallback
+window.addEventListener('beforeunload', handleUnload);
+window.addEventListener('pagehide', handleUnload);
+
+// ============================================
+// AFK DETECTION (player temporarily inactive)
+// ============================================
+// Uses Supabase Realtime Presence (ephemeral, not DB).
+// Each connected client tracks { player_id, is_away }.
+//
+// The sync handler compares presence against the DB players list:
+//   - Connected + active tab  → normal icon
+//   - Connected + hidden tab  → faded icon
+//   - Disconnected (not in presence) → faded icon
+//
+// presenceReady guards .track() calls. On channel error it
+// resets to false; on auto-reconnect subscribe fires again
+// and re-tracks current visibility state (self-healing).
 
 function handleVisibilityChange() {
   if (!state.presenceChannel) return;
@@ -2189,16 +2251,9 @@ function handleVisibilityChange() {
   }
 }
 
-function handleBackButton() {
-  cleanup();
-  // Use Supabase client (fire-and-forget, no await) — beacons silently fail.
-  // Don't set _isLeaving so handleUnload also fires beacon as backup.
-  if (state.room && state.room.playerId) {
-    removePlayer(state.room.playerId);
-  }
-  sessionStorage.removeItem('oracle_party_room');
-  window.location.href = 'index.html';
-}
+// ============================================
+// CLEANUP (shared teardown for all exit paths)
+// ============================================
 
 function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
@@ -2207,26 +2262,11 @@ function cleanup() {
     clearInterval(state.timerId);
     state.timerId = null;
   }
-  for (const ch of state.channels) {
-    unsubscribe(ch);
-  }
+  for (const ch of state.channels) unsubscribe(ch);
   state.channels = [];
   state.presenceReady = false;
   state.presenceChannel = null;
 }
-
-function handleUnload() {
-  if (_isLeaving) return; // Already handled by handleBackButton/handleQuitGame
-  cleanup();
-  // Always remove self — remaining players handle host promotion
-  if (state.room && state.room.playerId) {
-    removePlayerBeacon(state.room.playerId);
-  }
-}
-// Safari (especially mobile) doesn't reliably fire beforeunload —
-// pagehide is the reliable fallback for page navigation / tab close
-window.addEventListener('beforeunload', handleUnload);
-window.addEventListener('pagehide', handleUnload);
 
 // ============================================
 // START
