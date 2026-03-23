@@ -2180,11 +2180,11 @@ function handleVisibilityChange() {
 }
 
 function handleBackButton() {
-  _isLeaving = true;
   cleanup();
-  // Fire-and-forget beacon removal — no await so Safari navigates immediately
+  // Use Supabase client (fire-and-forget, no await) — beacons silently fail.
+  // Don't set _isLeaving so handleUnload also fires beacon as backup.
   if (state.room && state.room.playerId) {
-    removePlayerBeacon(state.room.playerId);
+    removePlayer(state.room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';

@@ -590,12 +590,13 @@ async function handleLeave() {
 // --- Browser back button ---
 // Must be synchronous — Safari's back gesture races async handlers
 function handleBackButton() {
-  isLeaving = true;
   cleanup();
+  // Use Supabase client (fire-and-forget, no await) — beacons silently fail.
+  // Don't set isLeaving so handleUnload also fires beacon as backup.
   if (players.length <= 1) {
-    deleteRoomBeacon(room.id);
+    deleteRoom(room.id);
   } else {
-    removePlayerBeacon(room.playerId);
+    removePlayer(room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
