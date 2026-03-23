@@ -63,6 +63,8 @@ function vibrateDevice() {
  * @param {Function} onCountUpdate - callback(playerId, newCount) for UI updates
  */
 export function initHonkSystem(roomId, playerId, onCountUpdate) {
+  // Reset counts for new game/session
+  for (const key in honkCounts) delete honkCounts[key];
   localPlayerId = String(playerId);
 
   honkChannel = createHonkChannel(roomId);

@@ -2050,11 +2050,9 @@ async function handleReviewQuestions() {
     }
   }
 
-  // Load feedback if not already populated (e.g. player never opened bottom sheet)
-  if (Object.keys(_qbFeedback).length === 0) {
-    const ratings = await fetchQuestionFeedback(state.room.id, getDisplayName());
-    for (const r of ratings) _qbFeedback[r.question_id] = r.feedback_type;
-  }
+  // Always fetch latest feedback from DB (merges with any in-memory state)
+  const ratings = await fetchQuestionFeedback(state.room.id, getDisplayName());
+  for (const r of ratings) _qbFeedback[r.question_id] = r.feedback_type;
 
   // Build question list (all regular + final wager question)
   const totalQ = Math.min(state.questions.length, state.totalQuestions + 1);
@@ -2449,12 +2447,14 @@ function initFeedbackListeners() {
       const wasActive = btn.classList.contains('feedback-btn--active');
       if (otherBtn) otherBtn.classList.remove('feedback-btn--active');
 
+      const q = state.questions[state.currentQuestion];
       if (wasActive) {
         btn.classList.remove('feedback-btn--active');
+        if (q) _qbFeedback[q.id] = null;
       } else {
         btn.classList.add('feedback-btn--active');
-        const q = state.questions[state.currentQuestion];
         if (q) {
+          _qbFeedback[q.id] = type;
           upsertQuestionFeedback({
             questionId: q.id,
             roomId: state.room.id,
@@ -2490,6 +2490,7 @@ function initFeedbackListeners() {
 
       const q = state.questions[state.currentQuestion];
       if (q) {
+        _qbFeedback[q.id] = 'flag';
         upsertQuestionFeedback({
           questionId: q.id,
           roomId: state.room.id,
