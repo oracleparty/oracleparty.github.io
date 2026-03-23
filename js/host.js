@@ -45,12 +45,14 @@ const hostError = $('#host-error');
 async function init() {
   try {
     await ensureDisplayName();
-    const [cats, playCounts] = await Promise.all([
-      fetchCategories(),
-      fetchCategoryPlayCounts()
-    ]);
-    categories = cats;
-    categoryPlayCounts = playCounts;
+    categories = await fetchCategories();
+    // Play counts are non-critical — don't let failure break category loading
+    try {
+      categoryPlayCounts = await fetchCategoryPlayCounts();
+    } catch (e) {
+      console.warn('[Host] Could not load play counts:', e);
+      categoryPlayCounts = {};
+    }
     renderCategories(categories, categoryPlayCounts);
   } catch (err) {
     console.error('[Host] Init error:', err);

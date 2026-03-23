@@ -735,7 +735,7 @@ export async function fetchCategoryPlayCounts() {
   }
 
   const counts = {};
-  for (const row of data) {
+  for (const row of (data || [])) {
     counts[row.category] = (counts[row.category] || 0) + 1;
   }
   return counts;
