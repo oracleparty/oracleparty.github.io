@@ -198,6 +198,8 @@ async function init() {
       if (status === 'SUBSCRIBED') {
         state.presenceReady = true;
         await state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        state.presenceReady = false;
       }
     });
   state.channels.push(state.presenceChannel);
@@ -2170,7 +2172,8 @@ function initFeedbackListeners() {
 
 function handleVisibilityChange() {
   if (state.presenceChannel && state.presenceReady) {
-    state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
+    state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
+      .catch(() => { state.presenceReady = false; });
   }
 }
 
@@ -2196,6 +2199,8 @@ function cleanup() {
     unsubscribe(ch);
   }
   state.channels = [];
+  state.presenceReady = false;
+  state.presenceChannel = null;
 }
 
 function handleUnload() {

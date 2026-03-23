@@ -129,6 +129,8 @@ async function init() {
       if (status === 'SUBSCRIBED') {
         presenceReady = true;
         await presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        presenceReady = false;
       }
     });
   channels.push(presenceChannel);
@@ -607,7 +609,8 @@ function handleBackButton() {
 // --- Visibility change (away/presence) ---
 function handleVisibilityChange() {
   if (presenceChannel && presenceReady) {
-    presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
+    presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
+      .catch(() => { presenceReady = false; });
   }
 }
 
@@ -631,6 +634,8 @@ function cleanup() {
     unsubscribe(ch);
   }
   channels = [];
+  presenceReady = false;
+  presenceChannel = null;
 }
 
 // --- Start ---
