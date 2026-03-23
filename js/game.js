@@ -1225,21 +1225,29 @@ function renderRevealAnswers(answers) {
       const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
 
       row.innerHTML = `
-        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
-        <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
-        <span class="answer-row__answer ${colorClass}${emptyClass}">
-          ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
-        </span>
-        <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
-        ${toggleHtml}
+        <div class="answer-row__top">
+          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
+          <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
+          ${toggleHtml}
+        </div>
+        <div class="answer-row__bottom">
+          <span class="answer-row__answer ${colorClass}${emptyClass}">
+            ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
+          </span>
+        </div>
       `;
     } else {
       // Player hasn't submitted yet — show waiting state
       const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
       row.innerHTML = `
-        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
-        <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
-        <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
+        <div class="answer-row__top">
+          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
+        </div>
+        <div class="answer-row__bottom">
+          <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
+        </div>
       `;
     }
 
@@ -1327,7 +1335,8 @@ function doReveal() {
         toggleDiv.className = `answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host`;
         toggleDiv.dataset.answerId = answer.id;
         toggleDiv.innerHTML = '<div class="answer-toggle__thumb"></div>';
-        row.appendChild(toggleDiv);
+        const topRow = row.querySelector('.answer-row__top') || row;
+        topRow.appendChild(toggleDiv);
       }
     });
   });
@@ -2148,13 +2157,49 @@ function showChatToggle() {
 }
 
 function attachChatListeners() {
-  $('#btn-chat-toggle').addEventListener('click', toggleChat);
+  initChatDrag($('#btn-chat-toggle'));
   $('#btn-close-chat').addEventListener('click', toggleChat);
   $('#chat-backdrop').addEventListener('click', toggleChat);
 
   $('#btn-game-chat-send').addEventListener('click', handleSendGameChat);
   $('#game-chat-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendGameChat();
+  });
+}
+
+function initChatDrag(el) {
+  let startX, startY, origX, origY, dragging;
+
+  el.addEventListener('pointerdown', (e) => {
+    dragging = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = el.getBoundingClientRect();
+    origX = rect.left;
+    origY = rect.top;
+    el.setPointerCapture(e.pointerId);
+  });
+
+  el.addEventListener('pointermove', (e) => {
+    if (startX == null) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!dragging && Math.abs(dx) + Math.abs(dy) < 8) return;
+    dragging = true;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const size = 48;
+    const x = Math.max(0, Math.min(vw - size, origX + dx));
+    const y = Math.max(0, Math.min(vh - size, origY + dy));
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+  });
+
+  el.addEventListener('pointerup', () => {
+    if (!dragging) toggleChat();
+    startX = null;
   });
 }
 
