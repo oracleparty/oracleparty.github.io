@@ -74,6 +74,7 @@ const state = {
   serverTimeOffset: 0,  // serverTime - clientTime in ms
   questionStartedAt: null, // ISO timestamp from DB — single source of truth for timer
   presenceChannel: null,
+  presenceReady: false,
   awayPlayers: new Set(),
   feedbackFadeTimer: null,
   isFinalWagerRound: false,
@@ -195,7 +196,8 @@ async function init() {
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        await state.presenceChannel.track({ player_id: state.room.playerId, is_away: false });
+        state.presenceReady = true;
+        await state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
       }
     });
   state.channels.push(state.presenceChannel);
@@ -2167,7 +2169,7 @@ function initFeedbackListeners() {
 // ============================================
 
 function handleVisibilityChange() {
-  if (state.presenceChannel) {
+  if (state.presenceChannel && state.presenceReady) {
     state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
   }
 }

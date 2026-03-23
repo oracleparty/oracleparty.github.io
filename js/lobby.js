@@ -48,6 +48,7 @@ let isReady = false;
 let isLeaving = false;
 let channels = [];
 let presenceChannel = null;
+let presenceReady = false;
 let awayPlayers = new Set();
 let playerPollInterval = null;
 
@@ -126,7 +127,8 @@ async function init() {
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        await presenceChannel.track({ player_id: room.playerId, is_away: false });
+        presenceReady = true;
+        await presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
       }
     });
   channels.push(presenceChannel);
@@ -604,7 +606,7 @@ function handleBackButton() {
 
 // --- Visibility change (away/presence) ---
 function handleVisibilityChange() {
-  if (presenceChannel) {
+  if (presenceChannel && presenceReady) {
     presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
   }
 }
