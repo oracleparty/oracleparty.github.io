@@ -226,7 +226,7 @@
       <div class="game-footer results-footer">
         <button id="btn-play-again" class="btn btn-primary btn-block">Back to Lobby</button>
         <div class="results-footer__row">
-          <button id="btn-review-questions" class="btn btn-secondary">Review</button>
+          <button id="btn-review-questions" class="btn btn-secondary">Review Questions</button>
           <button id="btn-quit-game" class="btn btn-secondary btn-danger-text">Quit</button>
         </div>
       </div>
@@ -236,14 +236,12 @@
   <!-- ==============================
        Review Questions Overlay
        ============================== -->
-  <div id="review-overlay" class="modal-overlay">
-    <div class="modal review-modal">
-      <div class="modal__header">
-        <h2 class="modal__title">Review Questions</h2>
-        <button id="btn-close-review" class="modal__close">&times;</button>
-      </div>
-      <div id="review-list" class="review-list"></div>
+  <div id="review-overlay" class="review-overlay">
+    <div class="review-overlay__header">
+      <h2 class="review-overlay__title">Review Questions</h2>
+      <button id="btn-close-review" class="review-overlay__done">Done</button>
     </div>
+    <div id="review-list" class="review-list"></div>
   </div>
 
   <!-- ==============================

@@ -1889,9 +1889,27 @@ async function handleQuitGame() {
   window.location.href = 'index.html';
 }
 
-function handleReviewQuestions() {
+async function handleReviewQuestions() {
   const overlay = $('#review-overlay');
   const list = $('#review-list');
+
+  // Fetch player answers for the game
+  const allAnswers = await fetchAllAnswers(state.room.id);
+  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+
+  // Build lookup: question_number → answer record
+  const answerByQ = {};
+  for (const a of myAnswers) {
+    if (a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__') {
+      answerByQ[a.question_number] = a;
+    }
+  }
+
+  // Load feedback if not already populated (e.g. player never opened bottom sheet)
+  if (Object.keys(_qbFeedback).length === 0) {
+    const ratings = await fetchQuestionFeedback(state.room.id, getDisplayName());
+    for (const r of ratings) _qbFeedback[r.question_id] = r.feedback_type;
+  }
 
   // Build question list (all regular + final wager question)
   const totalQ = Math.min(state.questions.length, state.totalQuestions + 1);
@@ -1903,6 +1921,16 @@ function handleReviewQuestions() {
 
     const isFinal = i === state.totalQuestions;
     const label = isFinal ? 'Final Question' : `Question ${i + 1}`;
+    const myAnswer = answerByQ[i];
+    const existing = _qbFeedback[q.id] || null;
+
+    let playerAnswerHtml = '';
+    if (myAnswer) {
+      const correctClass = myAnswer.is_correct
+        ? 'review-item__player-answer--correct'
+        : 'review-item__player-answer--incorrect';
+      playerAnswerHtml = `<div class="review-item__player-answer ${correctClass}">${escapeHtml(myAnswer.submitted_answer)}</div>`;
+    }
 
     const item = document.createElement('div');
     item.className = 'review-item';
@@ -1910,16 +1938,17 @@ function handleReviewQuestions() {
       <div class="review-item__num">${label}</div>
       <div class="review-item__q">${escapeHtml(getQuestionText(q))}</div>
       <div class="review-item__a">${escapeHtml(getCorrectAnswer(q))}</div>
+      ${playerAnswerHtml}
       <div class="review-item__feedback">
-        <button class="feedback-btn" data-type="thumbs_up" data-qid="${q.id}" aria-label="Thumbs up">👍</button>
-        <button class="feedback-btn" data-type="thumbs_down" data-qid="${q.id}" aria-label="Thumbs down">👎</button>
-        <button class="feedback-btn" data-type="flag" data-qid="${q.id}" aria-label="Flag">🚩</button>
+        <button class="feedback-btn${existing === 'thumbs_up' ? ' feedback-btn--active' : ''}" data-type="thumbs_up" data-qid="${q.id}" aria-label="Thumbs up">👍</button>
+        <button class="feedback-btn${existing === 'thumbs_down' ? ' feedback-btn--active' : ''}" data-type="thumbs_down" data-qid="${q.id}" aria-label="Thumbs down">👎</button>
+        <button class="feedback-btn${existing === 'flag' ? ' feedback-btn--active' : ''}" data-type="flag" data-qid="${q.id}" aria-label="Flag">🚩</button>
       </div>
     `;
     list.appendChild(item);
   }
 
-  // Attach feedback handlers
+  // Attach feedback handlers (synced with _qbFeedback)
   list.querySelectorAll('.feedback-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1927,15 +1956,20 @@ function handleReviewQuestions() {
       const qid = btn.dataset.qid;
 
       if (type === 'flag') {
-        // Simple flag — save directly as 'other'
-        btn.classList.add('feedback-btn--active');
-        upsertQuestionFeedback({
-          questionId: qid,
-          roomId: state.room.id,
-          playerName: getDisplayName(),
-          feedbackType: 'flag',
-          flagReason: 'other'
-        });
+        const wasActive = btn.classList.contains('feedback-btn--active');
+        btn.classList.toggle('feedback-btn--active');
+        if (!wasActive) {
+          _qbFeedback[qid] = 'flag';
+          upsertQuestionFeedback({
+            questionId: qid,
+            roomId: state.room.id,
+            playerName: getDisplayName(),
+            feedbackType: 'flag',
+            flagReason: 'other'
+          });
+        } else {
+          _qbFeedback[qid] = null;
+        }
         return;
       }
 
@@ -1948,6 +1982,7 @@ function handleReviewQuestions() {
       btn.classList.toggle('feedback-btn--active');
 
       if (btn.classList.contains('feedback-btn--active')) {
+        _qbFeedback[qid] = type;
         upsertQuestionFeedback({
           questionId: qid,
           roomId: state.room.id,
@@ -1955,6 +1990,8 @@ function handleReviewQuestions() {
           feedbackType: type,
           flagReason: null
         });
+      } else {
+        _qbFeedback[qid] = null;
       }
     });
   });
@@ -1963,9 +2000,6 @@ function handleReviewQuestions() {
 
   $('#btn-close-review').onclick = () => {
     overlay.classList.remove('active');
-  };
-  overlay.onclick = (e) => {
-    if (e.target === overlay) overlay.classList.remove('active');
   };
 }
 
