@@ -714,6 +714,15 @@ export async function upsertQuestionFeedback({ questionId, roomId, playerName, f
   if (error) console.error('[Supabase] upsertQuestionFeedback failed:', error.message);
 }
 
+export async function deleteQuestionFeedback({ questionId, roomId, playerName }) {
+  const { error } = await supabase
+    .from('question_feedback')
+    .delete()
+    .match({ question_id: questionId, room_id: roomId, player_name: playerName });
+
+  if (error) console.error('[Supabase] deleteQuestionFeedback failed:', error.message);
+}
+
 export async function fetchQuestionFeedback(roomId, playerName) {
   const { data, error } = await supabase
     .from('question_feedback')

@@ -31,6 +31,7 @@ import {
   promoteToHost,
   subscribeToPlayers,
   upsertQuestionFeedback,
+  deleteQuestionFeedback,
   fetchQuestionFeedback,
   insertGamePlay,
   incrementQuestionsAnswered,
@@ -2115,6 +2116,7 @@ async function handleReviewQuestions() {
           });
         } else {
           _qbFeedback[qid] = null;
+          deleteQuestionFeedback({ questionId: qid, roomId: state.room.id, playerName: getDisplayName() });
         }
         // Update flagged highlight
         const fb = _qbFeedback[qid];
@@ -2141,6 +2143,7 @@ async function handleReviewQuestions() {
         });
       } else {
         _qbFeedback[qid] = null;
+        deleteQuestionFeedback({ questionId: qid, roomId: state.room.id, playerName: getDisplayName() });
       }
       // Update flagged highlight
       const fb = _qbFeedback[qid];
@@ -2450,7 +2453,10 @@ function initFeedbackListeners() {
       const q = state.questions[state.currentQuestion];
       if (wasActive) {
         btn.classList.remove('feedback-btn--active');
-        if (q) _qbFeedback[q.id] = null;
+        if (q) {
+          _qbFeedback[q.id] = null;
+          deleteQuestionFeedback({ questionId: q.id, roomId: state.room.id, playerName: getDisplayName() });
+        }
       } else {
         btn.classList.add('feedback-btn--active');
         if (q) {
@@ -2610,6 +2616,7 @@ $('#question-browser-list').addEventListener('click', (e) => {
     // Toggle off
     _qbFeedback[qId] = null;
     btn.classList.remove('qb-active');
+    deleteQuestionFeedback({ questionId: qId, roomId: state.room.id, playerName: getDisplayName() });
   } else {
     // Deactivate siblings, activate this one
     btn.parentElement.querySelectorAll('[data-fb]').forEach(b => b.classList.remove('qb-active'));
