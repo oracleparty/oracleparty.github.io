@@ -156,7 +156,16 @@ async function init() {
 
   state.players = await fetchPlayers(state.room.id);
 
+  // Validate room still exists (may have been deleted while player was away)
+  const { data: roomCheck } = await fetchRoom(state.room.id);
+  if (!roomCheck) {
+    sessionStorage.removeItem('oracle_party_room');
+    window.location.href = 'index.html';
+    return;
+  }
+
   // If current player is missing (e.g. removePlayerBeacon fired on refresh), re-add them
+  // Room existence already validated above — safe to re-add
   const me = state.players.find(p => String(p.id) === String(state.room.playerId));
   if (!me) {
     const displayName = getDisplayName();
@@ -321,7 +330,15 @@ async function initPlayerGame() {
     // Keep polling — Realtime handleRoomChange may also catch it, but this is a safety net
     state._hotJoinPollId = setInterval(async () => {
       const { data } = await fetchRoom(state.room.id);
-      if (data && data.question_ids && data.question_ids.length > 0 && data.game_phase) {
+      if (!data) {
+        // Room was deleted — stop polling and go home
+        clearInterval(state._hotJoinPollId);
+        state._hotJoinPollId = null;
+        sessionStorage.removeItem('oracle_party_room');
+        window.location.href = 'index.html';
+        return;
+      }
+      if (data.question_ids && data.question_ids.length > 0 && data.game_phase) {
         clearInterval(state._hotJoinPollId);
         state._hotJoinPollId = null;
         await applyGameState(data);
@@ -398,8 +415,15 @@ async function handlePlayerChange(payload) {
     state.players = state.players.filter(p => String(p.id) !== deletedId);
     delete state.scores[deletedId];
 
+    // If room is now empty, delete it (cleanup zombie rooms)
+    if (state.players.length === 0) {
+      await deleteRoom(state.room.id);
+      // handleRoomChange DELETE will fire and redirect everyone
+      return;
+    }
+
     // If the deleted player was the host, promote next player
-    if (wasHost && state.players.length > 0) {
+    if (wasHost) {
       const sorted = [...state.players].sort((a, b) => {
         const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
         const tb = b.joined_at ? new Date(b.joined_at) : Infinity;

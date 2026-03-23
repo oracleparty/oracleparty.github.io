@@ -104,9 +104,16 @@ async function init() {
   // Ensure current player exists (may have been removed by a stale beacon on refresh)
   await ensureCurrentPlayer();
 
-  // If game is already in progress (hot-join landed on lobby, or browser forward), redirect
+  // Validate room still exists (may have been deleted while player was away)
   const { data: currentRoom } = await fetchRoom(room.id);
-  if (currentRoom && currentRoom.status === 'playing') {
+  if (!currentRoom) {
+    sessionStorage.removeItem('oracle_party_room');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  // If game is already in progress (hot-join landed on lobby, or browser forward), redirect
+  if (currentRoom.status === 'playing') {
     window.location.href = 'game.html';
     return;
   }
@@ -293,8 +300,15 @@ async function handlePlayerChange(payload) {
       // Remove the player from local list
       players = players.filter(p => String(p.id) !== deletedId);
 
+      // If room is now empty, delete it (cleanup zombie rooms)
+      if (players.length === 0) {
+        await deleteRoom(room.id);
+        // handleRoomChange DELETE will fire and redirect everyone
+        return;
+      }
+
       // If the deleted player was the host, promote the next player
-      if (wasHost && players.length > 0) {
+      if (wasHost) {
         await handleHostPromotion();
       }
       renderPlayers();
@@ -391,6 +405,14 @@ function attachSettingsListeners() {
 async function ensureCurrentPlayer() {
   const me = players.find(p => String(p.id) === String(room.playerId));
   if (me) return;
+
+  // Verify room still exists before re-adding (don't resurrect zombie rooms)
+  const { data: roomCheck } = await fetchRoom(room.id);
+  if (!roomCheck) {
+    sessionStorage.removeItem('oracle_party_room');
+    window.location.href = 'index.html';
+    return;
+  }
 
   const displayName = getDisplayName();
   const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost);
