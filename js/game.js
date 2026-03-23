@@ -545,7 +545,7 @@ function revealQuestionAndStartTimer() {
   $('#answer-input').focus();
 }
 
-function handlePhaseTransition(phase) {
+async function handlePhaseTransition(phase) {
   if (!phase) return; // guard against null/undefined game_phase
 
   // During countdown, defer other phase transitions until countdown completes
@@ -630,7 +630,7 @@ function handlePhaseTransition(phase) {
       if (!state.hasSubmitted) {
         // Auto-submit whatever the player has typed (host revealed early)
         const currentAnswer = ($('#answer-input')?.value || '').trim();
-        doSubmitAnswer(currentAnswer, { autoSubmit: true });
+        await doSubmitAnswer(currentAnswer, { autoSubmit: true });
         // showRevealScreen() → doReveal() will follow since resultsRevealed is true
       } else if (!state.onRevealScreen) {
         showRevealScreen(); // will call doReveal() since resultsRevealed is true
@@ -2214,11 +2214,10 @@ function handleNewMessage(payload) {
   if (!payload.new) return;
   const { player_name, message } = payload.new;
 
-  // Dedup: skip if this is the Realtime echo of our own optimistic append
-  const last = state.lastSentChat;
-  if (last && last.name === player_name && last.text === message && Date.now() - last.ts < 5000) {
-    state.lastSentChat = null;
-    // Still show badge/toast for own messages? No — sender already sees it.
+  // Dedup: skip Realtime echoes of our own optimistic appends.
+  // Each send increments chatEchoPending; each echo from self decrements it.
+  if (player_name === getDisplayName() && state.chatEchoPending > 0) {
+    state.chatEchoPending--;
     return;
   }
 
@@ -2282,8 +2281,8 @@ async function handleSendGameChat() {
   appendGameChatMessage(name, text);
   scrollGameChatToBottom();
 
-  // Track for dedup when Realtime echo arrives
-  state.lastSentChat = { name, text, ts: Date.now() };
+  // Track pending echo for dedup (counter-based — handles rapid duplicate messages)
+  state.chatEchoPending = (state.chatEchoPending || 0) + 1;
 
   await sendMessage(state.room.id, name, text);
 }
