@@ -590,7 +590,8 @@ async function handlePhaseTransition(phase) {
 
     // On reconnect (questionStartedAt present), check if we already answered
     if (state.questionStartedAt) {
-      fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
+      const qNum = state.currentQuestion;
+      fetchAnswersForQuestion(state.room.id, qNum).then(answers => {
         const myAnswer = answers.find(a => a.player_id === state.room.playerId);
         if (myAnswer) {
           // Already submitted — go straight to reveal
@@ -1043,7 +1044,8 @@ async function handleTimerExpired() {
       if (autoSubmits.length) await Promise.allSettled(autoSubmits);
     }
     // Broadcast reveal phase so all clients transition
-    updateGameState(state.room.id, { game_phase: 'reveal' });
+    updateGameState(state.room.id, { game_phase: 'reveal' })
+      .catch(err => console.error('Failed to broadcast reveal phase:', err));
   }
 
   // If host and already on reveal, enable the appropriate button and update text
@@ -1368,7 +1370,9 @@ function doReveal() {
   }
 
   // Background re-fetch to catch any answers missed by Realtime
-  fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
+  const revealQNum = state.currentQuestion;
+  fetchAnswersForQuestion(state.room.id, revealQNum).then(answers => {
+    if (state.currentQuestion !== revealQNum) return; // question changed, discard stale fetch
     const cachedIds = state.currentAnswers.map(a => String(a.id)).sort().join(',');
     const fetchedIds = answers.map(a => String(a.id)).sort().join(',');
     if (fetchedIds !== cachedIds) {
@@ -1416,7 +1420,8 @@ async function handleRevealResults() {
   }
 
   // Broadcast phase change so non-hosts transition to reveal
-  updateGameState(state.room.id, { game_phase: 'answer_reveal' });
+  updateGameState(state.room.id, { game_phase: 'answer_reveal' })
+    .catch(err => console.error('Failed to broadcast answer_reveal phase:', err));
   doReveal();
 }
 
@@ -2134,14 +2139,14 @@ function handleAnswerChange(payload) {
   }
 
   if (event === 'INSERT' && payload.new) {
-    // New answer submitted — add to cache if for current question
-    if (payload.new.question_number === state.currentQuestion) {
-      const existing = state.currentAnswers.findIndex(a => String(a.id) === String(payload.new.id));
-      if (existing === -1) {
-        state.currentAnswers.push(payload.new);
-      } else {
-        state.currentAnswers[existing] = payload.new;
-      }
+    // New answer submitted — only process if for current question
+    if (payload.new.question_number !== state.currentQuestion) return;
+
+    const existing = state.currentAnswers.findIndex(a => String(a.id) === String(payload.new.id));
+    if (existing === -1) {
+      state.currentAnswers.push(payload.new);
+    } else {
+      state.currentAnswers[existing] = payload.new;
     }
     renderRevealAnswers(state.currentAnswers);
 
@@ -2162,7 +2167,9 @@ function handleAnswerChange(payload) {
   }
 
   // Fallback for DELETE or unknown events: full re-fetch
-  fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
+  const fallbackQNum = state.currentQuestion;
+  fetchAnswersForQuestion(state.room.id, fallbackQNum).then(answers => {
+    if (state.currentQuestion !== fallbackQNum) return; // question changed, discard stale fetch
     state.currentAnswers = answers;
     renderRevealAnswers(answers);
   });
