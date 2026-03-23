@@ -13,6 +13,7 @@ import {
   removePlayerBeacon,
   deleteRoom,
   deleteRoomBeacon,
+  promoteToHost,
   toggleReady,
   updateRoomStatus,
   updateGameState,
@@ -167,40 +168,9 @@ function attachListeners() {
   // Leave
   btnLeave.addEventListener('click', handleLeave);
 
-  // Settings modal (host only)
+  // Settings modal (host only — listeners attached idempotently so promotion works)
   if (room.isHost) {
-    btnSettings.addEventListener('click', openSettingsModal);
-    btnCloseSettings.addEventListener('click', closeSettingsModal);
-
-    // Close on overlay click
-    settingsModal.addEventListener('click', (e) => {
-      if (e.target === settingsModal) closeSettingsModal();
-    });
-
-    // Category selection
-    settingsCategoryGrid.addEventListener('click', (e) => {
-      const card = e.target.closest('.category-card');
-      if (!card) return;
-      settingsCategoryGrid.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      handleSettingChange('category', card.dataset.category);
-    });
-
-    // Toggle groups
-    settingsModal.querySelectorAll('.toggle-group').forEach(group => {
-      group.addEventListener('click', (e) => {
-        const option = e.target.closest('.toggle-option');
-        if (!option) return;
-        group.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
-        option.classList.add('active');
-        const key = group.dataset.setting;
-        let value = option.dataset.value;
-        if (key === 'questionsPerGame' || key === 'questionTimer') {
-          value = parseInt(value, 10);
-        }
-        handleSettingChange(key, value);
-      });
-    });
+    attachSettingsListeners();
   }
 
   // Trap browser back button — replace host/join.html in history so back always goes to index
@@ -281,15 +251,13 @@ async function handlePlayerChange(payload) {
       renderPlayers();
     }
   } else if (event === 'DELETE' && payload.old) {
-    // If the host left, kick everyone to home
-    if (payload.old.is_host && String(payload.old.id) !== String(room.playerId)) {
-      isLeaving = true;
-      cleanup();
-      sessionStorage.removeItem('oracle_party_room');
-      window.location.href = 'index.html?msg=host_left';
-      return;
-    }
+    // Remove the player from local list
     players = players.filter(p => String(p.id) !== String(payload.old.id));
+
+    // If the deleted player was the host, promote the next player
+    if (payload.old.is_host && players.length > 0) {
+      await handleHostPromotion();
+    }
     renderPlayers();
   } else {
     // Fallback: full re-fetch for unknown event shapes
@@ -298,6 +266,73 @@ async function handlePlayerChange(payload) {
 
   // If current player was removed (e.g. stale beacon from refresh), re-add
   await ensureCurrentPlayer();
+}
+
+/**
+ * Handle host promotion when the current host leaves.
+ * The player with the lowest joined_at self-promotes (deterministic across all clients).
+ */
+async function handleHostPromotion() {
+  if (players.length === 0) return;
+
+  // Sort by joined_at — first player is the new host
+  const sorted = [...players].sort((a, b) => {
+    const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
+    const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
+    return ta - tb;
+  });
+  const nextHost = sorted[0];
+
+  // Am I the one being promoted?
+  if (String(nextHost.id) === String(room.playerId)) {
+    room.isHost = true;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    await promoteToHost(room.id, room.playerId, getDisplayName());
+    activateHostUI();
+  }
+}
+
+/**
+ * Activate host UI controls for a newly promoted host.
+ */
+function activateHostUI() {
+  btnStartGame.classList.remove('hidden');
+  btnSettings.classList.remove('hidden');
+  btnReady.classList.add('hidden');
+  attachSettingsListeners();
+}
+
+/** Attach settings modal event listeners (idempotent). */
+function attachSettingsListeners() {
+  if (attachSettingsListeners._done) return;
+  attachSettingsListeners._done = true;
+
+  btnSettings.addEventListener('click', openSettingsModal);
+  btnCloseSettings.addEventListener('click', closeSettingsModal);
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) closeSettingsModal();
+  });
+  settingsCategoryGrid.addEventListener('click', (e) => {
+    const card = e.target.closest('.category-card');
+    if (!card) return;
+    settingsCategoryGrid.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    handleSettingChange('category', card.dataset.category);
+  });
+  settingsModal.querySelectorAll('.toggle-group').forEach(group => {
+    group.addEventListener('click', (e) => {
+      const option = e.target.closest('.toggle-option');
+      if (!option) return;
+      group.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
+      option.classList.add('active');
+      const key = group.dataset.setting;
+      let value = option.dataset.value;
+      if (key === 'questionsPerGame' || key === 'questionTimer') {
+        value = parseInt(value, 10);
+      }
+      handleSettingChange(key, value);
+    });
+  });
 }
 
 /**
@@ -460,12 +495,12 @@ async function handleSettingChange(key, value) {
 
 // --- Room change handler ---
 function handleRoomChange(payload) {
-  // Room deleted (host left) — kick everyone to home
+  // Room deleted (last player left) — kick to home
   if (payload.eventType === 'DELETE') {
     isLeaving = true;
     cleanup();
     sessionStorage.removeItem('oracle_party_room');
-    window.location.href = 'index.html?msg=host_left';
+    window.location.href = 'index.html';
     return;
   }
 
@@ -519,10 +554,11 @@ function handleRoomChange(payload) {
 async function handleLeave() {
   isLeaving = true;
   cleanup();
-  if (room.isHost) {
-    // Host leaving: delete the room (cascade-deletes players)
+  if (players.length <= 1) {
+    // Last player leaving: delete the room entirely
     await deleteRoom(room.id);
   } else {
+    // Remove self — if host, remaining players will auto-promote
     await removePlayer(room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
@@ -545,9 +581,8 @@ function handleVisibilityChange() {
 function handleUnload() {
   if (isLeaving) return;
   cleanup();
-  if (room && room.isHost) {
-    deleteRoomBeacon(room.id);
-  } else if (room && room.playerId) {
+  // Always remove self as player — remaining players handle host promotion
+  if (room && room.playerId) {
     removePlayerBeacon(room.playerId);
   }
 }

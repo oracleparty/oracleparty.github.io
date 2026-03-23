@@ -188,6 +188,18 @@ export async function addPlayer(roomId, displayName, isHost = false) {
 }
 
 /**
+ * Promote a player to host. Sets is_host on the player and updates room's host_name.
+ */
+export async function promoteToHost(roomId, playerId, displayName) {
+  const [playerResult, roomResult] = await Promise.all([
+    supabase.from('players').update({ is_host: true }).eq('id', playerId),
+    supabase.from('rooms').update({ host_name: displayName }).eq('id', roomId)
+  ]);
+  if (playerResult.error) console.error('[Supabase] promoteToHost player update failed:', playerResult.error.message);
+  if (roomResult.error) console.error('[Supabase] promoteToHost room update failed:', roomResult.error.message);
+}
+
+/**
  * Remove a player from a room.
  */
 export async function removePlayer(playerId) {

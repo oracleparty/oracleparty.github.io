@@ -27,6 +27,8 @@ import {
   removePlayerBeacon,
   deleteRoom,
   deleteRoomBeacon,
+  promoteToHost,
+  subscribeToPlayers,
   upsertQuestionFeedback
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
@@ -144,7 +146,8 @@ async function init() {
   const roomCh = subscribeToRoom(state.room.id, handleRoomChange);
   const answerCh = subscribeToAnswers(state.room.id, handleAnswerChange);
   const msgCh = subscribeToMessages(state.room.id, handleNewMessage);
-  state.channels = [roomCh, answerCh, msgCh];
+  const playerCh = subscribeToPlayers(state.room.id, handlePlayerChange);
+  state.channels = [roomCh, answerCh, msgCh, playerCh];
 
   // Presence tracking (away/active state)
   state.presenceChannel = createPresenceChannel(state.room.id);
@@ -317,15 +320,57 @@ async function initPlayerGame() {
 }
 
 // ============================================
+// PLAYER CHANGE HANDLER
+// ============================================
+
+async function handlePlayerChange(payload) {
+  const event = payload.eventType;
+
+  if (event === 'DELETE' && payload.old) {
+    // Remove player from local state
+    state.players = state.players.filter(p => String(p.id) !== String(payload.old.id));
+    delete state.scores[payload.old.id];
+
+    // If the deleted player was the host, promote next player
+    if (payload.old.is_host && state.players.length > 0) {
+      const sorted = [...state.players].sort((a, b) => {
+        const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
+        const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
+        return ta - tb;
+      });
+      const nextHost = sorted[0];
+
+      if (String(nextHost.id) === String(state.room.playerId)) {
+        state.room.isHost = true;
+        sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+        await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
+        // Re-render current phase to show host controls
+        handlePhaseTransition(state.gamePhase);
+      }
+    }
+  } else if (event === 'UPDATE' && payload.new) {
+    const idx = state.players.findIndex(p => String(p.id) === String(payload.new.id));
+    if (idx !== -1) {
+      state.players[idx] = payload.new;
+    }
+  } else if (event === 'INSERT' && payload.new) {
+    if (!state.players.some(p => String(p.id) === String(payload.new.id))) {
+      state.players.push(payload.new);
+      if (!state.scores[payload.new.id]) state.scores[payload.new.id] = 0;
+    }
+  }
+}
+
+// ============================================
 // ROOM CHANGE HANDLER
 // ============================================
 
 function handleRoomChange(payload) {
-  // Room deleted (host left) — kick everyone to home
+  // Room deleted (last player left) — kick to home
   if (payload.eventType === 'DELETE') {
     cleanup();
     sessionStorage.removeItem('oracle_party_room');
-    window.location.href = 'index.html?msg=host_left';
+    window.location.href = 'index.html';
     return;
   }
 
@@ -1625,9 +1670,11 @@ async function handlePlayAgain() {
 
 async function handleQuitGame() {
   cleanup();
-  if (state.room.isHost) {
+  if (state.players.length <= 1) {
+    // Last player — delete the room
     await deleteRoom(state.room.id);
   } else {
+    // Remove self — remaining players handle host promotion
     await removePlayer(state.room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
@@ -2019,11 +2066,8 @@ function handleVisibilityChange() {
 
 function handleBackButton() {
   cleanup();
-  if (state.room.isHost) {
-    deleteRoomBeacon(state.room.id);
-  } else {
-    removePlayerBeacon(state.room.playerId);
-  }
+  // Always remove self — remaining players handle host promotion
+  removePlayerBeacon(state.room.playerId);
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
 }
@@ -2043,9 +2087,8 @@ function cleanup() {
 
 window.addEventListener('beforeunload', () => {
   cleanup();
-  if (state.room.isHost) {
-    deleteRoomBeacon(state.room.id);
-  } else if (state.room.playerId) {
+  // Always remove self — remaining players handle host promotion
+  if (state.room.playerId) {
     removePlayerBeacon(state.room.playerId);
   }
 });
