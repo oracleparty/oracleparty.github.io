@@ -876,6 +876,8 @@ body::after {
 .badge--host {
   background: var(--color-primary-glow);
   color: var(--color-primary);
+  margin-left: var(--space-xs);
+  vertical-align: middle;
 }
 
 .badge--ready {

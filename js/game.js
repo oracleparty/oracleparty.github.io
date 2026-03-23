@@ -1147,9 +1147,11 @@ function renderRevealAnswers(answers) {
         ? (isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect')
         : '';
 
+      const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
+
       row.innerHTML = `
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
-        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+        <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
         <span class="answer-row__answer ${colorClass}${emptyClass}">
           ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
         </span>
@@ -1158,9 +1160,10 @@ function renderRevealAnswers(answers) {
       `;
     } else {
       // Player hasn't submitted yet — show waiting state
+      const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
       row.innerHTML = `
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
-        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+        <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
         <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
       `;
     }
@@ -1402,7 +1405,7 @@ async function showScoresScreen() {
     return `
       <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}">
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
-        <span class="score-anim-row__name">${escapeHtml(p.display_name)}</span>
+        <span class="score-anim-row__name">${escapeHtml(p.display_name)}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
         <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
       </div>
@@ -1762,7 +1765,7 @@ async function showResultsScreen() {
       <div class="results-row">
         <span class="results-row__place ${placeClass}">${placeLabel}</span>
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
-        <span class="results-row__name">${escapeHtml(p.display_name)}</span>
+        <span class="results-row__name">${escapeHtml(p.display_name)}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="results-row__fw-delta ${fwClass}">${fwSign}${fwDelta}</span>
         <span class="results-row__score">${state.scores[p.id] || 0}</span>
       </div>
