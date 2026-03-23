@@ -3,7 +3,7 @@
 // ============================================
 
 import { $, $$, escapeHtml } from './utils.js';
-import { findRoomByCode, fetchPublicRooms, addPlayer } from './supabase.js';
+import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
 // Category display config (shared with host.js)
@@ -56,9 +56,9 @@ function attachListeners() {
     window.location.href = 'index.html';
   });
 
-  // Only allow digits in code input
+  // Only allow letters in code input
   codeInput.addEventListener('input', () => {
-    codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6);
+    codeInput.value = codeInput.value.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 4);
     joinError.textContent = '';
   });
 
@@ -82,8 +82,8 @@ function attachListeners() {
 // --- Join by code entry ---
 async function handleJoinByCode() {
   const code = codeInput.value.trim();
-  if (code.length !== 6) {
-    joinError.textContent = 'Enter a 6-digit room code';
+  if (code.length !== 4) {
+    joinError.textContent = 'Enter a 4-letter room code';
     return;
   }
   await joinRoom(code);
@@ -146,6 +146,7 @@ function resetJoinButton() {
 
 // --- Public games ---
 async function loadPublicGames() {
+  await cleanupOrphanedRooms();
   const rooms = await fetchPublicRooms();
 
   if (rooms.length === 0) {

@@ -51,10 +51,13 @@ export async function fetchCategories() {
 }
 
 /**
- * Generate a random 6-digit numeric room code.
+ * Generate a random 4-letter room code (A-Z).
  */
 export function generateRoomCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * 26)];
+  return code;
 }
 
 /**
@@ -109,13 +112,13 @@ export async function createRoom({ hostName, category, whoCanJoin, questionsPerG
 // ============================================
 
 /**
- * Find a room by its 6-digit code (only lobbies).
+ * Find a room by its 4-letter code (only lobbies).
  */
 export async function findRoomByCode(code) {
   const { data, error } = await supabase
     .from('rooms')
     .select('*')
-    .eq('code', code.trim())
+    .eq('code', code.trim().toUpperCase())
     .in('status', ['lobby', 'playing'])
     .single();
 
@@ -164,6 +167,28 @@ export async function fetchPublicRooms() {
   }
 
   return rooms.map(r => ({ ...r, player_count: countMap[r.id] || 0 }));
+}
+
+/**
+ * Clean up orphaned rooms (rooms with 0 players remaining).
+ * Never deletes rooms that still have active players.
+ */
+export async function cleanupOrphanedRooms() {
+  const { data: rooms } = await supabase
+    .from('rooms')
+    .select('id')
+    .in('status', ['lobby', 'playing']);
+  if (!rooms || rooms.length === 0) return;
+
+  for (const room of rooms) {
+    const { count } = await supabase
+      .from('players')
+      .select('id', { count: 'exact', head: true })
+      .eq('room_id', room.id);
+    if (count === 0) {
+      await supabase.from('rooms').delete().eq('id', room.id);
+    }
+  }
 }
 
 // ============================================
