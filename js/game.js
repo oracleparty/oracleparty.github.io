@@ -517,7 +517,9 @@ function handlePhaseTransition(phase) {
 
   switch (phase) {
     case 'reveal':
-      // Host skipped timer — if we haven't submitted yet, auto-submit with current input
+      // Host skipped timer — stop local timer and auto-submit
+      if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+      state.timerExpired = true;
       if (!state.hasSubmitted) {
         const currentAnswer = ($('#answer-input')?.value || '').trim();
         doSubmitAnswer(currentAnswer, { autoSubmit: true });
@@ -526,7 +528,9 @@ function handlePhaseTransition(phase) {
       }
       break;
     case 'answer_reveal':
-      // Host clicked "Reveal Results" — show correct answer, judgments, scores
+      // Host clicked "Reveal Results" — stop local timer and show results
+      if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+      state.timerExpired = true;
       state.resultsRevealed = true;
       if (!state.hasSubmitted) {
         // Auto-submit whatever the player has typed (host revealed early)
@@ -1251,8 +1255,38 @@ async function handleRevealResults() {
   // by the `if (phase === state.gamePhase) return` guard in handlePhaseTransition.
   // This prevents doReveal() from running twice on the host.
   state.gamePhase = 'answer_reveal';
-  // Broadcast FIRST so non-hosts auto-submit immediately (minimizes delay
-  // before their answers appear). Don't await — reveal locally in parallel.
+
+  // Stop the timer — round is over
+  if (state.timerId) {
+    clearInterval(state.timerId);
+    state.timerId = null;
+  }
+  state.timerExpired = true;
+
+  // Submit blank answers for players who haven't answered yet.
+  // This avoids a 3-hop delay (broadcast → non-host auto-submit → Realtime INSERT back)
+  // and makes answers appear instantly on the reveal screen.
+  const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
+  submittedIds.add(String(state.room.playerId));
+  const q = state.questions[state.currentQuestion];
+  if (q) {
+    for (const p of state.players) {
+      if (!submittedIds.has(String(p.id))) {
+        submitAnswer({
+          roomId: state.room.id,
+          playerId: p.id,
+          questionNumber: state.currentQuestion,
+          questionId: q.id,
+          wager: 1,
+          submittedAnswer: '',
+          isCorrect: false,
+          scoreEarned: 0
+        });
+      }
+    }
+  }
+
+  // Broadcast phase change so non-hosts transition to reveal
   updateGameState(state.room.id, { game_phase: 'answer_reveal' });
   doReveal();
 }
