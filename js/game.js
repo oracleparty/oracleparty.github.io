@@ -617,7 +617,7 @@ async function handlePhaseTransition(phase) {
       state.timerExpired = true;
       if (!state.hasSubmitted) {
         const currentAnswer = ($('#answer-input')?.value || '').trim();
-        doSubmitAnswer(currentAnswer, { autoSubmit: true });
+        await doSubmitAnswer(currentAnswer, { autoSubmit: true });
       } else if (!state.onRevealScreen) {
         showRevealScreen();
       }
@@ -1001,7 +1001,7 @@ function startTimer() {
   }, 250);
 }
 
-function handleTimerExpired() {
+async function handleTimerExpired() {
   // Guard: timer callback can fire after cleanup if already queued
   if (!state.room || state.gamePhase === 'loading') return;
 
@@ -1014,19 +1014,21 @@ function handleTimerExpired() {
   // Auto-submit with whatever is currently typed
   if (!state.hasSubmitted) {
     const currentAnswer = ($('#answer-input')?.value || '').trim();
-    doSubmitAnswer(currentAnswer, { autoSubmit: true });
+    await doSubmitAnswer(currentAnswer, { autoSubmit: true });
   }
 
-  // Host: auto-submit blank for any players who didn't answer, then broadcast reveal
+  // Host: auto-submit blank for any players who didn't answer, then broadcast reveal.
+  // Await all inserts so they're committed before non-hosts fetch answers.
   if (state.room.isHost) {
     const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
     // Also count ourselves even if doSubmitAnswer hasn't added to currentAnswers yet
     submittedIds.add(String(state.room.playerId));
     const q = state.questions[state.currentQuestion];
     if (q) {
+      const autoSubmits = [];
       for (const p of state.players) {
         if (!submittedIds.has(String(p.id))) {
-          submitAnswer({
+          autoSubmits.push(submitAnswer({
             roomId: state.room.id,
             playerId: p.id,
             questionNumber: state.currentQuestion,
@@ -1035,9 +1037,10 @@ function handleTimerExpired() {
             submittedAnswer: '',
             isCorrect: false,
             scoreEarned: 0
-          });
+          }));
         }
       }
+      if (autoSubmits.length) await Promise.allSettled(autoSubmits);
     }
     // Broadcast reveal phase so all clients transition
     updateGameState(state.room.id, { game_phase: 'reveal' });
@@ -1409,7 +1412,7 @@ async function handleRevealResults() {
         }));
       }
     }
-    if (autoSubmits.length) await Promise.all(autoSubmits);
+    if (autoSubmits.length) await Promise.allSettled(autoSubmits);
   }
 
   // Broadcast phase change so non-hosts transition to reveal
@@ -2284,7 +2287,12 @@ async function handleSendGameChat() {
   // Track pending echo for dedup (counter-based — handles rapid duplicate messages)
   state.chatEchoPending = (state.chatEchoPending || 0) + 1;
 
-  await sendMessage(state.room.id, name, text);
+  try {
+    await sendMessage(state.room.id, name, text);
+  } catch {
+    // Send failed — no echo will arrive, so undo the counter increment
+    state.chatEchoPending = Math.max(0, (state.chatEchoPending || 0) - 1);
+  }
 }
 
 // ============================================
