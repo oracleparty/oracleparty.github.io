@@ -5,6 +5,7 @@
 
 import { $, transitionScreens, escapeHtml, fuzzyMatch, getAvatarHue } from './utils.js';
 import {
+  addPlayer,
   fetchPlayers,
   fetchQuestionsByCategory,
   fetchQuestionsByIds,
@@ -145,6 +146,18 @@ async function init() {
   state.serverTimeOffset = await getServerTimeOffset();
 
   state.players = await fetchPlayers(state.room.id);
+
+  // If current player is missing (e.g. removePlayerBeacon fired on refresh), re-add them
+  const me = state.players.find(p => String(p.id) === String(state.room.playerId));
+  if (!me) {
+    const displayName = getDisplayName();
+    const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost);
+    if (rejoinedPlayer) {
+      state.room.playerId = rejoinedPlayer.id;
+      sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+      state.players = await fetchPlayers(state.room.id);
+    }
+  }
 
   for (const p of state.players) {
     state.scores[p.id] = 0;
@@ -1273,6 +1286,11 @@ async function handleNextQuestion() {
 // ============================================
 
 async function handleShowScores() {
+  // Apply locally first so the host doesn't depend on Realtime echo
+  state.gamePhase = 'scores_reveal';
+  state.onRevealScreen = false;
+  showScoresScreen();
+  // Broadcast to other clients
   await updateGameState(state.room.id, { game_phase: 'scores_reveal' });
 }
 
@@ -1478,10 +1496,15 @@ function showNextButtonOnScores() {
 }
 
 async function handleFinalWager() {
+  state.gamePhase = 'final_wager';
+  state.isFinalWagerRound = true;
+  showFinalWagerScreen();
   await updateGameState(state.room.id, { game_phase: 'final_wager' });
 }
 
 async function handleShowResults() {
+  state.gamePhase = 'results';
+  showResultsScreen();
   await updateGameState(state.room.id, { game_phase: 'results' });
 }
 
