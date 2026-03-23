@@ -2254,7 +2254,7 @@ a {
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
-.chat-toggle:active {
+.chat-toggle:active:not(.chat-toggle--dragging) {
   transform: scale(0.9);
 }
 

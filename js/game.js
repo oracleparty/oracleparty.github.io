@@ -2186,6 +2186,7 @@ function initChatDrag(el) {
     const dy = e.clientY - startY;
     if (!dragging && Math.abs(dx) + Math.abs(dy) < 8) return;
     dragging = true;
+    el.classList.add('chat-toggle--dragging');
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const size = 48;
@@ -2199,6 +2200,7 @@ function initChatDrag(el) {
 
   el.addEventListener('pointerup', () => {
     if (!dragging) toggleChat();
+    el.classList.remove('chat-toggle--dragging');
     startX = null;
   });
 }
