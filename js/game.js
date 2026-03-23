@@ -122,8 +122,7 @@ function getDifficulty(q) { return q[FIELD_MAP.difficulty] || 'medium'; }
 // ============================================
 
 async function init() {
-  await ensureDisplayName();
-
+  // Load room data synchronously so back button works even during init
   const stored = sessionStorage.getItem('oracle_party_room');
   if (!stored) {
     window.location.href = 'index.html';
@@ -133,6 +132,14 @@ async function init() {
   state.room = JSON.parse(stored);
   state.totalQuestions = state.room.settings?.questionsPerGame || 10;
   state.timerSeconds = state.room.settings?.questionTimer || 30;
+
+  // Set up back button handler IMMEDIATELY (before any async work)
+  // so pressing back always goes to index.html, even during slow init
+  history.replaceState({ inGame: true }, '');
+  history.pushState({ inGame: true }, '');
+  window.addEventListener('popstate', handleBackButton);
+
+  await ensureDisplayName();
 
   // Calibrate clock offset between client and server
   state.serverTimeOffset = await getServerTimeOffset();
@@ -175,11 +182,6 @@ async function init() {
     });
   state.channels.push(state.presenceChannel);
   document.addEventListener('visibilitychange', handleVisibilityChange);
-
-  // Trap browser back button — replace lobby.html in history so back always goes to index
-  history.replaceState({ inGame: true }, '');
-  history.pushState({ inGame: true }, '');
-  window.addEventListener('popstate', handleBackButton);
 
   loadChatMessages();
   attachChatListeners();
@@ -2105,10 +2107,12 @@ function handleVisibilityChange() {
   }
 }
 
-function handleBackButton() {
+async function handleBackButton() {
   cleanup();
-  // Always remove self — remaining players handle host promotion
-  removePlayerBeacon(state.room.playerId);
+  // Remove self from the game so other players don't see a ghost player
+  if (state.room && state.room.playerId) {
+    await removePlayer(state.room.playerId);
+  }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
 }
@@ -2129,7 +2133,7 @@ function cleanup() {
 window.addEventListener('beforeunload', () => {
   cleanup();
   // Always remove self — remaining players handle host promotion
-  if (state.room.playerId) {
+  if (state.room && state.room.playerId) {
     removePlayerBeacon(state.room.playerId);
   }
 });
