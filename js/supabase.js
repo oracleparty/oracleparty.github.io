@@ -334,8 +334,15 @@ export function subscribeToPlayers(roomId, callback) {
       schema: 'public',
       table: 'players',
       filter: `room_id=eq.${roomId}`
-    }, (payload) => callback(payload))
-    .subscribe();
+    }, (payload) => {
+      try { callback(payload); } catch (e) { console.error('[Supabase] Player change callback error:', e); }
+    })
+    .subscribe((status, err) => {
+      if (err) console.error('[Supabase] Players subscription error:', err);
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('[Supabase] Players subscription failed, status:', status);
+      }
+    });
 }
 
 /**

@@ -49,6 +49,7 @@ let isLeaving = false;
 let channels = [];
 let presenceChannel = null;
 let awayPlayers = new Set();
+let playerPollInterval = null;
 
 // --- DOM refs ---
 const lobbyCategory = $('#lobby-category');
@@ -101,11 +102,14 @@ async function init() {
   // Ensure current player exists (may have been removed by a stale beacon on refresh)
   await ensureCurrentPlayer();
 
-  // Subscribe to Realtime
+  // Subscribe to Realtime (with status monitoring)
   const playerChannel = subscribeToPlayers(room.id, handlePlayerChange);
   const messageChannel = subscribeToMessages(room.id, handleNewMessage);
   const roomChannel = subscribeToRoom(room.id, handleRoomChange);
   channels = [playerChannel, messageChannel, roomChannel];
+
+  // Poll players as a fallback in case Realtime silently fails
+  playerPollInterval = setInterval(loadPlayers, 5000);
 
   // Presence tracking (away/active state)
   presenceChannel = createPresenceChannel(room.id);
@@ -234,38 +238,44 @@ function renderPlayers() {
 }
 
 async function handlePlayerChange(payload) {
-  const event = payload.eventType;
+  try {
+    const event = payload.eventType;
 
-  // Apply change instantly from the payload (no DB round-trip)
-  if (event === 'INSERT' && payload.new) {
-    // Avoid duplicates (e.g. if we just re-added ourselves)
-    if (!players.some(p => String(p.id) === String(payload.new.id))) {
-      players.push(payload.new);
-      sortPlayers();
-      renderPlayers();
-    }
-  } else if (event === 'UPDATE' && payload.new) {
-    const idx = players.findIndex(p => String(p.id) === String(payload.new.id));
-    if (idx !== -1) {
-      players[idx] = payload.new;
-      renderPlayers();
-    }
-  } else if (event === 'DELETE' && payload.old) {
-    // Remove the player from local list
-    players = players.filter(p => String(p.id) !== String(payload.old.id));
+    // Apply change instantly from the payload (no DB round-trip)
+    if (event === 'INSERT' && payload.new) {
+      // Avoid duplicates (e.g. if we just re-added ourselves)
+      if (!players.some(p => String(p.id) === String(payload.new.id))) {
+        players.push(payload.new);
+        sortPlayers();
+        renderPlayers();
+      }
+    } else if (event === 'UPDATE' && payload.new) {
+      const idx = players.findIndex(p => String(p.id) === String(payload.new.id));
+      if (idx !== -1) {
+        players[idx] = payload.new;
+        renderPlayers();
+      }
+    } else if (event === 'DELETE' && payload.old) {
+      // Remove the player from local list
+      players = players.filter(p => String(p.id) !== String(payload.old.id));
 
-    // If the deleted player was the host, promote the next player
-    if (payload.old.is_host && players.length > 0) {
-      await handleHostPromotion();
+      // If the deleted player was the host, promote the next player
+      if (payload.old.is_host && players.length > 0) {
+        await handleHostPromotion();
+      }
+      renderPlayers();
+    } else {
+      // Fallback: full re-fetch for unknown event shapes
+      await loadPlayers();
     }
-    renderPlayers();
-  } else {
-    // Fallback: full re-fetch for unknown event shapes
+
+    // If current player was removed (e.g. stale beacon from refresh), re-add
+    await ensureCurrentPlayer();
+  } catch (err) {
+    console.error('[Lobby] handlePlayerChange error:', err);
+    // Fallback: full re-fetch on any error
     await loadPlayers();
   }
-
-  // If current player was removed (e.g. stale beacon from refresh), re-add
-  await ensureCurrentPlayer();
 }
 
 /**
@@ -591,6 +601,8 @@ function handleUnload() {
 function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
+  clearInterval(playerPollInterval);
+  playerPollInterval = null;
   for (const ch of channels) {
     unsubscribe(ch);
   }
