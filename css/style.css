@@ -412,7 +412,7 @@ a {
 }
 
 .countdown__number--go {
-  color: var(--color-success);
+  color: var(--color-primary);
   font-size: 5rem;
 }
 
