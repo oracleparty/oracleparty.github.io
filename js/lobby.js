@@ -203,8 +203,9 @@ function attachListeners() {
     });
   }
 
-  // Trap browser back button — clean leave instead of broken nav
-  history.pushState({ inGame: true }, '');
+  // Trap browser back button — replace host/join.html in history so back always goes to index
+  history.replaceState({ inLobby: true }, '');
+  history.pushState({ inLobby: true }, '');
   window.addEventListener('popstate', handleBackButton);
 
   // Cleanup + remove player on page unload (tab close / disconnect)

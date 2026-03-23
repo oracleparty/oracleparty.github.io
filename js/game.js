@@ -173,7 +173,8 @@ async function init() {
   state.channels.push(state.presenceChannel);
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
-  // Trap browser back button — clean leave instead of broken nav
+  // Trap browser back button — replace lobby.html in history so back always goes to index
+  history.replaceState({ inGame: true }, '');
   history.pushState({ inGame: true }, '');
   window.addEventListener('popstate', handleBackButton);
 
