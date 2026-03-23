@@ -117,11 +117,17 @@ async function init() {
   presenceChannel
     .on('presence', { event: 'sync' }, () => {
       const ps = presenceChannel.presenceState();
-      awayPlayers.clear();
+      // Build set of connected + active player IDs
+      const connectedActive = new Set();
       for (const key of Object.keys(ps)) {
         for (const p of ps[key]) {
-          if (p.is_away) awayPlayers.add(String(p.player_id));
+          if (!p.is_away) connectedActive.add(String(p.player_id));
         }
+      }
+      // Any DB player NOT connected+active is away (tab hidden OR disconnected)
+      awayPlayers.clear();
+      for (const p of players) {
+        if (!connectedActive.has(String(p.id))) awayPlayers.add(String(p.id));
       }
       renderPlayers();
     })

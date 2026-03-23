@@ -180,11 +180,17 @@ async function init() {
   state.presenceChannel
     .on('presence', { event: 'sync' }, () => {
       const ps = state.presenceChannel.presenceState();
-      state.awayPlayers.clear();
+      // Build set of connected + active player IDs
+      const connectedActive = new Set();
       for (const key of Object.keys(ps)) {
         for (const p of ps[key]) {
-          if (p.is_away) state.awayPlayers.add(String(p.player_id));
+          if (!p.is_away) connectedActive.add(String(p.player_id));
         }
+      }
+      // Any DB player NOT connected+active is away (tab hidden OR disconnected)
+      state.awayPlayers.clear();
+      for (const p of state.players) {
+        if (!connectedActive.has(String(p.id))) state.awayPlayers.add(String(p.id));
       }
       // Update away classes on visible rows without full re-render
       document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
