@@ -279,7 +279,7 @@ function renderPlayers() {
     const isAway = awayTimestamps.has(String(p.id));
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Honk">&#x1F4E2;</button>`;
+    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
       <div class="player-item${isAway ? ' player-item--away' : ''}">

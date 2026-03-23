@@ -1,6 +1,6 @@
 // ============================================
 // Oracle Party — Honk System
-// Goose honk for fun. Broadcast via Supabase Realtime.
+// Duck quack for fun. Broadcast via Supabase Realtime.
 // ============================================
 
 import { createHonkChannel, unsubscribe } from './supabase.js';
@@ -11,24 +11,40 @@ let honkChannel = null;
 let localPlayerId = null;
 
 // --- Audio ---
-// Tiny goose honk as base64 WAV (sine wave ~400Hz, 150ms, generated procedurally)
+// Duck quack — nasal two-tone burst synthesized with Web Audio
 let honkAudioCtx = null;
 function playHonk() {
   try {
     if (!honkAudioCtx) honkAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = honkAudioCtx;
-    const duration = 0.15;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(400, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(250, ctx.currentTime + duration);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + duration);
+    const now = ctx.currentTime;
+
+    // Primary quack tone — nasal square wave dropping in pitch
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'square';
+    osc1.frequency.setValueAtTime(680, now);
+    osc1.frequency.exponentialRampToValueAtTime(400, now + 0.12);
+    gain1.gain.setValueAtTime(0.25, now);
+    gain1.gain.linearRampToValueAtTime(0.28, now + 0.03);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.12);
+
+    // Harmonic overtone for nasal "quack" character
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(1360, now);
+    osc2.frequency.exponentialRampToValueAtTime(800, now + 0.10);
+    gain2.gain.setValueAtTime(0.08, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.10);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.10);
   } catch (_) { /* audio not available */ }
 }
 
@@ -36,7 +52,7 @@ function playHonk() {
 function spawnGooseEmoji() {
   const el = document.createElement('div');
   el.className = 'honk-goose';
-  el.textContent = '\uD83E\uDDA2'; // goose emoji 🪿... actually let's use a standard one
+  el.textContent = '\uD83E\uDD86'; // duck emoji 🦆
   el.style.cssText = `
     position: fixed;
     top: 50%;

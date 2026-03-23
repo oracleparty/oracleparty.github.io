@@ -1253,7 +1253,7 @@ function honkAvatarHtml(player, hue, initial) {
 
 function honkBtnHtml(player) {
   const isMe = String(player.id) === String(state.room.playerId);
-  return isMe ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Honk">&#x1F4E2;</button>`;
+  return isMe ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Quack">&#x1F986;</button>`;
 }
 
 function renderRevealAnswers(answers) {
@@ -1584,7 +1584,7 @@ async function showScoresScreen() {
     const isMe = String(p.id) === String(state.room.playerId);
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Honk">&#x1F4E2;</button>`;
+    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
       <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}">
@@ -1973,7 +1973,7 @@ async function showResultsScreen() {
     const isMe = String(p.id) === String(state.room.playerId);
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Honk">&#x1F4E2;</button>`;
+    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
       <div class="results-row" data-player-id="${p.id}">
