@@ -99,7 +99,7 @@ async function joinRoom(code) {
     const { data: room, error } = await findRoomByCode(code);
 
     if (error || !room) {
-      joinError.textContent = 'Room not found or game already started';
+      joinError.textContent = 'Room not found';
       resetJoinButton();
       return;
     }
@@ -130,7 +130,8 @@ async function joinRoom(code) {
     }));
 
     clearInterval(refreshInterval);
-    window.location.href = 'lobby.html';
+    // If the game is already in progress, go straight to game.html (hot join)
+    window.location.href = room.status === 'playing' ? 'game.html' : 'lobby.html';
   } catch (err) {
     console.error('[Join] Unexpected error:', err);
     joinError.textContent = `Error: ${err.message}`;

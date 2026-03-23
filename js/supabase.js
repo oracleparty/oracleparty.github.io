@@ -116,7 +116,7 @@ export async function findRoomByCode(code) {
     .from('rooms')
     .select('*')
     .eq('code', code.trim())
-    .eq('status', 'lobby')
+    .in('status', ['lobby', 'playing'])
     .single();
 
   if (error) {
