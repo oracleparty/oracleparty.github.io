@@ -651,3 +651,17 @@ export async function upsertQuestionFeedback({ questionId, roomId, playerName, f
 
   if (error) console.error('[Supabase] upsertQuestionFeedback failed:', error.message);
 }
+
+export async function fetchQuestionFeedback(roomId, playerName) {
+  const { data, error } = await supabase
+    .from('question_feedback')
+    .select('question_id, feedback_type')
+    .eq('room_id', roomId)
+    .eq('player_name', playerName);
+
+  if (error) {
+    console.error('[Supabase] fetchQuestionFeedback failed:', error.message);
+    return [];
+  }
+  return data;
+}

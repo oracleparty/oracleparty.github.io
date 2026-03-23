@@ -30,7 +30,8 @@ import {
   deleteRoomBeacon,
   promoteToHost,
   subscribeToPlayers,
-  upsertQuestionFeedback
+  upsertQuestionFeedback,
+  fetchQuestionFeedback
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 
@@ -82,7 +83,8 @@ const state = {
   finalWagerLocked: false,
   countdownStartedAt: null,
   _lastProcessedQuestion: -1,
-  stalePollId: null
+  stalePollId: null,
+  shownQuestionIndices: []
 };
 
 // Guard: prevent duplicate scores screen rendering
@@ -364,6 +366,12 @@ async function applyGameState(roomData) {
   }
 
   state.currentQuestion = roomData.current_question || 0;
+
+  // Build list of questions shown so far (for question browser on reconnect)
+  state.shownQuestionIndices = [];
+  for (let i = 0; i <= state.currentQuestion; i++) {
+    state.shownQuestionIndices.push(i);
+  }
 
   // Detect final wager phases
   if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
@@ -1422,6 +1430,11 @@ async function showScoresScreen() {
 
   state.onRevealScreen = false;
 
+  // Track this question as shown (for question browser)
+  if (!state.shownQuestionIndices.includes(state.currentQuestion)) {
+    state.shownQuestionIndices.push(state.currentQuestion);
+  }
+
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#scores-category').textContent = `${meta.icon} ${meta.label}`;
   $('#scores-progress').textContent = state.isFinalWagerRound
@@ -2277,6 +2290,117 @@ function checkStalePresence() {
     }
   }
 }
+
+// ============================================
+// QUESTION BROWSER (between-rounds bottom sheet)
+// ============================================
+
+let _qbFeedback = {}; // { questionId: feedbackType }
+
+function openQuestionBrowser() {
+  const sheet = $('#question-browser-sheet');
+
+  // Render immediately with whatever feedback we have
+  renderQuestionBrowserList();
+  sheet.classList.add('active');
+
+  // Fetch existing feedback for this player (async update)
+  fetchQuestionFeedback(state.room.id, getDisplayName()).then(ratings => {
+    _qbFeedback = {};
+    for (const r of ratings) _qbFeedback[r.question_id] = r.feedback_type;
+    renderQuestionBrowserList();
+  });
+
+  sheet.querySelector('.bottom-sheet__backdrop').onclick = closeQuestionBrowser;
+  sheet.querySelector('.bottom-sheet__handle').onclick = closeQuestionBrowser;
+}
+
+function closeQuestionBrowser() {
+  $('#question-browser-sheet').classList.remove('active');
+}
+
+function renderQuestionBrowserList() {
+  const list = $('#question-browser-list');
+  const indices = state.shownQuestionIndices;
+
+  list.innerHTML = indices.map(i => {
+    const q = state.questions[i];
+    if (!q) return '';
+    const isFinal = i === state.totalQuestions;
+    const label = isFinal ? 'Final' : `Q${i + 1}`;
+    const text = getQuestionText(q);
+    const answer = getCorrectAnswer(q);
+    const qId = q.id;
+    const current = _qbFeedback[qId] || null;
+
+    return `
+      <div class="qb-row">
+        <div class="qb-row__header">
+          <span class="qb-row__number">${escapeHtml(label)}</span>
+          <div class="qb-row__actions">
+            <button data-qid="${qId}" data-fb="thumbs_up" class="${current === 'thumbs_up' ? 'qb-active' : ''}" aria-label="Thumbs up">\uD83D\uDC4D</button>
+            <button data-qid="${qId}" data-fb="thumbs_down" class="${current === 'thumbs_down' ? 'qb-active' : ''}" aria-label="Thumbs down">\uD83D\uDC4E</button>
+            <button data-qid="${qId}" data-fb="flag" class="${current === 'flag' ? 'qb-active' : ''}" aria-label="Flag">\uD83D\uDEA9</button>
+          </div>
+        </div>
+        <div class="qb-row__text">${escapeHtml(text)}</div>
+        <div class="qb-row__answer">${escapeHtml(answer)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Feedback button delegation
+$('#question-browser-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-fb]');
+  if (!btn) return;
+  const qId = btn.dataset.qid;
+  const fbType = btn.dataset.fb;
+  const current = _qbFeedback[qId];
+
+  if (current === fbType) {
+    // Toggle off
+    _qbFeedback[qId] = null;
+    btn.classList.remove('qb-active');
+  } else {
+    // Deactivate siblings, activate this one
+    btn.parentElement.querySelectorAll('[data-fb]').forEach(b => b.classList.remove('qb-active'));
+    _qbFeedback[qId] = fbType;
+    btn.classList.add('qb-active');
+    upsertQuestionFeedback({
+      questionId: qId,
+      roomId: state.room.id,
+      playerName: getDisplayName(),
+      feedbackType: fbType
+    });
+  }
+});
+
+// Wire up the browser icon
+$('#btn-question-browser').onclick = openQuestionBrowser;
+
+// Swipe-down to dismiss bottom sheet
+(function initSheetSwipe() {
+  const panel = document.querySelector('.bottom-sheet__panel');
+  if (!panel) return;
+  let startY = 0;
+  panel.addEventListener('touchstart', (e) => {
+    if (panel.scrollTop <= 0) startY = e.touches[0].clientY;
+  }, { passive: true });
+  panel.addEventListener('touchmove', (e) => {
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 0 && panel.scrollTop <= 0) {
+      panel.style.transition = 'none';
+      panel.style.transform = `translateY(${dy}px)`;
+    }
+  }, { passive: true });
+  panel.addEventListener('touchend', () => {
+    const current = parseFloat(panel.style.transform.replace(/[^0-9.-]/g, '')) || 0;
+    panel.style.transition = '';
+    panel.style.transform = '';
+    if (current > 80) closeQuestionBrowser();
+  });
+})();
 
 // ============================================
 // EXIT PATHS (player leaves the game permanently)
