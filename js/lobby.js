@@ -601,7 +601,7 @@ function handleRoomChange(payload) {
 // ============================================
 // STALE PLAYER AUTO-KICK (5 min disconnect → removed)
 // ============================================
-const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const STALE_TIMEOUT = 30 * 1000; // 30 seconds — fast fallback for when unload beacons fail
 
 function checkStalePresence() {
   const now = Date.now();
@@ -669,13 +669,15 @@ function handleBackButton() {
 
 function handleUnload() {
   if (isLeaving) return;
-  cleanup();
-  if (!room || !room.playerId) return;
-  if (players.length <= 1) {
-    deleteRoomBeacon(room.id);
-  } else {
-    removePlayerBeacon(room.playerId);
+  // Send beacon FIRST — maximize chance it completes before browser tears down the page
+  if (room && room.playerId) {
+    if (players.length <= 1) {
+      deleteRoomBeacon(room.id);
+    } else {
+      removePlayerBeacon(room.playerId);
+    }
   }
+  cleanup();
 }
 
 // ============================================

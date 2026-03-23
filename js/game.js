@@ -220,7 +220,7 @@ async function init() {
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
   // Poll for stale disconnected players (auto-kick after 5 min)
-  state.stalePollId = setInterval(checkStalePresence, 30000);
+  state.stalePollId = setInterval(checkStalePresence, 10000);
 
   loadChatMessages();
   attachChatListeners();
@@ -2219,7 +2219,7 @@ function initFeedbackListeners() {
 // ============================================
 // STALE PLAYER AUTO-KICK (5 min disconnect → removed)
 // ============================================
-const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const STALE_TIMEOUT = 30 * 1000; // 30 seconds — fast fallback for when unload beacons fail
 
 function checkStalePresence() {
   const now = Date.now();
@@ -2277,13 +2277,15 @@ function handleBackButton() {
 
 function handleUnload() {
   if (_isLeaving) return;
-  cleanup();
-  if (!state.room || !state.room.playerId) return;
-  if (state.players.length <= 1) {
-    deleteRoomBeacon(state.room.id);
-  } else {
-    removePlayerBeacon(state.room.playerId);
+  // Send beacon FIRST — maximize chance it completes before browser tears down the page
+  if (state.room && state.room.playerId) {
+    if (state.players.length <= 1) {
+      deleteRoomBeacon(state.room.id);
+    } else {
+      removePlayerBeacon(state.room.playerId);
+    }
   }
+  cleanup();
 }
 
 // Safari doesn't reliably fire beforeunload — pagehide is the fallback
