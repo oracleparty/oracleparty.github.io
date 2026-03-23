@@ -1048,7 +1048,7 @@ async function showRevealScreen() {
 
   // If results were already revealed (reconnect), show them immediately
   if (state.resultsRevealed) {
-    await doReveal();
+    doReveal();
   }
 }
 
@@ -1154,7 +1154,7 @@ function updateRevealButtonText() {
   btn.textContent = (!state.timerExpired && !allSubmitted) ? 'Reveal Early' : 'Reveal Results';
 }
 
-async function doReveal() {
+function doReveal() {
   // Snapshot scores before this round (for animation on scores screen)
   state.previousScores = { ...state.scores };
 
@@ -1168,11 +1168,9 @@ async function doReveal() {
   // Show feedback icons and start fade timer
   showFeedbackUI();
 
-  // Refresh answers from DB
-  state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-
-  // Render answers in NEUTRAL color first (resultsRevealed still false)
-  // Toggles are NOT rendered yet — they appear post-reveal in the animation frame
+  // Render immediately with cached answers (Realtime keeps these up-to-date).
+  // Late answers from auto-submitted players will arrive via Realtime INSERT
+  // and trigger re-renders in handleAnswerChange — no blocking fetch needed.
   renderRevealAnswers(state.currentAnswers);
 
   // Now mark revealed — subsequent renders will apply colors immediately
@@ -1211,6 +1209,14 @@ async function doReveal() {
     btn.disabled = false;
     btn.style.opacity = '1';
   }
+
+  // Background re-fetch to catch any answers missed by Realtime
+  fetchAnswersForQuestion(state.room.id, state.currentQuestion).then(answers => {
+    if (answers.length > state.currentAnswers.length) {
+      state.currentAnswers = answers;
+      renderRevealAnswers(state.currentAnswers);
+    }
+  });
 }
 
 async function handleRevealResults() {
@@ -1218,8 +1224,10 @@ async function handleRevealResults() {
   // by the `if (phase === state.gamePhase) return` guard in handlePhaseTransition.
   // This prevents doReveal() from running twice on the host.
   state.gamePhase = 'answer_reveal';
-  await doReveal();
-  await updateGameState(state.room.id, { game_phase: 'answer_reveal' });
+  // Broadcast FIRST so non-hosts auto-submit immediately (minimizes delay
+  // before their answers appear). Don't await — reveal locally in parallel.
+  updateGameState(state.room.id, { game_phase: 'answer_reveal' });
+  doReveal();
 }
 
 async function handleJudgmentOverride(e) {
