@@ -84,6 +84,9 @@ const state = {
 // Guard: prevent duplicate scores screen rendering
 let _lastScoresRenderedForQuestion = -1;
 
+// Guard: prevent double player removal on unload after explicit leave/quit
+let _isLeaving = false;
+
 // Guard: countdown active — defer phase transitions until complete
 let _countdownActive = false;
 let _deferredPhase = null;
@@ -1732,6 +1735,7 @@ async function handlePlayAgain() {
 }
 
 async function handleQuitGame() {
+  _isLeaving = true;
   cleanup();
   if (state.players.length <= 1) {
     // Last player — delete the room
@@ -2131,6 +2135,7 @@ function handleVisibilityChange() {
 }
 
 async function handleBackButton() {
+  _isLeaving = true;
   cleanup();
   // Remove self from the game so other players don't see a ghost player
   if (state.room && state.room.playerId) {
@@ -2153,13 +2158,18 @@ function cleanup() {
   state.channels = [];
 }
 
-window.addEventListener('beforeunload', () => {
+function handleUnload() {
+  if (_isLeaving) return; // Already handled by handleBackButton/handleQuitGame
   cleanup();
   // Always remove self — remaining players handle host promotion
   if (state.room && state.room.playerId) {
     removePlayerBeacon(state.room.playerId);
   }
-});
+}
+// Safari (especially mobile) doesn't reliably fire beforeunload —
+// pagehide is the reliable fallback for page navigation / tab close
+window.addEventListener('beforeunload', handleUnload);
+window.addEventListener('pagehide', handleUnload);
 
 // ============================================
 // START
