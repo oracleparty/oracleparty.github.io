@@ -2749,7 +2749,7 @@ body::after {
   border-bottom: 1px solid var(--color-surface-light);
 }
 .review-item--flagged {
-  border-left: 3px solid var(--color-error, #e74c3c);
+  border-left: 3px solid var(--color-danger);
   background: rgba(231, 76, 60, 0.06);
 }
 

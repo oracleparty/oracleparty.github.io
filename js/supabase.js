@@ -156,7 +156,7 @@ export async function fetchPublicRooms() {
   if (pErr) {
     console.error('[Supabase] fetchPublicRooms player count failed:', pErr.message);
     // Return rooms without counts
-    return rooms.map(r => ({ ...r, player_count: '?' }));
+    return rooms.map(r => ({ ...r, player_count: 0 }));
   }
 
   const countMap = {};
@@ -414,8 +414,15 @@ export function subscribeToMessages(roomId, callback) {
       schema: 'public',
       table: 'chat_messages',
       filter: `room_id=eq.${roomId}`
-    }, (payload) => callback(payload))
-    .subscribe();
+    }, (payload) => {
+      try { callback(payload); } catch (e) { console.error('[Supabase] Message callback error:', e); }
+    })
+    .subscribe((status, err) => {
+      if (err) console.error('[Supabase] Messages subscription error:', err);
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('[Supabase] Messages subscription failed, status:', status);
+      }
+    });
 }
 
 /**
@@ -428,8 +435,15 @@ export function subscribeToRoom(roomId, callback) {
       schema: 'public',
       table: 'rooms',
       filter: `id=eq.${roomId}`
-    }, (payload) => callback(payload))
-    .subscribe();
+    }, (payload) => {
+      try { callback(payload); } catch (e) { console.error('[Supabase] Room change callback error:', e); }
+    })
+    .subscribe((status, err) => {
+      if (err) console.error('[Supabase] Room subscription error:', err);
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('[Supabase] Room subscription failed, status:', status);
+      }
+    });
 }
 
 /**
@@ -648,8 +662,15 @@ export function subscribeToAnswers(roomId, callback) {
       schema: 'public',
       table: 'answers',
       filter: `room_id=eq.${roomId}`
-    }, (payload) => callback(payload))
-    .subscribe();
+    }, (payload) => {
+      try { callback(payload); } catch (e) { console.error('[Supabase] Answer change callback error:', e); }
+    })
+    .subscribe((status, err) => {
+      if (err) console.error('[Supabase] Answers subscription error:', err);
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('[Supabase] Answers subscription failed, status:', status);
+      }
+    });
 }
 
 /**

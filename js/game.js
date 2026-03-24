@@ -100,6 +100,9 @@ const state = {
   _gamePlayCompleted: false
 };
 
+// Stored handler for document click (flag menu dismiss) — removed in cleanup()
+let _flagMenuCloseHandler = null;
+
 // Guard: prevent duplicate scores screen rendering
 let _lastScoresRenderedForQuestion = -1;
 
@@ -2575,9 +2578,8 @@ function initFeedbackListeners() {
   });
 
   // Close flag menu on outside click
-  document.addEventListener('click', () => {
-    flagMenu.style.display = 'none';
-  });
+  _flagMenuCloseHandler = () => { flagMenu.style.display = 'none'; };
+  document.addEventListener('click', _flagMenuCloseHandler);
 }
 
 // ============================================
@@ -2814,6 +2816,10 @@ function cleanup() {
   if (state.presenceHeartbeatId) {
     clearInterval(state.presenceHeartbeatId);
     state.presenceHeartbeatId = null;
+  }
+  if (_flagMenuCloseHandler) {
+    document.removeEventListener('click', _flagMenuCloseHandler);
+    _flagMenuCloseHandler = null;
   }
   for (const ch of state.channels) unsubscribe(ch);
   state.channels = [];
