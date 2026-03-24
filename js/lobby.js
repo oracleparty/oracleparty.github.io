@@ -497,7 +497,12 @@ async function handleSendMessage() {
 
   chatInput.value = '';
   const name = getDisplayName();
-  await sendMessage(room.id, name, text);
+  try {
+    await sendMessage(room.id, name, text);
+  } catch (err) {
+    console.error('[Lobby] sendMessage failed:', err);
+    chatInput.value = text; // restore message so user can retry
+  }
 }
 
 // --- Ready Toggle ---
@@ -515,7 +520,21 @@ async function handleToggleReady() {
     renderPlayers();
   }
 
-  await toggleReady(room.playerId, isReady);
+  try {
+    await toggleReady(room.playerId, isReady);
+  } catch (err) {
+    console.error('[Lobby] toggleReady failed:', err);
+    // Revert optimistic UI update
+    isReady = !isReady;
+    btnReady.textContent = isReady ? 'Not Ready' : 'Ready Up';
+    btnReady.className = isReady
+      ? 'btn btn-primary btn-block'
+      : 'btn btn-secondary btn-block';
+    if (me) {
+      me.is_ready = isReady;
+      renderPlayers();
+    }
+  }
 }
 
 // --- Start Game (host) ---
@@ -525,8 +544,14 @@ async function handleStartGame() {
   btnStartGame.classList.add('is-loading');
   btnStartGame.textContent = 'Starting...';
 
-  await updateRoomStatus(room.id, 'playing');
-  // Room subscription will trigger navigation for everyone including host
+  try {
+    await updateRoomStatus(room.id, 'playing');
+    // Room subscription will trigger navigation for everyone including host
+  } catch (err) {
+    console.error('[Lobby] startGame failed:', err);
+    btnStartGame.classList.remove('is-loading');
+    btnStartGame.textContent = 'Start Game';
+  }
 }
 
 // --- Settings Modal (host) ---
