@@ -437,8 +437,10 @@ export function subscribeToRoom(roomId, callback) {
 /**
  * Create a Presence channel for tracking player away/active state.
  */
-export function createPresenceChannel(roomId) {
-  return supabase.channel(`room-${roomId}-presence`);
+export function createPresenceChannel(roomId, playerId) {
+  return supabase.channel(`room-${roomId}-presence`, {
+    config: { presence: { key: String(playerId) } }
+  });
 }
 
 /**

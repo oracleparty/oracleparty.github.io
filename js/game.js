@@ -198,7 +198,7 @@ async function init() {
   state.channels = [roomCh, answerCh, msgCh, playerCh];
 
   // Presence tracking (away/active state)
-  state.presenceChannel = createPresenceChannel(state.room.id);
+  state.presenceChannel = createPresenceChannel(state.room.id, String(state.room.playerId));
   state.presenceChannel
     .on('presence', { event: 'sync' }, () => {
       const ps = state.presenceChannel.presenceState();
@@ -225,6 +225,12 @@ async function init() {
       });
       document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
         row.classList.toggle('score-anim-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
+      });
+      document.querySelectorAll('#results-list .results-row').forEach(row => {
+        row.classList.toggle('results-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
+      });
+      document.querySelectorAll('#fw-player-list .fw-player-row').forEach(row => {
+        row.classList.toggle('fw-player-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
       });
     })
     .subscribe(async (status) => {
@@ -1919,7 +1925,7 @@ function renderFinalWagerPlayers(lockedWagers) {
       : `<span class="fw-player-row__wager fw-player-row__wager--waiting">Waiting...</span>`;
 
     return `
-      <div class="fw-player-row">
+      <div class="fw-player-row" data-player-id="${p.id}">
         <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
         <span class="fw-player-row__name">${escapeHtml(p.display_name)}</span>
         <span class="fw-player-row__score">${score}</span>
@@ -2538,6 +2544,14 @@ function initFeedbackListeners() {
       const reason = option.dataset.reason;
       flagBtn.classList.add('feedback-btn--active');
       flagMenu.style.display = 'none';
+
+      // Show confirmation
+      const labels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', other: 'other' };
+      const confirmEl = document.getElementById('feedback-flag-confirm');
+      confirmEl.textContent = `Flagged as ${labels[reason] || reason} \u2713`;
+      confirmEl.classList.remove('show');
+      void confirmEl.offsetHeight;
+      confirmEl.classList.add('show');
 
       const q = state.questions[state.currentQuestion];
       if (q) {

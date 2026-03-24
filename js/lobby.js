@@ -133,7 +133,7 @@ async function init() {
   }, 5000);
 
   // Presence tracking (away/active state)
-  presenceChannel = createPresenceChannel(room.id);
+  presenceChannel = createPresenceChannel(room.id, String(room.playerId));
   presenceChannel
     .on('presence', { event: 'sync' }, () => {
       const ps = presenceChannel.presenceState();
