@@ -92,7 +92,12 @@ const state = {
   _lastProcessedQuestion: -1,
   stalePollId: null,
   presenceHeartbeatId: null,
-  shownQuestionIndices: []
+  shownQuestionIndices: [],
+  wagerExplicitlySelected: false,
+  chatEchoPending: 0,
+  unreadCount: 0,
+  _hotJoinPollId: null,
+  _gamePlayCompleted: false
 };
 
 // Guard: prevent duplicate scores screen rendering
@@ -127,7 +132,6 @@ function resolveFieldMap(question) {
               : 'acceptable_answers',
     difficulty: question.difficulty !== undefined ? 'difficulty' : 'difficulty'
   };
-  console.log('[Game] Resolved question field map:', FIELD_MAP);
 }
 
 function getQuestionText(q) { return q[FIELD_MAP.text] || ''; }
@@ -811,7 +815,6 @@ function showCountdownScreen() {
 
   function showStep(stepIndex) {
     lastShownStep = stepIndex;
-    console.log('[Countdown]', steps[stepIndex]);
 
     // Replace element entirely — fresh DOM element always plays animation from scratch
     const container = document.querySelector('.countdown');

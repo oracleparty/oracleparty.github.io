@@ -75,8 +75,6 @@ export async function createRoom({ hostName, category, whoCanJoin, questionsPerG
     status: 'lobby'
   };
 
-  console.log('[Supabase] Creating room:', roomPayload);
-
   const { data, error } = await supabase
     .from('rooms')
     .insert(roomPayload)
@@ -711,7 +709,6 @@ export async function testConnection() {
       // Even if the table query fails, if we got a response, the connection works
       return true;
     }
-    console.log('[Supabase] Connected successfully.');
     return true;
   } catch (err) {
     console.error('[Supabase] Connection failed:', err);
