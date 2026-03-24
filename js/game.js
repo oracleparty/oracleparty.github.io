@@ -2404,11 +2404,6 @@ function repositionChatToggle() {
   }
 }
 
-/** Approximate env(safe-area-inset-bottom) — 0 on most devices */
-function env_safe_bottom() {
-  return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab') || '0', 10);
-}
-
 function showChatToggle() {
   $('#btn-chat-toggle').classList.remove('hidden');
   $('#chat-toasts').classList.remove('hidden');
