@@ -328,27 +328,33 @@ export async function sendMessage(roomId, playerName, message) {
 
 /**
  * Archive chat messages for a room into chat_archive table.
+ * Stores the entire conversation as ONE row per room with a JSON array of messages.
  * Called when the game ends (before room might be deleted).
  */
 export async function archiveChatMessages(roomId) {
   try {
-    // Fetch room info
     const { data: roomData } = await fetchRoom(roomId);
     if (!roomData) return;
 
-    // Fetch all messages
-    const messages = await fetchMessages(roomId);
-    if (!messages || messages.length === 0) return;
+    const rawMessages = await fetchMessages(roomId);
+    if (!rawMessages || rawMessages.length === 0) return;
 
-    // Insert archive
+    // Shape each message to only keep what we need
+    const messages = rawMessages.map(m => ({
+      player_name: m.player_name,
+      message: m.message,
+      timestamp: m.created_at
+    }));
+
     const { error } = await supabase
       .from('chat_archive')
-      .insert({
+      .upsert({
+        room_id: roomId,
         room_code: roomData.code || null,
         category: roomData.category || null,
         archived_at: new Date().toISOString(),
         messages
-      });
+      }, { onConflict: 'room_id' });
 
     if (error) console.error('[Supabase] archiveChatMessages failed:', error.message);
   } catch (err) {
