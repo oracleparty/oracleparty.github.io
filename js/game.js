@@ -2866,9 +2866,14 @@ async function syncToCurrentState() {
 
     const questionChanged = roomData.current_question !== undefined &&
                             roomData.current_question !== state.currentQuestion;
-    const phaseChanged = roomData.game_phase !== state.gamePhase;
 
-    if (!questionChanged && !phaseChanged) return;
+    // Only sync on question changes. Phase-only changes on the same question
+    // are NOT safe to sync because the local state can legitimately be AHEAD
+    // of the DB (e.g., host sets gamePhase = 'answer_reveal' locally before
+    // the DB write completes, or player entered reveal screen before host
+    // broadcasts). Realtime handles phase-only updates; sync is the safety
+    // net for missed question transitions.
+    if (!questionChanged) return;
 
     // Update local state to match server
     if (roomData.current_question !== undefined) {
