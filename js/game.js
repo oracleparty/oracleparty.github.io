@@ -702,6 +702,11 @@ async function handlePhaseTransition(phase) {
       } else if (!state.onRevealScreen) {
         showRevealScreen(); // will call doReveal() since resultsRevealed is true
       } else {
+        // Already on reveal screen — re-fetch answers before revealing
+        // (host's auto-submitted answers may not have arrived via Realtime yet)
+        try {
+          state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+        } catch (_) { /* doReveal's background fetch will retry */ }
         doReveal();
       }
       break;
@@ -853,21 +858,6 @@ function showQuestionScreen() {
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#question-category').textContent = `${meta.icon} ${meta.label}`;
 
-  if (state.isFinalWagerRound) {
-    $('#question-progress').textContent = 'Final Question';
-    // Use the wager already locked in on the final wager screen
-    state.currentWager = state.finalWager || 0;
-    $('#wager-grid').style.display = 'none';
-    $('.wager-label').style.display = 'none';
-    $('#wager-error').style.display = 'none';
-  } else {
-    $('#question-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
-    $('#wager-grid').style.display = '';
-    $('.wager-label').style.display = '';
-    $('#wager-error').style.display = '';
-    renderWagerGrid();
-  }
-
   $('#question-text').textContent = getQuestionText(q);
 
   $('#answer-form').classList.remove('answer-input--submitted');
@@ -887,6 +877,21 @@ function showQuestionScreen() {
     state.currentWager = null;
   }
   state.wagerExplicitlySelected = false;
+
+  if (state.isFinalWagerRound) {
+    $('#question-progress').textContent = 'Final Question';
+    // Use the wager already locked in on the final wager screen
+    state.currentWager = state.finalWager || 0;
+    $('#wager-grid').style.display = 'none';
+    $('.wager-label').style.display = 'none';
+    $('#wager-error').style.display = 'none';
+  } else {
+    $('#question-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
+    $('#wager-grid').style.display = '';
+    $('.wager-label').style.display = '';
+    $('#wager-error').style.display = '';
+    renderWagerGrid(); // Must run AFTER state resets — auto-selects last remaining wager
+  }
   hideChatToggle();
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
