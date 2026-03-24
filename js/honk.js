@@ -11,40 +11,16 @@ let honkChannel = null;
 let localPlayerId = null;
 
 // --- Audio ---
-// Duck quack — nasal two-tone burst synthesized with Web Audio
-let honkAudioCtx = null;
+// Honk sound effect from MP3 file
+const honkAudio = new Audio('honk.mp3');
+honkAudio.preload = 'auto';
+
 function playHonk() {
   try {
-    if (!honkAudioCtx) honkAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = honkAudioCtx;
-    const now = ctx.currentTime;
-
-    // Primary quack tone — nasal square wave dropping in pitch
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'square';
-    osc1.frequency.setValueAtTime(680, now);
-    osc1.frequency.exponentialRampToValueAtTime(400, now + 0.12);
-    gain1.gain.setValueAtTime(0.25, now);
-    gain1.gain.linearRampToValueAtTime(0.28, now + 0.03);
-    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.12);
-
-    // Harmonic overtone for nasal "quack" character
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sawtooth';
-    osc2.frequency.setValueAtTime(1360, now);
-    osc2.frequency.exponentialRampToValueAtTime(800, now + 0.10);
-    gain2.gain.setValueAtTime(0.08, now);
-    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.10);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now);
-    osc2.stop(now + 0.10);
+    // Clone the audio so overlapping honks don't cut each other off
+    const sound = honkAudio.cloneNode();
+    sound.volume = 1.0;
+    sound.play();
   } catch (_) { /* audio not available */ }
 }
 
@@ -108,6 +84,8 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
  */
 export function sendHonk(targetPlayerId) {
   if (!honkChannel) return;
+  // Play sound immediately for the sender so there's no broadcast delay
+  playHonk();
   honkChannel.send({
     type: 'broadcast',
     event: 'honk',
