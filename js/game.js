@@ -2461,6 +2461,8 @@ function resetFeedbackUI() {
   container.classList.remove('reveal__feedback--faded');
   container.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('feedback-btn--active'));
   container.querySelector('.feedback-flag-menu').style.display = 'none';
+  const confirmEl = container.querySelector('.feedback-flag-confirm');
+  if (confirmEl) { confirmEl.classList.remove('show'); confirmEl.textContent = ''; }
 }
 
 function showFeedbackUI() {

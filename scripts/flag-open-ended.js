@@ -50,6 +50,7 @@ async function fetchAllOpenQuestions() {
       console.error('Fetch error:', error.message);
       break;
     }
+    if (!data) break;
 
     all.push(...data);
     if (data.length < PAGE_SIZE) break;
