@@ -624,6 +624,19 @@ export async function fetchAllAnswers(roomId) {
 }
 
 /**
+ * Delete all answers for a room (used when starting a new game via Play Again).
+ */
+export async function deleteAnswersByRoom(roomId) {
+  const { error } = await supabase
+    .from('answers')
+    .delete()
+    .eq('room_id', roomId);
+
+  if (error) console.error('[Supabase] deleteAnswersByRoom failed:', error.message);
+  return { error };
+}
+
+/**
  * Subscribe to answer changes in a room (inserts + updates for host override).
  */
 export function subscribeToAnswers(roomId, callback) {

@@ -36,7 +36,8 @@ import {
   insertGamePlay,
   incrementQuestionsAnswered,
   completeGamePlay,
-  archiveChatMessages
+  archiveChatMessages,
+  deleteAnswersByRoom
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
@@ -646,6 +647,12 @@ async function handlePhaseTransition(phase) {
       // Host skipped timer — stop local timer and auto-submit
       if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
       state.timerExpired = true;
+      // Auto-select lowest available wager if none was explicitly selected
+      if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
+        for (let i = 1; i <= state.totalQuestions; i++) {
+          if (!state.usedWagers.has(i)) { state.currentWager = i; break; }
+        }
+      }
       if (!state.hasSubmitted) {
         const currentAnswer = ($('#answer-input')?.value || '').trim();
         await doSubmitAnswer(currentAnswer, { autoSubmit: true });
@@ -657,6 +664,12 @@ async function handlePhaseTransition(phase) {
       // Host clicked "Reveal Results" — stop local timer and show results
       if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
       state.timerExpired = true;
+      // Auto-select lowest available wager if none was explicitly selected
+      if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
+        for (let i = 1; i <= state.totalQuestions; i++) {
+          if (!state.usedWagers.has(i)) { state.currentWager = i; break; }
+        }
+      }
       state.resultsRevealed = true;
       if (!state.hasSubmitted) {
         // Auto-submit whatever the player has typed (host revealed early)
@@ -841,15 +854,9 @@ function showQuestionScreen() {
   state.resultsRevealed = false;
   state.timerExpired = false;
 
-  // Default wager to lowest available value (skip for final wager — already set)
+  // Reset wager — player must explicitly select (skip for final wager — already set)
   if (!state.isFinalWagerRound) {
     state.currentWager = null;
-    for (let i = 1; i <= state.totalQuestions; i++) {
-      if (!state.usedWagers.has(i)) {
-        state.currentWager = i;
-        break;
-      }
-    }
   }
   state.wagerExplicitlySelected = false;
   showChatToggle();
@@ -910,7 +917,9 @@ function showQuestionScreen() {
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
   $('#answer-input').oninput = () => {
-    $('#btn-submit-answer').disabled = !$('#answer-input').value.length;
+    const hasText = $('#answer-input').value.length > 0;
+    const wagerOk = state.isFinalWagerRound || state.wagerExplicitlySelected;
+    $('#btn-submit-answer').disabled = !(hasText && wagerOk);
   };
   $('#answer-input').onkeydown = (e) => {
     if (e.key === 'Enter' && !state.hasSubmitted) {
@@ -932,10 +941,6 @@ function renderWagerGrid() {
     if (state.usedWagers.has(i)) {
       btn.classList.add('wager-btn--used');
     } else {
-      // Pre-select the default wager
-      if (i === state.currentWager) {
-        btn.classList.add('wager-btn--selected');
-      }
       btn.addEventListener('click', () => selectWager(i, btn));
     }
 
@@ -951,6 +956,10 @@ function selectWager(value, btnEl) {
   state.currentWager = value;
   state.wagerExplicitlySelected = true;
   $('#wager-error').textContent = '';
+
+  // Enable submit button if answer text is present
+  const hasText = $('#answer-input').value.length > 0;
+  if (hasText) $('#btn-submit-answer').disabled = false;
 }
 
 // ============================================
@@ -1042,6 +1051,16 @@ async function handleTimerExpired() {
   const revealTimer = $('#reveal-timer');
   if (revealTimer) revealTimer.style.display = 'none';
 
+  // Auto-select lowest available wager if none was explicitly selected
+  if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
+    for (let i = 1; i <= state.totalQuestions; i++) {
+      if (!state.usedWagers.has(i)) {
+        state.currentWager = i;
+        break;
+      }
+    }
+  }
+
   // Auto-submit with whatever is currently typed
   if (!state.hasSubmitted) {
     const currentAnswer = ($('#answer-input')?.value || '').trim();
@@ -1104,12 +1123,14 @@ async function handleSubmitAnswer() {
     input.classList.add('input--flash');
     return;
   }
-  // Nudge: briefly highlight wager grid if player didn't explicitly pick one
+  // Block submission if player hasn't explicitly selected a wager
   if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
     const grid = $('#wager-grid');
     grid.classList.remove('wager-grid--highlight');
     void grid.offsetHeight;
     grid.classList.add('wager-grid--highlight');
+    $('#wager-error').textContent = 'Select a wager first';
+    return;
   }
   // Trim for storage — spaces-only becomes '' which shows "No answer" on reveal
   await doSubmitAnswer(raw.trim());
@@ -1275,7 +1296,8 @@ function renderRevealAnswers(answers) {
 
     if (answer) {
       row.dataset.answerId = answer.id;
-      const submittedText = (answer.submitted_answer || '').trim();
+      const rawText = (answer.submitted_answer || '').trim();
+      const submittedText = rawText === '__WAGER_LOCKED__' ? '' : rawText;
       const isEmpty = !submittedText;
       const isCorrect = answer.is_correct || false;
       const wager = answer.wager || 0;
@@ -2011,10 +2033,14 @@ async function handlePlayAgain() {
   await updateRoomStatus(state.room.id, 'lobby');
 
   if (state.room.isHost) {
+    // Clear old answers so scores don't carry over to the next game
+    await deleteAnswersByRoom(state.room.id);
     await updateGameState(state.room.id, {
       game_phase: 'lobby',
       current_question: 0,
-      question_ids: []
+      question_ids: [],
+      question_started_at: null,
+      countdown_started_at: null
     });
   }
 
