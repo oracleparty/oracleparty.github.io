@@ -2374,12 +2374,50 @@ function handleAnswerChange(payload) {
 // CHAT OVERLAY
 // ============================================
 
+/**
+ * Position the chat toggle bar just above the active screen's footer.
+ * Uses a CSS custom property so the layout adapts to any footer height.
+ */
+function repositionChatToggle() {
+  const activeScreen = document.querySelector('.screen.active');
+  if (!activeScreen) return;
+  const footer = activeScreen.querySelector('.game-footer');
+  const toggle = $('#btn-chat-toggle');
+  const toasts = $('#chat-toasts');
+  const GAP = 8; // px gap between footer top and toggle bottom
+
+  if (footer) {
+    const footerH = footer.offsetHeight;
+    const bottom = footerH + GAP;
+    toggle.style.setProperty('--chat-toggle-bottom', `${bottom}px`);
+    // Toast container sits above the toggle bar
+    const toggleH = toggle.offsetHeight || 38;
+    toasts.style.setProperty('--chat-toasts-bottom', `${bottom + toggleH + GAP}px`);
+  } else {
+    // No footer (shouldn't happen, but fallback)
+    toggle.style.setProperty('--chat-toggle-bottom', `${GAP + env_safe_bottom()}px`);
+    toasts.style.setProperty('--chat-toasts-bottom', `${GAP + 38 + env_safe_bottom()}px`);
+  }
+}
+
+/** Approximate env(safe-area-inset-bottom) — 0 on most devices */
+function env_safe_bottom() {
+  return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab') || '0', 10);
+}
+
 function showChatToggle() {
   $('#btn-chat-toggle').classList.remove('hidden');
+  $('#chat-toasts').classList.remove('hidden');
+  // Reposition after a frame so the active screen's footer is laid out.
+  // Also reposition after transition completes (800ms) since screen may not be active yet.
+  requestAnimationFrame(repositionChatToggle);
+  setTimeout(repositionChatToggle, 850);
 }
 
 function hideChatToggle() {
   $('#btn-chat-toggle').classList.add('hidden');
+  $('#chat-toasts').classList.add('hidden');
+  clearChatToasts();
   // Close chat panel if open
   if (state.chatOpen) {
     state.chatOpen = false;
@@ -2407,13 +2445,14 @@ function toggleChat() {
   if (state.chatOpen) {
     scrollGameChatToBottom();
     $('#game-chat-input').focus();
-    // Clear unread badge and preview
+    // Clear unread badge, preview, and toasts
     state.unreadCount = 0;
     const badge = $('#chat-badge');
     badge.textContent = '0';
     badge.classList.add('hidden');
     const preview = $('#chat-preview');
     if (preview) preview.textContent = '';
+    clearChatToasts();
   }
 }
 
@@ -2441,7 +2480,7 @@ function handleNewMessage(payload) {
   appendGameChatMessage(player_name, message);
   scrollGameChatToBottom();
 
-  // Show unread badge + inline preview when chat is closed (but not during hidden phases)
+  // Show unread badge + inline preview + toast when chat is closed (but not during hidden phases)
   const chatHidden = $('#btn-chat-toggle').classList.contains('hidden');
   if (!state.chatOpen && !chatHidden) {
     state.unreadCount = (state.unreadCount || 0) + 1;
@@ -2449,6 +2488,7 @@ function handleNewMessage(payload) {
     badge.textContent = state.unreadCount;
     badge.classList.remove('hidden');
     updateChatPreview(player_name, message);
+    showChatToast(player_name, message);
   }
 }
 
@@ -2457,6 +2497,51 @@ function updateChatPreview(name, text) {
   if (!preview) return;
   const truncated = text.length > 40 ? text.slice(0, 40) + '...' : text;
   preview.textContent = `${name}: ${truncated}`;
+}
+
+// --- Chat Toast Popups ---
+
+const MAX_TOASTS = 3;
+
+function showChatToast(name, text) {
+  const container = $('#chat-toasts');
+  if (!container || container.classList.contains('hidden')) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'chat-toast';
+  const truncated = text.length > 60 ? text.slice(0, 60) + '...' : text;
+  toast.innerHTML = `<span class="chat-toast__name">${escapeHtml(name)}</span>${escapeHtml(truncated)}`;
+  container.appendChild(toast);
+
+  // Animate in
+  requestAnimationFrame(() => {
+    toast.classList.add('visible');
+  });
+
+  // Cap visible toasts — remove oldest
+  const toasts = container.querySelectorAll('.chat-toast');
+  if (toasts.length > MAX_TOASTS) {
+    removeToast(toasts[0]);
+  }
+
+  // Auto-fade after 3 seconds
+  setTimeout(() => {
+    removeToast(toast);
+  }, 3000);
+}
+
+function removeToast(toast) {
+  if (!toast || !toast.parentNode) return;
+  toast.classList.remove('visible');
+  toast.classList.add('fading');
+  toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+  // Fallback if transitionend doesn't fire
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 400);
+}
+
+function clearChatToasts() {
+  const container = $('#chat-toasts');
+  if (container) container.innerHTML = '';
 }
 
 function appendGameChatMessage(name, text) {
