@@ -1642,6 +1642,7 @@ async function showScoresScreen() {
   _lastScoresRenderedForQuestion = state.currentQuestion;
 
   state.onRevealScreen = false;
+  showChatToggle();
 
   // Track this question as shown (for question browser)
   if (!state.shownQuestionIndices.includes(state.currentQuestion)) {
