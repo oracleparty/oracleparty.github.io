@@ -154,3 +154,13 @@ Oracle-Party/
 - Keep CSS variables for all colors, fonts, spacing — theming comes later
 - No external JS frameworks. Supabase JS client is the only dependency.
 - When in doubt, keep it simple. We can add complexity later.
+
+## Gotchas — Common Mistakes to Avoid
+- NEVER show internal state markers (like `__WAGER_LOCKED__`) to players
+- Always fully reset game state when returning to lobby via Play Again
+- Score should never go negative on regular rounds — only final wager
+- Always verify changes didn't break existing functionality before committing
+- When fixing a bug, check if the same pattern exists elsewhere in the codebase
+- Test at 375px mobile viewport before committing any UI changes
+- Clear all previous round data before rendering a new question
+- Use `/clear` between unrelated tasks to prevent context pollution
