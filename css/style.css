@@ -2658,6 +2658,8 @@ body::after {
 }
 
 .results-footer {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-sm);
 }
 
@@ -2835,6 +2837,11 @@ body::after {
 
 .chat-toggle:active {
   transform: scale(0.97);
+}
+
+/* Extra bottom padding so scrollable content clears the fixed chat toggle */
+body.chat-visible .game-content {
+  padding-bottom: calc(var(--space-md) + 56px);
 }
 
 .chat-toggle__label {

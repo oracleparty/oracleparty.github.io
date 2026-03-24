@@ -1830,6 +1830,7 @@ function showNextButtonOnScores() {
   if (!state.room.isHost) {
     // Non-host: show "Waiting for host..." message
     $('#scores-waiting-host').classList.remove('hidden');
+    requestAnimationFrame(repositionChatToggle);
     return;
   }
   $('#scores-waiting-host').classList.add('hidden');
@@ -1849,6 +1850,8 @@ function showNextButtonOnScores() {
   btn.disabled = false;
   btn.style.opacity = '1';
   btn.classList.remove('hidden');
+  // Footer content changed — reposition chat toggle above it
+  requestAnimationFrame(repositionChatToggle);
 }
 
 async function handleFinalWager() {
@@ -2407,6 +2410,7 @@ function repositionChatToggle() {
 function showChatToggle() {
   $('#btn-chat-toggle').classList.remove('hidden');
   $('#chat-toasts').classList.remove('hidden');
+  document.body.classList.add('chat-visible');
   // Reposition after a frame so the active screen's footer is laid out.
   // Also reposition after transition completes (800ms) since screen may not be active yet.
   requestAnimationFrame(repositionChatToggle);
@@ -2416,6 +2420,7 @@ function showChatToggle() {
 function hideChatToggle() {
   $('#btn-chat-toggle').classList.add('hidden');
   $('#chat-toasts').classList.add('hidden');
+  document.body.classList.remove('chat-visible');
   clearChatToasts();
   // Close chat panel if open
   if (state.chatOpen) {
