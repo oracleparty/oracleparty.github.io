@@ -1308,7 +1308,7 @@ async function showRevealScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
-    transitionScreens(currentScreen, revealScreen);
+    transitionScreens(currentScreen, revealScreen).then(repositionChatToggle);
   }
 
   // If results were already revealed (reconnect), show them immediately
@@ -1701,7 +1701,7 @@ async function showScoresScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const scoresScreen = $('#scores-screen');
   if (currentScreen && currentScreen !== scoresScreen) {
-    transitionScreens(currentScreen, scoresScreen);
+    transitionScreens(currentScreen, scoresScreen).then(repositionChatToggle);
   }
 
   // Host: show "Update Scores" button; non-host: auto-animate after delay
@@ -2091,7 +2091,7 @@ async function showResultsScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const resultsScreen = $('#results-screen');
   if (currentScreen && currentScreen !== resultsScreen) {
-    transitionScreens(currentScreen, resultsScreen);
+    transitionScreens(currentScreen, resultsScreen).then(repositionChatToggle);
   }
 
   showChatToggle();
@@ -2388,15 +2388,19 @@ function repositionChatToggle() {
 
   if (footer) {
     const footerH = footer.offsetHeight;
+    // Skip if footer is empty/collapsed (e.g. question screen has an empty footer) —
+    // the 850ms timeout or transition callback will reposition once the right screen is active.
+    if (footerH === 0) return;
     const bottom = footerH + GAP;
     toggle.style.setProperty('--chat-toggle-bottom', `${bottom}px`);
     // Toast container sits above the toggle bar
     const toggleH = toggle.offsetHeight || 38;
     toasts.style.setProperty('--chat-toasts-bottom', `${bottom + toggleH + GAP}px`);
   } else {
-    // No footer (shouldn't happen, but fallback)
-    toggle.style.setProperty('--chat-toggle-bottom', `${GAP + env_safe_bottom()}px`);
-    toasts.style.setProperty('--chat-toasts-bottom', `${GAP + 38 + env_safe_bottom()}px`);
+    // No footer — use a sensible default
+    const bottom = GAP;
+    toggle.style.setProperty('--chat-toggle-bottom', `${bottom}px`);
+    toasts.style.setProperty('--chat-toasts-bottom', `${bottom + 38 + GAP}px`);
   }
 }
 
