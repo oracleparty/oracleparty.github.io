@@ -2414,7 +2414,7 @@ body::after {
 /* --- Chat Overlay (Game) --- */
 .chat-toggle {
   position: fixed;
-  bottom: max(var(--space-sm), env(safe-area-inset-bottom));
+  bottom: calc(70px + env(safe-area-inset-bottom));
   left: var(--space-lg);
   width: calc(100% - 2 * var(--space-lg));
   border-radius: var(--radius-md);
