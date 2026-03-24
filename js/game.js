@@ -2912,6 +2912,12 @@ async function syncToCurrentState() {
 
       // Rebuild scores from DB
       await updateScores();
+
+      // Set gamePhase to 'loading' so handlePhaseTransition preserves
+      // questionStartedAt instead of clearing it (line 636). This mimics
+      // the init reconnect path — without it, the player gets stuck on a
+      // hidden question screen waiting for a timer start that already happened.
+      state.gamePhase = 'loading';
     }
 
     handlePhaseTransition(roomData.game_phase);
