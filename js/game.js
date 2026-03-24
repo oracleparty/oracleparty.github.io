@@ -97,7 +97,8 @@ const state = {
   chatEchoPending: 0,
   unreadCount: 0,
   _hotJoinPollId: null,
-  _gamePlayCompleted: false
+  _gamePlayCompleted: false,
+  _syncIntervalId: null
 };
 
 // Stored handler for document click (flag menu dismiss) — removed in cleanup()
@@ -261,6 +262,9 @@ async function init() {
 
   // Poll for stale disconnected players (auto-kick after 5 min)
   state.stalePollId = setInterval(checkStalePresence, 10000);
+
+  // Periodic sync to catch missed Realtime messages after brief disconnections
+  state._syncIntervalId = setInterval(syncToCurrentState, 30000);
 
   loadChatMessages();
   attachChatListeners();
@@ -664,9 +668,11 @@ async function handlePhaseTransition(phase) {
       state.timerExpired = true;
       // Auto-select lowest available wager if none was explicitly selected
       if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
+        let found = false;
         for (let i = 1; i <= state.totalQuestions; i++) {
-          if (!state.usedWagers.has(i)) { state.currentWager = i; break; }
+          if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
         }
+        if (!found) state.currentWager = state.currentQuestion + 1;
       }
       if (!state.hasSubmitted) {
         const currentAnswer = ($('#answer-input')?.value || '').trim();
@@ -681,9 +687,11 @@ async function handlePhaseTransition(phase) {
       state.timerExpired = true;
       // Auto-select lowest available wager if none was explicitly selected
       if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
+        let found = false;
         for (let i = 1; i <= state.totalQuestions; i++) {
-          if (!state.usedWagers.has(i)) { state.currentWager = i; break; }
+          if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
         }
+        if (!found) state.currentWager = state.currentQuestion + 1;
       }
       state.resultsRevealed = true;
       if (!state.hasSubmitted) {
@@ -966,6 +974,21 @@ function renderWagerGrid() {
 
     grid.appendChild(btn);
   }
+
+  // Auto-select if only one wager remains (prevents getting stuck on last question)
+  const available = grid.querySelectorAll('.wager-btn:not(.wager-btn--used)');
+  if (available.length === 1 && !state.wagerExplicitlySelected) {
+    const onlyBtn = available[0];
+    const val = parseInt(onlyBtn.dataset.value, 10);
+    onlyBtn.classList.add('wager-btn--selected');
+    state.currentWager = val;
+    state.wagerExplicitlySelected = true;
+  } else if (available.length === 0) {
+    // Defensive: all exhausted — assign fallback so player can still submit
+    state.currentWager = state.currentQuestion + 1;
+    state.wagerExplicitlySelected = true;
+    console.warn('[Game] All wagers exhausted, fallback to', state.currentWager);
+  }
 }
 
 function selectWager(value, btnEl) {
@@ -1073,12 +1096,15 @@ async function handleTimerExpired() {
 
   // Auto-select lowest available wager if none was explicitly selected
   if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
+    let found = false;
     for (let i = 1; i <= state.totalQuestions; i++) {
       if (!state.usedWagers.has(i)) {
         state.currentWager = i;
+        found = true;
         break;
       }
     }
+    if (!found) state.currentWager = state.currentQuestion + 1;
   }
 
   // Auto-submit with whatever is currently typed
@@ -1176,9 +1202,13 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     wager = state.currentWager;
   } else {
     // Fallback: find lowest available wager (auto-select paths should have set this already)
-    wager = 1;
+    wager = null;
     for (let i = 1; i <= state.totalQuestions; i++) {
       if (!state.usedWagers.has(i)) { wager = i; break; }
+    }
+    if (wager === null) {
+      wager = state.currentQuestion + 1;
+      console.warn('[Game] doSubmitAnswer: all wagers used, fallback to', wager);
     }
   }
   const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
@@ -1536,6 +1566,14 @@ async function handleRevealResults() {
       }
     }
     if (autoSubmits.length) await Promise.allSettled(autoSubmits);
+  }
+
+  // Re-fetch all answers (including just-submitted auto-answers) before revealing.
+  // Realtime INSERT callbacks may not have arrived yet, causing "Waiting..." flicker.
+  try {
+    state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+  } catch (err) {
+    console.warn('[Game] Pre-reveal fetch failed, using cached answers:', err);
   }
 
   // Broadcast phase change so non-hosts transition to reveal
@@ -2791,6 +2829,67 @@ function handleVisibilityChange() {
   // don't permanently break away detection.
   state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
     .catch(() => {});
+
+  // When tab becomes visible again, sync to current game state.
+  // Supabase Realtime does NOT replay missed messages after a disconnect,
+  // so we fetch from DB to catch up if the game advanced while we were away.
+  if (!document.hidden && state.room && state.gamePhase !== 'loading') {
+    syncToCurrentState();
+  }
+}
+
+/**
+ * Fetch current room state from DB and sync local state if the game has
+ * advanced (different question or phase). Handles both brief disconnections
+ * and tab-hidden gaps where Realtime messages were missed.
+ */
+async function syncToCurrentState() {
+  try {
+    const { data: roomData } = await fetchRoom(state.room.id);
+    if (!roomData || !roomData.game_phase) return;
+
+    // Room returned to lobby while we were away
+    if (roomData.status === 'lobby') {
+      cleanup();
+      window.location.href = 'lobby.html';
+      return;
+    }
+
+    const questionChanged = roomData.current_question !== undefined &&
+                            roomData.current_question !== state.currentQuestion;
+    const phaseChanged = roomData.game_phase !== state.gamePhase;
+
+    if (!questionChanged && !phaseChanged) return;
+
+    // Update local state to match server
+    if (roomData.current_question !== undefined) {
+      state.currentQuestion = roomData.current_question;
+    }
+    if (roomData.question_started_at) {
+      state.questionStartedAt = roomData.question_started_at;
+    }
+    if (roomData.countdown_started_at) {
+      state.countdownStartedAt = roomData.countdown_started_at;
+    }
+    if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
+      state.isFinalWagerRound = true;
+    }
+
+    // Reset per-question state if the question advanced
+    if (questionChanged) {
+      state.hasSubmitted = false;
+      state.onRevealScreen = false;
+      state.resultsRevealed = false;
+      state.timerExpired = false;
+      state.currentAnswers = [];
+      state.currentWager = null;
+      state.wagerExplicitlySelected = false;
+    }
+
+    handlePhaseTransition(roomData.game_phase);
+  } catch (err) {
+    console.error('[Game] syncToCurrentState failed:', err);
+  }
 }
 
 // ============================================
@@ -2816,6 +2915,10 @@ function cleanup() {
   if (state.presenceHeartbeatId) {
     clearInterval(state.presenceHeartbeatId);
     state.presenceHeartbeatId = null;
+  }
+  if (state._syncIntervalId) {
+    clearInterval(state._syncIntervalId);
+    state._syncIntervalId = null;
   }
   if (_flagMenuCloseHandler) {
     document.removeEventListener('click', _flagMenuCloseHandler);
