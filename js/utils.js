@@ -84,6 +84,11 @@ export function normalizeAnswer(str) {
   s = s.replace(/[^a-z0-9\s]/g, '');
   // Collapse whitespace
   s = s.replace(/\s+/g, ' ').trim();
+  // Expand common numeric abbreviations (only after digits)
+  s = s.replace(/(\d)\s*bil\b/g, '$1 billion');
+  s = s.replace(/(\d)\s*mil\b/g, '$1 million');
+  s = s.replace(/(\d)\s*tril\b/g, '$1 trillion');
+  s = s.replace(/(\d)\s*k\b/g, '$1 thousand');
   return s;
 }
 

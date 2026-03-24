@@ -599,6 +599,8 @@ async function handlePhaseTransition(phase) {
     state.timerExpired = false;
     state.currentAnswers = [];
     state.previousScores = {};
+    // Clear stale reveal DOM from previous round
+    $('#reveal-answers').innerHTML = '';
     // Reset scores guard on first question (new game / play again)
     if (state.currentQuestion === 0) {
       _lastScoresRenderedForQuestion = -1;
@@ -703,6 +705,8 @@ async function handlePhaseTransition(phase) {
       state.timerExpired = false;
       state.currentAnswers = [];
       state.previousScores = {};
+      // Clear stale reveal DOM from previous round
+      $('#reveal-answers').innerHTML = '';
       if (state.gamePhase !== 'loading') {
         state.questionStartedAt = null;
       }
@@ -834,9 +838,13 @@ function showQuestionScreen() {
     // Use the wager already locked in on the final wager screen
     state.currentWager = state.finalWager || 0;
     $('#wager-grid').style.display = 'none';
+    $('.wager-label').style.display = 'none';
+    $('#wager-error').style.display = 'none';
   } else {
     $('#question-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
     $('#wager-grid').style.display = '';
+    $('.wager-label').style.display = '';
+    $('#wager-error').style.display = '';
     renderWagerGrid();
   }
 
@@ -1961,7 +1969,7 @@ async function showResultsScreen() {
       finalScore: state.scores[state.room.playerId] || 0
     });
     // Archive chat messages before room might be deleted
-    archiveChatMessages(state.room.id);
+    await archiveChatMessages(state.room.id);
   }
 
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
