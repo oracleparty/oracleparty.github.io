@@ -268,8 +268,11 @@
       <button id="btn-game-chat-send" class="btn btn-primary">Send</button>
     </div>
   </div>
-  <button id="btn-chat-toggle" class="chat-toggle hidden">&#128172;<span id="chat-badge" class="chat-badge hidden">0</span></button>
-  <div id="chat-toast" class="chat-toast hidden"></div>
+  <button id="btn-chat-toggle" class="chat-toggle hidden">
+    <span class="chat-toggle__label">Chat</span>
+    <span id="chat-preview" class="chat-toggle__preview"></span>
+    <span id="chat-badge" class="chat-badge hidden">0</span>
+  </button>
 
   <!-- Display Name Modal (fallback) -->
   <div id="display-name-modal" class="modal-overlay">

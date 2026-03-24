@@ -867,7 +867,7 @@ function showQuestionScreen() {
     state.currentWager = null;
   }
   state.wagerExplicitlySelected = false;
-  showChatToggle();
+  hideChatToggle();
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
@@ -1202,6 +1202,7 @@ async function showRevealScreen() {
   // (it gets cleared in handleTimerExpired)
 
   state.onRevealScreen = true;
+  showChatToggle();
 
   const q = state.questions[state.currentQuestion];
   if (!q) return;
@@ -1866,7 +1867,7 @@ function showFinalWagerScreen() {
     revealBtn.classList.add('hidden');
   }
 
-  showChatToggle();
+  hideChatToggle();
 
   // Transition
   const currentScreen = document.querySelector('.screen.active');
@@ -2322,6 +2323,16 @@ function showChatToggle() {
   $('#btn-chat-toggle').classList.remove('hidden');
 }
 
+function hideChatToggle() {
+  $('#btn-chat-toggle').classList.add('hidden');
+  // Close chat panel if open
+  if (state.chatOpen) {
+    state.chatOpen = false;
+    $('#chat-panel').classList.remove('open');
+    $('#chat-backdrop').classList.remove('open');
+  }
+}
+
 function attachChatListeners() {
   $('#btn-chat-toggle').addEventListener('click', toggleChat);
   $('#btn-close-chat').addEventListener('click', toggleChat);
@@ -2341,11 +2352,13 @@ function toggleChat() {
   if (state.chatOpen) {
     scrollGameChatToBottom();
     $('#game-chat-input').focus();
-    // Clear unread badge
+    // Clear unread badge and preview
     state.unreadCount = 0;
     const badge = $('#chat-badge');
     badge.textContent = '0';
     badge.classList.add('hidden');
+    const preview = $('#chat-preview');
+    if (preview) preview.textContent = '';
   }
 }
 
@@ -2373,35 +2386,22 @@ function handleNewMessage(payload) {
   appendGameChatMessage(player_name, message);
   scrollGameChatToBottom();
 
-  // Show unread badge + toast when chat is closed
-  if (!state.chatOpen) {
+  // Show unread badge + inline preview when chat is closed (but not during hidden phases)
+  const chatHidden = $('#btn-chat-toggle').classList.contains('hidden');
+  if (!state.chatOpen && !chatHidden) {
     state.unreadCount = (state.unreadCount || 0) + 1;
     const badge = $('#chat-badge');
     badge.textContent = state.unreadCount;
     badge.classList.remove('hidden');
-    showChatToast(player_name, message);
+    updateChatPreview(player_name, message);
   }
 }
 
-function showChatToast(name, text) {
-  // Don't show toast previews during active question phases (timer running)
-  if (state.gamePhase === 'question' || state.gamePhase === 'final_question') return;
-
-  const toast = $('#chat-toast');
-  const truncated = text.length > 50 ? text.slice(0, 50) + '...' : text;
-  toast.innerHTML = `
-    <div class="chat-toast__name">${escapeHtml(name)}</div>
-    <div class="chat-toast__text">${escapeHtml(truncated)}</div>
-  `;
-  toast.classList.remove('hidden', 'chat-toast--fade-out');
-
-  // Clear any existing toast timer
-  if (state.chatToastTimer) clearTimeout(state.chatToastTimer);
-
-  state.chatToastTimer = setTimeout(() => {
-    toast.classList.add('chat-toast--fade-out');
-    setTimeout(() => toast.classList.add('hidden'), 400);
-  }, 3000);
+function updateChatPreview(name, text) {
+  const preview = $('#chat-preview');
+  if (!preview) return;
+  const truncated = text.length > 40 ? text.slice(0, 40) + '...' : text;
+  preview.textContent = `${name}: ${truncated}`;
 }
 
 function appendGameChatMessage(name, text) {

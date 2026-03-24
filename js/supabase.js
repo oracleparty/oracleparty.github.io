@@ -445,7 +445,9 @@ export function createPresenceChannel(roomId) {
  * Create a broadcast channel for honks.
  */
 export function createHonkChannel(roomId) {
-  return supabase.channel(`room-${roomId}-honks`);
+  return supabase.channel(`room-${roomId}-honks`, {
+    config: { broadcast: { self: true } }
+  });
 }
 
 /**
