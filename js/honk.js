@@ -43,11 +43,6 @@ function spawnGooseEmoji() {
   el.addEventListener('animationend', () => el.remove());
 }
 
-// --- Vibration ---
-function vibrateDevice() {
-  try { navigator.vibrate(200); } catch (_) {}
-}
-
 /**
  * Initialize the honk system for a room.
  * @param {string} roomId
@@ -73,7 +68,6 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
       if (targetId === localPlayerId) {
         playHonk();
         spawnGooseEmoji();
-        vibrateDevice();
       }
     })
     .subscribe();
