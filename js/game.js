@@ -2843,13 +2843,17 @@ function handleVisibilityChange() {
  * advanced (different question or phase). Handles both brief disconnections
  * and tab-hidden gaps where Realtime messages were missed.
  */
+let _syncInFlight = false;
 async function syncToCurrentState() {
+  if (_syncInFlight) return; // Prevent overlapping syncs
+  _syncInFlight = true;
   try {
     const { data: roomData } = await fetchRoom(state.room.id);
     if (!roomData || !roomData.game_phase) return;
 
     // Room returned to lobby while we were away
     if (roomData.status === 'lobby') {
+      _isLeaving = true;
       cleanup();
       window.location.href = 'lobby.html';
       return;
@@ -2884,11 +2888,32 @@ async function syncToCurrentState() {
       state.currentAnswers = [];
       state.currentWager = null;
       state.wagerExplicitlySelected = false;
+      state.previousScores = {};
+
+      // Rebuild usedWagers from DB (host may have auto-submitted wagers
+      // for questions we missed while disconnected)
+      const allAnswers = await fetchAllAnswers(state.room.id);
+      const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
+      state.usedWagers = new Set();
+      for (const a of myAnswers) {
+        state.usedWagers.add(a.wager);
+      }
+
+      // Rebuild question browser indices for missed questions
+      state.shownQuestionIndices = [];
+      for (let i = 0; i <= state.currentQuestion; i++) {
+        state.shownQuestionIndices.push(i);
+      }
+
+      // Rebuild scores from DB
+      await updateScores();
     }
 
     handlePhaseTransition(roomData.game_phase);
   } catch (err) {
     console.error('[Game] syncToCurrentState failed:', err);
+  } finally {
+    _syncInFlight = false;
   }
 }
 
