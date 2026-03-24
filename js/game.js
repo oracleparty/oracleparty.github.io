@@ -1149,7 +1149,18 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   const correctAnswer = getCorrectAnswer(q);
   const alternates = getAlternates(q);
   const isCorrect = answer ? fuzzyMatch(answer, correctAnswer, alternates) : false;
-  const wager = state.isFinalWagerRound ? (state.finalWager || 0) : (state.currentWager || 1);
+  let wager;
+  if (state.isFinalWagerRound) {
+    wager = state.finalWager || 0;
+  } else if (state.currentWager) {
+    wager = state.currentWager;
+  } else {
+    // Fallback: find lowest available wager (auto-select paths should have set this already)
+    wager = 1;
+    for (let i = 1; i <= state.totalQuestions; i++) {
+      if (!state.usedWagers.has(i)) { wager = i; break; }
+    }
+  }
   const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
 
   state.usedWagers.add(wager);
