@@ -354,6 +354,8 @@ body::after {
 #splash::before {
   content: '';
   position: absolute;
+  inset: 0;
+  margin: auto;
   width: 320px;
   height: 320px;
   border-radius: 50%;
