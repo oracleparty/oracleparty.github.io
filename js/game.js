@@ -9,7 +9,11 @@ import {
   fetchPlayers,
   fetchQuestionsByCategory,
   fetchQuestionsByIds,
+  fetchQuestionByDifficulty,
+  createDifficultyVoteChannel,
+  supabase,
   updateGameState,
+  saveQuestionIds,
   submitAnswer,
   fetchAnswersForQuestion,
   updateAnswerJudgment,
@@ -94,6 +98,10 @@ const state = {
   isFinalWagerRound: false,
   finalWager: 10,
   finalWagerLocked: false,
+  difficultyVoteLocked: false,
+  difficultyVotes: {},       // { playerId: 'easy'|'medium'|'hard' }
+  votedDifficulty: null,     // consensus result
+  difficultyVoteChannel: null,
   countdownStartedAt: null,
   _lastProcessedQuestion: -1,
   stalePollId: null,
@@ -595,6 +603,13 @@ function handleRoomChange(payload) {
     return;
   }
 
+  // When host starts a NEW game while this player is still on results,
+  // show a notification instead of auto-pulling them in.
+  if (status === 'playing' && state.gamePhase === 'results') {
+    _showNewGameNotice();
+    return;
+  }
+
   // Track server timer start timestamp
   if (question_started_at) {
     state.questionStartedAt = question_started_at;
@@ -672,6 +687,44 @@ function _showLobbyReturnNotice() {
   }
 
   document.getElementById('btn-return-lobby').onclick = () => {
+    _isLeaving = true;
+    cleanup();
+    sessionStorage.setItem('oracle_party_returning_from_game', '1');
+    window.location.replace('lobby.html');
+  };
+}
+
+/**
+ * Show a notice that the host started a new game.
+ * Players on the results screen can choose to join or stay.
+ */
+function _showNewGameNotice() {
+  const existing = document.getElementById('new-game-notice');
+  if (existing) return;
+
+  const resultsScreen = document.querySelector('#results-screen');
+  if (!resultsScreen || resultsScreen.style.display === 'none') {
+    // Not on results — auto-navigate to join the new game
+    _isLeaving = true;
+    cleanup();
+    sessionStorage.setItem('oracle_party_returning_from_game', '1');
+    window.location.replace('lobby.html');
+    return;
+  }
+
+  const notice = document.createElement('div');
+  notice.id = 'new-game-notice';
+  notice.className = 'signup-nudge';
+  notice.style.margin = 'var(--space-md) var(--space-lg)';
+  notice.innerHTML = `
+    <p class="signup-nudge__text">Host started a new game</p>
+    <button class="btn btn-primary btn-block" id="btn-join-new-game">Join</button>
+  `;
+
+  const resultsContent = resultsScreen.querySelector('.game-content');
+  if (resultsContent) resultsContent.appendChild(notice);
+
+  document.getElementById('btn-join-new-game').onclick = () => {
     _isLeaving = true;
     cleanup();
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
@@ -826,6 +879,10 @@ async function handlePhaseTransition(phase) {
     case 'final_wager':
       state.isFinalWagerRound = true;
       showFinalWagerScreen();
+      break;
+    case 'difficulty_vote':
+      state.isFinalWagerRound = true;
+      showDifficultyVoteScreen();
       break;
     case 'final_question':
       state.isFinalWagerRound = true;
@@ -1009,7 +1066,13 @@ function showQuestionScreen() {
     $('#wager-error').style.display = '';
     renderWagerGrid(); // Must run AFTER state resets — auto-selects last remaining wager
   }
-  hideChatBar();
+  // Keep chat open if player is typing — don't force-close mid-message.
+  // Show a colored notice inside the chat so they know the round started.
+  if (state.chatOpen) {
+    _showChatRoundNotice();
+  } else {
+    hideChatBar();
+  }
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
@@ -2152,7 +2215,158 @@ async function updateFinalWagerPlayerList() {
 }
 
 async function handleRevealFinalQuestion() {
-  // Set current_question to totalQuestions (the final wager question index)
+  // Go to difficulty vote first — players vote on Easy/Medium/Hard
+  // before the final question is revealed
+  await updateGameState(state.room.id, {
+    game_phase: 'difficulty_vote'
+  });
+}
+
+// ============================================
+// DIFFICULTY VOTE SCREEN
+// ============================================
+
+function showDifficultyVoteScreen() {
+  state.difficultyVoteLocked = false;
+  state.difficultyVotes = {};
+  state.votedDifficulty = null;
+
+  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
+  $('#dv-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#dv-status').classList.add('hidden');
+  $('#dv-result').classList.add('hidden');
+  $('#dv-tally').innerHTML = '';
+
+  const options = document.querySelectorAll('.dv-option');
+  options.forEach(btn => {
+    btn.classList.remove('dv-option--selected', 'dv-option--winner');
+    btn.disabled = false;
+  });
+
+  // Host: show reveal button (hidden until ready)
+  const revealBtn = $('#btn-dv-reveal');
+  if (state.room.isHost) {
+    revealBtn.classList.remove('hidden');
+    revealBtn.disabled = true;
+    revealBtn.style.opacity = '0.5';
+    revealBtn.textContent = 'Waiting for votes...';
+    revealBtn.onclick = handleDifficultyVoteComplete;
+  } else {
+    revealBtn.classList.add('hidden');
+  }
+
+  // Set up broadcast channel for votes
+  if (state.difficultyVoteChannel) {
+    supabase.removeChannel(state.difficultyVoteChannel);
+  }
+  state.difficultyVoteChannel = createDifficultyVoteChannel(state.room.id);
+  state.difficultyVoteChannel
+    .on('broadcast', { event: 'vote' }, ({ payload }) => {
+      if (payload && payload.playerId && payload.difficulty) {
+        state.difficultyVotes[payload.playerId] = payload.difficulty;
+        renderDifficultyTally();
+
+        // Host: enable reveal button when all players have voted
+        if (state.room.isHost) {
+          const voteCount = Object.keys(state.difficultyVotes).length;
+          if (voteCount >= state.players.length) {
+            revealBtn.disabled = false;
+            revealBtn.style.opacity = '1';
+            revealBtn.textContent = 'Reveal Question';
+          }
+        }
+      }
+    })
+    .subscribe();
+
+  // Vote button handlers
+  options.forEach(btn => {
+    btn.onclick = () => {
+      if (state.difficultyVoteLocked) return;
+      state.difficultyVoteLocked = true;
+      options.forEach(b => b.classList.remove('dv-option--selected'));
+      btn.classList.add('dv-option--selected');
+      options.forEach(b => { b.disabled = true; });
+      $('#dv-status').classList.remove('hidden');
+
+      // Broadcast vote
+      state.difficultyVoteChannel.send({
+        type: 'broadcast',
+        event: 'vote',
+        payload: { playerId: state.room.playerId, difficulty: btn.dataset.difficulty }
+      });
+    };
+  });
+
+  hideChatBar();
+
+  // Screen transition
+  const currentScreen = document.querySelector('.screen[style*="display: flex"], .screen.active:not([style*="display: none"])');
+  const voteScreen = $('#difficulty-vote-screen');
+  if (currentScreen && currentScreen !== voteScreen) {
+    transitionScreens(currentScreen, voteScreen);
+  }
+}
+
+function renderDifficultyTally() {
+  const tally = { easy: 0, medium: 0, hard: 0 };
+  for (const d of Object.values(state.difficultyVotes)) {
+    if (tally[d] !== undefined) tally[d]++;
+  }
+  const total = Object.keys(state.difficultyVotes).length;
+  $('#dv-tally').innerHTML = `
+    <span class="dv-tally__item dv-tally__item--easy">Easy: ${tally.easy}</span>
+    <span class="dv-tally__item dv-tally__item--medium">Medium: ${tally.medium}</span>
+    <span class="dv-tally__item dv-tally__item--hard">Hard: ${tally.hard}</span>
+    <span class="dv-tally__total">${total}/${state.players.length} voted</span>
+  `;
+}
+
+async function handleDifficultyVoteComplete() {
+  // Determine winner (majority, tie → medium)
+  const tally = { easy: 0, medium: 0, hard: 0 };
+  for (const d of Object.values(state.difficultyVotes)) {
+    if (tally[d] !== undefined) tally[d]++;
+  }
+  let winner = 'medium';
+  let maxVotes = 0;
+  for (const [diff, count] of Object.entries(tally)) {
+    if (count > maxVotes) { maxVotes = count; winner = diff; }
+  }
+
+  state.votedDifficulty = winner;
+
+  // Show result briefly
+  const resultEl = $('#dv-result');
+  resultEl.textContent = `The group chose: ${winner.charAt(0).toUpperCase() + winner.slice(1)}`;
+  resultEl.classList.remove('hidden');
+
+  // Highlight winning button
+  document.querySelectorAll('.dv-option').forEach(btn => {
+    btn.classList.toggle('dv-option--winner', btn.dataset.difficulty === winner);
+  });
+
+  // Fetch a question matching the voted difficulty
+  const usedIds = state.questions.map(q => q.id);
+  const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds);
+
+  if (q) {
+    // Replace the pre-fetched final question with the voted one
+    state.questions[state.totalQuestions] = q;
+  }
+
+  // Clean up vote channel
+  if (state.difficultyVoteChannel) {
+    supabase.removeChannel(state.difficultyVoteChannel);
+    state.difficultyVoteChannel = null;
+  }
+
+  // Brief pause to show result, then advance to final question
+  await new Promise(r => setTimeout(r, 1500));
+
+  // Save the new question ID and advance
+  const questionIds = state.questions.map(qn => qn.id);
+  await saveQuestionIds(state.room.id, questionIds);
   await updateGameState(state.room.id, {
     game_phase: 'final_question',
     current_question: state.totalQuestions
@@ -2655,6 +2869,24 @@ function hideChatBar() {
     $('#chat-bar').classList.remove('open');
     $('#chat-drawer').classList.remove('open');
   }
+}
+
+/**
+ * Show a notification inside the open chat drawer that a round started.
+ * Used when the chat is open and the host advances — we don't force-close
+ * the chat mid-message, but we alert the player that the timer is running.
+ */
+function _showChatRoundNotice() {
+  const drawer = $('#chat-drawer');
+  if (!drawer) return;
+  // Remove any existing notice
+  const existing = drawer.querySelector('.chat-round-notice');
+  if (existing) existing.remove();
+  const notice = document.createElement('div');
+  notice.className = 'chat-round-notice';
+  notice.textContent = 'Round started \u2014 timer is running!';
+  drawer.prepend(notice);
+  setTimeout(() => notice.remove(), 4000);
 }
 
 function attachChatListeners() {
@@ -3329,6 +3561,10 @@ function cleanup() {
   if (_flagMenuCloseHandler) {
     document.removeEventListener('click', _flagMenuCloseHandler);
     _flagMenuCloseHandler = null;
+  }
+  if (state.difficultyVoteChannel) {
+    supabase.removeChannel(state.difficultyVoteChannel);
+    state.difficultyVoteChannel = null;
   }
   for (const ch of state.channels) unsubscribe(ch);
   state.channels = [];

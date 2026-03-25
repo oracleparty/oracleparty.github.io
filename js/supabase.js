@@ -492,6 +492,15 @@ export function createTypingChannel(roomId) {
 }
 
 /**
+ * Create a broadcast channel for difficulty votes.
+ */
+export function createDifficultyVoteChannel(roomId) {
+  return supabase.channel(`room-${roomId}-difficulty-votes`, {
+    config: { broadcast: { self: true } }
+  });
+}
+
+/**
  * Update room status.
  */
 export async function updateRoomStatus(roomId, status) {
@@ -540,6 +549,35 @@ export async function fetchQuestionsByCategory(category, limit) {
     [data[i], data[j]] = [data[j], data[i]];
   }
   return data.slice(0, limit);
+}
+
+/**
+ * Fetch a single random question by category and difficulty.
+ * Used for the final question after difficulty vote.
+ * Excludes any questionIds already used in this game.
+ */
+export async function fetchQuestionByDifficulty(category, difficulty, excludeIds = []) {
+  let query = supabase
+    .from('questions')
+    .select('*')
+    .contains('categories', [category])
+    .eq('format', 'open')
+    .eq('difficulty', difficulty)
+    .limit(20);
+
+  const { data, error } = await query;
+  if (error || !data || data.length === 0) {
+    console.warn('[Supabase] fetchQuestionByDifficulty: no questions found for', difficulty);
+    return null;
+  }
+
+  // Filter out already-used questions
+  const available = excludeIds.length > 0
+    ? data.filter(q => !excludeIds.includes(q.id))
+    : data;
+
+  if (available.length === 0) return data[Math.floor(Math.random() * data.length)]; // Fallback: allow repeats
+  return available[Math.floor(Math.random() * available.length)];
 }
 
 /**
