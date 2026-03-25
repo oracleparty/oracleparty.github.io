@@ -569,8 +569,11 @@ async function handlePlayerChange(payload) {
         const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
         if (localIdx !== -1) state.players[localIdx].is_host = true;
         await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
-        // Re-render current phase to show host controls
-        handlePhaseTransition(state.gamePhase);
+        // Show host controls for current phase WITHOUT re-triggering phase logic
+        // (handlePhaseTransition can cause auto-submits, screen transitions, etc.)
+        _activateHostControlsForCurrentPhase();
+        // Notify all players about the host transfer
+        sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
       }
     }
   } else if (event === 'UPDATE' && payload.new) {
@@ -582,6 +585,63 @@ async function handlePlayerChange(payload) {
     if (!state.players.some(p => String(p.id) === String(payload.new.id))) {
       state.players.push(payload.new);
       if (!state.scores[payload.new.id]) state.scores[payload.new.id] = 0;
+    }
+  }
+}
+
+/**
+ * Show host-only controls for the current game phase.
+ * Called after mid-game host transfer instead of handlePhaseTransition(),
+ * which would cause side effects (auto-submits, screen transitions).
+ */
+function _activateHostControlsForCurrentPhase() {
+  const phase = state.gamePhase;
+
+  if (phase === 'reveal' || phase === 'answer_reveal') {
+    // Reveal screen: show Next Question / Reveal Results button
+    const btn = $('#btn-next-question');
+    if (btn) {
+      btn.classList.remove('hidden');
+      if (state.resultsRevealed) {
+        btn.onclick = null; // Will be set by the scores advancement handler
+      }
+    }
+    // Attach judgment override handler to reveal answers container
+    const revealContainer = document.querySelector('#reveal-answers');
+    if (revealContainer) {
+      revealContainer.addEventListener('click', handleJudgmentOverride);
+    }
+  }
+
+  if (phase === 'scores_reveal') {
+    // Scores screen: show action button + edit scores
+    const btn = $('#btn-scores-action');
+    if (btn) btn.classList.remove('hidden');
+    const editBtn = $('#btn-edit-scores');
+    if (editBtn && state.currentQuestion > 0) {
+      editBtn.classList.remove('hidden');
+      editBtn.onclick = showScoreEditSheet;
+    }
+  }
+
+  if (phase === 'final_wager') {
+    // Final wager: show Reveal Question button (only if host locked their wager)
+    const revealBtn = $('#btn-fw-reveal');
+    if (revealBtn && state.finalWagerLocked) {
+      revealBtn.classList.remove('hidden');
+      revealBtn.onclick = handleRevealFinalQuestion;
+    }
+  }
+
+  if (phase === 'difficulty_vote') {
+    // Difficulty vote: show Reveal Question button
+    const revealBtn = $('#btn-dv-reveal');
+    if (revealBtn) {
+      revealBtn.classList.remove('hidden');
+      revealBtn.disabled = false;
+      revealBtn.style.opacity = '1';
+      revealBtn.textContent = 'Reveal Question';
+      revealBtn.onclick = handleDifficultyVoteComplete;
     }
   }
 }

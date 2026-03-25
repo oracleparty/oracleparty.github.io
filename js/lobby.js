@@ -416,6 +416,9 @@ async function handleHostPromotion() {
     await promoteToHost(room.id, room.playerId, getDisplayName());
     activateHostUI();
     renderPlayers();
+    // Notify all players about the host transfer
+    sendMessage(room.id, 'System', `${getDisplayName()} is now the host`);
+    addSystemMessage('You are now the host');
   }
 }
 
