@@ -2912,15 +2912,16 @@ $('#question-browser-list').addEventListener('click', (e) => {
     return;
   }
 
-  // Thumbs up / down (unchanged logic)
+  // Thumbs up / down
+  // Close ALL open flag menus (not just same row — user may have one open elsewhere)
+  document.querySelectorAll('.qb-flag-menu').forEach(m => { m.style.display = 'none'; });
+
   if (current === fbType) {
     _qbFeedback[qId] = null;
     btn.classList.remove('qb-active');
     deleteQuestionFeedback({ questionId: qId, roomId: state.room.id, playerName: getDisplayName() });
   } else {
     btn.parentElement.querySelectorAll('[data-fb]').forEach(b => b.classList.remove('qb-active'));
-    // Close any open flag menus
-    btn.parentElement.querySelectorAll('.qb-flag-menu').forEach(m => { m.style.display = 'none'; });
     _qbFeedback[qId] = fbType;
     btn.classList.add('qb-active');
     upsertQuestionFeedback({
