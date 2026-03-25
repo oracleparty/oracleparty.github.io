@@ -1010,6 +1010,9 @@ export async function fetchGameHistory(userId, limit = 5) {
  * Error code 23505 = duplicate request already exists.
  */
 export async function sendFriendRequest(senderId, receiverId) {
+  if (senderId === receiverId) {
+    return { data: null, error: { message: 'Cannot send a friend request to yourself' } };
+  }
   const { data, error } = await supabase
     .from('friend_requests')
     .insert({ sender_id: senderId, receiver_id: receiverId, status: 'pending' })
@@ -1089,6 +1092,7 @@ export async function acceptFriendRequest(requestId) {
   const { error: friendErr } = await createFriendship(req.sender_id, req.receiver_id, 'request');
   if (friendErr) {
     console.error('[Supabase] acceptFriendRequest createFriendship failed:', friendErr.message);
+    return { error: friendErr };
   }
 
   return { error: null };
