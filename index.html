@@ -96,7 +96,10 @@
       // Track presence as "home"
       updatePresence({ activity: 'home' });
 
-      // Friend request notifications
+      // Transition splash → home
+      await transitionScreens(splash, home);
+
+      // Friend request notifications (after home is visible so toast is seen)
       if (authUser) {
         fetchPendingRequests(authUser.user.id).then(pending => {
           if (pending.length > 0) {
@@ -115,9 +118,6 @@
           }
         });
       }
-
-      // Transition splash → home
-      await transitionScreens(splash, home);
     }
 
     // --- Home avatar click → profile page ---

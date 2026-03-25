@@ -7,7 +7,6 @@ import { supabase, hasFriends } from './supabase.js';
 
 let _channel = null;
 let _userId = null;
-let _onSync = null;
 let _currentActivity = { activity: 'home' };
 
 /**
@@ -15,7 +14,7 @@ let _currentActivity = { activity: 'home' };
  * Only joins the channel if the user has at least one friend.
  *
  * @param {string} userId - The authenticated user's ID
- * @param {Function} [onSync] - Callback when presence state updates. Receives full presence map.
+ * @param {boolean} [showOnline=true] - If false, don't broadcast presence
  */
 export async function initGlobalPresence(userId, showOnline = true) {
   if (_channel) return; // Already initialized
@@ -32,11 +31,6 @@ export async function initGlobalPresence(userId, showOnline = true) {
   });
 
   _channel
-    .on('presence', { event: 'sync' }, () => {
-      if (_onSync) {
-        _onSync(_channel.presenceState());
-      }
-    })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await _channel.track({
@@ -97,5 +91,4 @@ export function destroyGlobalPresence() {
     _channel = null;
   }
   _userId = null;
-  _onSync = null;
 }
