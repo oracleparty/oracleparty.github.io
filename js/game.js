@@ -43,6 +43,7 @@ import {
   archiveChatMessages,
   deleteAnswersByRoom,
   reassignPlayerAnswers,
+  appendUsedQuestionIds,
   upsertPlayerStats,
   insertGameHistoryEntry
 } from './supabase.js';
@@ -402,8 +403,12 @@ async function initHostGame() {
     return;
   }
 
-  // Fetch totalQuestions + 1 (extra for final wager round)
-  const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1);
+  // Fetch used question IDs for repeat prevention (persists across Play Again cycles)
+  const { data: roomForExclude } = await fetchRoom(state.room.id);
+  const excludeIds = roomForExclude?.used_question_ids || [];
+
+  // Fetch totalQuestions + 1 (extra for final wager round), excluding previously used questions
+  const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds);
 
   if (questions.length === 0) {
     $('#game-loading .game-loading__text').textContent = 'No questions found for this category.';
@@ -418,6 +423,9 @@ async function initHostGame() {
   resolveFieldMap(questions[0]);
 
   const questionIds = questions.map(q => q.id);
+
+  // Track these question IDs as used (persists across Play Again — no repeats)
+  appendUsedQuestionIds(state.room.id, questionIds);
   const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
   state.countdownStartedAt = countdownStartedAt;
   await updateGameState(state.room.id, {
@@ -1947,6 +1955,15 @@ async function showScoresScreen() {
       showFinalScoresState();
     }
   }
+
+  // Host: show "Edit Scores" button to review/correct past judgments
+  const editBtn = $('#btn-edit-scores');
+  if (state.room.isHost && state.currentQuestion > 0) {
+    editBtn.classList.remove('hidden');
+    editBtn.onclick = showScoreEditSheet;
+  } else {
+    editBtn.classList.add('hidden');
+  }
 }
 
 function animateScores() {
@@ -2225,6 +2242,134 @@ async function handleRevealFinalQuestion() {
   // before the final question is revealed
   await updateGameState(state.room.id, {
     game_phase: 'difficulty_vote'
+  });
+}
+
+// ============================================
+// SCORE EDIT (Host Only)
+// ============================================
+
+/**
+ * Show a bottom sheet listing all questions played so far.
+ * Host can tap any question to review answers and flip judgments.
+ */
+function showScoreEditSheet() {
+  const sheet = $('#score-edit-sheet');
+  const listEl = $('#score-edit-question-list');
+  const answersEl = $('#score-edit-answers');
+
+  answersEl.style.display = 'none';
+  listEl.style.display = '';
+
+  // Build question list (0 through currentQuestion - 1, i.e. completed questions)
+  const maxQ = Math.min(state.currentQuestion, state.questions.length);
+  listEl.innerHTML = '';
+  for (let i = 0; i < maxQ; i++) {
+    const q = state.questions[i];
+    if (!q) continue;
+    const text = getQuestionText(q);
+    const truncated = text.length > 50 ? text.slice(0, 50) + '\u2026' : text;
+    const row = document.createElement('button');
+    row.className = 'score-edit-row';
+    row.innerHTML = `<span class="score-edit-row__num">Q${i + 1}</span> <span class="score-edit-row__text">${escapeHtml(truncated)}</span>`;
+    row.onclick = () => openScoreEditQuestion(i);
+    listEl.appendChild(row);
+  }
+
+  // Dismiss
+  $('#score-edit-backdrop').onclick = () => sheet.classList.remove('active');
+
+  sheet.classList.add('active');
+}
+
+/**
+ * Open a specific question's answers for judgment editing.
+ */
+async function openScoreEditQuestion(questionNumber) {
+  const listEl = $('#score-edit-question-list');
+  const answersEl = $('#score-edit-answers');
+
+  listEl.style.display = 'none';
+  answersEl.style.display = '';
+  answersEl.innerHTML = '<p style="text-align:center; color: var(--color-text-muted);">Loading...</p>';
+
+  const answers = await fetchAnswersForQuestion(state.room.id, questionNumber);
+  const q = state.questions[questionNumber];
+
+  // Build answer rows with toggle switches (reuse the reveal pattern)
+  answersEl.innerHTML = `
+    <div style="margin-bottom: var(--space-md);">
+      <button class="btn btn-secondary" id="score-edit-back" style="font-size: var(--text-xs); padding: var(--space-xs) var(--space-sm);">&larr; Back</button>
+      <strong style="margin-left: var(--space-sm);">Q${questionNumber + 1}: ${escapeHtml(getCorrectAnswer(q))}</strong>
+    </div>
+  `;
+
+  for (const player of state.players) {
+    const answer = answers.find(a => String(a.player_id) === String(player.id));
+    if (!answer) continue;
+
+    const isCorrect = answer.is_correct || false;
+    const submittedText = (answer.submitted_answer || '').trim();
+    const displayText = (!submittedText || submittedText === '__WAGER_LOCKED__') ? 'No answer' : escapeHtml(submittedText);
+    const colorClass = isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect';
+
+    const row = document.createElement('div');
+    row.className = 'answer-row';
+    row.dataset.answerId = answer.id;
+    row.innerHTML = `
+      <div class="answer-row__top">
+        ${renderAvatar({ displayName: player.display_name, avatarColor: player.avatar_color, avatarEmoji: player.avatar_emoji })}
+        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+        <span class="answer-row__wager ${isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect'}">${answer.wager}</span>
+        <div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}" data-question-number="${questionNumber}" data-player-name="${escapeHtml(player.display_name)}">
+          <div class="answer-toggle__thumb"></div>
+        </div>
+      </div>
+      <div class="answer-row__bottom">
+        <span class="answer-row__answer ${colorClass}">${displayText}</span>
+      </div>
+    `;
+    answersEl.appendChild(row);
+  }
+
+  // Back button
+  $('#score-edit-back').onclick = () => {
+    answersEl.style.display = 'none';
+    listEl.style.display = '';
+  };
+
+  // Toggle click handler — override judgment and recalculate scores
+  answersEl.addEventListener('click', async (e) => {
+    const toggle = e.target.closest('.answer-toggle--host');
+    if (!toggle) return;
+
+    const answerId = toggle.dataset.answerId;
+    const qNum = parseInt(toggle.dataset.questionNumber, 10);
+    const playerName = toggle.dataset.playerName;
+    const answer = answers.find(a => String(a.id) === String(answerId));
+    if (!answer) return;
+
+    const newCorrect = !answer.is_correct;
+    const isFinal = qNum >= state.totalQuestions;
+    const newScore = newCorrect ? answer.wager : (isFinal ? -answer.wager : 0);
+
+    // Update local answer object
+    answer.is_correct = newCorrect;
+    answer.score_earned = newScore;
+
+    // Persist to DB
+    await updateAnswerJudgment(answerId, newCorrect, newScore);
+
+    // Recalculate all scores and re-render scores screen
+    await updateScores();
+    // Re-render the edit view to show updated colors
+    openScoreEditQuestion(qNum);
+
+    // Send system chat message about the correction
+    const sign = newScore >= 0 ? '+' : '';
+    await sendMessage(state.room.id, 'System',
+      `Host changed Q${qNum + 1}: ${playerName} marked ${newCorrect ? 'correct' : 'incorrect'} (${sign}${newScore} points)`
+    );
   });
 }
 

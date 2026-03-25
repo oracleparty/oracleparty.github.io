@@ -529,8 +529,9 @@ export function unsubscribe(channel) {
  * Fetches extra and shuffles client-side since PostgREST has no random order.
  * Tries common column names for question text/answer fields.
  */
-export async function fetchQuestionsByCategory(category, limit) {
-  const fetchCount = Math.min(limit * 3, 100);
+export async function fetchQuestionsByCategory(category, limit, excludeIds = []) {
+  // Fetch extra to account for excluded IDs + shuffling
+  const fetchCount = Math.min((limit + excludeIds.length) * 3, 200);
   const { data, error } = await supabase
     .from('questions')
     .select('*')
@@ -543,12 +544,31 @@ export async function fetchQuestionsByCategory(category, limit) {
     return [];
   }
 
+  // Filter out previously used questions (client-side — PostgREST doesn't support NOT IN for arrays well)
+  const excludeSet = new Set(excludeIds);
+  const filtered = excludeSet.size > 0 ? data.filter(q => !excludeSet.has(q.id)) : data;
+
   // Shuffle and take requested count
-  for (let i = data.length - 1; i > 0; i--) {
+  for (let i = filtered.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [data[i], data[j]] = [data[j], data[i]];
+    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
   }
-  return data.slice(0, limit);
+  return filtered.slice(0, limit);
+}
+
+/**
+ * Append question IDs to a room's used_question_ids array.
+ * Persists across Play Again cycles — prevents repeat questions.
+ */
+export async function appendUsedQuestionIds(roomId, newIds) {
+  const { data: roomData } = await fetchRoom(roomId);
+  const existing = roomData?.used_question_ids || [];
+  const merged = [...new Set([...existing, ...newIds])];
+  const { error } = await supabase
+    .from('rooms')
+    .update({ used_question_ids: merged })
+    .eq('id', roomId);
+  if (error) console.error('[Supabase] appendUsedQuestionIds failed:', error.message);
 }
 
 /**

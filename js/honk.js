@@ -16,17 +16,32 @@ const honkAudio = new Audio('honk.mp3');
 honkAudio.preload = 'auto';
 let _honkMuted = false;
 
+// Mobile browsers require a user gesture before playing audio.
+// Unlock the audio context on the first tap anywhere on the page.
+let _audioUnlocked = false;
+function _unlockAudio() {
+  if (_audioUnlocked) return;
+  _audioUnlocked = true;
+  honkAudio.volume = 0;
+  honkAudio.play().then(() => {
+    honkAudio.pause();
+    honkAudio.currentTime = 0;
+    honkAudio.volume = 1.0;
+  }).catch(() => {});
+  document.removeEventListener('touchstart', _unlockAudio, true);
+  document.removeEventListener('click', _unlockAudio, true);
+}
+document.addEventListener('touchstart', _unlockAudio, true);
+document.addEventListener('click', _unlockAudio, true);
+
 /** Suppress honk sounds + animations (e.g. during question phase). */
 export function setHonkMuted(muted) { _honkMuted = muted; }
 
 function playHonk() {
   if (_honkMuted) return;
-  try {
-    // Clone the audio so overlapping honks don't cut each other off
-    const sound = honkAudio.cloneNode();
-    sound.volume = 1.0;
-    sound.play();
-  } catch (_) { /* audio not available */ }
+  const sound = honkAudio.cloneNode();
+  sound.volume = 1.0;
+  sound.play().catch(() => {}); // .play() returns Promise — catch async rejection
 }
 
 // --- Animation ---

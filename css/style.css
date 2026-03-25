@@ -3797,6 +3797,41 @@ body::after {
 }
 
 /* ============================================
+   SCORE EDIT (Host)
+   ============================================ */
+
+.score-edit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-bg-deep);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+.score-edit-row:active {
+  background: var(--color-bg-deep);
+}
+.score-edit-row__num {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--color-primary);
+  min-width: 28px;
+}
+.score-edit-row__text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
    DIFFICULTY VOTE
    ============================================ */
 
