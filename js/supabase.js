@@ -653,6 +653,21 @@ export async function deleteAnswersByRoom(roomId) {
 }
 
 /**
+ * Reassign all answers from one player to another (used on reconnect after
+ * removePlayerBeacon deleted the old player row but left answers behind).
+ */
+export async function reassignPlayerAnswers(roomId, oldPlayerId, newPlayerId) {
+  const { error } = await supabase
+    .from('answers')
+    .update({ player_id: newPlayerId })
+    .eq('room_id', roomId)
+    .eq('player_id', oldPlayerId);
+
+  if (error) console.error('[Supabase] reassignPlayerAnswers failed:', error.message);
+  return { error };
+}
+
+/**
  * Subscribe to answer changes in a room (inserts + updates for host override).
  */
 export function subscribeToAnswers(roomId, callback) {

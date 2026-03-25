@@ -37,7 +37,8 @@ import {
   incrementQuestionsAnswered,
   completeGamePlay,
   archiveChatMessages,
-  deleteAnswersByRoom
+  deleteAnswersByRoom,
+  reassignPlayerAnswers
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
@@ -207,12 +208,17 @@ async function init() {
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
         state.players = await fetchPlayers(state.room.id);
 
-        // Rebuild used wagers from the old player's answers (new player ID has none yet).
-        // initHostGame / applyGameState will also attempt this but will find 0 answers
-        // under the new ID — this pre-populates the Set so their pass is a safe no-op.
+        // Migrate orphaned answers from old player to new player so
+        // updateScores() attributes them correctly and the scoreboard
+        // shows the right totals.
+        await reassignPlayerAnswers(state.room.id, prevPlayerId, rejoinedPlayer.id);
+
+        // Rebuild used wagers from the migrated answers (now under new player ID).
+        // initHostGame / applyGameState will also rebuild, but this is a safety net
+        // in case that code path is skipped (e.g. lobby-status room on reconnect).
         const allAnswers = await fetchAllAnswers(state.room.id);
-        const prevAnswers = allAnswers.filter(a => String(a.player_id) === String(prevPlayerId));
-        for (const a of prevAnswers) {
+        const myAnswers = allAnswers.filter(a => String(a.player_id) === String(rejoinedPlayer.id));
+        for (const a of myAnswers) {
           if (a.wager) state.usedWagers.add(a.wager);
         }
       }
