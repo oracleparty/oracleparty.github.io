@@ -465,6 +465,16 @@ export function createHonkChannel(roomId) {
 }
 
 /**
+ * Create a broadcast channel for typing indicators.
+ * self: false — we don't need to receive our own typing events.
+ */
+export function createTypingChannel(roomId) {
+  return supabase.channel(`room-${roomId}-typing`, {
+    config: { broadcast: { self: false } }
+  });
+}
+
+/**
  * Update room status.
  */
 export async function updateRoomStatus(roomId, status) {

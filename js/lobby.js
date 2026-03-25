@@ -26,6 +26,7 @@ import {
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
+import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -195,6 +196,9 @@ async function init() {
     sendHonk(btn.dataset.honkTarget);
   });
 
+  // Typing indicator
+  initTypingIndicator(room.id, room.playerId, getDisplayName(), updateTypingUI);
+
   // Position chat bar below header
   repositionChatBar();
 
@@ -226,6 +230,7 @@ function attachListeners() {
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendMessage();
   });
+  chatInput.addEventListener('input', notifyTyping);
 
   // Ready toggle (non-host)
   btnReady.addEventListener('click', handleToggleReady);
@@ -605,6 +610,22 @@ async function handleSendMessage() {
   }
 }
 
+function updateTypingUI(typerNames) {
+  const el = $('#typing-indicator');
+  if (!el) return;
+  if (typerNames.length === 0) {
+    el.classList.remove('active');
+  } else {
+    const text = typerNames.length === 1
+      ? `${typerNames[0]} is typing\u2026`
+      : typerNames.length === 2
+        ? `${typerNames[0]} and ${typerNames[1]} are typing\u2026`
+        : `${typerNames[0]} and ${typerNames.length - 1} others are typing\u2026`;
+    el.textContent = text;
+    el.classList.add('active');
+  }
+}
+
 // --- Ready Toggle ---
 async function handleToggleReady() {
   isReady = !isReady;
@@ -888,6 +909,7 @@ function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   destroyHonkSystem();
+  destroyTypingIndicator();
   clearInterval(playerPollInterval);
   playerPollInterval = null;
   clearInterval(presenceHeartbeatId);

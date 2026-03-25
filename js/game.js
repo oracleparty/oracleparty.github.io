@@ -42,6 +42,7 @@ import {
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
+import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -300,6 +301,9 @@ async function init() {
   loadChatMessages();
   attachChatListeners();
   initFeedbackListeners();
+
+  // Typing indicator
+  initTypingIndicator(state.room.id, state.room.playerId, getDisplayName(), updateTypingUI);
 
   // Honk system
   initHonkSystem(state.room.id, state.room.playerId, () => {
@@ -2496,6 +2500,7 @@ function attachChatListeners() {
   $('#chat-drawer-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendGameChat();
   });
+  $('#chat-drawer-input').addEventListener('input', notifyTyping);
 }
 
 function toggleChatDrawer() {
@@ -2609,6 +2614,22 @@ async function handleSendGameChat() {
     await sendMessage(state.room.id, name, text);
   } catch {
     state.chatEchoPending = Math.max(0, (state.chatEchoPending || 0) - 1);
+  }
+}
+
+function updateTypingUI(typerNames) {
+  const el = $('#typing-indicator');
+  if (!el) return;
+  if (typerNames.length === 0) {
+    el.classList.remove('active');
+  } else {
+    const text = typerNames.length === 1
+      ? `${typerNames[0]} is typing\u2026`
+      : typerNames.length === 2
+        ? `${typerNames[0]} and ${typerNames[1]} are typing\u2026`
+        : `${typerNames[0]} and ${typerNames.length - 1} others are typing\u2026`;
+    el.textContent = text;
+    el.classList.add('active');
   }
 }
 
@@ -3114,6 +3135,7 @@ function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   destroyHonkSystem();
+  destroyTypingIndicator();
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
