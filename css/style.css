@@ -2643,7 +2643,7 @@ body::after {
   font-family: var(--font-heading);
   font-size: var(--text-sm);
   font-weight: 700;
-  width: 28px;
+  width: 24px;
   text-align: center;
   flex-shrink: 0;
   color: var(--color-text-dim);
@@ -2652,6 +2652,13 @@ body::after {
 .results-row__place--1st { color: #d4a017; font-size: var(--text-base); }
 .results-row__place--2nd { color: #8d8d8d; }
 .results-row__place--3rd { color: #a0714f; }
+
+/* Slightly smaller avatars in the dense results row to give names more room */
+.results-row .answer-row__avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 0.65rem;
+}
 
 .results-row__name {
   font-family: var(--font-heading);
@@ -2698,6 +2705,8 @@ body::after {
 .results-footer__row .btn {
   flex: 1;
   font-size: var(--text-sm);
+  padding-left: var(--space-md);
+  padding-right: var(--space-md);
 }
 
 .btn-danger-text {
