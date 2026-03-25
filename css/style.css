@@ -3050,7 +3050,6 @@ body::after {
   justify-content: center;
   cursor: pointer;
   z-index: 5;
-  overflow: hidden;
   transition: transform 0.15s ease;
 }
 .home-avatar:active {
@@ -3693,5 +3692,64 @@ body::after {
 }
 .home-avatar__badge.hidden {
   display: none;
+}
+
+/* ============================================
+   TOGGLE SWITCH
+   ============================================ */
+
+.profile-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.profile-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.profile-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.profile-switch__slider {
+  position: absolute;
+  inset: 0;
+  background: var(--color-surface-light);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.profile-switch__slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.profile-switch input:checked + .profile-switch__slider {
+  background: var(--color-success);
+}
+
+.profile-switch input:checked + .profile-switch__slider::before {
+  transform: translateX(20px);
 }
 

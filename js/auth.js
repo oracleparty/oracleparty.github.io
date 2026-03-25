@@ -118,7 +118,7 @@ export async function initAuth() {
         localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
         setDisplayName(profile.display_name);
         // Init global presence (non-blocking, only if user has friends)
-        initGlobalPresence(session.user.id).catch(() => {});
+        initGlobalPresence(session.user.id, profile.show_online_status !== false).catch(() => {});
       } else if (!_currentProfile) {
         // Session exists but no profile — retry creation (handles partial signup)
         const displayName = getDisplayName() || session.user.user_metadata?.display_name;

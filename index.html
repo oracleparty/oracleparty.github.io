@@ -59,7 +59,7 @@
   <!-- ===== SCRIPTS ===== -->
   <script type="module">
     import { $, transitionScreens, delay, renderAvatar } from './js/utils.js';
-    import { testConnection } from './js/supabase.js';
+    import { testConnection, fetchPendingRequests } from './js/supabase.js';
     import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName } from './js/auth.js';
     import { updatePresence } from './js/presence.js';
 
@@ -95,6 +95,26 @@
 
       // Track presence as "home"
       updatePresence({ activity: 'home' });
+
+      // Friend request notifications
+      if (authUser) {
+        fetchPendingRequests(authUser.user.id).then(pending => {
+          if (pending.length > 0) {
+            // Toast
+            const toast = $('#home-toast');
+            toast.textContent = `You have ${pending.length} friend request${pending.length > 1 ? 's' : ''}`;
+            toast.classList.remove('hidden');
+            toast.style.cursor = 'pointer';
+            toast.onclick = () => { window.location.href = 'profile.html?tab=friends'; };
+            setTimeout(() => toast.classList.add('hidden'), 4000);
+            // Badge on avatar
+            const badge = document.createElement('span');
+            badge.className = 'home-avatar__badge';
+            badge.textContent = pending.length;
+            homeAvatar.appendChild(badge);
+          }
+        });
+      }
 
       // Transition splash → home
       await transitionScreens(splash, home);

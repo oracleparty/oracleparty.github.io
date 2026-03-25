@@ -41,6 +41,15 @@ async function init() {
   attachListeners();
   loadPublicGames().catch(e => console.warn('[Join] loadPublicGames failed:', e));
 
+  // Auto-join from URL param (e.g. join.html?code=ABCD from friends list)
+  const urlCode = new URLSearchParams(window.location.search).get('code');
+  if (urlCode) {
+    codeInput.value = urlCode.toUpperCase();
+    history.replaceState(null, '', window.location.pathname);
+    handleJoinByCode();
+    return;
+  }
+
   // Refresh public games every 10s
   refreshInterval = setInterval(loadPublicGames, 10000);
 

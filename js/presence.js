@@ -17,15 +17,15 @@ let _currentActivity = { activity: 'home' };
  * @param {string} userId - The authenticated user's ID
  * @param {Function} [onSync] - Callback when presence state updates. Receives full presence map.
  */
-export async function initGlobalPresence(userId, onSync) {
+export async function initGlobalPresence(userId, showOnline = true) {
   if (_channel) return; // Already initialized
+  if (!showOnline) return; // User opted out of online status
 
   // Only track presence if user has friends (performance optimization)
   const has = await hasFriends(userId);
   if (!has) return;
 
   _userId = userId;
-  _onSync = onSync || null;
 
   _channel = supabase.channel('global-presence', {
     config: { presence: { key: userId } }

@@ -22,7 +22,7 @@ import {
   searchProfiles
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
-import { getPresenceForUser } from './presence.js';
+import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 
 // ============================================
 // CONSTANTS
@@ -558,10 +558,34 @@ export async function initProfilePage() {
 
   // Account section
   if (accountEl) {
+    const onlineChecked = profile.show_online_status !== false ? 'checked' : '';
     accountEl.innerHTML = `
-      <p style="color: var(--color-text-dim); font-size: var(--text-sm); margin-bottom: var(--space-sm);">${escapeHtml(authUser.user.email)}</p>
+      <div class="profile-toggle">
+        <span>Show Online Status</span>
+        <label class="profile-switch">
+          <input type="checkbox" id="profile-online-toggle" ${onlineChecked}>
+          <span class="profile-switch__slider"></span>
+        </label>
+      </div>
+      <p style="color: var(--color-text-dim); font-size: var(--text-sm); margin: var(--space-md) 0 var(--space-sm);">${escapeHtml(authUser.user.email)}</p>
       <button class="btn btn-secondary btn-block" id="profile-sign-out">Sign Out</button>
     `;
+
+    // Online status toggle
+    const onlineToggle = $('#profile-online-toggle');
+    if (onlineToggle) {
+      onlineToggle.onchange = async () => {
+        const showOnline = onlineToggle.checked;
+        await updateProfile(userId, { show_online_status: showOnline });
+        profile.show_online_status = showOnline;
+        if (!showOnline) {
+          destroyGlobalPresence();
+        } else {
+          await initGlobalPresence(userId);
+        }
+      };
+    }
+
     const signOutBtn = $('#profile-sign-out');
     if (signOutBtn) {
       signOutBtn.onclick = async () => {
@@ -698,14 +722,27 @@ async function loadFriendsTab(userId) {
         }
       }
 
+      let actionHtml = '';
+      if (presence && presence.activity === 'lobby' && presence.roomCode) {
+        actionHtml = `<div class="friend-row__action"><button class="btn btn-primary" data-join-code="${escapeHtml(presence.roomCode)}">Join</button></div>`;
+      }
+
       return `<div class="friend-row">
         ${avatar}
         <div class="friend-row__info">
           <div class="friend-row__name">${escapeHtml(f.display_name)}${tag}</div>
           <div class="friend-row__activity">${statusDot} ${activityText}</div>
         </div>
+        ${actionHtml}
       </div>`;
     }).join('');
+
+    // Join friend's lobby on button click
+    friendsListEl.onclick = (e) => {
+      const joinBtn = e.target.closest('[data-join-code]');
+      if (!joinBtn) return;
+      window.location.href = `join.html?code=${joinBtn.dataset.joinCode}`;
+    };
   } else {
     friendsListEl.innerHTML = '<p class="profile-empty">No friends yet. Search to add some!</p>';
   }
