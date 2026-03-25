@@ -2603,8 +2603,7 @@ function appendGameChatMessage(name, text) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   bubble.innerHTML = `
-    ${chatAvatar}
-    <div class="chat-bubble__name">${escapeHtml(name)}</div>
+    <div class="chat-bubble__header">${chatAvatar}<div class="chat-bubble__name">${escapeHtml(name)}</div></div>
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
   `;
   $('#chat-drawer-messages').appendChild(bubble);

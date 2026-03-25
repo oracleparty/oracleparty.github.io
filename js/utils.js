@@ -73,12 +73,13 @@ export function getAvatarHue(name) {
  * @returns {string} HTML string
  */
 export function renderAvatar({ displayName, avatarColor, avatarEmoji, size, extraClass }) {
-  const cls = `avatar${extraClass ? ' ' + extraClass : ''}`;
+  const safeExtra = extraClass ? extraClass.replace(/[^a-zA-Z0-9_ -]/g, '') : '';
+  const cls = `avatar${safeExtra ? ' ' + safeExtra : ''}`;
   const sizeStyle = size ? `width:${size};height:${size};` : '';
 
   if (avatarColor && avatarEmoji) {
-    // Sanitize: validate hex color, strip HTML from emoji
-    const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(avatarColor) ? avatarColor : '#78716C';
+    // Sanitize: validate hex color (3/4/6/8 digit), strip HTML from emoji
+    const safeColor = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(avatarColor) ? avatarColor : '#78716C';
     const safeEmoji = (avatarEmoji || '').replace(/[<>"&]/g, '');
     const emojiSize = size ? `font-size:calc(${size} * 0.55);` : '';
     return `<div class="${cls}" style="background:${safeColor};${sizeStyle}${emojiSize}">${safeEmoji}</div>`;

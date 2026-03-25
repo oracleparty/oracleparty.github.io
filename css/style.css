@@ -1234,14 +1234,6 @@ body::after {
   color: var(--color-text-muted);
 }
 
-/* Lobby-specific avatar size (larger than in-game) */
-.player-list .answer-row__avatar {
-  width: 32px;
-  height: 32px;
-  font-size: var(--text-sm);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
 /* --- Player List --- */
 .player-list {
   width: 100%;
@@ -2069,21 +2061,6 @@ body::after {
   border-bottom: none;
 }
 
-.answer-row__avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-heading);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  color: #fff;
-  text-transform: uppercase;
-}
-
 .answer-row__name {
   font-family: var(--font-heading);
   font-size: var(--text-sm);
@@ -2639,12 +2616,6 @@ body::after {
 .results-row__place--2nd { color: #8d8d8d; }
 .results-row__place--3rd { color: #a0714f; }
 
-/* Slightly smaller avatars in the dense results row to give names more room */
-.results-row .answer-row__avatar {
-  width: 24px;
-  height: 24px;
-  font-size: 0.65rem;
-}
 
 .results-row__name {
   font-family: var(--font-heading);
@@ -2996,7 +2967,7 @@ body::after {
 }
 
 /* ============================================
-   AVATAR SYSTEM (replaces answer-row__avatar)
+   AVATAR SYSTEM
    ============================================ */
 
 .avatar {
