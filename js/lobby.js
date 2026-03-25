@@ -3,7 +3,7 @@
 // Persistent hub with Realtime chat, players, game start
 // ============================================
 
-import { $, escapeHtml, getAvatarHue } from './utils.js';
+import { $, escapeHtml, getAvatarHue, renderAvatar } from './utils.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -27,6 +27,7 @@ import {
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
+import { attachProfileCardHandler } from './profile.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -196,6 +197,9 @@ async function init() {
     sendHonk(btn.dataset.honkTarget);
   });
 
+  // Profile card on player tap
+  attachProfileCardHandler(playerListEl, () => players);
+
   // Typing indicator
   initTypingIndicator(room.id, room.playerId, getDisplayName(), updateTypingUI);
 
@@ -288,20 +292,22 @@ function renderPlayers() {
     const isMe = String(p.id) === String(room.playerId);
     const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (You)' : '');
 
-    const hue = getAvatarHue(p.display_name);
-    const initial = (p.display_name || '?')[0].toUpperCase();
+    const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
+    const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
     const isAway = awayTimestamps.has(String(p.id));
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
     const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
-      <div class="player-item${isAway ? ' player-item--away' : ''}">
+      <div class="player-item${isAway ? ' player-item--away' : ''}" ${profileAttr}>
         <div class="avatar-wrap">
-          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${avatarHtml}
           ${honkBadge}
         </div>
         <span class="player-item__name">${nameDisplay}</span>
+        ${titleHtml}
         <span class="player-item__badges">${badges.join('')}</span>
         ${honkBtn}
       </div>
@@ -471,7 +477,13 @@ async function ensureCurrentPlayer() {
 
   const authUser = getCurrentUser();
   const rejoinUserId = authUser?.user?.id || null;
-  const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost, rejoinUserId);
+  const extras = {};
+  if (authUser?.profile) {
+    extras.avatarColor = authUser.profile.avatar_color;
+    extras.avatarEmoji = authUser.profile.avatar_emoji;
+    extras.title = authUser.profile._cachedTitle || null;
+  }
+  const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost, rejoinUserId, extras);
   if (rejoinedPlayer) {
     room.playerId = rejoinedPlayer.id;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
@@ -571,8 +583,9 @@ function handleNewMessage(payload) {
 function appendChatMessage(name, text) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
+  const chatAvatar = renderAvatar({ displayName: name, avatarColor: null, avatarEmoji: null, extraClass: 'avatar--chat' });
   bubble.innerHTML = `
-    <div class="chat-bubble__name">${escapeHtml(name)}</div>
+    <div class="chat-bubble__header">${chatAvatar}<div class="chat-bubble__name">${escapeHtml(name)}</div></div>
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
   `;
   chatMessagesEl.appendChild(bubble);

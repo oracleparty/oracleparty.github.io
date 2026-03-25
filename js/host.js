@@ -190,7 +190,13 @@ async function handleHostGame() {
     // Add host as a player in the room
     const authUser = getCurrentUser();
     const userId = authUser?.user?.id || null;
-    const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true, userId);
+    const extras = {};
+    if (authUser?.profile) {
+      extras.avatarColor = authUser.profile.avatar_color;
+      extras.avatarEmoji = authUser.profile.avatar_emoji;
+      extras.title = authUser.profile._cachedTitle || null;
+    }
+    const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true, userId, extras);
     if (playerErr || !player) {
       hostError.textContent = 'Room created but failed to join. Try again.';
       console.error('[Host] addPlayer failed:', playerErr);

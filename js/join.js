@@ -107,7 +107,13 @@ async function joinRoom(code) {
     const displayName = getDisplayName();
     const authUser = getCurrentUser();
     const userId = authUser?.user?.id || null;
-    const { data: player, error: playerErr } = await addPlayer(room.id, displayName, false, userId);
+    const extras = {};
+    if (authUser?.profile) {
+      extras.avatarColor = authUser.profile.avatar_color;
+      extras.avatarEmoji = authUser.profile.avatar_emoji;
+      extras.title = authUser.profile._cachedTitle || null;
+    }
+    const { data: player, error: playerErr } = await addPlayer(room.id, displayName, false, userId, extras);
 
     if (playerErr || !player) {
       joinError.textContent = 'Failed to join room. Try again.';

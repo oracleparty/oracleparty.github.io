@@ -55,6 +55,98 @@ export function getAvatarHue(name) {
   return Math.abs(hash) % 360;
 }
 
+// ============================================
+// Avatar Rendering
+// ============================================
+
+/**
+ * Render an avatar HTML string.
+ * Authenticated players with avatar_color + avatar_emoji get a color+emoji circle.
+ * Guests (null fields) fall back to the deterministic initial-letter HSL circle.
+ *
+ * @param {Object} opts
+ * @param {string}      opts.displayName  - Player's display name (required)
+ * @param {string|null} opts.avatarColor  - Hex color from profile (null = guest)
+ * @param {string|null} opts.avatarEmoji  - Emoji from profile (null = guest)
+ * @param {string}      [opts.size]       - CSS size override (e.g. '48px')
+ * @param {string}      [opts.extraClass] - Additional CSS class(es)
+ * @returns {string} HTML string
+ */
+export function renderAvatar({ displayName, avatarColor, avatarEmoji, size, extraClass }) {
+  const cls = `avatar${extraClass ? ' ' + extraClass : ''}`;
+  const sizeStyle = size ? `width:${size};height:${size};` : '';
+
+  if (avatarColor && avatarEmoji) {
+    const emojiSize = size ? `font-size:calc(${size} * 0.55);` : '';
+    return `<div class="${cls}" style="background:${avatarColor};${sizeStyle}${emojiSize}">${avatarEmoji}</div>`;
+  }
+
+  // Guest fallback: initial-letter circle
+  const hue = getAvatarHue(displayName || '?');
+  const initial = (displayName || '?')[0].toUpperCase();
+  return `<div class="${cls} avatar--guest" style="background:hsl(${hue},45%,45%);${sizeStyle}">${initial}</div>`;
+}
+
+// ============================================
+// Auto-Titles
+// ============================================
+
+/** Category → Display title name mapping (from SPEC-profiles.md). */
+export const CATEGORY_TITLES = {
+  'history': 'The Historian',
+  'science': 'The Scientist',
+  'nature': 'The Naturalist',
+  'arts-literature': 'The Literati',
+  'culture-society': 'The Anthropologist',
+  'pop-culture': 'The Culturist',
+  'world-geography': 'The Cartographer',
+  'technology': 'The Technologist',
+  'sports': 'The Athlete',
+  'food': 'The Connoisseur',
+  'logic': 'The Logician',
+  'wild-card': 'The Polymath'
+};
+
+const TITLE_TIERS = [
+  { min: 6.5, label: 'Oracle' },
+  { min: 5.5, label: 'Master' },
+  { min: 4.5, label: 'Scholar' },
+  { min: 3.0, label: 'Apprentice' },
+];
+
+/**
+ * Calculate auto-title from player_stats rows.
+ * Formula: category_score = accuracy × log2(questions_answered)
+ * Minimum 20 questions in a category before it counts.
+ *
+ * @param {Array} stats - Array of { category, questions_answered, correct_answers }
+ * @returns {{ title: string, tier: string, category: string|null }}
+ */
+export function calculateTitle(stats) {
+  let bestScore = -1;
+  let bestCat = null;
+
+  for (const s of (stats || [])) {
+    if (s.questions_answered < 20) continue;
+    const accuracy = s.correct_answers / s.questions_answered;
+    const score = accuracy * Math.log2(s.questions_answered);
+    if (score > bestScore) {
+      bestScore = score;
+      bestCat = s.category;
+    }
+  }
+
+  if (!bestCat) return { title: 'Novice', tier: 'Novice', category: null };
+
+  const tier = TITLE_TIERS.find(t => bestScore >= t.min)?.label || 'Apprentice';
+  const catTitle = CATEGORY_TITLES[bestCat] || 'The Scholar';
+  return { title: `${catTitle} — ${tier}`, tier, category: bestCat };
+}
+
+// ============================================
+// Misc Helpers
+// ============================================
+
 /**
  * Fisher-Yates shuffle. Returns a new array.
  */

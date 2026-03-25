@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#F8F7F4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Oracle Party — Profile</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="screen active" style="display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+
+    <!-- Header bar -->
+    <div class="page-header">
+      <button class="page-header__back" id="btn-back">&larr;</button>
+      <h1 class="page-header__title">Profile</h1>
+      <div class="page-header__spacer"></div>
+    </div>
+
+    <!-- Profile Header -->
+    <div class="profile-header">
+      <div id="profile-avatar" class="profile-header__avatar"></div>
+      <div id="profile-name" class="profile-header__name"></div>
+      <div id="profile-title" class="profile-header__title"></div>
+    </div>
+
+    <!-- Bio -->
+    <div class="profile-section">
+      <div class="profile-section__label">Bio</div>
+      <div id="profile-bio" class="profile-bio"></div>
+    </div>
+
+    <!-- Favorite Category -->
+    <div class="profile-section">
+      <div class="profile-section__label">Favorite Category</div>
+      <div id="profile-fav-categories" class="profile-fav-categories"></div>
+    </div>
+
+    <!-- Stats Summary -->
+    <div class="profile-section">
+      <div class="profile-section__label">Stats</div>
+      <div id="profile-stats" class="profile-stats"></div>
+    </div>
+
+    <!-- Per-Category Breakdown -->
+    <div class="profile-section">
+      <div class="profile-section__label">Categories</div>
+      <div id="profile-categories" class="profile-category-grid"></div>
+    </div>
+
+    <!-- Recent Games -->
+    <div class="profile-section">
+      <div class="profile-section__label">Recent Games</div>
+      <div id="profile-games"></div>
+    </div>
+
+    <!-- Account -->
+    <div class="profile-section" style="padding-bottom: var(--space-2xl);">
+      <div class="profile-section__label">Account</div>
+      <div id="profile-account"></div>
+    </div>
+
+  </div>
+
+  <!-- Display Name Modal (required by auth.js) -->
+  <div id="display-name-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">Who Goes There?</h2>
+      <input type="text" id="display-name-input" class="input" placeholder="Enter your name" aria-label="Display name" maxlength="20" autocomplete="off" spellcheck="false">
+      <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+      <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ensureDisplayName, initAuth } from './js/auth.js';
+    import { initProfilePage } from './js/profile.js';
+
+    async function init() {
+      await Promise.all([ensureDisplayName(), initAuth()]);
+      await initProfilePage();
+    }
+
+    document.getElementById('btn-back').addEventListener('click', () => {
+      window.location.href = 'index.html';
+    });
+
+    // Trap browser back button
+    history.pushState({ page: 'profile' }, '');
+    window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
+
+    init();
+  </script>
+
+</body>
+</html>

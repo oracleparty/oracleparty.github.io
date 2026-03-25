@@ -196,9 +196,12 @@ export async function cleanupOrphanedRooms() {
 /**
  * Add a player to a room.
  */
-export async function addPlayer(roomId, displayName, isHost = false, userId = null) {
+export async function addPlayer(roomId, displayName, isHost = false, userId = null, extras = {}) {
   const payload = { room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString() };
   if (userId) payload.user_id = userId;
+  if (extras.avatarColor) payload.avatar_color = extras.avatarColor;
+  if (extras.avatarEmoji) payload.avatar_emoji = extras.avatarEmoji;
+  if (extras.title) payload.title = extras.title;
   const { data, error } = await supabase
     .from('players')
     .insert(payload)
@@ -962,6 +965,40 @@ export async function updateProfile(userId, fields) {
     return { data: null, error };
   }
   return { data, error: null };
+}
+
+/**
+ * Fetch all player_stats rows for a user (per-category stats).
+ */
+export async function fetchPlayerStats(userId) {
+  const { data, error } = await supabase
+    .from('player_stats')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[Supabase] fetchPlayerStats failed:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+/**
+ * Fetch recent game history for a user.
+ */
+export async function fetchGameHistory(userId, limit = 5) {
+  const { data, error } = await supabase
+    .from('game_history')
+    .select('*')
+    .eq('user_id', userId)
+    .order('played_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('[Supabase] fetchGameHistory failed:', error.message);
+    return [];
+  }
+  return data || [];
 }
 
 export async function fetchCategoryPlayCounts() {

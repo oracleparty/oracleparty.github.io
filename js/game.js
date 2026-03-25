@@ -3,7 +3,7 @@
 // Gameplay loop: question (with wager) → submit → reveal (live) → repeat
 // ============================================
 
-import { $, transitionScreens, escapeHtml, fuzzyMatch, getAvatarHue } from './utils.js';
+import { $, transitionScreens, escapeHtml, fuzzyMatch, getAvatarHue, renderAvatar } from './utils.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -43,6 +43,7 @@ import {
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
+import { attachProfileCardHandler } from './profile.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -206,7 +207,13 @@ async function init() {
       const prevPlayerId = state.room.playerId;
       const authUser = getCurrentUser();
       const rejoinUserId = authUser?.user?.id || null;
-      const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost, rejoinUserId);
+      const extras = {};
+      if (authUser?.profile) {
+        extras.avatarColor = authUser.profile.avatar_color;
+        extras.avatarEmoji = authUser.profile.avatar_emoji;
+        extras.title = authUser.profile._cachedTitle || null;
+      }
+      const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost, rejoinUserId, extras);
       if (rejoinedPlayer) {
         state.room.playerId = rejoinedPlayer.id;
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
@@ -323,6 +330,12 @@ async function init() {
       if (!btn) return;
       sendHonk(btn.dataset.honkTarget);
     });
+  }
+
+  // Profile card on player tap (scores + results containers)
+  for (const sel of ['#scores-animated-list', '#results-list', '#fw-player-list']) {
+    const el = document.querySelector(sel);
+    if (el) attachProfileCardHandler(el, () => state.players);
   }
 
   if (state.room.isHost) {
@@ -1383,11 +1396,12 @@ function updateHonkBadges() {
   });
 }
 
-function honkAvatarHtml(player, hue, initial) {
+function honkAvatarHtml(player) {
   const honks = getHonkCount(player.id);
   const badge = `<span class="honk-badge" data-honk-player="${player.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
+  const avatarHtml = renderAvatar({ displayName: player.display_name, avatarColor: player.avatar_color, avatarEmoji: player.avatar_emoji });
   return `<div class="avatar-wrap">
-    <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+    ${avatarHtml}
     ${badge}
   </div>`;
 }
@@ -1409,10 +1423,9 @@ function renderRevealAnswers(answers) {
     const row = document.createElement('div');
     row.className = 'answer-row' + (state.awayTimestamps.has(String(player.id)) ? ' answer-row--away' : '');
     row.dataset.playerId = player.id;
+    if (player.user_id) row.dataset.profileUserId = player.user_id;
 
-    // Avatar
-    const hue = getAvatarHue(player.display_name);
-    const initial = (player.display_name || '?')[0].toUpperCase();
+    const titleHtml = player.title ? ` <span class="player-title">${escapeHtml(player.title)}</span>` : '';
 
     if (answer) {
       row.dataset.answerId = answer.id;
@@ -1444,8 +1457,8 @@ function renderRevealAnswers(answers) {
 
       row.innerHTML = `
         <div class="answer-row__top">
-          ${honkAvatarHtml(player, hue, initial)}
-          <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
+          ${honkAvatarHtml(player)}
+          <span class="answer-row__name">${escapeHtml(player.display_name)}${titleHtml}${hostBadge}</span>
           <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
           ${toggleHtml}
           ${honkBtnHtml(player)}
@@ -1461,8 +1474,8 @@ function renderRevealAnswers(answers) {
       const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
       row.innerHTML = `
         <div class="answer-row__top">
-          ${honkAvatarHtml(player, hue, initial)}
-          <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
+          ${honkAvatarHtml(player)}
+          <span class="answer-row__name">${escapeHtml(player.display_name)}${titleHtml}${hostBadge}</span>
           ${honkBtnHtml(player)}
         </div>
         <div class="answer-row__bottom">
@@ -1728,8 +1741,8 @@ async function showScoresScreen() {
     const deltaClass = delta > 0 ? 'score-anim-row__delta--positive' :
                        delta < 0 ? 'score-anim-row__delta--negative' :
                        'score-anim-row__delta--zero';
-    const hue = getAvatarHue(p.display_name);
-    const initial = (p.display_name || '?')[0].toUpperCase();
+    const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+    const titleHtml = p.title ? ` <span class="player-title">${escapeHtml(p.title)}</span>` : '';
 
     const isMe = String(p.id) === String(state.room.playerId);
     const honks = getHonkCount(p.id);
@@ -1737,12 +1750,12 @@ async function showScoresScreen() {
     const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
-      <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}">
+      <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         <div class="avatar-wrap">
-          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${avatarHtml}
           ${honkBadge}
         </div>
-        <span class="score-anim-row__name">${escapeHtml(p.display_name)}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
+        <span class="score-anim-row__name">${escapeHtml(p.display_name)}${titleHtml}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
         <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
         ${honkBtn}
@@ -2023,8 +2036,8 @@ function renderFinalWagerPlayers(lockedWagers) {
   );
 
   $('#fw-player-list').innerHTML = sorted.map(p => {
-    const hue = getAvatarHue(p.display_name);
-    const initial = (p.display_name || '?')[0].toUpperCase();
+    const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+    const titleHtml = p.title ? ` <span class="player-title">${escapeHtml(p.title)}</span>` : '';
     const score = state.scores[p.id] || 0;
     const wagerVal = wagers[String(p.id)];
     const wagerDisplay = wagerVal !== undefined
@@ -2032,9 +2045,9 @@ function renderFinalWagerPlayers(lockedWagers) {
       : `<span class="fw-player-row__wager fw-player-row__wager--waiting">Waiting...</span>`;
 
     return `
-      <div class="fw-player-row" data-player-id="${p.id}">
-        <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
-        <span class="fw-player-row__name">${escapeHtml(p.display_name)}</span>
+      <div class="fw-player-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
+        ${avatarHtml}
+        <span class="fw-player-row__name">${escapeHtml(p.display_name)}${titleHtml}</span>
         <span class="fw-player-row__score">${score}</span>
         ${wagerDisplay}
       </div>
@@ -2101,11 +2114,10 @@ async function showResultsScreen() {
   // Winner celebration
   const winner = sorted[0];
   if (winner) {
-    const hue = getAvatarHue(winner.display_name);
-    const initial = (winner.display_name || '?')[0].toUpperCase();
+    const winnerAvatar = renderAvatar({ displayName: winner.display_name, avatarColor: winner.avatar_color, avatarEmoji: winner.avatar_emoji, size: '48px' });
     $('#results-winner').innerHTML = `
       <div class="results-winner__badge">🏆</div>
-      <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%); width: 48px; height: 48px; font-size: var(--text-xl); margin: 0 auto var(--space-sm);">${initial}</div>
+      ${winnerAvatar}
       <div class="results-winner__name">${escapeHtml(winner.display_name)}</div>
       <div class="results-winner__score">${state.scores[winner.id] || 0} points</div>
     `;
@@ -2120,8 +2132,8 @@ async function showResultsScreen() {
     const fwClass = fwDelta > 0 ? 'score-anim-row__delta--positive' :
                     fwDelta < 0 ? 'score-anim-row__delta--negative' :
                     'score-anim-row__delta--zero';
-    const hue = getAvatarHue(p.display_name);
-    const initial = (p.display_name || '?')[0].toUpperCase();
+    const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+    const titleHtml = p.title ? ` <span class="player-title">${escapeHtml(p.title)}</span>` : '';
     const placeLabel = PLACE_LABELS[i] || `${i + 1}th`;
     const placeClass = i < 3 ? `results-row__place--${PLACE_LABELS[i]}` : '';
 
@@ -2131,13 +2143,13 @@ async function showResultsScreen() {
     const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
-      <div class="results-row" data-player-id="${p.id}">
+      <div class="results-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         <span class="results-row__place ${placeClass}">${placeLabel}</span>
         <div class="avatar-wrap">
-          <div class="answer-row__avatar" style="background: hsl(${hue}, 45%, 45%)">${initial}</div>
+          ${avatarHtml}
           ${honkBadge}
         </div>
-        <span class="results-row__name">${escapeHtml(p.display_name)}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
+        <span class="results-row__name">${escapeHtml(p.display_name)}${titleHtml}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="results-row__fw-delta ${fwClass}">${fwSign}${fwDelta}</span>
         <span class="results-row__score">${state.scores[p.id] || 0}</span>
         ${honkBtn}
@@ -2584,9 +2596,11 @@ function flashChatBar() {
 }
 
 function appendGameChatMessage(name, text) {
+  const chatAvatar = renderAvatar({ displayName: name, avatarColor: null, avatarEmoji: null, extraClass: 'avatar--chat' });
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   bubble.innerHTML = `
+    ${chatAvatar}
     <div class="chat-bubble__name">${escapeHtml(name)}</div>
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
   `;

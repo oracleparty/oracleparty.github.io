@@ -2,8 +2,8 @@
 // Oracle Party — Display Name / Auth
 // ============================================
 
-import { $ } from './utils.js';
-import { supabase, createProfile, fetchProfile, generateDiscriminator } from './supabase.js';
+import { $, calculateTitle } from './utils.js';
+import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats } from './supabase.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
 const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
@@ -101,9 +101,18 @@ export async function initAuth() {
       if (cached) {
         try { _currentProfile = JSON.parse(cached); } catch { /* ignore */ }
       }
-      // Fetch fresh profile
-      const { data: profile } = await fetchProfile(session.user.id);
+      // Fetch fresh profile + stats in parallel
+      const [{ data: profile }, stats] = await Promise.all([
+        fetchProfile(session.user.id),
+        fetchPlayerStats(session.user.id)
+      ]);
       if (profile) {
+        // Compute and cache title from stats
+        const titleInfo = calculateTitle(stats);
+        profile._cachedTitle = titleInfo.title;
+        profile._cachedTitleTier = titleInfo.tier;
+        profile._cachedTitleCategory = titleInfo.category;
+        profile._cachedStats = stats;
         _currentProfile = profile;
         localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
         setDisplayName(profile.display_name);
