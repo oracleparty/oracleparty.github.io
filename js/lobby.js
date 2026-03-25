@@ -444,6 +444,17 @@ async function ensureCurrentPlayer() {
   }
 
   const displayName = getDisplayName();
+
+  // Before creating a new entry, check if a player with the same display name already
+  // exists — this happens when the page reloads before removePlayerBeacon completes
+  // (pull-to-refresh on iOS, bfcache restore, slow beacon, etc.).
+  const existingByName = players.find(p => p.display_name === displayName);
+  if (existingByName) {
+    room.playerId = existingByName.id;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    return;
+  }
+
   const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost);
   if (rejoinedPlayer) {
     room.playerId = rejoinedPlayer.id;

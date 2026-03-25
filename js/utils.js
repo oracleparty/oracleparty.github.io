@@ -117,9 +117,32 @@ export function levenshteinDistance(a, b) {
 }
 
 /**
+ * Extract all contiguous digit sequences from a string, in order.
+ * e.g. "apollo 13" → ["13"],  "world war 2" → ["2"],  "1996" → ["1996"]
+ */
+function digitSequences(str) {
+  return str.match(/\d+/g) || [];
+}
+
+/**
+ * Return true when both strings contain the same digit sequences in the same order.
+ * Empty sequences (no digits in either) also count as matching.
+ */
+function digitSequencesMatch(a, b) {
+  const da = digitSequences(a);
+  const db = digitSequences(b);
+  if (da.length !== db.length) return false;
+  return da.every((d, i) => d === db[i]);
+}
+
+/**
  * Check if a submitted answer matches the correct answer or any acceptable alternate.
  * Uses exact match first, then Levenshtein distance with a tolerance threshold.
  * Threshold: max(1, floor(target.length * 0.25)) — roughly 1 typo per 4 characters.
+ *
+ * Numeric guard: if either string contains digits, their digit sequences must be
+ * identical before Levenshtein is applied. This prevents "1994" ≈ "1996" while
+ * still allowing "Appollo 13" ≈ "Apollo 13" (word typo, same number).
  */
 export function fuzzyMatch(submitted, correct, alternates = []) {
   const normalizedSubmitted = normalizeAnswer(submitted);
@@ -134,7 +157,13 @@ export function fuzzyMatch(submitted, correct, alternates = []) {
     // Exact match after normalization
     if (normalizedSubmitted === normalizedCandidate) return true;
 
-    // Levenshtein distance with threshold
+    // Numeric guard: digit sequences must be identical — no fuzzy tolerance on digits.
+    // Only checked when at least one string contains a digit.
+    if (/\d/.test(normalizedSubmitted) || /\d/.test(normalizedCandidate)) {
+      if (!digitSequencesMatch(normalizedSubmitted, normalizedCandidate)) continue;
+    }
+
+    // Levenshtein distance with threshold (word-part tolerance only)
     const threshold = Math.max(1, Math.floor(normalizedCandidate.length * 0.25));
     const distance = levenshteinDistance(normalizedSubmitted, normalizedCandidate);
     if (distance <= threshold) return true;

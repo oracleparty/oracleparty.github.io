@@ -187,11 +187,35 @@ async function init() {
   const me = state.players.find(p => String(p.id) === String(state.room.playerId));
   if (!me) {
     const displayName = getDisplayName();
-    const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost);
-    if (rejoinedPlayer) {
-      state.room.playerId = rejoinedPlayer.id;
+
+    // Before creating a new row, check if a player with the same display name already
+    // exists — this happens when the page reloads before removePlayerBeacon completes
+    // (pull-to-refresh on iOS, slow beacon, bfcache restore, etc.).
+    const existingByName = state.players.find(p => p.display_name === displayName);
+    if (existingByName) {
+      // Reconnect to the existing row — update our local player ID reference only
+      state.room.playerId = existingByName.id;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-      state.players = await fetchPlayers(state.room.id);
+      // state.players already reflects the current DB state — no re-fetch needed
+    } else {
+      // Beacon already fired (player row deleted). Record the old ID so we can still
+      // recover wagers from answers that reference it, then create a fresh row.
+      const prevPlayerId = state.room.playerId;
+      const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost);
+      if (rejoinedPlayer) {
+        state.room.playerId = rejoinedPlayer.id;
+        sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+        state.players = await fetchPlayers(state.room.id);
+
+        // Rebuild used wagers from the old player's answers (new player ID has none yet).
+        // initHostGame / applyGameState will also attempt this but will find 0 answers
+        // under the new ID — this pre-populates the Set so their pass is a safe no-op.
+        const allAnswers = await fetchAllAnswers(state.room.id);
+        const prevAnswers = allAnswers.filter(a => String(a.player_id) === String(prevPlayerId));
+        for (const a of prevAnswers) {
+          if (a.wager) state.usedWagers.add(a.wager);
+        }
+      }
     }
   }
 
