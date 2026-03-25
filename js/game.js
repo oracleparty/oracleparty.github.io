@@ -73,7 +73,7 @@ const state = {
   gamePhase: 'loading',
   totalQuestions: 0,
   timerSeconds: 30,
-  usedWagers: new Set(),
+  usedWagers: new Map(), // Map<wagerValue, isCorrect> for green/red styling
   currentWager: null,
   hasSubmitted: false,
   onRevealScreen: false,
@@ -233,7 +233,7 @@ async function init() {
         const allAnswers = await fetchAllAnswers(state.room.id);
         const myAnswers = allAnswers.filter(a => String(a.player_id) === String(rejoinedPlayer.id));
         for (const a of myAnswers) {
-          if (a.wager) state.usedWagers.add(a.wager);
+          if (a.wager) state.usedWagers.set(a.wager, !!a.is_correct);
         }
       }
     }
@@ -371,7 +371,7 @@ async function initHostGame() {
     const allAnswers = await fetchAllAnswers(state.room.id);
     const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
     for (const a of myAnswers) {
-      state.usedWagers.add(a.wager);
+      state.usedWagers.set(a.wager, !!a.is_correct);
     }
     // Recover final wager value if locked in
     const fwAnswer = myAnswers.find(a => a.question_number === state.totalQuestions);
@@ -489,7 +489,7 @@ async function applyGameState(roomData) {
   const allAnswers = await fetchAllAnswers(state.room.id);
   const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
   for (const a of myAnswers) {
-    state.usedWagers.add(a.wager);
+    state.usedWagers.set(a.wager, !!a.is_correct);
   }
   // Recover final wager value if locked in
   const fwAnswer = myAnswers.find(a => a.question_number === state.totalQuestions);
@@ -767,10 +767,10 @@ async function handlePhaseTransition(phase) {
       // Host skipped timer — stop local timer and auto-submit
       if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
       state.timerExpired = true;
-      // Auto-select lowest available wager if none was explicitly selected
+      // Auto-select LARGEST available wager if none was explicitly selected (punishes AFK)
       if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
         let found = false;
-        for (let i = 1; i <= state.totalQuestions; i++) {
+        for (let i = state.totalQuestions; i >= 1; i--) {
           if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
         }
         if (!found) state.currentWager = state.currentQuestion + 1;
@@ -791,10 +791,10 @@ async function handlePhaseTransition(phase) {
       // Host clicked "Reveal Results" — stop local timer and show results
       if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
       state.timerExpired = true;
-      // Auto-select lowest available wager if none was explicitly selected
+      // Auto-select LARGEST available wager if none was explicitly selected (punishes AFK)
       if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
         let found = false;
-        for (let i = 1; i <= state.totalQuestions; i++) {
+        for (let i = state.totalQuestions; i >= 1; i--) {
           if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
         }
         if (!found) state.currentWager = state.currentQuestion + 1;
@@ -989,6 +989,12 @@ function showQuestionScreen() {
   }
   state.wagerExplicitlySelected = false;
 
+  // Defensive: if we're past the last regular question, we must be in the final round
+  // (handles reconnects where the 'final_question' phase case may not have fired)
+  if (state.currentQuestion >= state.totalQuestions) {
+    state.isFinalWagerRound = true;
+  }
+
   if (state.isFinalWagerRound) {
     $('#question-progress').textContent = 'Final Question';
     // Use the wager already locked in on the final wager screen
@@ -1083,7 +1089,8 @@ function renderWagerGrid() {
     btn.dataset.value = i;
 
     if (state.usedWagers.has(i)) {
-      btn.classList.add('wager-btn--used');
+      const wasCorrect = state.usedWagers.get(i);
+      btn.classList.add(wasCorrect ? 'wager-btn--correct' : 'wager-btn--incorrect');
     } else {
       btn.addEventListener('click', () => selectWager(i, btn));
     }
@@ -1218,10 +1225,10 @@ async function handleTimerExpired() {
   const revealTimer = $('#reveal-timer');
   if (revealTimer) revealTimer.style.display = 'none';
 
-  // Auto-select lowest available wager if none was explicitly selected
+  // Auto-select LARGEST available wager if none was explicitly selected (punishes AFK)
   if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
     let found = false;
-    for (let i = 1; i <= state.totalQuestions; i++) {
+    for (let i = state.totalQuestions; i >= 1; i--) {
       if (!state.usedWagers.has(i)) {
         state.currentWager = i;
         found = true;
@@ -1325,9 +1332,9 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   } else if (state.currentWager) {
     wager = state.currentWager;
   } else {
-    // Fallback: find lowest available wager (auto-select paths should have set this already)
+    // Fallback: find LARGEST available wager (punishes AFK — auto-select paths should have set this already)
     wager = null;
-    for (let i = 1; i <= state.totalQuestions; i++) {
+    for (let i = state.totalQuestions; i >= 1; i--) {
       if (!state.usedWagers.has(i)) { wager = i; break; }
     }
     if (wager === null) {
@@ -1337,7 +1344,7 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   }
   const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
 
-  state.usedWagers.add(wager);
+  state.usedWagers.set(wager, isCorrect);
 
   await submitAnswer({
     roomId: state.room.id,
@@ -2738,7 +2745,8 @@ function flashChatBar() {
 }
 
 function appendGameChatMessage(name, text) {
-  const chatAvatar = renderAvatar({ displayName: name, avatarColor: null, avatarEmoji: null, extraClass: 'avatar--chat' });
+  const player = state.players.find(p => p.display_name === name);
+  const chatAvatar = renderAvatar({ displayName: name, avatarColor: player?.avatar_color || null, avatarEmoji: player?.avatar_emoji || null, extraClass: 'avatar--chat' });
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   bubble.innerHTML = `
@@ -2891,7 +2899,7 @@ function initFeedbackListeners() {
       flagMenu.style.display = 'none';
 
       // Show confirmation
-      const labels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', other: 'other' };
+      const labels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', alternate_answer: 'another valid answer', other: 'other' };
       const confirmEl = document.getElementById('feedback-flag-confirm');
       confirmEl.textContent = `Flagged as ${labels[reason] || reason} \u2713`;
       confirmEl.classList.remove('show');
@@ -3002,6 +3010,7 @@ function renderQuestionBrowserList() {
               <button data-qid="${qId}" data-flag-reason="wrong_answer">Wrong answer</button>
               <button data-qid="${qId}" data-flag-reason="ambiguous">Ambiguous</button>
               <button data-qid="${qId}" data-flag-reason="offensive">Offensive</button>
+              <button data-qid="${qId}" data-flag-reason="alternate_answer">Another valid answer</button>
               <button data-qid="${qId}" data-flag-reason="other">Other</button>
             </div>
           </div>
@@ -3255,9 +3264,9 @@ async function syncToCurrentState() {
       // for questions we missed while disconnected)
       const allAnswers = await fetchAllAnswers(state.room.id);
       const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
-      state.usedWagers = new Set();
+      state.usedWagers = new Map();
       for (const a of myAnswers) {
-        state.usedWagers.add(a.wager);
+        state.usedWagers.set(a.wager, !!a.is_correct);
       }
 
       // Rebuild question browser indices for missed questions

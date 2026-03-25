@@ -599,7 +599,9 @@ function handleNewMessage(payload) {
 function appendChatMessage(name, text) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
-  const chatAvatar = renderAvatar({ displayName: name, avatarColor: null, avatarEmoji: null, extraClass: 'avatar--chat' });
+  // Look up player for real avatar data (authenticated users get color+emoji)
+  const player = players.find(p => p.display_name === name);
+  const chatAvatar = renderAvatar({ displayName: name, avatarColor: player?.avatar_color || null, avatarEmoji: player?.avatar_emoji || null, extraClass: 'avatar--chat' });
   bubble.innerHTML = `
     <div class="chat-bubble__header">${chatAvatar}<div class="chat-bubble__name">${escapeHtml(name)}</div></div>
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
