@@ -92,6 +92,7 @@ const state = {
   countdownStartedAt: null,
   _lastProcessedQuestion: -1,
   stalePollId: null,
+  _timerGraceId: null,
   presenceHeartbeatId: null,
   shownQuestionIndices: [],
   wagerExplicitlySelected: false,
@@ -901,6 +902,11 @@ function showQuestionScreen() {
   state.onRevealScreen = false;
   state.resultsRevealed = false;
   state.timerExpired = false;
+  // Cancel any stale grace-period timeout from the previous question's timer
+  if (state._timerGraceId) {
+    clearTimeout(state._timerGraceId);
+    state._timerGraceId = null;
+  }
 
   // Reset wager — player must explicitly select (skip for final wager — already set)
   if (!state.isFinalWagerRound) {
@@ -1095,6 +1101,10 @@ function startTimer() {
     clearInterval(state.timerId);
     state.timerId = null;
   }
+  if (state._timerGraceId) {
+    clearTimeout(state._timerGraceId);
+    state._timerGraceId = null;
+  }
 
   // Immediate first render
   const initial = getServerTimeLeft();
@@ -1102,7 +1112,7 @@ function startTimer() {
     updateTimerDisplay(0);
     state.timerExpired = true;
     // Grace period: give in-flight submissions 500ms to land before auto-submitting
-    setTimeout(() => handleTimerExpired(), 500);
+    state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, 500);
     return;
   }
 
@@ -1118,7 +1128,7 @@ function startTimer() {
       state.timerId = null;
       state.timerExpired = true;
       // Grace period: give in-flight submissions 500ms to land before auto-submitting
-      setTimeout(() => handleTimerExpired(), 500);
+      state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, 500);
     }
   }, 250);
 }
@@ -3126,6 +3136,10 @@ function cleanup() {
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
+  }
+  if (state._timerGraceId) {
+    clearTimeout(state._timerGraceId);
+    state._timerGraceId = null;
   }
   if (state.stalePollId) {
     clearInterval(state.stalePollId);
