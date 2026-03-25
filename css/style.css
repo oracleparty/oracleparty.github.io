@@ -2635,7 +2635,7 @@ body::after {
 .results-row {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
 }
 

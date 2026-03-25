@@ -2459,6 +2459,14 @@ function showChatToggle() {
   $('#chat-toasts').classList.remove('hidden');
   document.body.classList.add('chat-visible');
   setHonkMuted(false);
+
+  // Restore accumulated unread badge from messages that arrived during hidden phases
+  if (state.unreadCount > 0 && !state.chatOpen) {
+    const badge = $('#chat-badge');
+    badge.textContent = state.unreadCount;
+    badge.classList.remove('hidden');
+  }
+
   // Reposition after a frame so the active screen's footer is laid out.
   // Also reposition after transition completes (800ms) since screen may not be active yet.
   requestAnimationFrame(repositionChatToggle);
@@ -2533,15 +2541,19 @@ function handleNewMessage(payload) {
   appendGameChatMessage(player_name, message);
   scrollGameChatToBottom();
 
-  // Show unread badge + inline preview + toast when chat is closed (but not during hidden phases)
-  const chatHidden = $('#btn-chat-toggle').classList.contains('hidden');
-  if (!state.chatOpen && !chatHidden) {
+  // Always track unread count when chat panel is closed (even during hidden phases)
+  if (!state.chatOpen) {
     state.unreadCount = (state.unreadCount || 0) + 1;
-    const badge = $('#chat-badge');
-    badge.textContent = state.unreadCount;
-    badge.classList.remove('hidden');
-    updateChatPreview(player_name, message);
-    showChatToast(player_name, message);
+
+    // Show badge + toast only if the toggle bar is currently visible
+    const chatHidden = $('#btn-chat-toggle').classList.contains('hidden');
+    if (!chatHidden) {
+      const badge = $('#chat-badge');
+      badge.textContent = state.unreadCount;
+      badge.classList.remove('hidden');
+      updateChatPreview(player_name, message);
+      showChatToast(player_name, message);
+    }
   }
 }
 
