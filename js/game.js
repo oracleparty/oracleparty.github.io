@@ -2246,10 +2246,13 @@ function showDifficultyVoteScreen() {
   // Host: show reveal button (hidden until ready)
   const revealBtn = $('#btn-dv-reveal');
   if (state.room.isHost) {
+    // Host can always click Reveal — don't gate on vote count.
+    // Disconnected players would freeze the game if we required all votes.
+    // Unvoted players default to Medium in handleDifficultyVoteComplete.
     revealBtn.classList.remove('hidden');
-    revealBtn.disabled = true;
-    revealBtn.style.opacity = '0.5';
-    revealBtn.textContent = 'Waiting for votes...';
+    revealBtn.disabled = false;
+    revealBtn.style.opacity = '1';
+    revealBtn.textContent = 'Reveal Question';
     revealBtn.onclick = handleDifficultyVoteComplete;
   } else {
     revealBtn.classList.add('hidden');
@@ -2266,13 +2269,13 @@ function showDifficultyVoteScreen() {
         state.difficultyVotes[payload.playerId] = payload.difficulty;
         renderDifficultyTally();
 
-        // Host: enable reveal button when all players have voted
+        // Host: update button text with vote count
         if (state.room.isHost) {
           const voteCount = Object.keys(state.difficultyVotes).length;
           if (voteCount >= state.players.length) {
-            revealBtn.disabled = false;
-            revealBtn.style.opacity = '1';
             revealBtn.textContent = 'Reveal Question';
+          } else {
+            revealBtn.textContent = `Reveal Question (${voteCount}/${state.players.length})`;
           }
         }
       }
