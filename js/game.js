@@ -41,7 +41,7 @@ import {
   reassignPlayerAnswers
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName } from './auth.js';
-import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
+import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -2458,6 +2458,7 @@ function showChatToggle() {
   $('#btn-chat-toggle').classList.remove('hidden');
   $('#chat-toasts').classList.remove('hidden');
   document.body.classList.add('chat-visible');
+  setHonkMuted(false);
   // Reposition after a frame so the active screen's footer is laid out.
   // Also reposition after transition completes (800ms) since screen may not be active yet.
   requestAnimationFrame(repositionChatToggle);
@@ -2468,6 +2469,7 @@ function hideChatToggle() {
   $('#btn-chat-toggle').classList.add('hidden');
   $('#chat-toasts').classList.add('hidden');
   document.body.classList.remove('chat-visible');
+  setHonkMuted(true);
   clearChatToasts();
   // Close chat panel if open
   if (state.chatOpen) {
@@ -2564,10 +2566,10 @@ function showChatToast(name, text) {
   toast.innerHTML = `<span class="chat-toast__name">${escapeHtml(name)}</span>${escapeHtml(truncated)}`;
   container.appendChild(toast);
 
-  // Animate in
-  requestAnimationFrame(() => {
-    toast.classList.add('visible');
-  });
+  // Force a reflow so the browser paints the initial state (opacity: 0)
+  // before the transition to visible starts — more reliable than single rAF
+  void toast.offsetHeight;
+  toast.classList.add('visible');
 
   // Cap visible toasts — remove oldest
   const toasts = container.querySelectorAll('.chat-toast');

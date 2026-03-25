@@ -14,8 +14,13 @@ let localPlayerId = null;
 // Honk sound effect from MP3 file
 const honkAudio = new Audio('honk.mp3');
 honkAudio.preload = 'auto';
+let _honkMuted = false;
+
+/** Suppress honk sounds + animations (e.g. during question phase). */
+export function setHonkMuted(muted) { _honkMuted = muted; }
 
 function playHonk() {
+  if (_honkMuted) return;
   try {
     // Clone the audio so overlapping honks don't cut each other off
     const sound = honkAudio.cloneNode();
@@ -64,8 +69,8 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
       honkCounts[targetId] = (honkCounts[targetId] || 0) + 1;
       if (onCountUpdate) onCountUpdate(targetId, honkCounts[targetId]);
 
-      // If I'm the honked player, react!
-      if (targetId === localPlayerId) {
+      // If I'm the honked player, react! (skip sound+animation when muted)
+      if (targetId === localPlayerId && !_honkMuted) {
         playHonk();
         spawnGooseEmoji();
       }
