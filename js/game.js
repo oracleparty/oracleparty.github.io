@@ -585,11 +585,11 @@ function handleRoomChange(payload) {
   if (!payload.new) return;
   const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status } = payload.new;
 
-  // Host returned everyone to lobby
+  // BUG 2 FIX: When room status changes to 'lobby', DON'T auto-navigate all players.
+  // Instead show an in-page notification so players can choose when to return.
+  // This prevents the host's "Play Again" from yanking everyone out of the results screen.
   if (status === 'lobby') {
-    _isLeaving = true; // Transitioning to lobby — prevent handleUnload beacon
-    cleanup();
-    window.location.href = 'lobby.html';
+    _showLobbyReturnNotice();
     return;
   }
 
@@ -630,6 +630,40 @@ function handleRoomChange(payload) {
   }
 
   if (game_phase) handlePhaseTransition(game_phase);
+}
+
+/**
+ * Show an in-page notice that the host returned to lobby.
+ * Players can choose when to follow — they're not auto-yanked.
+ */
+function _showLobbyReturnNotice() {
+  // Only show on results screen (during gameplay, the host won't change status)
+  const existing = document.getElementById('lobby-return-notice');
+  if (existing) return; // Already showing
+
+  const notice = document.createElement('div');
+  notice.id = 'lobby-return-notice';
+  notice.className = 'signup-nudge';
+  notice.style.margin = 'var(--space-md) var(--space-lg)';
+  notice.innerHTML = `
+    <p class="signup-nudge__text">Host returned to lobby</p>
+    <button class="btn btn-primary btn-block" id="btn-return-lobby">Return to Lobby</button>
+  `;
+
+  // Insert into the visible results screen content area
+  const resultsContent = document.querySelector('#results-screen .game-content');
+  if (resultsContent) {
+    resultsContent.appendChild(notice);
+  } else {
+    document.body.appendChild(notice);
+  }
+
+  document.getElementById('btn-return-lobby').onclick = () => {
+    _isLeaving = true;
+    cleanup();
+    sessionStorage.setItem('oracle_party_returning_from_game', '1');
+    window.location.href = 'lobby.html';
+  };
 }
 
 /**
@@ -1336,10 +1370,26 @@ async function showRevealScreen() {
   resetFeedbackUI();
 
   // Fetch existing answers (some players may not have submitted yet) and cache them
-  state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+  const currentQ = state.currentQuestion;
+  state.currentAnswers = await fetchAnswersForQuestion(state.room.id, currentQ);
   // Skip render if doReveal() will be called immediately (it re-renders with colors)
   if (!state.resultsRevealed) {
     renderRevealAnswers(state.currentAnswers);
+  }
+
+  // BUG 3 FIX: Safety re-fetch after 1.5s to catch answers submitted concurrently.
+  // When multiple players auto-submit at the same time (e.g. timer expired), the initial
+  // fetch may run before other players' submits complete. Realtime INSERT events should
+  // catch them, but can be delayed or lost. This re-fetch is a safety net.
+  if (!state.resultsRevealed && state.currentAnswers.length < state.players.length) {
+    setTimeout(async () => {
+      if (!state.onRevealScreen || state.currentQuestion !== currentQ) return;
+      const fresh = await fetchAnswersForQuestion(state.room.id, currentQ);
+      if (fresh.length > state.currentAnswers.length) {
+        state.currentAnswers = fresh;
+        renderRevealAnswers(fresh);
+      }
+    }, 1500);
   }
 
   // Show countdown timer on reveal screen if the round isn't over yet
@@ -2203,8 +2253,11 @@ async function showResultsScreen() {
 async function handlePlayAgain() {
   _isLeaving = true; // Player stays in room — prevent handleUnload from removing
   cleanup();
-  await updateRoomStatus(state.room.id, 'lobby');
 
+  // BUG 2 FIX: Only the host resets the room status to 'lobby'.
+  // Non-host players just navigate directly — they don't broadcast a status change
+  // that would force ALL players out of the results screen.
+  // Other players see a "Host returned to lobby" notification and can choose when to leave.
   if (state.room.isHost) {
     // Clear old answers so scores don't carry over to the next game
     await deleteAnswersByRoom(state.room.id);
@@ -2215,8 +2268,10 @@ async function handlePlayAgain() {
       question_started_at: null,
       countdown_started_at: null
     });
+    await updateRoomStatus(state.room.id, 'lobby');
   }
 
+  sessionStorage.setItem('oracle_party_returning_from_game', '1');
   window.location.href = 'lobby.html';
 }
 

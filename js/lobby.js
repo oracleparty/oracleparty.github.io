@@ -210,8 +210,17 @@ async function init() {
   // Position chat bar below header
   repositionChatBar();
 
-  // System message
-  addSystemMessage(`You joined the lobby`);
+  // System message — detect if returning from a game
+  // BUG 1 FIX: When returning via Play Again, show a clear message so the chat
+  // doesn't look "empty". Chat messages are loaded from DB (they're preserved),
+  // but the chat drawer is closed by default. This message makes it visible
+  // that the lobby is active and chat history is intact.
+  if (sessionStorage.getItem('oracle_party_returning_from_game')) {
+    sessionStorage.removeItem('oracle_party_returning_from_game');
+    addSystemMessage('Game ended — back in lobby');
+  } else {
+    addSystemMessage('You joined the lobby');
+  }
 }
 
 // --- Event Listeners ---
