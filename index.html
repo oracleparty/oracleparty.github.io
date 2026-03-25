@@ -28,6 +28,7 @@
   <!-- ===== HOME SCREEN ===== -->
   <div id="home" class="screen home" style="display: none;">
     <button id="home-avatar" class="home-avatar" aria-label="Profile"></button>
+    <a href="#" id="home-signin" class="home-signin-link hidden">Sign In</a>
     <div id="home-toast" class="home-toast hidden"></div>
     <h1 class="home__brand">Oracle Party</h1>
     <p class="home__tagline">The party trivia game.</p>
@@ -60,7 +61,7 @@
   <script type="module">
     import { $, transitionScreens, delay, renderAvatar } from './js/utils.js';
     import { testConnection, fetchPendingRequests } from './js/supabase.js';
-    import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName } from './js/auth.js';
+    import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName, showSignInModal } from './js/auth.js';
     import { updatePresence } from './js/presence.js';
 
     // --- Init: Splash → Home ---
@@ -91,6 +92,8 @@
         });
       } else {
         homeAvatar.innerHTML = renderAvatar({ displayName: name, avatarColor: null, avatarEmoji: null });
+        // Show sign-in link for guests
+        $('#home-signin').classList.remove('hidden');
       }
 
       // Track presence as "home"
@@ -124,6 +127,13 @@
     $('#home-avatar').addEventListener('click', async () => {
       await ensureDisplayName();
       window.location.href = 'profile.html';
+    });
+
+    // --- Sign in link (guests only) ---
+    $('#home-signin').addEventListener('click', async (e) => {
+      e.preventDefault();
+      const result = await showSignInModal();
+      if (result) window.location.reload();
     });
 
     // --- Navigation with display name check ---

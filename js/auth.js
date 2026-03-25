@@ -332,3 +332,109 @@ function _injectSignUpModal() {
   `;
   document.body.insertAdjacentHTML('beforeend', html);
 }
+
+// ============================================
+// SIGN-IN MODAL (programmatically injected)
+// ============================================
+
+let _signInModalInjected = false;
+
+/**
+ * Show the sign-in modal.
+ * Returns a Promise that resolves with { user, profile } on success,
+ * or null if dismissed.
+ */
+export function showSignInModal() {
+  return new Promise((resolve) => {
+    if (!_signInModalInjected) {
+      _injectSignInModal();
+      _signInModalInjected = true;
+    }
+
+    const overlay = $('#signin-modal');
+    const emailInput = $('#signin-email');
+    const passwordInput = $('#signin-password');
+    const submitBtn = $('#signin-submit');
+    const errorEl = $('#signin-error');
+    const dismissBtn = $('#signin-dismiss');
+    const createLink = $('#signin-create-link');
+
+    // Reset state
+    emailInput.value = '';
+    passwordInput.value = '';
+    errorEl.textContent = '';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Sign In';
+    overlay.classList.add('active');
+    emailInput.focus();
+
+    dismissBtn.onclick = () => {
+      overlay.classList.remove('active');
+      resolve(null);
+    };
+
+    createLink.onclick = async (e) => {
+      e.preventDefault();
+      overlay.classList.remove('active');
+      const result = await showSignUpModal();
+      resolve(result);
+    };
+
+    submitBtn.onclick = async () => {
+      errorEl.textContent = '';
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !email.includes('@')) {
+        errorEl.textContent = 'Enter a valid email';
+        return;
+      }
+      if (!password) {
+        errorEl.textContent = 'Enter your password';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in...';
+
+      const result = await signIn(email, password);
+
+      if (result.error) {
+        errorEl.textContent = result.error.message;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+        return;
+      }
+
+      overlay.classList.remove('active');
+      resolve({ user: result.user, profile: result.profile });
+    };
+
+    // Enter key submits
+    passwordInput.onkeydown = (e) => {
+      if (e.key === 'Enter') submitBtn.onclick();
+    };
+    emailInput.onkeydown = (e) => {
+      if (e.key === 'Enter') passwordInput.focus();
+    };
+  });
+}
+
+function _injectSignInModal() {
+  const html = `
+    <div id="signin-modal" class="modal-overlay">
+      <div class="modal">
+        <h2 class="modal__title">Sign In</h2>
+        <input type="email" id="signin-email" class="input" placeholder="Email" autocomplete="email" style="margin-bottom: var(--space-md);">
+        <input type="password" id="signin-password" class="input" placeholder="Password" autocomplete="current-password">
+        <p id="signin-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+        <button class="btn btn-primary btn-block" id="signin-submit" style="margin-top: var(--space-lg);">Sign In</button>
+        <button class="btn btn-secondary btn-block" id="signin-dismiss" style="margin-top: var(--space-sm);">Cancel</button>
+        <p style="text-align: center; margin-top: var(--space-md); font-size: var(--text-sm); color: var(--color-text-dim);">
+          Don't have an account? <a href="#" id="signin-create-link" style="color: var(--color-primary); text-decoration: underline;">Create one</a>
+        </p>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+}

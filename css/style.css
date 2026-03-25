@@ -3055,6 +3055,19 @@ body::after {
 .home-avatar:active {
   transform: scale(0.92);
 }
+.home-signin-link {
+  position: absolute;
+  top: calc(var(--space-lg) + 42px);
+  left: var(--space-lg);
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  text-decoration: underline;
+  z-index: 5;
+}
+.home-signin-link.hidden {
+  display: none;
+}
 .home-avatar .avatar {
   width: 100%;
   height: 100%;
