@@ -3766,3 +3766,46 @@ body::after {
   transform: translateX(20px);
 }
 
+/* ============================================
+   SIGNUP NUDGES
+   ============================================ */
+
+.signup-nudge {
+  background: var(--color-bg-deep);
+  border: 1px solid var(--color-surface-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin: var(--space-md) 0;
+  text-align: center;
+  position: relative;
+}
+
+.signup-nudge__text {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-sm);
+}
+
+.signup-nudge__dismiss {
+  background: none;
+  border: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  margin-top: var(--space-xs);
+  text-decoration: underline;
+}
+
+.signup-nudge--home {
+  margin: 0 var(--space-lg) var(--space-md);
+}
+
+.signup-nudge--home .signup-nudge__dismiss {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-sm);
+  text-decoration: none;
+  font-size: var(--text-base);
+}
+

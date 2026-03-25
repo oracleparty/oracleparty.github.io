@@ -61,7 +61,7 @@
   <script type="module">
     import { $, transitionScreens, delay, renderAvatar } from './js/utils.js';
     import { testConnection, fetchPendingRequests } from './js/supabase.js';
-    import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName, showSignInModal } from './js/auth.js';
+    import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName, showSignInModal, showSignUpModal } from './js/auth.js';
     import { updatePresence } from './js/presence.js';
 
     // --- Init: Splash → Home ---
@@ -120,6 +120,23 @@
             homeAvatar.appendChild(badge);
           }
         });
+      }
+
+      // 3-game signup nudge (guests only, one-time)
+      if (!authUser) {
+        const gamesPlayed = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
+        if (gamesPlayed >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
+          const nudge = document.createElement('div');
+          nudge.className = 'signup-nudge signup-nudge--home';
+          nudge.innerHTML = `
+            <p class="signup-nudge__text">You've played ${gamesPlayed} games \u2014 claim your Oracle identity!</p>
+            <button class="btn btn-primary" id="home-nudge-signup">Sign Up</button>
+            <button class="signup-nudge__dismiss" id="home-nudge-dismiss">&times;</button>
+          `;
+          home.querySelector('.home__actions').before(nudge);
+          $('#home-nudge-signup').onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
+          $('#home-nudge-dismiss').onclick = () => { nudge.remove(); localStorage.setItem('oracle_party_3game_nudge_dismissed', '1'); };
+        }
       }
     }
 

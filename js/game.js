@@ -40,7 +40,7 @@ import {
   deleteAnswersByRoom,
   reassignPlayerAnswers
 } from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
@@ -2177,6 +2177,27 @@ async function showResultsScreen() {
   $('#btn-play-again').onclick = handlePlayAgain;
   $('#btn-quit-game').onclick = handleQuitGame;
   $('#btn-review-questions').onclick = handleReviewQuestions;
+
+  // Guest game counter + signup nudge
+  if (!getCurrentUser()) {
+    const count = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
+    localStorage.setItem('oracle_party_guest_games', String(count + 1));
+
+    if (!sessionStorage.getItem('oracle_party_signup_nudge_shown')) {
+      sessionStorage.setItem('oracle_party_signup_nudge_shown', '1');
+      const nudge = document.createElement('div');
+      nudge.className = 'signup-nudge';
+      nudge.innerHTML = `
+        <p class="signup-nudge__text">Nice game! Create an account to save your stats and earn titles.</p>
+        <button class="btn btn-primary btn-block" id="nudge-signup">Create Account</button>
+        <button class="signup-nudge__dismiss" id="nudge-dismiss">Maybe later</button>
+      `;
+      const resultsList = $('#results-list');
+      resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
+      $('#nudge-signup').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
+      $('#nudge-dismiss').onclick = () => nudge.remove();
+    }
+  }
 }
 
 async function handlePlayAgain() {
