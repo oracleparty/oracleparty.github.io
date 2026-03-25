@@ -2897,8 +2897,14 @@ function _showChatRoundNotice() {
   if (existing) existing.remove();
   const notice = document.createElement('div');
   notice.className = 'chat-round-notice';
-  notice.textContent = 'Round started \u2014 timer is running!';
+  notice.innerHTML = 'Round started \u2014 timer is running! <button class="chat-round-notice__close">\u2715</button>';
   drawer.prepend(notice);
+  // Close button dismisses the drawer (since the chat bar is hidden)
+  notice.querySelector('.chat-round-notice__close').onclick = () => {
+    state.chatOpen = false;
+    $('#chat-drawer').classList.remove('open');
+    notice.remove();
+  };
   setTimeout(() => notice.remove(), 4000);
 }
 

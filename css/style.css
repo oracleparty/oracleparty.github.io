@@ -3912,6 +3912,19 @@ body::after {
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-sm);
   animation: fade-up 0.3s ease;
+  position: relative;
+}
+.chat-round-notice__close {
+  position: absolute;
+  right: var(--space-xs);
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 2px 4px;
 }
 
 /* ============================================
