@@ -21,6 +21,9 @@ let onUpdate = null;              // callback(typerNames: string[])
  * @param {Function} updateCallback - called with array of typing player names
  */
 export function initTypingIndicator(roomId, playerId, displayName, updateCallback) {
+  // Guard against double-init (e.g. Play Again flow)
+  if (channel) destroyTypingIndicator();
+
   localPlayerId = String(playerId);
   localDisplayName = displayName;
   onUpdate = updateCallback;
