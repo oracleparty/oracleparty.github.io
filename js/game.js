@@ -2338,8 +2338,9 @@ async function openScoreEditQuestion(questionNumber) {
     listEl.style.display = '';
   };
 
-  // Toggle click handler — override judgment and recalculate scores
-  answersEl.addEventListener('click', async (e) => {
+  // Toggle click handler — override judgment and recalculate scores.
+  // Use onclick on the container (replaces previous handler, no accumulation).
+  answersEl.onclick = async (e) => {
     const toggle = e.target.closest('.answer-toggle--host');
     if (!toggle) return;
 
@@ -2360,17 +2361,20 @@ async function openScoreEditQuestion(questionNumber) {
     // Persist to DB
     await updateAnswerJudgment(answerId, newCorrect, newScore);
 
-    // Recalculate all scores and re-render scores screen
+    // Recalculate all scores
     await updateScores();
-    // Re-render the edit view to show updated colors
+    // Re-render the edit view to show updated toggle colors
     openScoreEditQuestion(qNum);
+    // Re-render the scores screen behind the bottom sheet so it reflects the change
+    _lastScoresRenderedForQuestion = -1; // Reset guard to allow re-render
+    showScoresScreen();
 
     // Send system chat message about the correction
     const sign = newScore >= 0 ? '+' : '';
     await sendMessage(state.room.id, 'System',
       `Host changed Q${qNum + 1}: ${playerName} marked ${newCorrect ? 'correct' : 'incorrect'} (${sign}${newScore} points)`
     );
-  });
+  };
 }
 
 // ============================================
