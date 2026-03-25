@@ -334,6 +334,13 @@ export async function sendMessage(roomId, playerName, message) {
  * Stores the entire conversation as ONE row per room with a JSON array of messages.
  * Called when the game ends (before room might be deleted).
  */
+/**
+ * Archive chat messages for a room into chat_archive table.
+ * Table schema: id (uuid PK), room_code, category, host_name, player_count,
+ * messages (jsonb), game_started_at, archived_at.
+ * Note: The live table was restructured and no longer has a room_id column.
+ * We insert a new row per game (not upsert by room_id).
+ */
 export async function archiveChatMessages(roomId) {
   try {
     const { data: roomData } = await fetchRoom(roomId);
@@ -349,15 +356,20 @@ export async function archiveChatMessages(roomId) {
       timestamp: m.created_at
     }));
 
+    // Count current players for the archive record
+    const players = await fetchPlayers(roomId);
+
     const { error } = await supabase
       .from('chat_archive')
-      .upsert({
-        room_id: roomId,
+      .insert({
         room_code: roomData.code || null,
         category: roomData.category || null,
-        archived_at: new Date().toISOString(),
-        messages
-      }, { onConflict: 'room_id' });
+        host_name: roomData.host_name || null,
+        player_count: players.length,
+        messages,
+        game_started_at: roomData.created_at || new Date().toISOString(),
+        archived_at: new Date().toISOString()
+      });
 
     if (error) console.error('[Supabase] archiveChatMessages failed:', error.message);
   } catch (err) {
