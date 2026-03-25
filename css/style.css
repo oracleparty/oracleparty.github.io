@@ -1702,6 +1702,18 @@ body::after {
   color: var(--color-danger);
 }
 
+.timer--expired {
+  animation: timer-expired-flash 0.5s ease;
+}
+.timer--expired .timer__text {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+@keyframes timer-expired-flash {
+  0%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.3; }
+}
+
 /* --- Wager Grid --- */
 .wager-label {
   font-family: var(--font-heading);

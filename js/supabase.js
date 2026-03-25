@@ -1002,6 +1002,58 @@ export async function fetchGameHistory(userId, limit = 5) {
 }
 
 // ============================================
+// PLAYER STATS & GAME HISTORY (write)
+// ============================================
+
+/**
+ * Upsert player_stats for a user+category after a game completes.
+ * Increments aggregate stats (questions_answered, correct_answers, games_played, wins).
+ */
+export async function upsertPlayerStats(userId, category, questionsAnswered, correctAnswers, won) {
+  const { data: existing } = await supabase
+    .from('player_stats')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('category', category)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase.from('player_stats').update({
+      questions_answered: existing.questions_answered + questionsAnswered,
+      correct_answers: existing.correct_answers + correctAnswers,
+      games_played: existing.games_played + 1,
+      wins: existing.wins + (won ? 1 : 0)
+    }).eq('id', existing.id);
+    if (error) console.error('[Supabase] upsertPlayerStats update failed:', error.message);
+  } else {
+    const { error } = await supabase.from('player_stats').insert({
+      user_id: userId,
+      category,
+      questions_answered: questionsAnswered,
+      correct_answers: correctAnswers,
+      games_played: 1,
+      wins: won ? 1 : 0
+    });
+    if (error) console.error('[Supabase] upsertPlayerStats insert failed:', error.message);
+  }
+}
+
+/**
+ * Insert a game_history entry when a game completes.
+ */
+export async function insertGameHistoryEntry({ userId, roomId, category, score, placement, totalPlayers }) {
+  const { error } = await supabase.from('game_history').insert({
+    user_id: userId,
+    room_id: roomId,
+    category,
+    score,
+    placement,
+    total_players: totalPlayers
+  });
+  if (error) console.error('[Supabase] insertGameHistoryEntry failed:', error.message);
+}
+
+// ============================================
 // FRIENDS & FRIEND REQUESTS
 // ============================================
 

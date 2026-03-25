@@ -124,7 +124,7 @@ async function init() {
 
   // If game is already in progress (hot-join landed on lobby, or browser forward), redirect
   if (currentRoom.status === 'playing') {
-    window.location.href = 'game.html';
+    window.location.replace('game.html');
     return;
   }
 
@@ -218,6 +218,9 @@ async function init() {
   if (sessionStorage.getItem('oracle_party_returning_from_game')) {
     sessionStorage.removeItem('oracle_party_returning_from_game');
     addSystemMessage('Game ended — back in lobby');
+    // BUG 1 FIX: Flash the chat bar so returning players notice chat is preserved.
+    // The drawer is closed by default after navigation, so messages feel "gone".
+    setTimeout(flashChatBar, 500);
   } else {
     addSystemMessage('You joined the lobby');
   }
@@ -784,7 +787,7 @@ function handleRoomChange(payload) {
   if (newRoom.status === 'playing') {
     isLeaving = true;
     cleanup();
-    window.location.href = 'game.html';
+    window.location.replace('game.html');
     return;
   }
 

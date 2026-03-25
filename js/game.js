@@ -38,7 +38,9 @@ import {
   completeGamePlay,
   archiveChatMessages,
   deleteAnswersByRoom,
-  reassignPlayerAnswers
+  reassignPlayerAnswers,
+  upsertPlayerStats,
+  insertGameHistoryEntry
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
@@ -648,7 +650,7 @@ function _showLobbyReturnNotice() {
     _isLeaving = true;
     cleanup();
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
-    window.location.href = 'lobby.html';
+    window.location.replace('lobby.html');
     return;
   }
 
@@ -673,7 +675,7 @@ function _showLobbyReturnNotice() {
     _isLeaving = true;
     cleanup();
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
-    window.location.href = 'lobby.html';
+    window.location.replace('lobby.html');
   };
 }
 
@@ -774,6 +776,11 @@ async function handlePhaseTransition(phase) {
         if (!found) state.currentWager = state.currentQuestion + 1;
       }
       if (!state.hasSubmitted) {
+        // BUG 2 FIX: Show "Time's up!" feedback so the player knows why their answer
+        // was auto-submitted. Without this, the screen just jumps to reveal with no
+        // explanation, making it feel like the game "skipped".
+        const timerEl = document.querySelector('.timer');
+        if (timerEl) { timerEl.textContent = "Time's up!"; timerEl.classList.add('timer--expired'); }
         const currentAnswer = ($('#answer-input')?.value || '').trim();
         await doSubmitAnswer(currentAnswer, { autoSubmit: true });
       } else if (!state.onRevealScreen) {
@@ -2168,6 +2175,29 @@ async function showResultsScreen() {
     });
     // Archive chat messages before room might be deleted
     await archiveChatMessages(state.room.id);
+
+    // BUG 4 FIX: Write to player_stats and game_history for authenticated users.
+    // These tables were never written to — only game_plays was tracked. Profile page
+    // reads from player_stats and game_history, so they were always empty.
+    const authUser = getCurrentUser();
+    if (authUser) {
+      const uid = authUser.user.id;
+      const cat = state.room.category;
+      const allAnswers = await fetchAllAnswers(state.room.id);
+      const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
+      const correctCount = myAnswers.filter(a => a.is_correct).length;
+      const totalAnswered = myAnswers.length;
+      const sortedForPlacement = [...state.players].sort((a, b) => (state.scores[b.id] || 0) - (state.scores[a.id] || 0));
+      const placement = sortedForPlacement.findIndex(p => String(p.id) === String(state.room.playerId)) + 1;
+      const won = placement === 1;
+      // Fire-and-forget — don't block results rendering
+      upsertPlayerStats(uid, cat, totalAnswered, correctCount, won);
+      insertGameHistoryEntry({
+        userId: uid, roomId: state.room.id, category: cat,
+        score: state.scores[state.room.playerId] || 0,
+        placement, totalPlayers: state.players.length
+      });
+    }
   }
 
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
@@ -2242,12 +2272,14 @@ async function showResultsScreen() {
   $('#btn-quit-game').onclick = handleQuitGame;
   $('#btn-review-questions').onclick = handleReviewQuestions;
 
-  // Guest game counter + signup nudge
+  // Guest game counter + signup nudges
   if (!getCurrentUser()) {
     const count = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
     localStorage.setItem('oracle_party_guest_games', String(count + 1));
+    const resultsList = $('#results-list');
 
     if (!sessionStorage.getItem('oracle_party_signup_nudge_shown')) {
+      // First-game nudge (once per session)
       sessionStorage.setItem('oracle_party_signup_nudge_shown', '1');
       const nudge = document.createElement('div');
       nudge.className = 'signup-nudge';
@@ -2256,10 +2288,23 @@ async function showResultsScreen() {
         <button class="btn btn-primary btn-block" id="nudge-signup">Create Account</button>
         <button class="signup-nudge__dismiss" id="nudge-dismiss">Maybe later</button>
       `;
-      const resultsList = $('#results-list');
       resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
       $('#nudge-signup').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
       $('#nudge-dismiss').onclick = () => nudge.remove();
+    } else if (count + 1 >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
+      // BUG 5 FIX: 3-game nudge shown on the RESULTS SCREEN, not the home screen.
+      // Guests loop through game→lobby→game without visiting index.html, so the home
+      // screen nudge never triggers. Showing it here catches them at the natural moment.
+      const nudge = document.createElement('div');
+      nudge.className = 'signup-nudge';
+      nudge.innerHTML = `
+        <p class="signup-nudge__text">You've played ${count + 1} games \u2014 claim your Oracle identity!</p>
+        <button class="btn btn-primary btn-block" id="nudge-signup-3">Sign Up</button>
+        <button class="signup-nudge__dismiss" id="nudge-dismiss-3">Maybe later</button>
+      `;
+      resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
+      $('#nudge-signup-3').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
+      $('#nudge-dismiss-3').onclick = () => { nudge.remove(); localStorage.setItem('oracle_party_3game_nudge_dismissed', '1'); };
     }
   }
 }
@@ -2286,7 +2331,7 @@ async function handlePlayAgain() {
   }
 
   sessionStorage.setItem('oracle_party_returning_from_game', '1');
-  window.location.href = 'lobby.html';
+  window.location.replace('lobby.html');
 }
 
 async function handleQuitGame() {
@@ -3166,7 +3211,7 @@ async function syncToCurrentState() {
     if (roomData.status === 'lobby') {
       _isLeaving = true;
       cleanup();
-      window.location.href = 'lobby.html';
+      window.location.replace('lobby.html');
       return;
     }
 
