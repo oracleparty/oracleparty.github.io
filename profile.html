@@ -27,40 +27,74 @@
       <div id="profile-title" class="profile-header__title"></div>
     </div>
 
-    <!-- Bio -->
-    <div class="profile-section">
-      <div class="profile-section__label">Bio</div>
-      <div id="profile-bio" class="profile-bio"></div>
+    <!-- Tabs -->
+    <div class="profile-tabs">
+      <button class="profile-tab active" data-tab="profile">Profile</button>
+      <button class="profile-tab" data-tab="friends">Friends <span id="friends-tab-badge" class="profile-tab__badge hidden"></span></button>
     </div>
 
-    <!-- Favorite Category -->
-    <div class="profile-section">
-      <div class="profile-section__label">Favorite Category</div>
-      <div id="profile-fav-categories" class="profile-fav-categories"></div>
+    <!-- ===== PROFILE TAB ===== -->
+    <div id="profile-tab-content">
+
+      <!-- Bio -->
+      <div class="profile-section">
+        <div class="profile-section__label">Bio</div>
+        <div id="profile-bio" class="profile-bio"></div>
+      </div>
+
+      <!-- Favorite Category -->
+      <div class="profile-section">
+        <div class="profile-section__label">Favorite Category</div>
+        <div id="profile-fav-categories" class="profile-fav-categories"></div>
+      </div>
+
+      <!-- Stats Summary -->
+      <div class="profile-section">
+        <div class="profile-section__label">Stats</div>
+        <div id="profile-stats" class="profile-stats"></div>
+      </div>
+
+      <!-- Per-Category Breakdown -->
+      <div class="profile-section">
+        <div class="profile-section__label">Categories</div>
+        <div id="profile-categories" class="profile-category-grid"></div>
+      </div>
+
+      <!-- Recent Games -->
+      <div class="profile-section">
+        <div class="profile-section__label">Recent Games</div>
+        <div id="profile-games"></div>
+      </div>
+
+      <!-- Account -->
+      <div class="profile-section" style="padding-bottom: var(--space-2xl);">
+        <div class="profile-section__label">Account</div>
+        <div id="profile-account"></div>
+      </div>
+
     </div>
 
-    <!-- Stats Summary -->
-    <div class="profile-section">
-      <div class="profile-section__label">Stats</div>
-      <div id="profile-stats" class="profile-stats"></div>
-    </div>
+    <!-- ===== FRIENDS TAB ===== -->
+    <div id="friends-tab-content" style="display: none;">
 
-    <!-- Per-Category Breakdown -->
-    <div class="profile-section">
-      <div class="profile-section__label">Categories</div>
-      <div id="profile-categories" class="profile-category-grid"></div>
-    </div>
+      <!-- Search -->
+      <div class="profile-section">
+        <input id="friends-search-input" class="input" placeholder="Search by name or Name#1234" autocomplete="off" spellcheck="false">
+        <div id="friends-search-results"></div>
+      </div>
 
-    <!-- Recent Games -->
-    <div class="profile-section">
-      <div class="profile-section__label">Recent Games</div>
-      <div id="profile-games"></div>
-    </div>
+      <!-- Pending Requests -->
+      <div id="friends-pending" class="profile-section" style="display: none;">
+        <div class="profile-section__label">Pending Requests</div>
+        <div id="friends-pending-list"></div>
+      </div>
 
-    <!-- Account -->
-    <div class="profile-section" style="padding-bottom: var(--space-2xl);">
-      <div class="profile-section__label">Account</div>
-      <div id="profile-account"></div>
+      <!-- Friends List -->
+      <div class="profile-section">
+        <div class="profile-section__label">Friends</div>
+        <div id="friends-list"></div>
+      </div>
+
     </div>
 
   </div>

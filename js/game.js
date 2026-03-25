@@ -44,6 +44,7 @@ import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './a
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
+import { updatePresence } from './presence.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -335,8 +336,11 @@ async function init() {
   // Profile card on player tap (scores + results containers)
   for (const sel of ['#scores-animated-list', '#results-list', '#fw-player-list']) {
     const el = document.querySelector(sel);
-    if (el) attachProfileCardHandler(el, () => state.players);
+    if (el) attachProfileCardHandler(el, () => state.players, state.room.id);
   }
+
+  // Track presence as "in game"
+  updatePresence({ activity: 'game', roomId: state.room.id, category: state.room.category });
 
   if (state.room.isHost) {
     await initHostGame();
@@ -1499,7 +1503,7 @@ function renderRevealAnswers(answers) {
   }
 
   // Profile card on player tap
-  attachProfileCardHandler(newContainer, () => state.players);
+  attachProfileCardHandler(newContainer, () => state.players, state.room.id);
 }
 
 function enableNextQuestion() {

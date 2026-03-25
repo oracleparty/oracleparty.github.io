@@ -4,6 +4,7 @@
 
 import { $, calculateTitle } from './utils.js';
 import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats } from './supabase.js';
+import { initGlobalPresence } from './presence.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
 const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
@@ -116,6 +117,8 @@ export async function initAuth() {
         _currentProfile = profile;
         localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
         setDisplayName(profile.display_name);
+        // Init global presence (non-blocking, only if user has friends)
+        initGlobalPresence(session.user.id).catch(() => {});
       } else if (!_currentProfile) {
         // Session exists but no profile — retry creation (handles partial signup)
         const displayName = getDisplayName() || session.user.user_metadata?.display_name;

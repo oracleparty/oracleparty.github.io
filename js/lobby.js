@@ -28,6 +28,7 @@ import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './a
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
+import { updatePresence } from './presence.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -197,8 +198,11 @@ async function init() {
     sendHonk(btn.dataset.honkTarget);
   });
 
-  // Profile card on player tap
-  attachProfileCardHandler(playerListEl, () => players);
+  // Profile card on player tap (pass roomId for instant-add)
+  attachProfileCardHandler(playerListEl, () => players, room.id);
+
+  // Track presence as "in lobby"
+  updatePresence({ activity: 'lobby', roomId: room.id, roomCode: room.code, category: room.category });
 
   // Typing indicator
   initTypingIndicator(room.id, room.playerId, getDisplayName(), updateTypingUI);

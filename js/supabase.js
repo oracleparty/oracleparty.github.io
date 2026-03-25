@@ -1001,6 +1001,257 @@ export async function fetchGameHistory(userId, limit = 5) {
   return data || [];
 }
 
+// ============================================
+// FRIENDS & FRIEND REQUESTS
+// ============================================
+
+/**
+ * Send a friend request. Returns { data, error }.
+ * Error code 23505 = duplicate request already exists.
+ */
+export async function sendFriendRequest(senderId, receiverId) {
+  const { data, error } = await supabase
+    .from('friend_requests')
+    .insert({ sender_id: senderId, receiver_id: receiverId, status: 'pending' })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[Supabase] sendFriendRequest failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Fetch pending friend requests received by a user.
+ */
+export async function fetchPendingRequests(userId) {
+  const { data, error } = await supabase
+    .from('friend_requests')
+    .select('*')
+    .eq('receiver_id', userId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[Supabase] fetchPendingRequests failed:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+/**
+ * Fetch pending friend requests sent by a user.
+ */
+export async function fetchSentRequests(userId) {
+  const { data, error } = await supabase
+    .from('friend_requests')
+    .select('*')
+    .eq('sender_id', userId)
+    .eq('status', 'pending');
+
+  if (error) {
+    console.error('[Supabase] fetchSentRequests failed:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+/**
+ * Accept a friend request. Updates status and creates the friendship.
+ */
+export async function acceptFriendRequest(requestId) {
+  // Fetch the request to get sender/receiver
+  const { data: req, error: fetchErr } = await supabase
+    .from('friend_requests')
+    .select('sender_id, receiver_id')
+    .eq('id', requestId)
+    .single();
+
+  if (fetchErr || !req) {
+    console.error('[Supabase] acceptFriendRequest fetch failed:', fetchErr?.message);
+    return { error: fetchErr };
+  }
+
+  // Update status
+  const { error: updateErr } = await supabase
+    .from('friend_requests')
+    .update({ status: 'accepted' })
+    .eq('id', requestId);
+
+  if (updateErr) {
+    console.error('[Supabase] acceptFriendRequest update failed:', updateErr.message);
+    return { error: updateErr };
+  }
+
+  // Create friendship (canonical ordering)
+  const { error: friendErr } = await createFriendship(req.sender_id, req.receiver_id, 'request');
+  if (friendErr) {
+    console.error('[Supabase] acceptFriendRequest createFriendship failed:', friendErr.message);
+  }
+
+  return { error: null };
+}
+
+/**
+ * Decline a friend request.
+ */
+export async function declineFriendRequest(requestId) {
+  const { error } = await supabase
+    .from('friend_requests')
+    .update({ status: 'declined' })
+    .eq('id', requestId);
+
+  if (error) console.error('[Supabase] declineFriendRequest failed:', error.message);
+  return { error };
+}
+
+/**
+ * Create a friendship between two users (instant add from lobby/game).
+ * Enforces canonical ordering: user_a < user_b.
+ */
+export async function createFriendship(userIdA, userIdB, source = 'lobby') {
+  const [user_a, user_b] = [userIdA, userIdB].sort();
+  const { data, error } = await supabase
+    .from('friendships')
+    .insert({ user_a, user_b, source })
+    .select()
+    .single();
+
+  if (error) {
+    // 23505 = already friends (unique constraint)
+    if (error.code === '23505') return { data: null, error: null };
+    console.error('[Supabase] createFriendship failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Remove a friendship between two users.
+ */
+export async function removeFriend(userId, friendId) {
+  const [user_a, user_b] = [userId, friendId].sort();
+  const { error } = await supabase
+    .from('friendships')
+    .delete()
+    .eq('user_a', user_a)
+    .eq('user_b', user_b);
+
+  if (error) console.error('[Supabase] removeFriend failed:', error.message);
+  return { error };
+}
+
+/**
+ * Fetch all friends for a user, with their profile data.
+ * Returns array of profile objects (with friendship metadata).
+ */
+export async function fetchFriends(userId) {
+  // Get all friendships involving this user
+  const { data: ships, error } = await supabase
+    .from('friendships')
+    .select('*')
+    .or(`user_a.eq.${userId},user_b.eq.${userId}`);
+
+  if (error) {
+    console.error('[Supabase] fetchFriends failed:', error.message);
+    return [];
+  }
+  if (!ships || ships.length === 0) return [];
+
+  // Collect friend user IDs
+  const friendIds = ships.map(s => s.user_a === userId ? s.user_b : s.user_a);
+
+  // Batch-fetch profiles
+  const { data: profiles, error: pErr } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('user_id', friendIds);
+
+  if (pErr) {
+    console.error('[Supabase] fetchFriends profiles failed:', pErr.message);
+    return [];
+  }
+
+  // Merge: attach profile to each friendship
+  const profileMap = {};
+  for (const p of (profiles || [])) profileMap[p.user_id] = p;
+
+  return ships.map(s => {
+    const friendId = s.user_a === userId ? s.user_b : s.user_a;
+    return { ...profileMap[friendId], friendshipId: s.id, friendshipSource: s.source };
+  }).filter(f => f.user_id); // Filter out any missing profiles
+}
+
+/**
+ * Check if two users are friends.
+ */
+export async function isFriend(userId, otherUserId) {
+  const [user_a, user_b] = [userId, otherUserId].sort();
+  const { data, error } = await supabase
+    .from('friendships')
+    .select('id')
+    .eq('user_a', user_a)
+    .eq('user_b', user_b)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Supabase] isFriend failed:', error.message);
+    return false;
+  }
+  return !!data;
+}
+
+/**
+ * Check if a user has any friends (for presence optimization).
+ */
+export async function hasFriends(userId) {
+  const { data, error } = await supabase
+    .from('friendships')
+    .select('id')
+    .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return false;
+  return !!data;
+}
+
+/**
+ * Search profiles by display name (ILIKE).
+ */
+export async function searchProfiles(query, excludeUserId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .ilike('display_name', `%${query}%`)
+    .neq('user_id', excludeUserId)
+    .limit(10);
+
+  if (error) {
+    console.error('[Supabase] searchProfiles failed:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+/**
+ * Subscribe to friend request changes for a user (received requests).
+ */
+export function subscribeToFriendRequests(userId, callback) {
+  return supabase.channel(`friend-requests-${userId}`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'friend_requests',
+      filter: `receiver_id=eq.${userId}`
+    }, (payload) => {
+      try { callback(payload); } catch (e) { console.error('[Supabase] Friend request callback error:', e); }
+    })
+    .subscribe();
+}
+
 export async function fetchCategoryPlayCounts() {
   const { data, error } = await supabase
     .from('game_plays')

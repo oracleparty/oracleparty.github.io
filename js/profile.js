@@ -9,9 +9,20 @@ import {
   fetchProfile,
   updateProfile,
   fetchPlayerStats,
-  fetchGameHistory
+  fetchGameHistory,
+  sendFriendRequest,
+  fetchPendingRequests,
+  fetchSentRequests,
+  acceptFriendRequest,
+  declineFriendRequest,
+  createFriendship,
+  removeFriend,
+  fetchFriends,
+  isFriend,
+  searchProfiles
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
+import { getPresenceForUser } from './presence.js';
 
 // ============================================
 // CONSTANTS
@@ -194,8 +205,9 @@ let _profileCardInjected = false;
  * @param {string|null} opts.avatarColor
  * @param {string|null} opts.avatarEmoji
  * @param {string|null} opts.title
+ * @param {string|null} opts.roomId - If viewing from a shared room (enables instant-add)
  */
-export async function showProfileCard({ userId, displayName, avatarColor, avatarEmoji, title }) {
+export async function showProfileCard({ userId, displayName, avatarColor, avatarEmoji, title, roomId }) {
   if (!_profileCardInjected) {
     _injectProfileCard();
     _profileCardInjected = true;
@@ -250,10 +262,19 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       </div>
     `;
 
-    // Add Friend button
+    // Friend actions
     const viewer = getCurrentUser();
     if (viewer && viewer.user.id !== userId) {
-      actionsHtml = `<button class="btn btn-secondary btn-block" id="profile-card-add-friend">Add Friend</button>`;
+      const alreadyFriends = await isFriend(viewer.user.id, userId);
+      if (alreadyFriends) {
+        actionsHtml = `<button class="btn btn-secondary btn-block" id="profile-card-remove-friend">Remove Friend</button>`;
+      } else if (roomId) {
+        // In shared room → instant add
+        actionsHtml = `<button class="btn btn-primary btn-block" id="profile-card-add-friend" data-instant="true">Add Friend</button>`;
+      } else {
+        // Not in room → send request
+        actionsHtml = `<button class="btn btn-secondary btn-block" id="profile-card-add-friend">Add Friend</button>`;
+      }
     } else if (!viewer) {
       actionsHtml = `
         <button class="btn btn-secondary btn-block profile-card__btn--guest" id="profile-card-add-friend" data-guest="true">Add Friend</button>
@@ -277,18 +298,46 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
 
   sheet.classList.add('active');
 
-  // Add friend click
+  // Wire friend action buttons
   const addFriendBtn = $('#profile-card-add-friend');
-  if (addFriendBtn && !addFriendBtn.disabled) {
-    addFriendBtn.onclick = () => {
-      addFriendBtn.textContent = 'Request Sent';
-      addFriendBtn.disabled = true;
-      // Friend request logic will be wired in a later phase
-    };
-  } else if (addFriendBtn && addFriendBtn.dataset.guest) {
+  const removeFriendBtn = $('#profile-card-remove-friend');
+
+  if (addFriendBtn && addFriendBtn.dataset.guest) {
     addFriendBtn.onclick = async () => {
       sheet.classList.remove('active');
       await showSignUpModal();
+    };
+  } else if (addFriendBtn && addFriendBtn.dataset.instant) {
+    // Instant add from shared room
+    addFriendBtn.onclick = async () => {
+      const viewer = getCurrentUser();
+      if (!viewer) return;
+      addFriendBtn.disabled = true;
+      addFriendBtn.textContent = 'Adding...';
+      await createFriendship(viewer.user.id, userId, 'lobby');
+      addFriendBtn.textContent = 'Friends \u2713';
+    };
+  } else if (addFriendBtn) {
+    // Send friend request
+    addFriendBtn.onclick = async () => {
+      const viewer = getCurrentUser();
+      if (!viewer) return;
+      addFriendBtn.disabled = true;
+      addFriendBtn.textContent = 'Sending...';
+      const { error } = await sendFriendRequest(viewer.user.id, userId);
+      addFriendBtn.textContent = error ? 'Already Sent' : 'Request Sent';
+    };
+  }
+
+  if (removeFriendBtn) {
+    removeFriendBtn.onclick = async () => {
+      const viewer = getCurrentUser();
+      if (!viewer) return;
+      removeFriendBtn.disabled = true;
+      removeFriendBtn.textContent = 'Removing...';
+      await removeFriend(viewer.user.id, userId);
+      removeFriendBtn.textContent = 'Removed';
+      setTimeout(() => sheet.classList.remove('active'), 600);
     };
   }
 
@@ -521,6 +570,223 @@ export async function initProfilePage() {
       };
     }
   }
+
+  // ============================================
+  // TAB SWITCHING
+  // ============================================
+
+  const tabs = $$('.profile-tab');
+  const profileContent = $('#profile-tab-content');
+  const friendsContent = $('#friends-tab-content');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === target));
+      if (target === 'profile') {
+        profileContent.style.display = '';
+        friendsContent.style.display = 'none';
+      } else {
+        profileContent.style.display = 'none';
+        friendsContent.style.display = '';
+        loadFriendsTab(userId);
+      }
+    });
+  });
+
+  // Check for pending requests to show badge on friends tab
+  const pendingRequests = await fetchPendingRequests(userId);
+  if (pendingRequests.length > 0) {
+    const badge = $('#friends-tab-badge');
+    if (badge) {
+      badge.textContent = pendingRequests.length;
+      badge.classList.remove('hidden');
+    }
+  }
+
+  // If URL has ?tab=friends, switch to friends tab
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('tab') === 'friends') {
+    const friendsTab = tabs.find(t => t.dataset.tab === 'friends');
+    if (friendsTab) friendsTab.click();
+  }
+}
+
+// ============================================
+// FRIENDS TAB
+// ============================================
+
+let _searchTimeout = null;
+
+async function loadFriendsTab(userId) {
+  const pendingListEl = $('#friends-pending-list');
+  const pendingSection = $('#friends-pending');
+  const friendsListEl = $('#friends-list');
+  const searchInput = $('#friends-search-input');
+  const searchResults = $('#friends-search-results');
+
+  // Load pending requests
+  const pending = await fetchPendingRequests(userId);
+  if (pending.length > 0) {
+    pendingSection.style.display = '';
+    const senderIds = pending.map(r => r.sender_id);
+    // Batch-fetch sender profiles
+    const profiles = await _batchFetchProfiles(senderIds);
+
+    pendingListEl.innerHTML = pending.map(req => {
+      const p = profiles[req.sender_id] || {};
+      const avatar = renderAvatar({ displayName: p.display_name || '?', avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+      const tag = p.discriminator ? `<span class="request-row__tag">#${escapeHtml(p.discriminator)}</span>` : '';
+      return `<div class="request-row" data-request-id="${req.id}">
+        ${avatar}
+        <div class="request-row__info">
+          <div class="request-row__name">${escapeHtml(p.display_name || 'Unknown')}${tag}</div>
+        </div>
+        <div class="request-row__actions">
+          <button class="btn btn-primary" data-accept="${req.id}">Accept</button>
+          <button class="btn btn-secondary" data-decline="${req.id}">Decline</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire accept/decline
+    pendingListEl.onclick = async (e) => {
+      const acceptBtn = e.target.closest('[data-accept]');
+      const declineBtn = e.target.closest('[data-decline]');
+      if (acceptBtn) {
+        acceptBtn.disabled = true;
+        acceptBtn.textContent = '...';
+        await acceptFriendRequest(parseInt(acceptBtn.dataset.accept));
+        loadFriendsTab(userId); // Refresh
+      } else if (declineBtn) {
+        declineBtn.disabled = true;
+        declineBtn.textContent = '...';
+        await declineFriendRequest(parseInt(declineBtn.dataset.decline));
+        loadFriendsTab(userId);
+      }
+    };
+  } else {
+    pendingSection.style.display = 'none';
+  }
+
+  // Load friends list
+  const friends = await fetchFriends(userId);
+  if (friends.length > 0) {
+    // Sort: online first, then alphabetical
+    friends.sort((a, b) => {
+      const aOnline = getPresenceForUser(a.user_id) ? 1 : 0;
+      const bOnline = getPresenceForUser(b.user_id) ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
+      return (a.display_name || '').localeCompare(b.display_name || '');
+    });
+
+    friendsListEl.innerHTML = friends.map(f => {
+      const avatar = renderAvatar({ displayName: f.display_name, avatarColor: f.avatar_color, avatarEmoji: f.avatar_emoji });
+      const tag = f.discriminator ? `<span class="friend-row__tag">#${escapeHtml(f.discriminator)}</span>` : '';
+      const presence = getPresenceForUser(f.user_id);
+      const isOnline = !!presence;
+      const statusDot = `<span class="friend-row__status friend-row__status--${isOnline ? 'online' : 'offline'}"></span>`;
+
+      let activityText = 'Offline';
+      if (presence) {
+        if (presence.activity === 'lobby') {
+          activityText = `In Lobby \u2014 ${escapeHtml(presence.category || '')}`;
+        } else if (presence.activity === 'game') {
+          activityText = `In Game \u2014 ${escapeHtml(presence.category || '')}`;
+        } else {
+          activityText = 'Online';
+        }
+      }
+
+      return `<div class="friend-row">
+        ${avatar}
+        <div class="friend-row__info">
+          <div class="friend-row__name">${escapeHtml(f.display_name)}${tag}</div>
+          <div class="friend-row__activity">${statusDot} ${activityText}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } else {
+    friendsListEl.innerHTML = '<p class="profile-empty">No friends yet. Search to add some!</p>';
+  }
+
+  // Search
+  searchInput.oninput = () => {
+    clearTimeout(_searchTimeout);
+    const query = searchInput.value.trim();
+    if (query.length < 2) {
+      searchResults.innerHTML = '';
+      return;
+    }
+    _searchTimeout = setTimeout(() => _runFriendSearch(query, userId, searchResults), 300);
+  };
+}
+
+async function _runFriendSearch(query, userId, resultsEl) {
+  const results = await searchProfiles(query, userId);
+  if (results.length === 0) {
+    resultsEl.innerHTML = '<p class="profile-empty" style="padding: var(--space-sm) 0;">No results found</p>';
+    return;
+  }
+
+  // Check which results are already friends or have pending requests
+  const sentRequests = await fetchSentRequests(userId);
+  const sentSet = new Set(sentRequests.map(r => r.receiver_id));
+
+  resultsEl.innerHTML = (await Promise.all(results.map(async (p) => {
+    const avatar = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+    const tag = p.discriminator ? `<span class="search-result-row__tag">#${escapeHtml(p.discriminator)}</span>` : '';
+    const titleInfo = calculateTitle([]); // We don't have stats here, show default
+    const already = await isFriend(userId, p.user_id);
+    const pending = sentSet.has(p.user_id);
+
+    let actionHtml;
+    if (already) {
+      actionHtml = '<span class="btn btn-secondary" disabled>Friends</span>';
+    } else if (pending) {
+      actionHtml = '<span class="btn btn-secondary" disabled>Pending</span>';
+    } else {
+      actionHtml = `<button class="btn btn-primary" data-send-request="${p.user_id}">Add Friend</button>`;
+    }
+
+    return `<div class="search-result-row">
+      ${avatar}
+      <div class="search-result-row__info">
+        <div class="search-result-row__name">${escapeHtml(p.display_name)}${tag}</div>
+      </div>
+      ${actionHtml}
+    </div>`;
+  }))).join('');
+
+  // Wire send request buttons
+  resultsEl.onclick = async (e) => {
+    const btn = e.target.closest('[data-send-request]');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    const { error } = await sendFriendRequest(userId, btn.dataset.sendRequest);
+    btn.textContent = error ? 'Error' : 'Sent';
+  };
+}
+
+/**
+ * Batch-fetch profiles for an array of user IDs.
+ * Returns a map { userId: profile }.
+ */
+async function _batchFetchProfiles(userIds) {
+  if (!userIds.length) return {};
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('user_id', userIds);
+
+  if (error) {
+    console.error('[Profile] _batchFetchProfiles failed:', error.message);
+    return {};
+  }
+  const map = {};
+  for (const p of (data || [])) map[p.user_id] = p;
+  return map;
 }
 
 // ============================================
@@ -533,8 +799,11 @@ export async function initProfilePage() {
  * Also handles clicks on player-item or answer-row elements
  * by finding the player data from the provided players array.
  */
-export function attachProfileCardHandler(container, getPlayers) {
+export function attachProfileCardHandler(container, getPlayers, roomId = null) {
   container.addEventListener('click', async (e) => {
+    // Don't trigger on honk/toggle button clicks
+    if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle')) return;
+
     const target = e.target.closest('[data-profile-user-id]');
     if (!target) return;
 
@@ -547,7 +816,8 @@ export function attachProfileCardHandler(container, getPlayers) {
       displayName: player?.display_name || 'Unknown',
       avatarColor: player?.avatar_color || null,
       avatarEmoji: player?.avatar_emoji || null,
-      title: player?.title || null
+      title: player?.title || null,
+      roomId
     });
   });
 }

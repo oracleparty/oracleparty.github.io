@@ -61,6 +61,7 @@
     import { $, transitionScreens, delay, renderAvatar } from './js/utils.js';
     import { testConnection } from './js/supabase.js';
     import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName } from './js/auth.js';
+    import { updatePresence } from './js/presence.js';
 
     // --- Init: Splash → Home ---
     async function init() {
@@ -91,6 +92,9 @@
       } else {
         homeAvatar.innerHTML = renderAvatar({ displayName: name, avatarColor: null, avatarEmoji: null });
       }
+
+      // Track presence as "home"
+      updatePresence({ activity: 'home' });
 
       // Transition splash → home
       await transitionScreens(splash, home);
