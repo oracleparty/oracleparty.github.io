@@ -149,7 +149,14 @@ export async function signUp(email, password, displayName) {
     return { user: null, profile: null, error };
   }
 
-  const { data: profile, error: profileErr } = await createProfile(data.user.id, displayName, discriminator);
+  let { data: profile, error: profileErr } = await createProfile(data.user.id, displayName, discriminator);
+  // Retry once on unique constraint violation (private profile had same discriminator)
+  if (profileErr?.code === '23505') {
+    const retryDisc = await generateDiscriminator(displayName);
+    if (retryDisc) {
+      ({ data: profile, error: profileErr } = await createProfile(data.user.id, displayName, retryDisc));
+    }
+  }
   if (profileErr) {
     console.error('[Auth] createProfile failed:', profileErr.message);
     return { user: data.user, profile: null, error: profileErr };
@@ -239,6 +246,9 @@ export function showSignUpModal() {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Create Account';
     overlay.classList.add('active');
+    // Refresh the displayed name (may have changed since modal was first injected)
+    const nameDisplay = $('#signup-name-display');
+    if (nameDisplay) nameDisplay.innerHTML = `Playing as: <strong>${getDisplayName() || 'Guest'}</strong>`;
     emailInput.focus();
 
     dismissBtn.onclick = () => {

@@ -124,10 +124,6 @@ CREATE POLICY "Profiles: owner update"
   ON profiles FOR UPDATE
   USING (user_id = auth.uid());
 
-CREATE POLICY "Profiles: anon read public"
-  ON profiles FOR SELECT TO anon
-  USING (visibility = 'public');
-
 -- PLAYER_STATS
 ALTER TABLE player_stats ENABLE ROW LEVEL SECURITY;
 
