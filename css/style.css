@@ -3480,6 +3480,10 @@ body::after {
   font-style: italic;
 }
 
+.profile-card__btn--guest {
+  opacity: 0.5;
+}
+
 /* Clickable player names/avatars for profile cards */
 [data-profile-user-id] {
   cursor: pointer;

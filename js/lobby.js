@@ -3,7 +3,7 @@
 // Persistent hub with Realtime chat, players, game start
 // ============================================
 
-import { $, escapeHtml, getAvatarHue, renderAvatar } from './utils.js';
+import { $, escapeHtml, renderAvatar } from './utils.js';
 import {
   addPlayer,
   fetchPlayers,

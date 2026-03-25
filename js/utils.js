@@ -77,8 +77,11 @@ export function renderAvatar({ displayName, avatarColor, avatarEmoji, size, extr
   const sizeStyle = size ? `width:${size};height:${size};` : '';
 
   if (avatarColor && avatarEmoji) {
+    // Sanitize: validate hex color, strip HTML from emoji
+    const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(avatarColor) ? avatarColor : '#78716C';
+    const safeEmoji = (avatarEmoji || '').replace(/[<>"&]/g, '');
     const emojiSize = size ? `font-size:calc(${size} * 0.55);` : '';
-    return `<div class="${cls}" style="background:${avatarColor};${sizeStyle}${emojiSize}">${avatarEmoji}</div>`;
+    return `<div class="${cls}" style="background:${safeColor};${sizeStyle}${emojiSize}">${safeEmoji}</div>`;
   }
 
   // Guest fallback: initial-letter circle

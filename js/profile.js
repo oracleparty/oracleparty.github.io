@@ -11,7 +11,7 @@ import {
   fetchPlayerStats,
   fetchGameHistory
 } from './supabase.js';
-import { getCurrentUser, getDisplayName, showSignUpModal } from './auth.js';
+import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
 
 // ============================================
 // CONSTANTS
@@ -125,16 +125,20 @@ export function showAvatarPicker(currentColor, currentEmoji) {
     };
 
     customInput.oninput = () => {
-      // Extract first emoji-like character(s)
       const val = customInput.value.trim();
       if (val) {
-        // Take first grapheme cluster (emoji can be multi-codepoint)
-        const segments = [...new Intl.Segmenter().segment(val)];
-        if (segments.length > 0) {
-          selectedEmoji = segments[0].segment;
-          customInput.value = selectedEmoji;
-          updatePreview();
+        let firstChar = val;
+        // Use Intl.Segmenter for proper grapheme cluster splitting (multi-codepoint emoji)
+        if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+          const segments = [...new Intl.Segmenter().segment(val)];
+          if (segments.length > 0) firstChar = segments[0].segment;
+        } else {
+          // Fallback: spread into array (handles most surrogate pairs)
+          firstChar = [...val][0] || val.slice(0, 2);
         }
+        selectedEmoji = firstChar;
+        customInput.value = selectedEmoji;
+        updatePreview();
       }
     };
 
@@ -252,7 +256,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       actionsHtml = `<button class="btn btn-secondary btn-block" id="profile-card-add-friend">Add Friend</button>`;
     } else if (!viewer) {
       actionsHtml = `
-        <button class="btn btn-secondary btn-block" id="profile-card-add-friend" disabled>Add Friend</button>
+        <button class="btn btn-secondary btn-block profile-card__btn--guest" id="profile-card-add-friend" data-guest="true">Add Friend</button>
         <p class="profile-card__guest-hint">Create an account to add friends</p>
       `;
     }
@@ -281,7 +285,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       addFriendBtn.disabled = true;
       // Friend request logic will be wired in a later phase
     };
-  } else if (addFriendBtn && addFriendBtn.disabled) {
+  } else if (addFriendBtn && addFriendBtn.dataset.guest) {
     addFriendBtn.onclick = async () => {
       sheet.classList.remove('active');
       await showSignUpModal();
@@ -512,7 +516,6 @@ export async function initProfilePage() {
     const signOutBtn = $('#profile-sign-out');
     if (signOutBtn) {
       signOutBtn.onclick = async () => {
-        const { signOut } = await import('./auth.js');
         await signOut();
         window.location.href = 'index.html';
       };

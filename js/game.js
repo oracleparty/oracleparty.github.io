@@ -3,7 +3,7 @@
 // Gameplay loop: question (with wager) → submit → reveal (live) → repeat
 // ============================================
 
-import { $, transitionScreens, escapeHtml, fuzzyMatch, getAvatarHue, renderAvatar } from './utils.js';
+import { $, transitionScreens, escapeHtml, fuzzyMatch, renderAvatar } from './utils.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -1497,6 +1497,9 @@ function renderRevealAnswers(answers) {
   if (state.room.isHost) {
     newContainer.addEventListener('click', handleJudgmentOverride);
   }
+
+  // Profile card on player tap
+  attachProfileCardHandler(newContainer, () => state.players);
 }
 
 function enableNextQuestion() {
