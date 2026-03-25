@@ -1066,9 +1066,15 @@ function showQuestionScreen() {
     $('#wager-error').style.display = '';
     renderWagerGrid(); // Must run AFTER state resets — auto-selects last remaining wager
   }
-  // Keep chat open if player is typing — don't force-close mid-message.
-  // Show a colored notice inside the chat so they know the round started.
+  // Keep chat DRAWER open if player is typing — don't force-close mid-message.
+  // But still hide the chat BAR and reset the offset so the question screen
+  // layout isn't broken by leftover --chat-bar-offset.
   if (state.chatOpen) {
+    // Hide the bar but leave the drawer open
+    $('#chat-bar').classList.add('hidden');
+    setHonkMuted(true);
+    document.body.style.setProperty('--chat-bar-offset', '0px');
+    // Show notification inside the open drawer
     _showChatRoundNotice();
   } else {
     hideChatBar();
@@ -2356,6 +2362,10 @@ async function handleDifficultyVoteComplete() {
   if (q) {
     // Replace the pre-fetched final question with the voted one
     state.questions[state.totalQuestions] = q;
+  } else {
+    // No questions found for voted difficulty — fall back to the pre-fetched question
+    // and show a note so players understand why the difficulty doesn't match their vote
+    resultEl.textContent += ' (no questions available — using random)';
   }
 
   // Clean up vote channel
