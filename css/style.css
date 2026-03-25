@@ -1350,13 +1350,6 @@ body::after {
   min-height: 0;
 }
 
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: var(--space-sm) var(--space-md);
-}
-
 .chat-bubble {
   margin-bottom: var(--space-sm);
 }

@@ -1293,7 +1293,6 @@ async function showRevealScreen() {
   // (it gets cleared in handleTimerExpired)
 
   state.onRevealScreen = true;
-  showChatBar();
 
   const q = state.questions[state.currentQuestion];
   if (!q) return;
@@ -1350,11 +1349,13 @@ async function showRevealScreen() {
     $('#reveal-waiting-host').classList.remove('hidden');
   }
 
-  // Transition to reveal screen
+  // Transition to reveal screen — show chat bar AFTER transition so positioning is correct
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
-    transitionScreens(currentScreen, revealScreen).then(repositionChatBar);
+    transitionScreens(currentScreen, revealScreen).then(showChatBar);
+  } else {
+    showChatBar();
   }
 
   // If results were already revealed (reconnect), show them immediately
@@ -1688,7 +1689,6 @@ async function showScoresScreen() {
   _lastScoresRenderedForQuestion = state.currentQuestion;
 
   state.onRevealScreen = false;
-  showChatBar();
 
   // Track this question as shown (for question browser)
   if (!state.shownQuestionIndices.includes(state.currentQuestion)) {
@@ -1744,11 +1744,13 @@ async function showScoresScreen() {
     `;
   }).join('');
 
-  // Transition to scores screen
+  // Transition to scores screen — show chat bar AFTER transition
   const currentScreen = document.querySelector('.screen.active');
   const scoresScreen = $('#scores-screen');
   if (currentScreen && currentScreen !== scoresScreen) {
-    transitionScreens(currentScreen, scoresScreen).then(repositionChatBar);
+    transitionScreens(currentScreen, scoresScreen).then(showChatBar);
+  } else {
+    showChatBar();
   }
 
   // Host: show "Update Scores" button; non-host: auto-animate after delay
@@ -2137,14 +2139,14 @@ async function showResultsScreen() {
     `;
   }).join('');
 
-  // Transition
+  // Transition — show chat bar AFTER transition
   const currentScreen = document.querySelector('.screen.active');
   const resultsScreen = $('#results-screen');
   if (currentScreen && currentScreen !== resultsScreen) {
-    transitionScreens(currentScreen, resultsScreen).then(repositionChatBar);
+    transitionScreens(currentScreen, resultsScreen).then(showChatBar);
+  } else {
+    showChatBar();
   }
-
-  showChatBar();
 
   // Button handlers
   $('#btn-play-again').onclick = handlePlayAgain;
@@ -2458,6 +2460,9 @@ function showChatBar() {
   $('#chat-bar').classList.remove('hidden');
   setHonkMuted(false);
 
+  // Set content offset immediately so game-content padding adjusts on the same frame
+  document.body.style.setProperty('--chat-bar-offset', '44px');
+
   // Restore accumulated unread badge from messages that arrived during hidden phases
   if (state.unreadCount > 0 && !state.chatOpen) {
     const badge = $('#chat-bar-badge');
@@ -2465,6 +2470,9 @@ function showChatBar() {
     badge.classList.remove('hidden');
   }
 
+  // Position bar immediately (may measure old screen during transitions),
+  // then re-measure after the next frame and after transition completes.
+  repositionChatBar();
   requestAnimationFrame(repositionChatBar);
   setTimeout(repositionChatBar, 850);
 }
