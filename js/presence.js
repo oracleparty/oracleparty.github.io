@@ -31,6 +31,9 @@ export async function initGlobalPresence(userId, showOnline = true) {
   });
 
   _channel
+    .on('presence', { event: 'sync' }, () => {
+      // State maintained internally by Supabase — presenceState() reads it
+    })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await _channel.track({
