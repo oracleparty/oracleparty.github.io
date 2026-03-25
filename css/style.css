@@ -1343,17 +1343,11 @@ body::after {
 }
 
 /* --- Chat --- */
-.chat-area {
-  display: flex;
-  flex-direction: column;
+
+/* Player list fills lobby-middle when chat-area is removed */
+.lobby-middle .player-list {
   flex: 1;
-  min-height: 120px;
-  width: 100%;
-  background: var(--color-surface);
-  border: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  min-height: 0;
 }
 
 .chat-messages {
@@ -1393,36 +1387,6 @@ body::after {
   letter-spacing: 0.01em;
 }
 
-.chat-input-bar {
-  display: flex;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-sm);
-  border-top: 1px solid var(--color-surface-light);
-  background: var(--color-bg);
-  flex-shrink: 0;
-}
-
-.chat-input-bar .input {
-  flex: 1;
-  font-size: var(--text-sm);
-  padding: var(--space-sm) var(--space-md);
-  text-align: left;
-  border-radius: var(--radius-full);
-  background: var(--color-surface);
-  border: 1px solid var(--color-surface-light);
-}
-
-.chat-input-bar .input:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-glow);
-}
-
-.chat-input-bar .btn {
-  flex-shrink: 0;
-  padding: var(--space-sm) var(--space-md);
-  font-size: var(--text-sm);
-  border-radius: var(--radius-full);
-}
 
 /* --- Lobby Layout --- */
 .lobby-body {
@@ -1436,6 +1400,8 @@ body::after {
 .lobby-top {
   flex-shrink: 0;
   padding: 0 var(--space-lg);
+  /* Extra top space when chat bar is visible above */
+  padding-top: var(--chat-bar-offset, 0px);
 }
 
 .lobby-middle {
@@ -2846,60 +2812,56 @@ body::after {
   gap: var(--space-sm);
 }
 
-/* --- Chat Overlay (Game) --- */
-.chat-toggle {
+/* --- Chat Bar (slim bar below header) --- */
+.chat-bar {
   position: fixed;
-  /* Default bottom — JS updates this dynamically via --chat-toggle-bottom */
-  bottom: var(--chat-toggle-bottom, calc(70px + env(safe-area-inset-bottom)));
-  left: var(--space-md);
-  right: var(--space-md);
-  width: auto;
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  border: 1.5px solid var(--color-surface-light);
-  color: var(--color-text-dim);
-  font-size: var(--text-sm);
+  top: var(--chat-bar-top, 56px);
+  left: 0;
+  right: 0;
+  height: 40px;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  cursor: pointer;
+  padding: 0 var(--space-lg);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-surface-light);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
   z-index: 50;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform var(--duration-fast) var(--ease-out),
-              bottom var(--duration-fast) var(--ease-out);
+  transition: top var(--duration-fast) var(--ease-out);
 }
 
-.chat-toggle:active {
-  transform: scale(0.97);
+.chat-bar:active {
+  background: var(--color-bg-deep);
 }
 
-/* Extra bottom padding so scrollable content clears the fixed chat toggle */
-body.chat-visible .game-content {
-  padding-bottom: calc(var(--space-md) + 56px);
-}
-
-.chat-toggle__label {
+.chat-bar__label {
   font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: var(--text-sm);
-  color: var(--color-text);
+  font-weight: 700;
+  font-size: 0.65rem;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   flex-shrink: 0;
 }
 
-.chat-toggle__preview {
+.chat-bar__preview {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  color: var(--color-text-dim);
 }
 
-/* Chat badge (unread count) */
-.chat-badge {
+.chat-bar__preview-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.chat-bar__badge {
   flex-shrink: 0;
   min-width: 18px;
   height: 18px;
@@ -2916,111 +2878,89 @@ body.chat-visible .game-content {
   line-height: 1;
 }
 
-/* --- Chat Toast Popups --- */
-.chat-toasts {
+.chat-bar__arrow {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.chat-bar.open .chat-bar__arrow {
+  transform: rotate(180deg);
+}
+
+/* Flash animation when a new message arrives */
+@keyframes chat-bar-flash {
+  0%   { background: var(--color-surface); }
+  25%  { background: rgba(198, 138, 46, 0.15); }
+  100% { background: var(--color-surface); }
+}
+
+.chat-bar--flash {
+  animation: chat-bar-flash 0.8s ease;
+}
+
+/* --- Chat Drawer (expanded overlay below bar) --- */
+.chat-drawer {
   position: fixed;
-  /* Sit directly above the chat toggle bar */
-  bottom: var(--chat-toasts-bottom, calc(110px + env(safe-area-inset-bottom)));
-  left: var(--space-md);
-  right: var(--space-md);
+  top: var(--chat-drawer-top, 96px);
+  left: 0;
+  right: 0;
+  bottom: var(--chat-drawer-bottom, 80px);
+  background: var(--color-bg-deep);
+  border-bottom: 1px solid var(--color-surface-light);
   z-index: 49;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  opacity: 0;
+  transform: scaleY(0.97);
+  transform-origin: top center;
   pointer-events: none;
+  transition: opacity 0.2s var(--ease-out), transform 0.2s var(--ease-out);
 }
 
-.chat-toast {
-  background: var(--color-surface);
-  border: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-md);
-  padding: var(--space-xs) var(--space-md);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  color: var(--color-text);
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.3s var(--ease-out), transform 0.3s var(--ease-out);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-toast.visible {
+.chat-drawer.open {
   opacity: 1;
-  transform: translateY(0);
+  transform: scaleY(1);
+  pointer-events: auto;
 }
 
-.chat-toast.fading {
-  opacity: 0;
-  transform: translateY(-4px);
+.chat-drawer__messages {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--space-sm) var(--space-md);
 }
 
-.chat-toast__name {
-  font-weight: 600;
-  color: var(--color-primary);
-  margin-right: var(--space-xs);
-}
-
-.chat-panel {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 50dvh;
-  background: var(--color-bg-deep);
+.chat-drawer__input {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
   border-top: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  transform: translateY(100%);
-  transition: transform var(--duration-med) var(--ease-out);
-}
-
-.chat-panel.open {
-  transform: translateY(0);
-}
-
-.chat-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-md) var(--space-lg);
-  border-bottom: 1px solid var(--color-surface-light);
+  background: var(--color-surface);
   flex-shrink: 0;
 }
 
-.chat-panel__title {
-  font-family: var(--font-heading);
+.chat-drawer__input .input {
+  flex: 1;
   font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text);
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-deep);
+  border: 1px solid var(--color-surface-light);
 }
 
-.chat-panel__close {
-  font-size: var(--text-xl);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: var(--space-xs);
-  -webkit-tap-highlight-color: transparent;
+.chat-drawer__input .input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
-.chat-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 55;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--duration-med) var(--ease-out);
-}
-
-.chat-backdrop.open {
-  opacity: 1;
-  pointer-events: auto;
+.chat-drawer__input .btn {
+  flex-shrink: 0;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-full);
 }
 
 /* --- Game Loading --- */

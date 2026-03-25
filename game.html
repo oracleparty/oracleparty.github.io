@@ -96,7 +96,7 @@
         </div>
       </div>
 
-      <div class="game-content" style="justify-content: flex-start; padding-top: var(--space-sm);">
+      <div class="game-content" style="justify-content: flex-start; padding-top: calc(var(--space-sm) + var(--chat-bar-offset, 0px));">
         <!-- Question Text -->
         <p id="reveal-question-text" class="reveal__question-text"></p>
 
@@ -143,7 +143,7 @@
         </div>
       </div>
 
-      <div class="game-content" style="justify-content: flex-start; padding-top: var(--space-md);">
+      <div class="game-content" style="justify-content: flex-start; padding-top: calc(var(--space-md) + var(--chat-bar-offset, 0px));">
         <div class="scores-animated">
           <div class="scores-animated__title">Scores</div>
           <div id="scores-animated-list"></div>
@@ -218,7 +218,7 @@
         </div>
       </div>
 
-      <div class="game-content" style="justify-content: flex-start; padding-top: var(--space-md);">
+      <div class="game-content" style="justify-content: flex-start; padding-top: calc(var(--space-md) + var(--chat-bar-offset, 0px));">
         <div id="results-winner" class="results-winner"></div>
 
         <div class="results-scoreboard">
@@ -249,19 +249,20 @@
   </div>
 
   <!-- ==============================
-       Chat Overlay
+       Chat Bar + Drawer
        ============================== -->
-  <div id="chat-backdrop" class="chat-backdrop"></div>
-  <div id="chat-panel" class="chat-panel">
-    <div class="chat-panel__header">
-      <span class="chat-panel__title">Chat</span>
-      <button id="btn-close-chat" class="chat-panel__close">&times;</button>
-    </div>
-    <div id="game-chat-messages" class="chat-messages"></div>
-    <div class="chat-input-bar">
+  <div id="chat-bar" class="chat-bar hidden">
+    <span class="chat-bar__label">Chat</span>
+    <span id="chat-bar-preview" class="chat-bar__preview"></span>
+    <span id="chat-bar-badge" class="chat-bar__badge hidden">0</span>
+    <span class="chat-bar__arrow">&#9662;</span>
+  </div>
+  <div id="chat-drawer" class="chat-drawer">
+    <div id="chat-drawer-messages" class="chat-drawer__messages"></div>
+    <div class="chat-drawer__input">
       <input
         type="text"
-        id="game-chat-input"
+        id="chat-drawer-input"
         class="input"
         placeholder="Say something..."
         aria-label="Chat message"
@@ -269,15 +270,9 @@
         autocomplete="off"
         spellcheck="false"
       >
-      <button id="btn-game-chat-send" class="btn btn-primary">Send</button>
+      <button id="btn-chat-send" class="btn btn-primary">Send</button>
     </div>
   </div>
-  <div id="chat-toasts" class="chat-toasts hidden"></div>
-  <button id="btn-chat-toggle" class="chat-toggle hidden">
-    <span class="chat-toggle__label">Chat</span>
-    <span id="chat-preview" class="chat-toggle__preview"></span>
-    <span id="chat-badge" class="chat-badge hidden">0</span>
-  </button>
 
   <!-- Display Name Modal (fallback) -->
   <div id="display-name-modal" class="modal-overlay">

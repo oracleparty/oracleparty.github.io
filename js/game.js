@@ -928,7 +928,7 @@ function showQuestionScreen() {
     $('#wager-error').style.display = '';
     renderWagerGrid(); // Must run AFTER state resets — auto-selects last remaining wager
   }
-  hideChatToggle();
+  hideChatBar();
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
@@ -1293,7 +1293,7 @@ async function showRevealScreen() {
   // (it gets cleared in handleTimerExpired)
 
   state.onRevealScreen = true;
-  showChatToggle();
+  showChatBar();
 
   const q = state.questions[state.currentQuestion];
   if (!q) return;
@@ -1354,7 +1354,7 @@ async function showRevealScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
-    transitionScreens(currentScreen, revealScreen).then(repositionChatToggle);
+    transitionScreens(currentScreen, revealScreen).then(repositionChatBar);
   }
 
   // If results were already revealed (reconnect), show them immediately
@@ -1688,7 +1688,7 @@ async function showScoresScreen() {
   _lastScoresRenderedForQuestion = state.currentQuestion;
 
   state.onRevealScreen = false;
-  showChatToggle();
+  showChatBar();
 
   // Track this question as shown (for question browser)
   if (!state.shownQuestionIndices.includes(state.currentQuestion)) {
@@ -1748,7 +1748,7 @@ async function showScoresScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const scoresScreen = $('#scores-screen');
   if (currentScreen && currentScreen !== scoresScreen) {
-    transitionScreens(currentScreen, scoresScreen).then(repositionChatToggle);
+    transitionScreens(currentScreen, scoresScreen).then(repositionChatBar);
   }
 
   // Host: show "Update Scores" button; non-host: auto-animate after delay
@@ -1877,7 +1877,7 @@ function showNextButtonOnScores() {
   if (!state.room.isHost) {
     // Non-host: show "Waiting for host..." message
     $('#scores-waiting-host').classList.remove('hidden');
-    requestAnimationFrame(repositionChatToggle);
+    requestAnimationFrame(repositionChatBar);
     return;
   }
   $('#scores-waiting-host').classList.add('hidden');
@@ -1898,7 +1898,7 @@ function showNextButtonOnScores() {
   btn.style.opacity = '1';
   btn.classList.remove('hidden');
   // Footer content changed — reposition chat toggle above it
-  requestAnimationFrame(repositionChatToggle);
+  requestAnimationFrame(repositionChatBar);
 }
 
 async function handleFinalWager() {
@@ -1972,7 +1972,7 @@ function showFinalWagerScreen() {
     revealBtn.classList.add('hidden');
   }
 
-  hideChatToggle();
+  hideChatBar();
 
   // Transition
   const currentScreen = document.querySelector('.screen.active');
@@ -2141,10 +2141,10 @@ async function showResultsScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const resultsScreen = $('#results-screen');
   if (currentScreen && currentScreen !== resultsScreen) {
-    transitionScreens(currentScreen, resultsScreen).then(repositionChatToggle);
+    transitionScreens(currentScreen, resultsScreen).then(repositionChatBar);
   }
 
-  showChatToggle();
+  showChatBar();
 
   // Button handlers
   $('#btn-play-again').onclick = handlePlayAgain;
@@ -2421,118 +2421,113 @@ function handleAnswerChange(payload) {
 }
 
 // ============================================
-// CHAT OVERLAY
+// CHAT BAR + DRAWER
 // ============================================
 
 /**
- * Position the chat toggle bar just above the active screen's footer.
- * Uses a CSS custom property so the layout adapts to any footer height.
+ * Position the chat bar just below the active screen's header,
+ * and the chat drawer between the bar and the footer.
  */
-function repositionChatToggle() {
+function repositionChatBar() {
   const activeScreen = document.querySelector('.screen.active');
   if (!activeScreen) return;
+  const header = activeScreen.querySelector('.game-header');
   const footer = activeScreen.querySelector('.game-footer');
-  const toggle = $('#btn-chat-toggle');
-  const toasts = $('#chat-toasts');
-  const GAP = 8; // px gap between footer top and toggle bottom
+  const bar = $('#chat-bar');
+  const drawer = $('#chat-drawer');
+
+  const headerH = header ? header.offsetHeight : 0;
+  if (headerH === 0) return; // not laid out yet
+
+  const barH = 40;
+  bar.style.setProperty('--chat-bar-top', `${headerH}px`);
+  drawer.style.setProperty('--chat-drawer-top', `${headerH + barH}px`);
+
+  // Set content offset so game-content padding clears the bar
+  document.body.style.setProperty('--chat-bar-offset', `${barH + 4}px`);
 
   if (footer) {
     const footerH = footer.offsetHeight;
-    // Skip if footer is empty/collapsed (e.g. question screen has an empty footer) —
-    // the 850ms timeout or transition callback will reposition once the right screen is active.
-    if (footerH === 0) return;
-    const bottom = footerH + GAP;
-    toggle.style.setProperty('--chat-toggle-bottom', `${bottom}px`);
-    // Toast container sits above the toggle bar
-    const toggleH = toggle.offsetHeight || 38;
-    toasts.style.setProperty('--chat-toasts-bottom', `${bottom + toggleH + GAP}px`);
+    drawer.style.setProperty('--chat-drawer-bottom', `${footerH > 0 ? footerH : 0}px`);
   } else {
-    // No footer — use a sensible default
-    const bottom = GAP;
-    toggle.style.setProperty('--chat-toggle-bottom', `${bottom}px`);
-    toasts.style.setProperty('--chat-toasts-bottom', `${bottom + 38 + GAP}px`);
+    drawer.style.setProperty('--chat-drawer-bottom', '0px');
   }
 }
 
-function showChatToggle() {
-  $('#btn-chat-toggle').classList.remove('hidden');
-  $('#chat-toasts').classList.remove('hidden');
-  document.body.classList.add('chat-visible');
+function showChatBar() {
+  $('#chat-bar').classList.remove('hidden');
   setHonkMuted(false);
 
   // Restore accumulated unread badge from messages that arrived during hidden phases
   if (state.unreadCount > 0 && !state.chatOpen) {
-    const badge = $('#chat-badge');
+    const badge = $('#chat-bar-badge');
     badge.textContent = state.unreadCount;
     badge.classList.remove('hidden');
   }
 
-  // Reposition after a frame so the active screen's footer is laid out.
-  // Also reposition after transition completes (800ms) since screen may not be active yet.
-  requestAnimationFrame(repositionChatToggle);
-  setTimeout(repositionChatToggle, 850);
+  requestAnimationFrame(repositionChatBar);
+  setTimeout(repositionChatBar, 850);
 }
 
-function hideChatToggle() {
-  $('#btn-chat-toggle').classList.add('hidden');
-  $('#chat-toasts').classList.add('hidden');
-  document.body.classList.remove('chat-visible');
+function hideChatBar() {
+  $('#chat-bar').classList.add('hidden');
   setHonkMuted(true);
-  clearChatToasts();
-  // Close chat panel if open
+  document.body.style.setProperty('--chat-bar-offset', '0px');
+
+  // Close drawer if open
   if (state.chatOpen) {
     state.chatOpen = false;
-    $('#chat-panel').classList.remove('open');
-    $('#chat-backdrop').classList.remove('open');
+    $('#chat-bar').classList.remove('open');
+    $('#chat-drawer').classList.remove('open');
   }
 }
 
 function attachChatListeners() {
-  $('#btn-chat-toggle').addEventListener('click', toggleChat);
-  $('#btn-close-chat').addEventListener('click', toggleChat);
-  $('#chat-backdrop').addEventListener('click', toggleChat);
-
-  $('#btn-game-chat-send').addEventListener('click', handleSendGameChat);
-  $('#game-chat-input').addEventListener('keydown', (e) => {
+  $('#chat-bar').addEventListener('click', toggleChatDrawer);
+  $('#btn-chat-send').addEventListener('click', handleSendGameChat);
+  $('#chat-drawer-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendGameChat();
   });
 }
 
-function toggleChat() {
+function toggleChatDrawer() {
   state.chatOpen = !state.chatOpen;
-  $('#chat-panel').classList.toggle('open', state.chatOpen);
-  $('#chat-backdrop').classList.toggle('open', state.chatOpen);
+  $('#chat-bar').classList.toggle('open', state.chatOpen);
+  $('#chat-drawer').classList.toggle('open', state.chatOpen);
 
   if (state.chatOpen) {
     scrollGameChatToBottom();
-    $('#game-chat-input').focus();
-    // Clear unread badge, preview, and toasts
+    // Small delay so drawer animation completes before focusing
+    setTimeout(() => $('#chat-drawer-input').focus(), 220);
+    // Clear unread badge and preview
     state.unreadCount = 0;
-    const badge = $('#chat-badge');
+    const badge = $('#chat-bar-badge');
     badge.textContent = '0';
     badge.classList.add('hidden');
-    const preview = $('#chat-preview');
-    if (preview) preview.textContent = '';
-    clearChatToasts();
   }
 }
 
 async function loadChatMessages() {
   const messages = await fetchMessages(state.room.id);
-  const container = $('#game-chat-messages');
+  const container = $('#chat-drawer-messages');
   container.innerHTML = '';
   for (const msg of messages) {
     appendGameChatMessage(msg.player_name, msg.message);
   }
   scrollGameChatToBottom();
+
+  // Show latest message preview in bar
+  if (messages.length > 0) {
+    const last = messages[messages.length - 1];
+    updateChatBarPreview(last.player_name, last.message);
+  }
 }
 
 function handleNewMessage(payload) {
   if (!payload.new) return;
   const { player_name, message } = payload.new;
 
-  // Dedup: skip Realtime echoes of our own optimistic appends.
-  // Each send increments chatEchoPending; each echo from self decrements it.
+  // Dedup: skip Realtime echoes of our own optimistic appends
   if (player_name === getDisplayName() && state.chatEchoPending > 0) {
     state.chatEchoPending--;
     return;
@@ -2541,72 +2536,36 @@ function handleNewMessage(payload) {
   appendGameChatMessage(player_name, message);
   scrollGameChatToBottom();
 
-  // Always track unread count when chat panel is closed (even during hidden phases)
+  // Always update the bar preview with the latest message
+  updateChatBarPreview(player_name, message);
+
+  // Track unread + flash bar when drawer is closed
   if (!state.chatOpen) {
     state.unreadCount = (state.unreadCount || 0) + 1;
 
-    // Show badge + toast only if the toggle bar is currently visible
-    const chatHidden = $('#btn-chat-toggle').classList.contains('hidden');
+    const chatHidden = $('#chat-bar').classList.contains('hidden');
     if (!chatHidden) {
-      const badge = $('#chat-badge');
+      const badge = $('#chat-bar-badge');
       badge.textContent = state.unreadCount;
       badge.classList.remove('hidden');
-      updateChatPreview(player_name, message);
-      showChatToast(player_name, message);
+      flashChatBar();
     }
   }
 }
 
-function updateChatPreview(name, text) {
-  const preview = $('#chat-preview');
+function updateChatBarPreview(name, text) {
+  const preview = $('#chat-bar-preview');
   if (!preview) return;
-  const truncated = text.length > 40 ? text.slice(0, 40) + '...' : text;
-  preview.textContent = `${name}: ${truncated}`;
+  const truncated = text.length > 35 ? text.slice(0, 35) + '\u2026' : text;
+  preview.innerHTML = `<span class="chat-bar__preview-name">${escapeHtml(name)}:</span> ${escapeHtml(truncated)}`;
 }
 
-// --- Chat Toast Popups ---
-
-const MAX_TOASTS = 3;
-
-function showChatToast(name, text) {
-  const container = $('#chat-toasts');
-  if (!container || container.classList.contains('hidden')) return;
-
-  const toast = document.createElement('div');
-  toast.className = 'chat-toast';
-  const truncated = text.length > 60 ? text.slice(0, 60) + '...' : text;
-  toast.innerHTML = `<span class="chat-toast__name">${escapeHtml(name)}</span>${escapeHtml(truncated)}`;
-  container.appendChild(toast);
-
-  // Force a reflow so the browser paints the initial state (opacity: 0)
-  // before the transition to visible starts — more reliable than single rAF
-  void toast.offsetHeight;
-  toast.classList.add('visible');
-
-  // Cap visible toasts — remove oldest
-  const toasts = container.querySelectorAll('.chat-toast');
-  if (toasts.length > MAX_TOASTS) {
-    removeToast(toasts[0]);
-  }
-
-  // Auto-fade after 3 seconds
-  setTimeout(() => {
-    removeToast(toast);
-  }, 3000);
-}
-
-function removeToast(toast) {
-  if (!toast || !toast.parentNode) return;
-  toast.classList.remove('visible');
-  toast.classList.add('fading');
-  toast.addEventListener('transitionend', () => toast.remove(), { once: true });
-  // Fallback if transitionend doesn't fire
-  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 400);
-}
-
-function clearChatToasts() {
-  const container = $('#chat-toasts');
-  if (container) container.innerHTML = '';
+function flashChatBar() {
+  const bar = $('#chat-bar');
+  bar.classList.remove('chat-bar--flash');
+  // Force reflow to restart animation
+  void bar.offsetHeight;
+  bar.classList.add('chat-bar--flash');
 }
 
 function appendGameChatMessage(name, text) {
@@ -2616,32 +2575,31 @@ function appendGameChatMessage(name, text) {
     <div class="chat-bubble__name">${escapeHtml(name)}</div>
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
   `;
-  $('#game-chat-messages').appendChild(bubble);
+  $('#chat-drawer-messages').appendChild(bubble);
 }
 
 function scrollGameChatToBottom() {
-  const container = $('#game-chat-messages');
+  const container = $('#chat-drawer-messages');
   container.scrollTop = container.scrollHeight;
 }
 
 async function handleSendGameChat() {
-  const input = $('#game-chat-input');
+  const input = $('#chat-drawer-input');
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
   const name = getDisplayName();
 
-  // Optimistic append — show instantly for the sender
+  // Optimistic append
   appendGameChatMessage(name, text);
   scrollGameChatToBottom();
+  updateChatBarPreview(name, text);
 
-  // Track pending echo for dedup (counter-based — handles rapid duplicate messages)
   state.chatEchoPending = (state.chatEchoPending || 0) + 1;
 
   try {
     await sendMessage(state.room.id, name, text);
   } catch {
-    // Send failed — no echo will arrive, so undo the counter increment
     state.chatEchoPending = Math.max(0, (state.chatEchoPending || 0) - 1);
   }
 }

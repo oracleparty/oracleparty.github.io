@@ -60,9 +60,9 @@ const lobbyCategory = $('#lobby-category');
 const lobbyCode = $('#lobby-code');
 const playerListEl = $('#player-list');
 const playerCountEl = $('#player-count');
-const chatMessagesEl = $('#chat-messages');
-const chatInput = $('#chat-input');
-const btnSend = $('#btn-send');
+const chatMessagesEl = $('#chat-drawer-messages');
+const chatInput = $('#chat-drawer-input');
+const btnSend = $('#btn-chat-send');
 const btnStartGame = $('#btn-start-game');
 const btnReady = $('#btn-ready');
 const btnCopyCode = $('#btn-copy-code');
@@ -71,6 +71,11 @@ const btnSettings = $('#btn-settings');
 const settingsModal = $('#settings-modal');
 const btnCloseSettings = $('#btn-close-settings');
 const settingsCategoryGrid = $('#settings-category-grid');
+
+// Chat bar state
+let chatOpen = false;
+let unreadCount = 0;
+let chatEchoPending = 0;
 
 // --- Init ---
 async function init() {
@@ -190,6 +195,9 @@ async function init() {
     sendHonk(btn.dataset.honkTarget);
   });
 
+  // Position chat bar below header
+  repositionChatBar();
+
   // System message
   addSystemMessage(`You joined the lobby`);
 }
@@ -212,7 +220,8 @@ function attachListeners() {
     }
   });
 
-  // Send chat
+  // Chat bar + drawer
+  $('#chat-bar').addEventListener('click', toggleChatDrawer);
   btnSend.addEventListener('click', handleSendMessage);
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendMessage();
@@ -463,7 +472,56 @@ async function ensureCurrentPlayer() {
   }
 }
 
-// --- Chat ---
+// --- Chat Bar + Drawer ---
+
+function repositionChatBar() {
+  const header = document.querySelector('.page-header');
+  const footer = document.querySelector('.lobby-footer');
+  const bar = $('#chat-bar');
+  const drawer = $('#chat-drawer');
+  if (!header) return;
+
+  const headerH = header.offsetHeight;
+  const barH = 40;
+  bar.style.setProperty('--chat-bar-top', `${headerH}px`);
+  drawer.style.setProperty('--chat-drawer-top', `${headerH + barH}px`);
+  document.body.style.setProperty('--chat-bar-offset', `${barH + 4}px`);
+
+  if (footer) {
+    const footerH = footer.offsetHeight;
+    drawer.style.setProperty('--chat-drawer-bottom', `${footerH > 0 ? footerH : 0}px`);
+  }
+}
+
+function toggleChatDrawer() {
+  chatOpen = !chatOpen;
+  $('#chat-bar').classList.toggle('open', chatOpen);
+  $('#chat-drawer').classList.toggle('open', chatOpen);
+
+  if (chatOpen) {
+    scrollChatToBottom();
+    setTimeout(() => chatInput.focus(), 220);
+    unreadCount = 0;
+    const badge = $('#chat-bar-badge');
+    badge.textContent = '0';
+    badge.classList.add('hidden');
+  }
+}
+
+function updateChatBarPreview(name, text) {
+  const preview = $('#chat-bar-preview');
+  if (!preview) return;
+  const truncated = text.length > 35 ? text.slice(0, 35) + '\u2026' : text;
+  preview.innerHTML = `<span class="chat-bar__preview-name">${escapeHtml(name)}:</span> ${escapeHtml(truncated)}`;
+}
+
+function flashChatBar() {
+  const bar = $('#chat-bar');
+  bar.classList.remove('chat-bar--flash');
+  void bar.offsetHeight;
+  bar.classList.add('chat-bar--flash');
+}
+
 async function loadMessages() {
   const messages = await fetchMessages(room.id);
   chatMessagesEl.innerHTML = '';
@@ -471,12 +529,35 @@ async function loadMessages() {
     appendChatMessage(msg.player_name, msg.message);
   }
   scrollChatToBottom();
+
+  // Show latest message in bar preview
+  if (messages.length > 0) {
+    const last = messages[messages.length - 1];
+    updateChatBarPreview(last.player_name, last.message);
+  }
 }
 
 function handleNewMessage(payload) {
-  if (payload.new) {
-    appendChatMessage(payload.new.player_name, payload.new.message);
-    scrollChatToBottom();
+  if (!payload.new) return;
+  const { player_name, message } = payload.new;
+
+  // Dedup: skip Realtime echoes of our own optimistic appends
+  if (player_name === getDisplayName() && chatEchoPending > 0) {
+    chatEchoPending--;
+    return;
+  }
+
+  appendChatMessage(player_name, message);
+  scrollChatToBottom();
+  updateChatBarPreview(player_name, message);
+
+  // Badge + flash when drawer is closed
+  if (!chatOpen) {
+    unreadCount++;
+    const badge = $('#chat-bar-badge');
+    badge.textContent = unreadCount;
+    badge.classList.remove('hidden');
+    flashChatBar();
   }
 }
 
@@ -496,6 +577,8 @@ function addSystemMessage(text) {
   bubble.innerHTML = `<div class="chat-bubble__text">${escapeHtml(text)}</div>`;
   chatMessagesEl.appendChild(bubble);
   scrollChatToBottom();
+  // Update bar preview for system messages too
+  updateChatBarPreview('System', text);
 }
 
 function scrollChatToBottom() {
@@ -508,11 +591,17 @@ async function handleSendMessage() {
 
   chatInput.value = '';
   const name = getDisplayName();
+  // Optimistic append
+  appendChatMessage(name, text);
+  scrollChatToBottom();
+  updateChatBarPreview(name, text);
+  chatEchoPending++;
   try {
     await sendMessage(room.id, name, text);
   } catch (err) {
     console.error('[Lobby] sendMessage failed:', err);
-    chatInput.value = text; // restore message so user can retry
+    chatEchoPending = Math.max(0, chatEchoPending - 1);
+    chatInput.value = text;
   }
 }
 
