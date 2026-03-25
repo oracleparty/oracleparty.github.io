@@ -637,9 +637,20 @@ function handleRoomChange(payload) {
  * Players can choose when to follow — they're not auto-yanked.
  */
 function _showLobbyReturnNotice() {
-  // Only show on results screen (during gameplay, the host won't change status)
   const existing = document.getElementById('lobby-return-notice');
   if (existing) return; // Already showing
+
+  // Safety: only show if results screen is active. If the room status changes
+  // to 'lobby' during gameplay (shouldn't happen, but guard against it),
+  // just auto-navigate instead of showing a notice on an invisible screen.
+  const resultsScreen = document.querySelector('#results-screen');
+  if (!resultsScreen || resultsScreen.style.display === 'none') {
+    _isLeaving = true;
+    cleanup();
+    sessionStorage.setItem('oracle_party_returning_from_game', '1');
+    window.location.href = 'lobby.html';
+    return;
+  }
 
   const notice = document.createElement('div');
   notice.id = 'lobby-return-notice';
@@ -1383,7 +1394,10 @@ async function showRevealScreen() {
   // catch them, but can be delayed or lost. This re-fetch is a safety net.
   if (!state.resultsRevealed && state.currentAnswers.length < state.players.length) {
     setTimeout(async () => {
-      if (!state.onRevealScreen || state.currentQuestion !== currentQ) return;
+      // Guard: skip if question changed, screen changed, or results already revealed
+      // (if host revealed during the 1.5s window, re-rendering would apply colors
+      // directly without animation and could show stale is_correct values)
+      if (!state.onRevealScreen || state.currentQuestion !== currentQ || state.resultsRevealed) return;
       const fresh = await fetchAnswersForQuestion(state.room.id, currentQ);
       if (fresh.length > state.currentAnswers.length) {
         state.currentAnswers = fresh;
