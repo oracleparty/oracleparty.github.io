@@ -1393,8 +1393,9 @@ body::after {
 .lobby-top {
   flex-shrink: 0;
   padding: 0 var(--space-lg);
-  /* Extra top space when chat bar is visible above */
-  padding-top: var(--chat-bar-offset, 0px);
+  /* Extra top space to clear the fixed chat bar above.
+     Default 44px matches bar height (40px) + gap — JS refines this on load. */
+  padding-top: var(--chat-bar-offset, 44px);
 }
 
 .lobby-middle {
