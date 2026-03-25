@@ -5,7 +5,7 @@
 
 import { $, $$, transitionScreens } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts } from './supabase.js';
-import { getDisplayName, ensureDisplayName } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 
 // --- Category display config ---
 const CATEGORY_META = {
@@ -44,7 +44,7 @@ const hostError = $('#host-error');
 // --- Init ---
 async function init() {
   try {
-    await ensureDisplayName();
+    await Promise.all([ensureDisplayName(), initAuth()]);
     categories = await fetchCategories();
     // Play counts are non-critical — don't let failure break category loading
     try {
@@ -188,7 +188,9 @@ async function handleHostGame() {
     }
 
     // Add host as a player in the room
-    const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true);
+    const authUser = getCurrentUser();
+    const userId = authUser?.user?.id || null;
+    const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true, userId);
     if (playerErr || !player) {
       hostError.textContent = 'Room created but failed to join. Try again.';
       console.error('[Host] addPlayer failed:', playerErr);

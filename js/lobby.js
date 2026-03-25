@@ -24,7 +24,7 @@ import {
   unsubscribe,
   createPresenceChannel
 } from './supabase.js';
-import { getDisplayName, ensureDisplayName } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 
@@ -80,7 +80,7 @@ let chatEchoPending = 0;
 
 // --- Init ---
 async function init() {
-  await ensureDisplayName();
+  await Promise.all([ensureDisplayName(), initAuth()]);
 
   // Load room from sessionStorage
   const stored = sessionStorage.getItem('oracle_party_room');
@@ -469,7 +469,9 @@ async function ensureCurrentPlayer() {
     return;
   }
 
-  const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost);
+  const authUser = getCurrentUser();
+  const rejoinUserId = authUser?.user?.id || null;
+  const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost, rejoinUserId);
   if (rejoinedPlayer) {
     room.playerId = rejoinedPlayer.id;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));

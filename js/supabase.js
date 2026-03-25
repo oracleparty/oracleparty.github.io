@@ -196,10 +196,12 @@ export async function cleanupOrphanedRooms() {
 /**
  * Add a player to a room.
  */
-export async function addPlayer(roomId, displayName, isHost = false) {
+export async function addPlayer(roomId, displayName, isHost = false, userId = null) {
+  const payload = { room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString() };
+  if (userId) payload.user_id = userId;
   const { data, error } = await supabase
     .from('players')
-    .insert({ room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString() })
+    .insert(payload)
     .select()
     .single();
 
@@ -859,6 +861,107 @@ export async function completeGamePlay({ roomId, playerId, finalScore }) {
     .eq('player_id', playerId);
 
   if (error) console.error('[Supabase] completeGamePlay failed:', error.message);
+}
+
+// ============================================
+// PROFILES & AUTH HELPERS
+// ============================================
+
+/**
+ * Generate an unused 4-digit discriminator for a display name.
+ */
+export async function generateDiscriminator(displayName) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const disc = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    const { data } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('display_name', displayName)
+      .eq('discriminator', disc)
+      .maybeSingle();
+    if (!data) return disc;
+  }
+  // Fallback: find any unused discriminator
+  const { data: taken } = await supabase
+    .from('profiles')
+    .select('discriminator')
+    .eq('display_name', displayName);
+  const takenSet = new Set((taken || []).map(r => r.discriminator));
+  for (let i = 0; i < 10000; i++) {
+    const disc = String(i).padStart(4, '0');
+    if (!takenSet.has(disc)) return disc;
+  }
+  return null;
+}
+
+/**
+ * Create a profile row for a newly registered user.
+ */
+export async function createProfile(userId, displayName, discriminator) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .insert({ user_id: userId, display_name: displayName, discriminator })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[Supabase] createProfile failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Fetch a profile by user_id.
+ */
+export async function fetchProfile(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Supabase] fetchProfile failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Fetch a profile by display_name + discriminator.
+ */
+export async function fetchProfileByTag(displayName, discriminator) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('display_name', displayName)
+    .eq('discriminator', discriminator)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Supabase] fetchProfileByTag failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
+}
+
+/**
+ * Partial update of a profile.
+ */
+export async function updateProfile(userId, fields) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(fields)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[Supabase] updateProfile failed:', error.message);
+    return { data: null, error };
+  }
+  return { data, error: null };
 }
 
 export async function fetchCategoryPlayCounts() {

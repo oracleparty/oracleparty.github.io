@@ -59,7 +59,7 @@
   <script type="module">
     import { $, transitionScreens, delay } from './js/utils.js';
     import { testConnection } from './js/supabase.js';
-    import { ensureDisplayName } from './js/auth.js';
+    import { ensureDisplayName, initAuth } from './js/auth.js';
 
     // --- Init: Splash → Home ---
     async function init() {
@@ -69,7 +69,8 @@
       // Run both in parallel: minimum splash time + Supabase connection test
       const [, connected] = await Promise.all([
         delay(2500),
-        testConnection()
+        testConnection(),
+        initAuth()
       ]);
 
       if (!connected) {

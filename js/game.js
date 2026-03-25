@@ -40,7 +40,7 @@ import {
   deleteAnswersByRoom,
   reassignPlayerAnswers
 } from './supabase.js';
-import { getDisplayName, ensureDisplayName } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 
@@ -170,7 +170,7 @@ async function init() {
   // Safari bfcache: if this page is restored from cache after navigating away, go home
   window.addEventListener('pageshow', (e) => { if (e.persisted) { cleanup(); window.location.href = 'index.html'; } });
 
-  await ensureDisplayName();
+  await Promise.all([ensureDisplayName(), initAuth()]);
 
   // Calibrate clock offset between client and server
   state.serverTimeOffset = await getServerTimeOffset();
@@ -204,7 +204,9 @@ async function init() {
       // Beacon already fired (player row deleted). Record the old ID so we can still
       // recover wagers from answers that reference it, then create a fresh row.
       const prevPlayerId = state.room.playerId;
-      const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost);
+      const authUser = getCurrentUser();
+      const rejoinUserId = authUser?.user?.id || null;
+      const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost, rejoinUserId);
       if (rejoinedPlayer) {
         state.room.playerId = rejoinedPlayer.id;
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));

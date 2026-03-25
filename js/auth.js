@@ -3,8 +3,14 @@
 // ============================================
 
 import { $ } from './utils.js';
+import { supabase, createProfile, fetchProfile, generateDiscriminator } from './supabase.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
+const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
+
+// ============================================
+// DISPLAY NAME (unchanged public API)
+// ============================================
 
 /** Get stored display name, or null if not set. */
 export function getDisplayName() {
@@ -64,4 +70,243 @@ export async function ensureDisplayName() {
   const existing = getDisplayName();
   if (existing) return existing;
   return showDisplayNameModal();
+}
+
+// ============================================
+// AUTH STATE
+// ============================================
+
+let _currentUser = null;   // Supabase auth.user object
+let _currentProfile = null; // profiles table row
+
+/**
+ * Get current auth user + profile, or null if guest.
+ */
+export function getCurrentUser() {
+  if (!_currentUser) return null;
+  return { user: _currentUser, profile: _currentProfile };
+}
+
+/**
+ * Initialize auth state from Supabase session.
+ * Call on every page load. Non-blocking for guests.
+ */
+export async function initAuth() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      _currentUser = session.user;
+      // Try cached profile first
+      const cached = localStorage.getItem(PROFILE_CACHE_KEY);
+      if (cached) {
+        try { _currentProfile = JSON.parse(cached); } catch { /* ignore */ }
+      }
+      // Fetch fresh profile
+      const { data: profile } = await fetchProfile(session.user.id);
+      if (profile) {
+        _currentProfile = profile;
+        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+        setDisplayName(profile.display_name);
+      } else if (!_currentProfile) {
+        // Session exists but no profile — retry creation (handles partial signup)
+        const displayName = getDisplayName() || session.user.user_metadata?.display_name;
+        if (displayName) {
+          const disc = await generateDiscriminator(displayName);
+          if (disc) {
+            const { data: newProfile } = await createProfile(session.user.id, displayName, disc);
+            if (newProfile) {
+              _currentProfile = newProfile;
+              localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(newProfile));
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Auth] initAuth failed:', err);
+  }
+}
+
+/**
+ * Sign up with email + password.
+ * Returns { user, profile, error }.
+ */
+export async function signUp(email, password, displayName) {
+  const discriminator = await generateDiscriminator(displayName);
+  if (!discriminator) {
+    return { user: null, profile: null, error: { message: 'This name is too popular. Try a different name.' } };
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { display_name: displayName, discriminator }
+    }
+  });
+  if (error) {
+    console.error('[Auth] signUp failed:', error.message);
+    return { user: null, profile: null, error };
+  }
+
+  const { data: profile, error: profileErr } = await createProfile(data.user.id, displayName, discriminator);
+  if (profileErr) {
+    console.error('[Auth] createProfile failed:', profileErr.message);
+    return { user: data.user, profile: null, error: profileErr };
+  }
+
+  _currentUser = data.user;
+  _currentProfile = profile;
+  localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+  setDisplayName(displayName);
+
+  return { user: data.user, profile, error: null };
+}
+
+/**
+ * Sign in with email + password.
+ * Returns { user, profile, error }.
+ */
+export async function signIn(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    console.error('[Auth] signIn failed:', error.message);
+    return { user: null, profile: null, error };
+  }
+
+  _currentUser = data.user;
+  const { data: profile } = await fetchProfile(data.user.id);
+  _currentProfile = profile;
+  if (profile) {
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    setDisplayName(profile.display_name);
+  }
+
+  return { user: data.user, profile, error: null };
+}
+
+/**
+ * Sign out. Clears auth state but preserves display name (reverts to guest).
+ */
+export async function signOut() {
+  await supabase.auth.signOut();
+  _currentUser = null;
+  _currentProfile = null;
+  localStorage.removeItem(PROFILE_CACHE_KEY);
+}
+
+/**
+ * Listen for auth state changes.
+ */
+export function onAuthChange(callback) {
+  return supabase.auth.onAuthStateChange(callback);
+}
+
+// ============================================
+// SIGN-UP MODAL (programmatically injected)
+// ============================================
+
+let _signUpModalInjected = false;
+
+/**
+ * Show the sign-up modal. Creates the DOM on first call.
+ * Returns a Promise that resolves with { user, profile } on success,
+ * or null if dismissed.
+ */
+export function showSignUpModal() {
+  return new Promise((resolve) => {
+    if (!_signUpModalInjected) {
+      _injectSignUpModal();
+      _signUpModalInjected = true;
+    }
+
+    const overlay = $('#signup-modal');
+    const emailInput = $('#signup-email');
+    const passwordInput = $('#signup-password');
+    const confirmInput = $('#signup-confirm');
+    const submitBtn = $('#signup-submit');
+    const errorEl = $('#signup-error');
+    const successEl = $('#signup-success');
+    const dismissBtn = $('#signup-dismiss');
+
+    // Reset state
+    emailInput.value = '';
+    passwordInput.value = '';
+    confirmInput.value = '';
+    errorEl.textContent = '';
+    successEl.textContent = '';
+    successEl.style.display = 'none';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Create Account';
+    overlay.classList.add('active');
+    emailInput.focus();
+
+    dismissBtn.onclick = () => {
+      overlay.classList.remove('active');
+      resolve(null);
+    };
+
+    submitBtn.onclick = async () => {
+      errorEl.textContent = '';
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+      const confirm = confirmInput.value;
+
+      if (!email || !email.includes('@')) {
+        errorEl.textContent = 'Enter a valid email';
+        return;
+      }
+      if (password.length < 6) {
+        errorEl.textContent = 'Password must be at least 6 characters';
+        return;
+      }
+      if (password !== confirm) {
+        errorEl.textContent = 'Passwords do not match';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating...';
+
+      const displayName = getDisplayName();
+      const result = await signUp(email, password, displayName);
+
+      if (result.error) {
+        errorEl.textContent = result.error.message;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+        return;
+      }
+
+      successEl.textContent = `Account created! You are now ${result.profile.display_name}#${result.profile.discriminator}`;
+      successEl.style.display = 'block';
+      submitBtn.textContent = 'Done';
+      submitBtn.disabled = false;
+      submitBtn.onclick = () => {
+        overlay.classList.remove('active');
+        resolve({ user: result.user, profile: result.profile });
+      };
+    };
+  });
+}
+
+function _injectSignUpModal() {
+  const html = `
+    <div id="signup-modal" class="modal-overlay">
+      <div class="modal">
+        <h2 class="modal__title">Create Account</h2>
+        <p id="signup-name-display" style="color: var(--color-text-dim); font-size: var(--text-sm); margin-bottom: var(--space-lg);">
+          Playing as: <strong>${getDisplayName() || 'Guest'}</strong>
+        </p>
+        <input type="email" id="signup-email" class="input" placeholder="Email" autocomplete="email" style="margin-bottom: var(--space-md);">
+        <input type="password" id="signup-password" class="input" placeholder="Password" autocomplete="new-password" style="margin-bottom: var(--space-md);">
+        <input type="password" id="signup-confirm" class="input" placeholder="Confirm password" autocomplete="new-password">
+        <p id="signup-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+        <p id="signup-success" style="color: var(--color-success); font-size: var(--text-sm); margin-top: var(--space-sm); display: none;"></p>
+        <button class="btn btn-primary btn-block" id="signup-submit" style="margin-top: var(--space-lg);">Create Account</button>
+        <button class="btn btn-secondary btn-block" id="signup-dismiss" style="margin-top: var(--space-sm);">Not Now</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
 }

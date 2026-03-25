@@ -4,7 +4,7 @@
 
 import { $, $$, escapeHtml } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } from './supabase.js';
-import { getDisplayName, ensureDisplayName } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 
 // Category display config (shared with host.js)
 const CATEGORY_META = {
@@ -34,9 +34,9 @@ let refreshInterval = null;
 // --- Init ---
 async function init() {
   try {
-    await ensureDisplayName();
+    await Promise.all([ensureDisplayName(), initAuth()]);
   } catch (err) {
-    console.error('[Join] ensureDisplayName error:', err);
+    console.error('[Join] init error:', err);
   }
   attachListeners();
   loadPublicGames().catch(e => console.warn('[Join] loadPublicGames failed:', e));
@@ -105,7 +105,9 @@ async function joinRoom(code) {
     }
 
     const displayName = getDisplayName();
-    const { data: player, error: playerErr } = await addPlayer(room.id, displayName, false);
+    const authUser = getCurrentUser();
+    const userId = authUser?.user?.id || null;
+    const { data: player, error: playerErr } = await addPlayer(room.id, displayName, false, userId);
 
     if (playerErr || !player) {
       joinError.textContent = 'Failed to join room. Try again.';
