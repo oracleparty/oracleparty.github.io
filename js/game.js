@@ -1100,7 +1100,9 @@ function startTimer() {
   const initial = getServerTimeLeft();
   if (initial <= 0) {
     updateTimerDisplay(0);
-    handleTimerExpired();
+    state.timerExpired = true;
+    // Grace period: give in-flight submissions 500ms to land before auto-submitting
+    setTimeout(() => handleTimerExpired(), 500);
     return;
   }
 
@@ -1114,7 +1116,9 @@ function startTimer() {
     if (timeLeft <= 0) {
       clearInterval(state.timerId);
       state.timerId = null;
-      handleTimerExpired();
+      state.timerExpired = true;
+      // Grace period: give in-flight submissions 500ms to land before auto-submitting
+      setTimeout(() => handleTimerExpired(), 500);
     }
   }, 250);
 }
@@ -1286,7 +1290,9 @@ async function showRevealScreen() {
 
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#reveal-category').textContent = `${meta.icon} ${meta.label}`;
-  $('#reveal-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
+  $('#reveal-progress').textContent = state.isFinalWagerRound
+    ? 'Final Question'
+    : `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
   $('#reveal-question-text').textContent = getQuestionText(q);
 
   // Populate correct answer text (for later reveal), but hide the container
@@ -2824,6 +2830,12 @@ function renderQuestionBrowserList() {
             <button data-qid="${qId}" data-fb="thumbs_up" class="${current === 'thumbs_up' ? 'qb-active' : ''}" aria-label="Thumbs up">\uD83D\uDC4D</button>
             <button data-qid="${qId}" data-fb="thumbs_down" class="${current === 'thumbs_down' ? 'qb-active' : ''}" aria-label="Thumbs down">\uD83D\uDC4E</button>
             <button data-qid="${qId}" data-fb="flag" class="${current === 'flag' ? 'qb-active' : ''}" aria-label="Flag">\uD83D\uDEA9</button>
+            <div class="qb-flag-menu" style="display:none;">
+              <button data-qid="${qId}" data-flag-reason="wrong_answer">Wrong answer</button>
+              <button data-qid="${qId}" data-flag-reason="ambiguous">Ambiguous</button>
+              <button data-qid="${qId}" data-flag-reason="offensive">Offensive</button>
+              <button data-qid="${qId}" data-flag-reason="other">Other</button>
+            </div>
           </div>
         </div>
         <div class="qb-row__text">${escapeHtml(text)}</div>
@@ -2835,20 +2847,70 @@ function renderQuestionBrowserList() {
 
 // Feedback button delegation
 $('#question-browser-list').addEventListener('click', (e) => {
+  // --- Flag reason sub-option selected ---
+  const reasonBtn = e.target.closest('[data-flag-reason]');
+  if (reasonBtn) {
+    e.stopPropagation();
+    const qId = reasonBtn.dataset.qid;
+    const reason = reasonBtn.dataset.flagReason;
+    const actions = reasonBtn.closest('.qb-row__actions');
+
+    // Mark flag as active, deactivate siblings
+    actions.querySelectorAll('[data-fb]').forEach(b => b.classList.remove('qb-active'));
+    const flagBtn = actions.querySelector('[data-fb="flag"]');
+    if (flagBtn) flagBtn.classList.add('qb-active');
+    _qbFeedback[qId] = 'flag';
+
+    upsertQuestionFeedback({
+      questionId: qId,
+      roomId: state.room.id,
+      playerName: getDisplayName(),
+      feedbackType: 'flag',
+      flagReason: reason
+    });
+
+    // Hide dropdown
+    reasonBtn.closest('.qb-flag-menu').style.display = 'none';
+    return;
+  }
+
+  // --- Thumbs up / down / flag button ---
   const btn = e.target.closest('[data-fb]');
   if (!btn) return;
   const qId = btn.dataset.qid;
   const fbType = btn.dataset.fb;
   const current = _qbFeedback[qId];
 
+  // Flag button: toggle dropdown instead of immediate submit
+  if (fbType === 'flag') {
+    e.stopPropagation();
+    const menu = btn.parentElement.querySelector('.qb-flag-menu');
+    // Close any other open flag menus first
+    document.querySelectorAll('.qb-flag-menu').forEach(m => {
+      if (m !== menu) m.style.display = 'none';
+    });
+    if (current === 'flag') {
+      // Already flagged — unflag
+      _qbFeedback[qId] = null;
+      btn.classList.remove('qb-active');
+      menu.style.display = 'none';
+      deleteQuestionFeedback({ questionId: qId, roomId: state.room.id, playerName: getDisplayName() });
+    } else {
+      // Show dropdown for reason selection
+      menu.style.display = menu.style.display === 'none' ? '' : 'none';
+    }
+    return;
+  }
+
+  // Thumbs up / down (unchanged logic)
   if (current === fbType) {
-    // Toggle off
     _qbFeedback[qId] = null;
     btn.classList.remove('qb-active');
     deleteQuestionFeedback({ questionId: qId, roomId: state.room.id, playerName: getDisplayName() });
   } else {
-    // Deactivate siblings, activate this one
     btn.parentElement.querySelectorAll('[data-fb]').forEach(b => b.classList.remove('qb-active'));
+    // Close any open flag menus
+    btn.parentElement.querySelectorAll('.qb-flag-menu').forEach(m => { m.style.display = 'none'; });
     _qbFeedback[qId] = fbType;
     btn.classList.add('qb-active');
     upsertQuestionFeedback({
