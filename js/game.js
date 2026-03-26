@@ -3136,37 +3136,8 @@ function hideChatBar() {
   $('#chat-bar').classList.add('hidden');
   setHonkMuted(true);
   document.body.style.setProperty('--chat-bar-offset', '0px');
-
-  // Close drawer if open
-  if (state.chatOpen) {
-    state.chatOpen = false;
-    $('#chat-bar').classList.remove('open');
-    $('#chat-drawer').classList.remove('open');
-  }
-}
-
-/**
- * Show a notification inside the open chat drawer that a round started.
- * Used when the chat is open and the host advances — we don't force-close
- * the chat mid-message, but we alert the player that the timer is running.
- */
-function _showChatRoundNotice() {
-  const drawer = $('#chat-drawer');
-  if (!drawer) return;
-  // Remove any existing notice
-  const existing = drawer.querySelector('.chat-round-notice');
-  if (existing) existing.remove();
-  const notice = document.createElement('div');
-  notice.className = 'chat-round-notice';
-  notice.innerHTML = 'Round started \u2014 timer is running! <button class="chat-round-notice__close">\u2715</button>';
-  drawer.prepend(notice);
-  // Close button dismisses the drawer (since the chat bar is hidden)
-  notice.querySelector('.chat-round-notice__close').onclick = () => {
-    state.chatOpen = false;
-    $('#chat-drawer').classList.remove('open');
-    notice.remove();
-  };
-  setTimeout(() => notice.remove(), 4000);
+  // Always force-close the drawer when hiding the bar
+  closeChatDrawer();
 }
 
 function attachChatListeners() {
@@ -3176,23 +3147,46 @@ function attachChatListeners() {
     if (e.key === 'Enter') handleSendGameChat();
   });
   $('#chat-drawer-input').addEventListener('input', notifyTyping);
+
+  // Close button inside the drawer — always visible, z-index: 9999
+  $('#chat-drawer-close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeChatDrawer();
+  });
+
+  // Backdrop — tapping outside the chat area closes it
+  $('#chat-backdrop').addEventListener('click', closeChatDrawer);
 }
 
 function toggleChatDrawer() {
-  state.chatOpen = !state.chatOpen;
-  $('#chat-bar').classList.toggle('open', state.chatOpen);
-  $('#chat-drawer').classList.toggle('open', state.chatOpen);
-
   if (state.chatOpen) {
+    closeChatDrawer();
+  } else {
+    state.chatOpen = true;
+    $('#chat-bar').classList.add('open');
+    $('#chat-drawer').classList.add('open');
+    $('#chat-backdrop').classList.add('active');
     scrollGameChatToBottom();
-    // Small delay so drawer animation completes before focusing
     setTimeout(() => $('#chat-drawer-input').focus(), 220);
-    // Clear unread badge and preview
     state.unreadCount = 0;
     const badge = $('#chat-bar-badge');
     badge.textContent = '0';
     badge.classList.add('hidden');
   }
+}
+
+/**
+ * Force-close the chat drawer. Called from:
+ * - X button inside drawer
+ * - Backdrop tap (outside chat area)
+ * - hideChatBar()
+ * - toggleChatDrawer() when already open
+ */
+function closeChatDrawer() {
+  state.chatOpen = false;
+  $('#chat-bar').classList.remove('open');
+  $('#chat-drawer').classList.remove('open');
+  $('#chat-backdrop').classList.remove('active');
 }
 
 async function loadChatMessages() {

@@ -2951,6 +2951,40 @@ body::after {
   pointer-events: auto;
 }
 
+.chat-drawer__close {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-sm);
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--color-surface);
+  border-radius: 50%;
+  font-size: var(--text-lg);
+  color: var(--color-text-dim);
+  cursor: pointer;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+.chat-drawer__close:active {
+  transform: scale(0.9);
+}
+
+/* Backdrop behind chat drawer — tapping it closes the chat */
+.chat-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 48;
+  background: transparent;
+  display: none;
+}
+.chat-backdrop.active {
+  display: block;
+}
+
 .chat-drawer__messages {
   flex: 1;
   overflow-y: auto;
@@ -3949,35 +3983,6 @@ body::after {
   display: none;
 }
 
-/* ============================================
-   CHAT ROUND NOTICE
-   ============================================ */
-
-.chat-round-notice {
-  background: var(--color-primary-glow);
-  color: var(--color-primary);
-  font-family: var(--font-heading);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-align: center;
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--space-sm);
-  animation: fade-up 0.3s ease;
-  position: relative;
-}
-.chat-round-notice__close {
-  position: absolute;
-  right: var(--space-xs);
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  padding: 2px 4px;
-}
 
 /* ============================================
    SIGNUP NUDGES
