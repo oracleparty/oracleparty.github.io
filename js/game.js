@@ -539,11 +539,7 @@ async function handlePlayerChange(payload) {
   const event = payload.eventType;
 
   if (event === 'DELETE' && payload.old) {
-    // Check local state for is_host BEFORE removing (payload.old may only have id
-    // if table REPLICA IDENTITY is not FULL)
     const deletedId = String(payload.old.id);
-    const localPlayer = state.players.find(p => String(p.id) === deletedId);
-    const wasHost = localPlayer ? localPlayer.is_host : payload.old.is_host;
 
     // Remove player from local state
     state.players = state.players.filter(p => String(p.id) !== deletedId);
@@ -552,12 +548,14 @@ async function handlePlayerChange(payload) {
     // If room is now empty, delete it (cleanup zombie rooms)
     if (state.players.length === 0) {
       await deleteRoom(state.room.id);
-      // handleRoomChange DELETE will fire and redirect everyone
       return;
     }
 
-    // If the deleted player was the host, promote next player
-    if (wasHost) {
+    // BUG 2 FIX: Don't rely on payload.old.is_host — Supabase default REPLICA
+    // IDENTITY only sends the primary key in OLD for DELETE events. Instead check
+    // if any remaining player has is_host=true. If not, promote the next player.
+    const hasHost = state.players.some(p => p.is_host);
+    if (!hasHost) {
       const sorted = [...state.players].sort((a, b) => {
         const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
         const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
@@ -1137,19 +1135,12 @@ function showQuestionScreen() {
     $('#wager-error').style.display = '';
     renderWagerGrid(); // Must run AFTER state resets — auto-selects last remaining wager
   }
-  // Keep chat DRAWER open if player is typing — don't force-close mid-message.
-  // But still hide the chat BAR and reset the offset so the question screen
-  // layout isn't broken by leftover --chat-bar-offset.
-  if (state.chatOpen) {
-    // Hide the bar but leave the drawer open
-    $('#chat-bar').classList.add('hidden');
-    setHonkMuted(true);
-    document.body.style.setProperty('--chat-bar-offset', '0px');
-    // Show notification inside the open drawer
-    _showChatRoundNotice();
-  } else {
-    hideChatBar();
-  }
+  // BUG 1 FIX: ALWAYS close chat when a new question starts.
+  // The previous "keep drawer open while typing" feature caused the drawer
+  // to get permanently stuck — the chat bar was hidden (removing the only
+  // toggle), and the notice's close button auto-removed after 4 seconds,
+  // leaving NO way to close the drawer. Game was completely blocked.
+  hideChatBar();
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
@@ -1385,11 +1376,12 @@ async function handleTimerExpired() {
   }
 
   // Host: auto-submit blank for any players who didn't answer, then broadcast reveal.
-  // Await all inserts so they're committed before non-hosts fetch answers.
   if (state.room.isHost) {
-    const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
-    // Also count ourselves even if doSubmitAnswer hasn't added to currentAnswers yet
-    submittedIds.add(String(state.room.playerId));
+    // Re-fetch answers to ensure we have the host's just-submitted answer
+    // (state.currentAnswers may be stale — Realtime INSERT may not have arrived yet)
+    const freshAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+    state.currentAnswers = freshAnswers;
+    const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
     const q = state.questions[state.currentQuestion];
     if (q) {
       const autoSubmits = [];
@@ -1851,10 +1843,11 @@ async function handleRevealResults() {
   }
   state.timerExpired = true;
 
-  // Submit blank answers for players who haven't answered yet.
-  // Await all inserts so they're committed before non-hosts fetch answers.
+  // BUG 3 FIX: Submit blank answers for ALL players who haven't answered,
+  // INCLUDING the host. Previously the host was unconditionally added to
+  // submittedIds, meaning if the host didn't manually submit, their answer
+  // row was missing from the DB and other players saw "No answer".
   const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
-  submittedIds.add(String(state.room.playerId));
   const q = state.questions[state.currentQuestion];
   if (q) {
     const autoSubmits = [];

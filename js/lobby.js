@@ -356,11 +356,7 @@ async function handlePlayerChange(payload) {
         renderPlayers();
       }
     } else if (event === 'DELETE' && payload.old) {
-      // Check local state for is_host BEFORE removing (payload.old may only have id
-      // if table REPLICA IDENTITY is not FULL)
       const deletedId = String(payload.old.id);
-      const localPlayer = players.find(p => String(p.id) === deletedId);
-      const wasHost = localPlayer ? localPlayer.is_host : payload.old.is_host;
 
       // Remove the player from local list
       players = players.filter(p => String(p.id) !== deletedId);
@@ -368,12 +364,15 @@ async function handlePlayerChange(payload) {
       // If room is now empty, delete it (cleanup zombie rooms)
       if (players.length === 0) {
         await deleteRoom(room.id);
-        // handleRoomChange DELETE will fire and redirect everyone
         return;
       }
 
-      // If the deleted player was the host, promote the next player
-      if (wasHost) {
+      // BUG 2 FIX: Don't rely on payload.old.is_host — Supabase default REPLICA
+      // IDENTITY only sends the primary key in OLD for DELETE events, so is_host
+      // may be undefined. Instead check if any remaining player has is_host=true.
+      // If not, the host was the one who left → promote the next player.
+      const hasHost = players.some(p => p.is_host);
+      if (!hasHost) {
         await handleHostPromotion();
       }
       renderPlayers();
