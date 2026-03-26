@@ -283,6 +283,12 @@ async function loadPlayers() {
   players = await fetchPlayers(room.id);
   sortPlayers();
   renderPlayers();
+  // Fallback host promotion: Supabase Realtime DELETE events may not arrive
+  // because the room_id filter can't match DELETE payloads (default REPLICA
+  // IDENTITY only sends the primary key). The 5-second poll catches this.
+  if (players.length > 0 && !players.some(p => p.is_host)) {
+    await handleHostPromotion();
+  }
 }
 
 function sortPlayers() {

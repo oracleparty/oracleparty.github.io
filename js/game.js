@@ -3004,12 +3004,20 @@ function handleAnswerChange(payload) {
   const event = payload.eventType;
 
   if (event === 'UPDATE' && payload.new) {
-    // Targeted update: patch single answer in cached array (host override)
+    // Update cached answer object
     const idx = state.currentAnswers.findIndex(a => String(a.id) === String(payload.new.id));
     if (idx !== -1) {
+      const oldText = state.currentAnswers[idx].submitted_answer;
       state.currentAnswers[idx] = { ...state.currentAnswers[idx], ...payload.new };
+      // If the answer TEXT changed (not just judgment), full re-render is needed.
+      // This happens in the final wager round when the host's real answer replaces
+      // the __WAGER_LOCKED__ placeholder via upsert (which fires UPDATE, not INSERT).
+      if (payload.new.submitted_answer !== undefined && payload.new.submitted_answer !== oldText) {
+        renderRevealAnswers(state.currentAnswers);
+        return;
+      }
     }
-    // Try in-place DOM patch (avoids full re-render for single answer change)
+    // CSS-only patch for judgment changes (host override toggle)
     const answerId = String(payload.new.id);
     const row = document.querySelector(`#reveal-answers .answer-row[data-answer-id="${answerId}"]`);
     if (row && idx !== -1) {
@@ -3438,7 +3446,7 @@ function initFeedbackListeners() {
 // ============================================
 const STALE_TIMEOUT = 30 * 1000; // 30 seconds — fast fallback for when unload beacons fail
 
-function checkStalePresence() {
+async function checkStalePresence() {
   const now = Date.now();
   for (const [id, since] of state.awayTimestamps) {
     if (now - since < STALE_TIMEOUT) continue;
@@ -3458,6 +3466,32 @@ function checkStalePresence() {
     } else if (state.room.isHost) {
       // Stale non-host: host kicks them
       removePlayer(id);
+    }
+  }
+
+  // Fallback host promotion: Supabase Realtime DELETE events may not arrive
+  // because the room_id filter can't match DELETE payloads (default REPLICA
+  // IDENTITY only sends the primary key). Re-fetch players and check.
+  const freshPlayers = await fetchPlayers(state.room.id);
+  if (freshPlayers.length > 0 && freshPlayers.length !== state.players.length) {
+    state.players = freshPlayers;
+  }
+  if (state.players.length > 0 && !state.players.some(p => p.is_host)) {
+    // No host found — promote next player (same logic as handlePlayerChange)
+    const sorted = [...state.players].sort((a, b) => {
+      const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
+      const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
+      return ta - tb;
+    });
+    const nextHost = sorted[0];
+    if (String(nextHost.id) === String(state.room.playerId)) {
+      state.room.isHost = true;
+      sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+      const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
+      if (localIdx !== -1) state.players[localIdx].is_host = true;
+      await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
+      _activateHostControlsForCurrentPhase();
+      sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
     }
   }
 }
