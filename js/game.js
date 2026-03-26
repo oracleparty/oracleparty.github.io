@@ -45,7 +45,8 @@ import {
   reassignPlayerAnswers,
   appendUsedQuestionIds,
   upsertPlayerStats,
-  insertGameHistoryEntry
+  insertGameHistoryEntry,
+  upsertQuestionHistory
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
@@ -150,7 +151,8 @@ function resolveFieldMap(question) {
               : question.acceptable_alternates !== undefined ? 'acceptable_alternates'
               : question.alternates !== undefined ? 'alternates'
               : 'acceptable_answers',
-    difficulty: question.difficulty !== undefined ? 'difficulty' : 'difficulty'
+    difficulty: question.difficulty !== undefined ? 'difficulty' : 'difficulty',
+    fun_fact: question.fun_fact !== undefined ? 'fun_fact' : 'fun_fact'
   };
 }
 
@@ -158,6 +160,7 @@ function getQuestionText(q) { return q[FIELD_MAP.text] || ''; }
 function getCorrectAnswer(q) { return q[FIELD_MAP.correct] || ''; }
 function getAlternates(q) { return q[FIELD_MAP.alternates] || []; }
 function getDifficulty(q) { return q[FIELD_MAP.difficulty] || 'medium'; }
+function getFunFact(q) { return q[FIELD_MAP.fun_fact] || ''; }
 
 // ============================================
 // INIT
@@ -1526,6 +1529,7 @@ async function showRevealScreen() {
   // Populate correct answer text (for later reveal), but hide the container
   $('#reveal-answer').textContent = getCorrectAnswer(q);
   $('#reveal-difficulty').style.display = 'none';
+  $('#reveal-fun-fact').style.display = 'none';
   $('.reveal__correct').style.display = 'none';
 
   // Reset feedback UI
@@ -1764,6 +1768,16 @@ function doReveal() {
 
   // Show correct answer and difficulty
   $('.reveal__correct').style.display = '';
+
+  // Show fun fact if the question has one
+  const funFact = getFunFact(state.questions[state.currentQuestion]);
+  const funFactEl = $('#reveal-fun-fact');
+  if (funFact) {
+    funFactEl.textContent = funFact;
+    funFactEl.style.display = '';
+  } else {
+    funFactEl.style.display = 'none';
+  }
 
   // Show feedback icons and start fade timer
   showFeedbackUI();
@@ -2640,6 +2654,12 @@ async function showResultsScreen() {
         score: state.scores[state.room.playerId] || 0,
         placement, totalPlayers: state.players.length
       });
+      // Per-question mastery tracking (fire-and-forget)
+      for (const a of myAnswers) {
+        if (a.question_id) {
+          upsertQuestionHistory(uid, a.question_id, !!a.is_correct);
+        }
+      }
     }
   }
 

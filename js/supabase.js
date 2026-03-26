@@ -1124,6 +1124,42 @@ export async function insertGameHistoryEntry({ userId, roomId, category, score, 
 }
 
 // ============================================
+// QUESTION MASTERY TRACKING
+// ============================================
+
+/**
+ * Upsert a question_history row for a user+question.
+ * Increments times_seen (always) and times_correct (if correct).
+ * Foundation for future spaced repetition / adaptive question selection.
+ */
+export async function upsertQuestionHistory(userId, questionId, isCorrect) {
+  const { data: existing } = await supabase
+    .from('question_history')
+    .select('id, times_seen, times_correct')
+    .eq('user_id', userId)
+    .eq('question_id', questionId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase.from('question_history').update({
+      times_seen: existing.times_seen + 1,
+      times_correct: existing.times_correct + (isCorrect ? 1 : 0),
+      last_seen_at: new Date().toISOString()
+    }).eq('id', existing.id);
+    if (error) console.error('[Supabase] upsertQuestionHistory update failed:', error.message);
+  } else {
+    const { error } = await supabase.from('question_history').insert({
+      user_id: userId,
+      question_id: questionId,
+      times_seen: 1,
+      times_correct: isCorrect ? 1 : 0,
+      last_seen_at: new Date().toISOString()
+    });
+    if (error) console.error('[Supabase] upsertQuestionHistory insert failed:', error.message);
+  }
+}
+
+// ============================================
 // FRIENDS & FRIEND REQUESTS
 // ============================================
 
