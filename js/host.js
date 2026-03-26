@@ -6,6 +6,7 @@
 import { $, $$, transitionScreens } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { initThemeToggle } from './theme.js';
 
 // --- Category display config ---
 const CATEGORY_META = {
@@ -59,6 +60,7 @@ async function init() {
   }
   // Always attach listeners even if data fetch fails
   attachListeners();
+  initThemeToggle();
 
   // Trap browser back button — always go to index.html
   history.pushState({ page: 'host' }, '');

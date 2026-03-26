@@ -26,22 +26,6 @@
   --color-success:      #3A8A4F;
   --color-overlay:      rgba(28, 25, 23, 0.5);
 
-  /* Dark theme variants (for future use):
-    --color-bg: #1C1917;
-    --color-bg-deep: #141210;
-    --color-surface: #292524;
-    --color-surface-light: #3D3835;
-    --color-primary: #D9A340;
-    --color-primary-dim: #C68A2E;
-    --color-text: #F5F0EB;
-    --color-text-dim: #A8A29E;
-    --color-text-muted: #78716C;
-    --color-success: #4ADE80;
-    --color-danger: #F87171;
-    --color-accent: #818CF8;
-    --color-overlay: rgba(0, 0, 0, 0.6);
-  */
-
   /* Typography */
   --font-display:  'Fraunces', Georgia, serif;
   --font-heading:  'Plus Jakarta Sans', sans-serif;
@@ -80,6 +64,26 @@
   --duration-fast: 200ms;
   --duration-med:  400ms;
   --duration-slow: 800ms;
+}
+
+/* --- Dark Theme --- */
+[data-theme="dark"] {
+  --color-bg:           #1A1A2E;
+  --color-bg-deep:      #141425;
+  --color-surface:      #242440;
+  --color-surface-light: #2E2E4A;
+  --color-primary:      #D9A340;
+  --color-primary-dim:  #C68A2E;
+  --color-primary-glow: rgba(217, 163, 64, 0.18);
+  --color-accent:       #818CF8;
+  --color-accent-dim:   #6B75D4;
+  --color-accent-glow:  rgba(129, 140, 248, 0.15);
+  --color-text:         #EDEDF0;
+  --color-text-dim:     #9D9DAA;
+  --color-text-muted:   #6B6B7A;
+  --color-danger:       #F87171;
+  --color-success:      #4ADE80;
+  --color-overlay:      rgba(0, 0, 0, 0.6);
 }
 
 /* --- Reset --- */
@@ -3098,6 +3102,44 @@ body::after {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ============================================
+   THEME TOGGLE
+   ============================================ */
+
+.theme-toggle {
+  position: absolute;
+  top: var(--space-lg);
+  right: var(--space-lg);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--color-surface-light);
+  background: var(--color-bg-deep);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  padding: 0;
+  transition: transform 0.15s ease;
+  line-height: 1;
+}
+.theme-toggle:active {
+  transform: scale(0.9);
+}
+
+/* Page-header variant (host, join, lobby, profile, game) */
+.page-header .theme-toggle,
+.game-header .theme-toggle {
+  position: static;
+  border: none;
+  background: none;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
 }
 
 /* ============================================

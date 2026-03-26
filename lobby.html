@@ -8,6 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
+  <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.querySelector('meta[name="theme-color"]').content='#1A1A2E';}})();</script>
   <link rel="stylesheet" href="css/style.css">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
@@ -19,6 +20,7 @@
       <!-- Header -->
       <header class="page-header">
         <h1 class="page-header__title">Lobby</h1>
+        <button class="theme-toggle" aria-label="Toggle theme"></button>
         <button id="btn-leave" class="leave-btn">Leave</button>
       </header>
 

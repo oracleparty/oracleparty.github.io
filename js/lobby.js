@@ -29,6 +29,7 @@ import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './hon
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
+import { initThemeToggle } from './theme.js';
 
 // Category display config
 const CATEGORY_META = {
@@ -224,6 +225,7 @@ async function init() {
   } else {
     addSystemMessage('You joined the lobby');
   }
+  initThemeToggle();
 }
 
 // --- Event Listeners ---

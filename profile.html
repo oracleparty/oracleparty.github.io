@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Oracle Party — Profile</title>
+  <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.querySelector('meta[name="theme-color"]').content='#1A1A2E';}})();</script>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -17,7 +18,7 @@
     <div class="page-header">
       <button class="page-header__back" id="btn-back">&larr;</button>
       <h1 class="page-header__title">Profile</h1>
-      <div class="page-header__spacer"></div>
+      <button class="theme-toggle" aria-label="Toggle theme"></button>
     </div>
 
     <!-- Profile Header -->
@@ -112,10 +113,12 @@
   <script type="module">
     import { ensureDisplayName, initAuth } from './js/auth.js';
     import { initProfilePage } from './js/profile.js';
+    import { initThemeToggle } from './js/theme.js';
 
     async function init() {
       await Promise.all([ensureDisplayName(), initAuth()]);
       await initProfilePage();
+      initThemeToggle();
     }
 
     document.getElementById('btn-back').addEventListener('click', () => {

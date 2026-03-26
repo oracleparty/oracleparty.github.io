@@ -5,6 +5,7 @@
 import { $, $$, escapeHtml } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { initThemeToggle } from './theme.js';
 
 // Category display config (shared with host.js)
 const CATEGORY_META = {
@@ -39,6 +40,7 @@ async function init() {
     console.error('[Join] init error:', err);
   }
   attachListeners();
+  initThemeToggle();
   loadPublicGames().catch(e => console.warn('[Join] loadPublicGames failed:', e));
 
   // Auto-join from URL param (e.g. join.html?code=ABCD from friends list)
