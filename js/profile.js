@@ -19,11 +19,13 @@ import {
   removeFriend,
   fetchFriends,
   isFriend,
-  searchProfiles
+  searchProfiles,
+  fetchTitleUnlocks
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
+import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
 
 // ============================================
 // CONSTANTS
@@ -447,9 +449,23 @@ export async function initProfilePage() {
     fetchGameHistory(userId, 5)
   ]);
 
-  // Title
-  const titleInfo = calculateTitle(stats);
-  headerTitle.textContent = titleInfo.title;
+  // Title — use custom title if builder is unlocked, otherwise auto-title
+  const customTitle = buildDisplayTitle(profile);
+  headerTitle.textContent = customTitle || calculateTitle(stats).title;
+
+  // Title Builder
+  const builderSection = $('#title-builder-section');
+  if (builderSection) {
+    builderSection.style.display = '';
+    if (profile.title_builder_unlocked) {
+      $('#title-builder-locked').style.display = 'none';
+      $('#title-builder-wheel').style.display = '';
+      renderTitleWheel(userId, profile, stats);
+    } else {
+      $('#title-builder-locked').style.display = '';
+      $('#title-builder-wheel').style.display = 'none';
+    }
+  }
 
   // Bio
   if (bioEl) {
@@ -857,6 +873,146 @@ async function _batchFetchProfiles(userIds) {
   const map = {};
   for (const p of (data || [])) map[p.user_id] = p;
   return map;
+}
+
+// ============================================
+// TITLE BUILDER WHEEL
+// ============================================
+
+async function renderTitleWheel(userId, profile, stats) {
+  const unlocks = await fetchTitleUnlocks(userId);
+  const unlockMap = {};
+  for (const u of unlocks) unlockMap[u.word_id] = u.level;
+
+  const selectedWords = {
+    1: profile.title_slot1 || null,
+    2: profile.title_slot2 || null,
+    3: profile.title_slot3 || null
+  };
+
+  // Render each slot column
+  for (const slotNum of [1, 2, 3]) {
+    const column = $(`#wheel-slot${slotNum}`);
+    if (!column) continue;
+
+    // Get words for this slot
+    const words = Object.entries(TITLE_WORDS)
+      .filter(([, w]) => w.slot === slotNum)
+      .map(([id, w]) => ({ id, ...w, level: unlockMap[id] || 0 }));
+
+    // Sort: unlocked first (alphabetical), then locked (by rarity order)
+    const rarityOrder = { common: 0, rare: 1, legendary: 2 };
+    words.sort((a, b) => {
+      if (a.level > 0 && b.level === 0) return -1;
+      if (a.level === 0 && b.level > 0) return 1;
+      if (a.level > 0 && b.level > 0) return a.word.localeCompare(b.word);
+      return (rarityOrder[a.rarity] || 0) - (rarityOrder[b.rarity] || 0);
+    });
+
+    column.innerHTML = words.map(w => {
+      if (w.level === 0) {
+        // Locked
+        return `<div class="title-wheel-item title-wheel-item--locked" data-hint="${escapeHtml(w.hint || '')}">\u2753</div>`;
+      }
+      const isSelected = selectedWords[slotNum] === w.id;
+      const levelClass = w.level >= 3 ? 'title-wheel-item--level3' : w.level >= 2 ? 'title-wheel-item--level2' : '';
+      return `<div class="title-wheel-item ${isSelected ? 'title-wheel-item--selected' : ''} ${levelClass}" data-word-id="${w.id}" data-slot="${slotNum}">${escapeHtml(w.word)}</div>`;
+    }).join('');
+
+    // Click handler for selection
+    column.onclick = (e) => {
+      const item = e.target.closest('.title-wheel-item');
+      if (!item) return;
+
+      // Locked item — show hint
+      if (item.classList.contains('title-wheel-item--locked')) {
+        const hint = item.dataset.hint;
+        if (hint) {
+          const hintEl = $('#title-hint-toast');
+          hintEl.textContent = hint;
+          hintEl.classList.add('active');
+          setTimeout(() => hintEl.classList.remove('active'), 3000);
+        }
+        return;
+      }
+
+      // Unlocked item — select it
+      const wordId = item.dataset.wordId;
+      const slot = parseInt(item.dataset.slot, 10);
+      selectedWords[slot] = wordId;
+
+      // Update visual selection
+      column.querySelectorAll('.title-wheel-item').forEach(el => el.classList.remove('title-wheel-item--selected'));
+      item.classList.add('title-wheel-item--selected');
+
+      // Update preview
+      updateTitlePreview(selectedWords);
+      // Update uniqueness
+      updateTitleUniqueness(selectedWords);
+    };
+
+    // Scroll to selected item
+    const selectedEl = column.querySelector('.title-wheel-item--selected');
+    if (selectedEl) {
+      setTimeout(() => selectedEl.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100);
+    }
+  }
+
+  // Initial preview
+  updateTitlePreview(selectedWords);
+  updateTitleUniqueness(selectedWords);
+
+  // Save button
+  const saveBtn = $('#btn-save-title');
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      await updateProfile(userId, {
+        title_slot1: selectedWords[1],
+        title_slot2: selectedWords[2],
+        title_slot3: selectedWords[3]
+      });
+      profile.title_slot1 = selectedWords[1];
+      profile.title_slot2 = selectedWords[2];
+      profile.title_slot3 = selectedWords[3];
+      // Update header title display
+      const headerTitle = $('#profile-title');
+      if (headerTitle) headerTitle.textContent = buildDisplayTitle(profile);
+      saveBtn.textContent = 'Saved!';
+      setTimeout(() => { saveBtn.textContent = 'Save Title'; saveBtn.disabled = false; }, 1500);
+    };
+  }
+}
+
+function updateTitlePreview(selectedWords) {
+  const preview = $('#title-preview');
+  if (!preview) return;
+  const parts = [selectedWords[1], selectedWords[2], selectedWords[3]]
+    .filter(Boolean)
+    .map(id => TITLE_WORDS[id]?.word || id);
+  preview.textContent = parts.length > 0 ? parts.join(' ') : 'Select words to build your title';
+}
+
+async function updateTitleUniqueness(selectedWords) {
+  const el = $('#title-uniqueness');
+  if (!el) return;
+  const s1 = selectedWords[1], s2 = selectedWords[2], s3 = selectedWords[3];
+  if (!s1 && !s2 && !s3) { el.textContent = ''; return; }
+
+  let query = supabase.from('profiles').select('user_id', { count: 'exact', head: true });
+  if (s1) query = query.eq('title_slot1', s1);
+  if (s2) query = query.eq('title_slot2', s2);
+  if (s3) query = query.eq('title_slot3', s3);
+  const { count } = await query;
+
+  if (count === 0) {
+    el.textContent = 'You would be the only one with this title!';
+  } else if (count === 1) {
+    el.textContent = '1 other player uses this title';
+  } else {
+    el.textContent = `${count} other players use this title`;
+  }
 }
 
 // ============================================

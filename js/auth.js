@@ -5,7 +5,7 @@
 import { $, calculateTitle } from './utils.js';
 import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
-import { evaluateUnlocks, hasReachedApprentice } from './titles.js';
+import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle } from './titles.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
 const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
@@ -109,9 +109,10 @@ export async function initAuth() {
         fetchPlayerStats(session.user.id)
       ]);
       if (profile) {
-        // Compute and cache title from stats
+        // Compute title — prefer custom wheel title, fall back to auto-computed
         const titleInfo = calculateTitle(stats);
-        profile._cachedTitle = titleInfo.title;
+        const customTitle = buildDisplayTitle(profile);
+        profile._cachedTitle = customTitle || titleInfo.title;
         profile._cachedTitleTier = titleInfo.tier;
         profile._cachedTitleCategory = titleInfo.category;
         profile._cachedStats = stats;
