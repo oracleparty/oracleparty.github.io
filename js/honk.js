@@ -75,7 +75,7 @@ function spawnGooseEmoji() {
  * @param {Function} onCountUpdate - callback(playerId, newCount) for UI updates
  */
 let _countUpdateTimer = null;
-let _pendingCountTarget = null;
+const _pendingCountTargets = new Set();
 
 export function initHonkSystem(roomId, playerId, onCountUpdate) {
   // Reset counts for new game/session
@@ -90,14 +90,18 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
       // Update count instantly (in memory)
       honkCounts[targetId] = (honkCounts[targetId] || 0) + 1;
 
-      // Debounce UI update — batch rapid honks into one render per 100ms
-      _pendingCountTarget = targetId;
+      // Debounce UI update — batch rapid honks into one render per 100ms.
+      // Track ALL targets that received honks, not just the last one.
+      _pendingCountTargets.add(targetId);
       if (!_countUpdateTimer) {
         _countUpdateTimer = setTimeout(() => {
           _countUpdateTimer = null;
-          if (onCountUpdate && _pendingCountTarget) {
-            onCountUpdate(_pendingCountTarget, honkCounts[_pendingCountTarget]);
+          if (onCountUpdate) {
+            for (const tid of _pendingCountTargets) {
+              onCountUpdate(tid, honkCounts[tid]);
+            }
           }
+          _pendingCountTargets.clear();
         }, 100);
       }
 
