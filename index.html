@@ -60,7 +60,7 @@
   <!-- ===== SCRIPTS ===== -->
   <script type="module">
     import { $, transitionScreens, delay, renderAvatar } from './js/utils.js';
-    import { testConnection, fetchPendingRequests } from './js/supabase.js';
+    import { testConnection, fetchPendingRequests, cleanupOrphanedRooms } from './js/supabase.js';
     import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName, showSignInModal, showSignUpModal } from './js/auth.js';
     import { updatePresence } from './js/presence.js';
 
@@ -98,6 +98,9 @@
 
       // Track presence as "home"
       updatePresence({ activity: 'home' });
+
+      // Clean up ghost rooms (fire-and-forget, non-blocking)
+      cleanupOrphanedRooms().catch(() => {});
 
       // Transition splash → home
       await transitionScreens(splash, home);

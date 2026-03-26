@@ -131,11 +131,13 @@ export async function findRoomByCode(code) {
  * Fetch public rooms in lobby status with player counts.
  */
 export async function fetchPublicRooms() {
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const { data: rooms, error } = await supabase
     .from('rooms')
     .select('id, code, host_name, category, who_can_join, questions_per_game, question_timer, status, created_at')
     .in('status', ['lobby', 'playing'])
     .eq('who_can_join', 'anyone')
+    .gt('created_at', twoHoursAgo)
     .order('created_at', { ascending: false })
     .limit(20);
 
@@ -172,18 +174,35 @@ export async function fetchPublicRooms() {
  * Never deletes rooms that still have active players.
  */
 export async function cleanupOrphanedRooms() {
-  const { data: rooms } = await supabase
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+
+  // Delete rooms with 0 players (any age — these are zombie rooms)
+  const { data: allRooms } = await supabase
     .from('rooms')
     .select('id')
     .in('status', ['lobby', 'playing']);
-  if (!rooms || rooms.length === 0) return;
 
-  for (const room of rooms) {
-    const { count } = await supabase
-      .from('players')
-      .select('id', { count: 'exact', head: true })
-      .eq('room_id', room.id);
-    if (count === 0) {
+  if (allRooms && allRooms.length > 0) {
+    for (const room of allRooms) {
+      const { count } = await supabase
+        .from('players')
+        .select('id', { count: 'exact', head: true })
+        .eq('room_id', room.id);
+      if (count === 0) {
+        await supabase.from('rooms').delete().eq('id', room.id);
+      }
+    }
+  }
+
+  // Delete all rooms older than 2 hours (stale regardless of player count)
+  const { data: staleRooms } = await supabase
+    .from('rooms')
+    .select('id')
+    .in('status', ['lobby', 'playing'])
+    .lt('created_at', twoHoursAgo);
+
+  if (staleRooms && staleRooms.length > 0) {
+    for (const room of staleRooms) {
       await supabase.from('rooms').delete().eq('id', room.id);
     }
   }

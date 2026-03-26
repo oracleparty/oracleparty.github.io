@@ -115,6 +115,7 @@ const state = {
   unreadCount: 0,
   _hotJoinPollId: null,
   _gamePlayCompleted: false,
+  _guestNudgeProcessed: false,
   _syncIntervalId: null
 };
 
@@ -2735,34 +2736,65 @@ async function showResultsScreen() {
   $('#btn-quit-game').onclick = handleQuitGame;
   $('#btn-review-questions').onclick = handleReviewQuestions;
 
-  // Guest game counter + signup nudges
-  if (!getCurrentUser()) {
+  // Guest sign-up nudges — personalized with actual session data
+  if (!getCurrentUser() && !state._guestNudgeProcessed) {
+    state._guestNudgeProcessed = true; // Re-entry guard (showResultsScreen may be called twice)
+
     const count = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
     localStorage.setItem('oracle_party_guest_games', String(count + 1));
+    const gamesPlayed = count + 1;
     const resultsList = $('#results-list');
 
-    if (!sessionStorage.getItem('oracle_party_signup_nudge_shown')) {
-      // First-game nudge (once per session)
+    // Compute personalized stats for the nudge
+    const guestAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
+    const guestCorrect = guestAnswers.filter(a => a.is_correct).length;
+    const guestTotal = guestAnswers.length;
+    const guestAccuracy = guestTotal > 0 ? Math.round((guestCorrect / guestTotal) * 100) : 0;
+    const guestScore = state.scores[state.room.playerId] || 0;
+    const categoryLabel = CATEGORY_META[state.room.category]?.label || state.room.category;
+    const isWinner = winner && String(winner.id) === String(state.room.playerId);
+
+    console.log('[Nudge] Guest check:', { gamesPlayed, sessionFlag: sessionStorage.getItem('oracle_party_signup_nudge_shown'), dismissFlag: localStorage.getItem('oracle_party_3game_nudge_dismissed'), isWinner });
+
+    // Winner nudge — highest conversion moment (guest just won!)
+    if (isWinner && !sessionStorage.getItem('oracle_party_winner_nudge_shown')) {
+      sessionStorage.setItem('oracle_party_winner_nudge_shown', '1');
+      const nudge = document.createElement('div');
+      nudge.className = 'signup-nudge';
+      nudge.innerHTML = `
+        <p class="signup-nudge__text">\u{1F3C6} You won! Save your victory.</p>
+        <p class="signup-nudge__stats">${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}</p>
+        <button class="btn btn-primary btn-block" id="nudge-signup-win">Create Account</button>
+        <button class="signup-nudge__dismiss" id="nudge-dismiss-win">Maybe later</button>
+      `;
+      resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
+      $('#nudge-signup-win').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
+      $('#nudge-dismiss-win').onclick = () => nudge.remove();
+    }
+    // First-game nudge (once per session, personalized)
+    else if (!sessionStorage.getItem('oracle_party_signup_nudge_shown')) {
       sessionStorage.setItem('oracle_party_signup_nudge_shown', '1');
       const nudge = document.createElement('div');
       nudge.className = 'signup-nudge';
       nudge.innerHTML = `
-        <p class="signup-nudge__text">Nice game! Create an account to save your stats and earn titles.</p>
+        <p class="signup-nudge__text">Nice game! Your stats will be lost without an account.</p>
+        <p class="signup-nudge__stats">${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}</p>
         <button class="btn btn-primary btn-block" id="nudge-signup">Create Account</button>
         <button class="signup-nudge__dismiss" id="nudge-dismiss">Maybe later</button>
       `;
       resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
       $('#nudge-signup').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
       $('#nudge-dismiss').onclick = () => nudge.remove();
-    } else if (count + 1 >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
-      // BUG 5 FIX: 3-game nudge shown on the RESULTS SCREEN, not the home screen.
-      // Guests loop through game→lobby→game without visiting index.html, so the home
-      // screen nudge never triggers. Showing it here catches them at the natural moment.
+    }
+    // 3-game nudge (persistent, personalized with cumulative data)
+    else if (gamesPlayed >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
       const nudge = document.createElement('div');
       nudge.className = 'signup-nudge';
       nudge.innerHTML = `
-        <p class="signup-nudge__text">You've played ${count + 1} games \u2014 claim your Oracle identity!</p>
-        <button class="btn btn-primary btn-block" id="nudge-signup-3">Sign Up</button>
+        <p class="signup-nudge__text">Your stats from this game will be lost.</p>
+        <p class="signup-nudge__stats">${gamesPlayed} games played \u00B7 ${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}</p>
+        <p class="signup-nudge__text">Create an account to save your progress and earn titles.</p>
+        <button class="btn btn-primary btn-block" id="nudge-signup-3">Create Account</button>
         <button class="signup-nudge__dismiss" id="nudge-dismiss-3">Maybe later</button>
       `;
       resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
