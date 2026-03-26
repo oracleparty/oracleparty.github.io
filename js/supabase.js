@@ -1228,6 +1228,28 @@ export async function upsertTitleUnlock(userId, wordId, level) {
 }
 
 // ============================================
+// SITE SETTINGS (Admin)
+// ============================================
+
+export async function fetchSiteSettings() {
+  const { data, error } = await supabase.from('site_settings').select('*');
+  if (error) { console.error('[Supabase] fetchSiteSettings failed:', error.message); return []; }
+  return data || [];
+}
+
+export async function upsertSiteSetting(key, value) {
+  const { error } = await supabase.from('site_settings').upsert({
+    key, value, updated_at: new Date().toISOString()
+  }, { onConflict: 'key' });
+  if (error) console.error('[Supabase] upsertSiteSetting failed:', error.message);
+}
+
+export async function deleteSiteSetting(key) {
+  const { error } = await supabase.from('site_settings').delete().eq('key', key);
+  if (error) console.error('[Supabase] deleteSiteSetting failed:', error.message);
+}
+
+// ============================================
 // FRIENDS & FRIEND REQUESTS
 // ============================================
 
