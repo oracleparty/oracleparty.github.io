@@ -1179,6 +1179,55 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
 }
 
 // ============================================
+// TITLE UNLOCKS
+// ============================================
+
+/**
+ * Fetch all title unlocks for a user.
+ */
+export async function fetchTitleUnlocks(userId) {
+  const { data, error } = await supabase
+    .from('title_unlocks')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[Supabase] fetchTitleUnlocks failed:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+/**
+ * Upsert a title unlock — insert new or upgrade level.
+ */
+export async function upsertTitleUnlock(userId, wordId, level) {
+  const { data: existing } = await supabase
+    .from('title_unlocks')
+    .select('id, level')
+    .eq('user_id', userId)
+    .eq('word_id', wordId)
+    .maybeSingle();
+
+  if (existing) {
+    if (level > existing.level) {
+      const { error } = await supabase.from('title_unlocks').update({
+        level,
+        unlocked_at: new Date().toISOString()
+      }).eq('id', existing.id);
+      if (error) console.error('[Supabase] upsertTitleUnlock update failed:', error.message);
+    }
+  } else {
+    const { error } = await supabase.from('title_unlocks').insert({
+      user_id: userId,
+      word_id: wordId,
+      level
+    });
+    if (error) console.error('[Supabase] upsertTitleUnlock insert failed:', error.message);
+  }
+}
+
+// ============================================
 // FRIENDS & FRIEND REQUESTS
 // ============================================
 

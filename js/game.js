@@ -46,9 +46,12 @@ import {
   appendUsedQuestionIds,
   upsertPlayerStats,
   insertGameHistoryEntry,
-  upsertQuestionHistory
+  upsertQuestionHistory,
+  fetchTitleUnlocks,
+  upsertTitleUnlock
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
+import { evaluateUnlocks, hasReachedApprentice } from './titles.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
@@ -2673,6 +2676,28 @@ async function showResultsScreen() {
           upsertQuestionHistory(uid, a.question_id, !!a.is_correct);
         }
       }
+
+      // Title system: evaluate unlocks after stats are written
+      // Re-fetch stats (they were just upserted) and check all word conditions
+      fetchPlayerStats(uid).then(async freshStats => {
+        const unlocks = await fetchTitleUnlocks(uid);
+        const context = {
+          hour: new Date().getHours(),
+          perfectGame: correctCount === totalAnswered && totalAnswered > 0
+        };
+        const newUnlocks = evaluateUnlocks(freshStats, authUser.profile, unlocks, context);
+        for (const u of newUnlocks) {
+          await upsertTitleUnlock(uid, u.wordId, u.level);
+        }
+        // Check if Title Builder should unlock (first Apprentice)
+        if (!authUser.profile.title_builder_unlocked && hasReachedApprentice(freshStats)) {
+          await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', uid);
+        }
+        // (Phase 4 will add celebration display here)
+        if (newUnlocks.length > 0) {
+          console.log('[Titles] New unlocks:', newUnlocks.map(u => `${u.word} L${u.level}`));
+        }
+      }).catch(err => console.warn('[Titles] Evaluation failed:', err));
     }
   }
 

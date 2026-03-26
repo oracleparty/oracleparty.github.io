@@ -3,8 +3,9 @@
 // ============================================
 
 import { $, calculateTitle } from './utils.js';
-import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats } from './supabase.js';
+import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
+import { evaluateUnlocks, hasReachedApprentice } from './titles.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
 const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
@@ -117,6 +118,17 @@ export async function initAuth() {
         _currentProfile = profile;
         localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
         setDisplayName(profile.display_name);
+        // Title system: evaluate unlocks on login (catches time-based, social triggers)
+        fetchTitleUnlocks(session.user.id).then(async unlocks => {
+          const ctx = { hour: new Date().getHours() };
+          const newUnlocks = evaluateUnlocks(stats, profile, unlocks, ctx);
+          for (const u of newUnlocks) {
+            await upsertTitleUnlock(session.user.id, u.wordId, u.level);
+          }
+          if (!profile.title_builder_unlocked && hasReachedApprentice(stats)) {
+            await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', session.user.id);
+          }
+        }).catch(() => {});
         // Init global presence (non-blocking, only if user has friends)
         initGlobalPresence(session.user.id, profile.show_online_status !== false).catch(() => {});
       } else if (!_currentProfile) {
