@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Oracle Party — Profile</title>
-  <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.querySelector('meta[name="theme-color"]').content='#1A1A2E';}})();</script>
+  <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -111,14 +111,14 @@
   </div>
 
   <script type="module">
-    import { ensureDisplayName, initAuth } from './js/auth.js';
+    import { ensureDisplayName, initAuth, getCurrentUser } from './js/auth.js';
     import { initProfilePage } from './js/profile.js';
     import { initThemeToggle } from './js/theme.js';
 
     async function init() {
       await Promise.all([ensureDisplayName(), initAuth()]);
       await initProfilePage();
-      initThemeToggle();
+      initThemeToggle(!!getCurrentUser());
     }
 
     document.getElementById('btn-back').addEventListener('click', () => {

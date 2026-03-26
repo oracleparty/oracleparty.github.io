@@ -86,6 +86,26 @@
   --color-overlay:      rgba(0, 0, 0, 0.6);
 }
 
+/* --- OLED Black Theme --- */
+[data-theme="oled"] {
+  --color-bg:           #000000;
+  --color-bg-deep:      #050505;
+  --color-surface:      #0A0A0A;
+  --color-surface-light: #1A1A1A;
+  --color-primary:      #D9A340;
+  --color-primary-dim:  #C68A2E;
+  --color-primary-glow: rgba(217, 163, 64, 0.20);
+  --color-accent:       #818CF8;
+  --color-accent-dim:   #6B75D4;
+  --color-accent-glow:  rgba(129, 140, 248, 0.15);
+  --color-text:         #E8E8E8;
+  --color-text-dim:     #999999;
+  --color-text-muted:   #666666;
+  --color-danger:       #F87171;
+  --color-success:      #4ADE80;
+  --color-overlay:      rgba(0, 0, 0, 0.8);
+}
+
 /* --- Reset --- */
 html, body {
   overflow-x: hidden;
@@ -3884,6 +3904,24 @@ body::after {
 /* ============================================
    SCORE EDIT (Host)
    ============================================ */
+
+.btn-edit-scores {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: var(--space-xs) var(--space-sm);
+  margin: 0 auto;
+  display: block;
+}
+.btn-edit-scores:active {
+  color: var(--color-primary);
+}
+.btn-edit-scores.hidden {
+  display: none;
+}
 
 .score-edit-row {
   display: flex;

@@ -240,7 +240,7 @@ async function init() {
   } else {
     addSystemMessage('You joined the lobby');
   }
-  initThemeToggle();
+  initThemeToggle(!!getCurrentUser());
 }
 
 // --- Event Listeners ---

@@ -2194,7 +2194,9 @@ function showFinalWagerScreen() {
   renderFinalWagerPlayers();
   updateFinalWagerPlayerList();
 
-  // Option buttons (0 / 10 / 20)
+  // Option buttons (0 / 10 / 20) — selection is changeable until lock-in
+  const lockBtn = $('#btn-fw-lock');
+  lockBtn.style.display = 'none';
   options.forEach(btn => {
     btn.classList.remove('fw-option--selected', 'fw-option--locked');
     btn.onclick = () => {
@@ -2202,11 +2204,11 @@ function showFinalWagerScreen() {
       options.forEach(b => b.classList.remove('fw-option--selected'));
       btn.classList.add('fw-option--selected');
       state.finalWager = parseInt(btn.dataset.wager, 10);
-
-      // Auto lock-in on tap
-      lockInFinalWager();
+      // Show lock-in button (player can change mind until they tap it)
+      lockBtn.style.display = '';
     };
   });
+  lockBtn.onclick = () => lockInFinalWager();
 
   if (state.finalWagerLocked) {
     // Already locked in (reconnect)
@@ -2284,15 +2286,25 @@ function renderFinalWagerPlayers(lockedWagers) {
       ? `<span class="fw-player-row__wager">${wagerVal}</span>`
       : `<span class="fw-player-row__wager fw-player-row__wager--waiting">Waiting...</span>`;
 
+    const isMe = String(p.id) === String(state.room.playerId);
+    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+
     return `
       <div class="fw-player-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         ${avatarHtml}
         <span class="fw-player-row__name">${escapeHtml(p.display_name)}${titleHtml}</span>
         <span class="fw-player-row__score">${score}</span>
         ${wagerDisplay}
+        ${honkBtn}
       </div>
     `;
   }).join('');
+
+  // Wire honk buttons on final wager player list
+  $('#fw-player-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('.honk-btn');
+    if (btn) sendHonk(btn.dataset.honkTarget);
+  });
 }
 
 async function updateFinalWagerPlayerList() {

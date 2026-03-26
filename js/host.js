@@ -60,7 +60,7 @@ async function init() {
   }
   // Always attach listeners even if data fetch fails
   attachListeners();
-  initThemeToggle();
+  initThemeToggle(!!getCurrentUser());
 
   // Trap browser back button — always go to index.html
   history.pushState({ page: 'host' }, '');
