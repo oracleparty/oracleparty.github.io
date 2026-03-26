@@ -2750,7 +2750,7 @@ async function showResultsScreen() {
 
   // Guest sign-up nudges — personalized with actual session data
   if (!getCurrentUser() && !state._guestNudgeProcessed) {
-    state._guestNudgeProcessed = true; // Re-entry guard (showResultsScreen may be called twice)
+    state._guestNudgeProcessed = true;
 
     const count = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
     localStorage.setItem('oracle_party_guest_games', String(count + 1));
@@ -2766,7 +2766,35 @@ async function showResultsScreen() {
     const categoryLabel = CATEGORY_META[state.room.category]?.label || state.room.category;
     const isWinner = winner && String(winner.id) === String(state.room.playerId);
 
-    console.log('[Nudge] Guest check:', { gamesPlayed, sessionFlag: sessionStorage.getItem('oracle_party_signup_nudge_shown'), dismissFlag: localStorage.getItem('oracle_party_3game_nudge_dismissed'), isWinner });
+    // Rotating perks — pick a different benefit each nudge
+    const personalizedPerk = {
+      text: `Your stats from this game will be lost.`,
+      stats: `${gamesPlayed} games played \u00B7 ${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}`,
+      isPersonalized: true
+    };
+    const genericPerks = [
+      { text: 'Unlock OLED Black mode and more themes.' },
+      { text: 'Save your stats and earn Oracle titles.' },
+      { text: 'Add friends and see who\u2019s online.' },
+      { text: 'Track your mastery across thousands of questions.' },
+      { text: 'Customize your avatar with colors and emoji.' },
+      { text: 'Compete on leaderboards.' }
+    ];
+    function pickPerk() {
+      const lastPerk = sessionStorage.getItem('oracle_party_last_nudge_perk') || '';
+      const nudgeCount = parseInt(sessionStorage.getItem('oracle_party_nudge_count') || '0');
+      sessionStorage.setItem('oracle_party_nudge_count', String(nudgeCount + 1));
+      // Guarantee personalized stats perk in first 3 nudges
+      if (nudgeCount < 3 && nudgeCount === 0) {
+        sessionStorage.setItem('oracle_party_last_nudge_perk', 'personalized');
+        return personalizedPerk;
+      }
+      // Pick from generic pool, avoid repeating last shown
+      const pool = genericPerks.filter(p => p.text !== lastPerk);
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      sessionStorage.setItem('oracle_party_last_nudge_perk', pick.text);
+      return pick;
+    }
 
     // Winner nudge — highest conversion moment (guest just won!)
     if (isWinner && !sessionStorage.getItem('oracle_party_winner_nudge_shown')) {
@@ -2783,14 +2811,15 @@ async function showResultsScreen() {
       $('#nudge-signup-win').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
       $('#nudge-dismiss-win').onclick = () => nudge.remove();
     }
-    // First-game nudge (once per session, personalized)
+    // First-game nudge (once per session — personalized stats, strongest hook)
     else if (!sessionStorage.getItem('oracle_party_signup_nudge_shown')) {
       sessionStorage.setItem('oracle_party_signup_nudge_shown', '1');
+      const perk = pickPerk();
       const nudge = document.createElement('div');
       nudge.className = 'signup-nudge';
       nudge.innerHTML = `
-        <p class="signup-nudge__text">Nice game! Your stats will be lost without an account.</p>
-        <p class="signup-nudge__stats">${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}</p>
+        <p class="signup-nudge__text">${perk.text}</p>
+        ${perk.stats ? `<p class="signup-nudge__stats">${perk.stats}</p>` : ''}
         <button class="btn btn-primary btn-block" id="nudge-signup">Create Account</button>
         <button class="signup-nudge__dismiss" id="nudge-dismiss">Maybe later</button>
       `;
@@ -2798,14 +2827,14 @@ async function showResultsScreen() {
       $('#nudge-signup').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
       $('#nudge-dismiss').onclick = () => nudge.remove();
     }
-    // 3-game nudge (persistent, personalized with cumulative data)
+    // Subsequent nudges (rotating perks)
     else if (gamesPlayed >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
+      const perk = pickPerk();
       const nudge = document.createElement('div');
       nudge.className = 'signup-nudge';
       nudge.innerHTML = `
-        <p class="signup-nudge__text">Your stats from this game will be lost.</p>
-        <p class="signup-nudge__stats">${gamesPlayed} games played \u00B7 ${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}</p>
-        <p class="signup-nudge__text">Create an account to save your progress and earn titles.</p>
+        <p class="signup-nudge__text">${perk.text}</p>
+        ${perk.stats ? `<p class="signup-nudge__stats">${perk.stats}</p>` : ''}
         <button class="btn btn-primary btn-block" id="nudge-signup-3">Create Account</button>
         <button class="signup-nudge__dismiss" id="nudge-dismiss-3">Maybe later</button>
       `;

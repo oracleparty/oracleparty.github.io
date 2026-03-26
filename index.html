@@ -128,14 +128,28 @@
         });
       }
 
-      // 3-game signup nudge (guests only, one-time)
+      // 3-game signup nudge (guests only — rotating perks)
       if (!authUser) {
         const gamesPlayed = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
         if (gamesPlayed >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
+          const homePerks = [
+            'Unlock OLED Black mode and more themes.',
+            'Save your stats and earn Oracle titles.',
+            'Add friends and see who\u2019s online.',
+            'Track your mastery across thousands of questions.',
+            'Customize your avatar with colors and emoji.',
+            'Compete on leaderboards.',
+            `You\u2019ve played ${gamesPlayed} games \u2014 claim your Oracle identity!`
+          ];
+          const lastPerk = sessionStorage.getItem('oracle_party_last_nudge_perk') || '';
+          const pool = homePerks.filter(p => p !== lastPerk);
+          const perkText = pool[Math.floor(Math.random() * pool.length)];
+          sessionStorage.setItem('oracle_party_last_nudge_perk', perkText);
+
           const nudge = document.createElement('div');
           nudge.className = 'signup-nudge signup-nudge--home';
           nudge.innerHTML = `
-            <p class="signup-nudge__text">You've played ${gamesPlayed} games \u2014 claim your Oracle identity!</p>
+            <p class="signup-nudge__text">${perkText}</p>
             <button class="btn btn-primary" id="home-nudge-signup">Sign Up</button>
             <button class="signup-nudge__dismiss" id="home-nudge-dismiss">&times;</button>
           `;
