@@ -47,6 +47,7 @@ import {
   upsertPlayerStats,
   insertGameHistoryEntry,
   upsertQuestionHistory,
+  fetchPlayerStats,
   fetchTitleUnlocks,
   upsertTitleUnlock
 } from './supabase.js';
