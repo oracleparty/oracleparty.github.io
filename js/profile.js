@@ -597,19 +597,19 @@ export async function initProfilePage() {
     }
 
     // OLED Black Mode toggle — sets preference for the sun/moon toggle behavior.
-    // When ON: sun/moon swaps light ↔ OLED black (skips regular dark).
-    // When OFF: sun/moon swaps light ↔ regular dark.
+    // When ON: immediately switches to OLED black + future sun/moon swaps light ↔ OLED.
+    // When OFF: switches to regular dark (if on OLED) + future sun/moon swaps light ↔ dark.
     const oledToggle = $('#profile-oled-toggle');
     if (oledToggle) {
       oledToggle.onchange = () => {
         localStorage.setItem('oracle_party_oled_pref', oledToggle.checked ? '1' : '0');
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-        if (oledToggle.checked && currentTheme === 'dark') {
-          // Currently on dark — switch to OLED immediately
+        if (oledToggle.checked) {
+          // Switch to OLED immediately so the user sees the effect
           applyTheme('oled');
-        } else if (!oledToggle.checked && currentTheme === 'oled') {
-          // Currently on OLED — switch to regular dark
-          applyTheme('dark');
+        } else {
+          // Turn off OLED — go to regular dark (not light)
+          const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+          if (currentTheme === 'oled') applyTheme('dark');
         }
         // Update the sun/moon icon
         const isLight = document.documentElement.getAttribute('data-theme') === 'light';
