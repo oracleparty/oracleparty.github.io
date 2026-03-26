@@ -87,6 +87,10 @@
 }
 
 /* --- Reset --- */
+html, body {
+  overflow-x: hidden;
+}
+
 *,
 *::before,
 *::after {
@@ -1378,7 +1382,7 @@ body::after {
 
 .chat-bubble--system .chat-bubble__text {
   font-size: 0.65rem;
-  color: var(--color-text-muted);
+  color: var(--color-primary);
   font-style: italic;
   letter-spacing: 0.01em;
 }

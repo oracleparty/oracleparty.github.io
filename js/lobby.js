@@ -123,10 +123,25 @@ async function init() {
     return;
   }
 
-  // If game is already in progress (hot-join landed on lobby, or browser forward), redirect
+  // If game is already in progress, redirect — BUT if returning from Play Again,
+  // the host may still be resetting the room. Wait briefly and re-check.
   if (currentRoom.status === 'playing') {
-    window.location.replace('game.html');
-    return;
+    if (sessionStorage.getItem('oracle_party_returning_from_game')) {
+      // Host is likely still running deleteAnswersByRoom + updateGameState + updateRoomStatus.
+      // Wait 2 seconds and re-check before bouncing back to game.
+      await new Promise(r => setTimeout(r, 2000));
+      const { data: recheck } = await fetchRoom(room.id);
+      if (!recheck) { sessionStorage.removeItem('oracle_party_room'); window.location.href = 'index.html'; return; }
+      if (recheck.status === 'playing') {
+        // Still playing after 2s — this is a real in-progress game, not a race
+        window.location.replace('game.html');
+        return;
+      }
+      // Status changed to 'lobby' — stay here
+    } else {
+      window.location.replace('game.html');
+      return;
+    }
   }
 
   // Subscribe to Realtime (with status monitoring)

@@ -3223,8 +3223,13 @@ function handleNewMessage(payload) {
     return;
   }
 
-  appendGameChatMessage(player_name, message);
-  scrollGameChatToBottom();
+  // System messages get distinct styling (no avatar, centered, accent color)
+  if (player_name === 'System') {
+    addGameSystemMessage(message);
+  } else {
+    appendGameChatMessage(player_name, message);
+    scrollGameChatToBottom();
+  }
 
   // Always update the bar preview with the latest message
   updateChatBarPreview(player_name, message);
@@ -3268,6 +3273,14 @@ function appendGameChatMessage(name, text) {
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
   `;
   $('#chat-drawer-messages').appendChild(bubble);
+}
+
+function addGameSystemMessage(text) {
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble chat-bubble--system';
+  bubble.innerHTML = `<div class="chat-bubble__text">${escapeHtml(text)}</div>`;
+  $('#chat-drawer-messages').appendChild(bubble);
+  scrollGameChatToBottom();
 }
 
 function scrollGameChatToBottom() {

@@ -39,13 +39,18 @@ export function setHonkMuted(muted) { _honkMuted = muted; }
 
 function playHonk() {
   if (_honkMuted) return;
-  const sound = honkAudio.cloneNode();
-  sound.volume = 1.0;
-  sound.play().catch(() => {}); // .play() returns Promise — catch async rejection
+  // Reuse single Audio instance — reset and replay instead of cloning
+  honkAudio.currentTime = 0;
+  honkAudio.play().catch(() => {});
 }
 
 // --- Animation ---
+let _lastGooseTime = 0;
 function spawnGooseEmoji() {
+  // Throttle: max one animation per 300ms to prevent DOM overload from rapid honks
+  const now = Date.now();
+  if (now - _lastGooseTime < 300) return;
+  _lastGooseTime = now;
   const el = document.createElement('div');
   el.className = 'honk-goose';
   el.textContent = '\uD83E\uDD86'; // duck emoji 🦆
@@ -69,6 +74,9 @@ function spawnGooseEmoji() {
  * @param {string} playerId - local player's ID
  * @param {Function} onCountUpdate - callback(playerId, newCount) for UI updates
  */
+let _countUpdateTimer = null;
+let _pendingCountTarget = null;
+
 export function initHonkSystem(roomId, playerId, onCountUpdate) {
   // Reset counts for new game/session
   for (const key in honkCounts) delete honkCounts[key];
@@ -78,11 +86,20 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
   honkChannel
     .on('broadcast', { event: 'honk' }, ({ payload }) => {
       const targetId = String(payload.target_id);
-      const fromId = String(payload.from_id);
 
-      // Update count
+      // Update count instantly (in memory)
       honkCounts[targetId] = (honkCounts[targetId] || 0) + 1;
-      if (onCountUpdate) onCountUpdate(targetId, honkCounts[targetId]);
+
+      // Debounce UI update — batch rapid honks into one render per 100ms
+      _pendingCountTarget = targetId;
+      if (!_countUpdateTimer) {
+        _countUpdateTimer = setTimeout(() => {
+          _countUpdateTimer = null;
+          if (onCountUpdate && _pendingCountTarget) {
+            onCountUpdate(_pendingCountTarget, honkCounts[_pendingCountTarget]);
+          }
+        }, 100);
+      }
 
       // If I'm the honked player, react! (skip sound+animation when muted)
       if (targetId === localPlayerId && !_honkMuted) {
