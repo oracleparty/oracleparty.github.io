@@ -98,7 +98,7 @@ const state = {
   awayTimestamps: new Map(), // player ID → Date.now() when first seen as away
   feedbackFadeTimer: null,
   isFinalWagerRound: false,
-  finalWager: 10,
+  finalWager: 20, // Default to highest — punishes indecision on final round
   finalWagerLocked: false,
   difficultyVoteLocked: false,
   difficultyVotes: {},       // { playerId: 'easy'|'medium'|'hard' }
@@ -1476,8 +1476,6 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   }
   const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
 
-  state.usedWagers.set(wager, isCorrect);
-
   await submitAnswer({
     roomId: state.room.id,
     playerId: state.room.playerId,
@@ -1488,6 +1486,9 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     isCorrect,
     scoreEarned
   });
+
+  // Mark wager as used AFTER DB write succeeds (prevents stale state if submit fails)
+  state.usedWagers.set(wager, isCorrect);
 
   // Track question answered (fire-and-forget, skip final wager round)
   if (!state.isFinalWagerRound) {
@@ -2504,17 +2505,13 @@ function showDifficultyVoteScreen() {
     })
     .subscribe();
 
-  // Vote button handlers
+  // Vote button handlers — players CAN change their vote (not locked on first tap)
   options.forEach(btn => {
     btn.onclick = () => {
-      if (state.difficultyVoteLocked) return;
-      state.difficultyVoteLocked = true;
       options.forEach(b => b.classList.remove('dv-option--selected'));
       btn.classList.add('dv-option--selected');
-      options.forEach(b => { b.disabled = true; });
-      $('#dv-status').classList.remove('hidden');
 
-      // Broadcast vote
+      // Broadcast vote (same playerId overwrites previous vote in state.difficultyVotes)
       state.difficultyVoteChannel.send({
         type: 'broadcast',
         event: 'vote',
@@ -2534,15 +2531,25 @@ function showDifficultyVoteScreen() {
 }
 
 function renderDifficultyTally() {
-  const tally = { easy: 0, medium: 0, hard: 0 };
-  for (const d of Object.values(state.difficultyVotes)) {
-    if (tally[d] !== undefined) tally[d]++;
+  // Group voters by difficulty, show their avatars
+  const groups = { easy: [], medium: [], hard: [] };
+  for (const [pid, diff] of Object.entries(state.difficultyVotes)) {
+    if (groups[diff]) groups[diff].push(pid);
   }
   const total = Object.keys(state.difficultyVotes).length;
+
+  function avatarsForGroup(playerIds) {
+    return playerIds.map(pid => {
+      const p = state.players.find(pl => String(pl.id) === String(pid));
+      if (!p) return '';
+      return renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '22px' });
+    }).join('');
+  }
+
   $('#dv-tally').innerHTML = `
-    <span class="dv-tally__item dv-tally__item--easy">Easy: ${tally.easy}</span>
-    <span class="dv-tally__item dv-tally__item--medium">Medium: ${tally.medium}</span>
-    <span class="dv-tally__item dv-tally__item--hard">Hard: ${tally.hard}</span>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--easy">Easy</span><span class="dv-tally__avatars">${avatarsForGroup(groups.easy)}</span></div>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--medium">Medium</span><span class="dv-tally__avatars">${avatarsForGroup(groups.medium)}</span></div>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--hard">Hard</span><span class="dv-tally__avatars">${avatarsForGroup(groups.hard)}</span></div>
     <span class="dv-tally__total">${total}/${state.players.length} voted</span>
   `;
 }

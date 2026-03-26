@@ -164,3 +164,5 @@ Oracle-Party/
 - Test at 375px mobile viewport before committing any UI changes
 - Clear all previous round data before rendering a new question
 - Use `/clear` between unrelated tasks to prevent context pollution
+- Date questions should ask for the YEAR only, not exact dates, unless the date is very famous (July 4 1776, etc.)
+- Number questions should accept reasonable ranges or rounded values — don't expect exact figures for obscure stats

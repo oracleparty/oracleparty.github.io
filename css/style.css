@@ -2227,9 +2227,6 @@ body::after {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background: var(--color-surface);
-  border: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-md);
   padding: var(--space-sm) 0;
 }
 
@@ -2629,9 +2626,6 @@ body::after {
 
 .results-scoreboard {
   width: 100%;
-  background: var(--color-surface);
-  border: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-md);
   padding: var(--space-sm) 0;
   margin-bottom: var(--space-md);
 }
@@ -3926,9 +3920,21 @@ body::after {
 .dv-tally__item--easy { color: var(--color-success); }
 .dv-tally__item--medium { color: var(--color-primary); }
 .dv-tally__item--hard { color: var(--color-danger); }
+.dv-tally__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  justify-content: center;
+  margin-bottom: 2px;
+}
+.dv-tally__avatars {
+  display: flex;
+  gap: 2px;
+}
 .dv-tally__total {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+  margin-top: var(--space-xs);
 }
 
 .difficulty-vote__result {
