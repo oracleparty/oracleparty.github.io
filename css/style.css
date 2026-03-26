@@ -173,6 +173,7 @@ body::after {
 .screen--scrollable {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  justify-content: flex-start;
 }
 
 /* --- Screen Transitions --- */
@@ -1260,7 +1261,7 @@ body::after {
 
 .player-item__name {
   flex: 1;
-  min-width: 100px;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1602,7 +1603,7 @@ body::after {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   padding: var(--space-md) var(--space-lg);
   min-height: 0;
   overflow-y: auto;
@@ -1739,7 +1740,7 @@ body::after {
   grid-template-columns: repeat(5, 1fr);
   gap: var(--space-xs);
   width: 100%;
-  max-width: 280px;
+  max-width: 320px;
   margin-bottom: var(--space-sm);
 }
 
@@ -2097,7 +2098,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 100px;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2235,7 +2236,7 @@ body::after {
 .score-anim-row {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
   will-change: transform;
 }
@@ -2246,7 +2247,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 100px;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2550,7 +2551,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 100px;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2653,7 +2654,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 100px;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
