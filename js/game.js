@@ -3473,7 +3473,8 @@ async function checkStalePresence() {
   // because the room_id filter can't match DELETE payloads (default REPLICA
   // IDENTITY only sends the primary key). Re-fetch players and check.
   const freshPlayers = await fetchPlayers(state.room.id);
-  if (freshPlayers.length > 0 && freshPlayers.length !== state.players.length) {
+  if (freshPlayers.length > 0) {
+    // Always update — count OR is_host status may have changed
     state.players = freshPlayers;
   }
   if (state.players.length > 0 && !state.players.some(p => p.is_host)) {
