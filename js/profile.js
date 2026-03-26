@@ -560,8 +560,8 @@ export async function initProfilePage() {
   // Account section
   if (accountEl) {
     const onlineChecked = profile.show_online_status !== false ? 'checked' : '';
-    const currentTheme = localStorage.getItem('oracle_party_theme') || 'light';
-    const oledChecked = currentTheme === 'oled' ? 'checked' : '';
+    const oledPref = localStorage.getItem('oracle_party_oled_pref') === '1';
+    const oledChecked = oledPref ? 'checked' : '';
     accountEl.innerHTML = `
       <div class="profile-toggle">
         <span>Show Online Status</span>
@@ -596,18 +596,25 @@ export async function initProfilePage() {
       };
     }
 
-    // OLED Black Mode toggle — premium setting for logged-in users
+    // OLED Black Mode toggle — sets preference for the sun/moon toggle behavior.
+    // When ON: sun/moon swaps light ↔ OLED black (skips regular dark).
+    // When OFF: sun/moon swaps light ↔ regular dark.
     const oledToggle = $('#profile-oled-toggle');
     if (oledToggle) {
       oledToggle.onchange = () => {
-        if (oledToggle.checked) {
+        localStorage.setItem('oracle_party_oled_pref', oledToggle.checked ? '1' : '0');
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+        if (oledToggle.checked && currentTheme === 'dark') {
+          // Currently on dark — switch to OLED immediately
           applyTheme('oled');
-        } else {
-          applyTheme('dark'); // Turning off OLED goes to dark (not light)
+        } else if (!oledToggle.checked && currentTheme === 'oled') {
+          // Currently on OLED — switch to regular dark
+          applyTheme('dark');
         }
-        // Update the sun/moon toggle on this page if it exists
+        // Update the sun/moon icon
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
         document.querySelectorAll('.theme-toggle').forEach(b => {
-          b.textContent = oledToggle.checked ? '\u2600\uFE0F' : '\u2600\uFE0F';
+          b.textContent = isLight ? '\uD83C\uDF19' : '\u2600\uFE0F';
         });
       };
     }
