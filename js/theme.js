@@ -1,45 +1,41 @@
 // ============================================
 // Oracle Party — Theme Toggle
-// Cycles: light → dark → oled (logged-in only) → light
+// Sun/moon button: light ↔ dark.
+// OLED Black is a separate setting in profile.
 // Preference saved in localStorage.
 // ============================================
 
-const THEME_ICONS = { light: '\uD83C\uDF19', dark: '\u26AB', oled: '\u2600\uFE0F' };
 const THEME_META = { light: '#F8F7F4', dark: '#1A1A2E', oled: '#000000' };
 
 /**
- * Get next theme in cycle.
- * Guests: light ↔ dark (no OLED).
- * Logged-in: light → dark → oled → light.
- */
-function nextTheme(current, isLoggedIn) {
-  if (current === 'light') return 'dark';
-  if (current === 'dark') return isLoggedIn ? 'oled' : 'light';
-  return 'light'; // oled → light
-}
-
-/**
  * Initialize all theme toggle buttons on the page.
- * @param {boolean} [isLoggedIn=false] - If true, OLED option is available.
+ * Simple 2-state: light ↔ dark. (OLED is set from profile settings.)
  */
-export function initThemeToggle(isLoggedIn = false) {
+export function initThemeToggle() {
   const btns = document.querySelectorAll('.theme-toggle');
   const current = document.documentElement.getAttribute('data-theme') || 'light';
 
   btns.forEach(btn => {
-    btn.textContent = THEME_ICONS[current] || THEME_ICONS.light;
+    btn.textContent = current === 'light' ? '\uD83C\uDF19' : '\u2600\uFE0F';
     btn.addEventListener('click', () => {
       const cur = document.documentElement.getAttribute('data-theme') || 'light';
-      const next = nextTheme(cur, isLoggedIn);
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('oracle_party_theme', next);
-      // Update all toggle buttons on the page
+      // If on OLED, toggle goes to light (exit OLED via the toggle)
+      const next = (cur === 'light') ? 'dark' : 'light';
+      applyTheme(next);
       document.querySelectorAll('.theme-toggle').forEach(b => {
-        b.textContent = THEME_ICONS[next] || THEME_ICONS.light;
+        b.textContent = next === 'light' ? '\uD83C\uDF19' : '\u2600\uFE0F';
       });
-      // Update meta theme-color for mobile browser chrome
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.content = THEME_META[next] || THEME_META.light;
     });
   });
+}
+
+/**
+ * Apply a theme and persist it.
+ * @param {'light'|'dark'|'oled'} theme
+ */
+export function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('oracle_party_theme', theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = THEME_META[theme] || THEME_META.light;
 }

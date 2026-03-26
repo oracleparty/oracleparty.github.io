@@ -23,6 +23,7 @@ import {
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
+import { applyTheme } from './theme.js';
 
 // ============================================
 // CONSTANTS
@@ -559,11 +560,20 @@ export async function initProfilePage() {
   // Account section
   if (accountEl) {
     const onlineChecked = profile.show_online_status !== false ? 'checked' : '';
+    const currentTheme = localStorage.getItem('oracle_party_theme') || 'light';
+    const oledChecked = currentTheme === 'oled' ? 'checked' : '';
     accountEl.innerHTML = `
       <div class="profile-toggle">
         <span>Show Online Status</span>
         <label class="profile-switch">
           <input type="checkbox" id="profile-online-toggle" ${onlineChecked}>
+          <span class="profile-switch__slider"></span>
+        </label>
+      </div>
+      <div class="profile-toggle">
+        <span>OLED Black Mode</span>
+        <label class="profile-switch">
+          <input type="checkbox" id="profile-oled-toggle" ${oledChecked}>
           <span class="profile-switch__slider"></span>
         </label>
       </div>
@@ -583,6 +593,22 @@ export async function initProfilePage() {
         } else {
           await initGlobalPresence(userId);
         }
+      };
+    }
+
+    // OLED Black Mode toggle — premium setting for logged-in users
+    const oledToggle = $('#profile-oled-toggle');
+    if (oledToggle) {
+      oledToggle.onchange = () => {
+        if (oledToggle.checked) {
+          applyTheme('oled');
+        } else {
+          applyTheme('dark'); // Turning off OLED goes to dark (not light)
+        }
+        // Update the sun/moon toggle on this page if it exists
+        document.querySelectorAll('.theme-toggle').forEach(b => {
+          b.textContent = oledToggle.checked ? '\u2600\uFE0F' : '\u2600\uFE0F';
+        });
       };
     }
 

@@ -99,8 +99,8 @@
         $('#home-signin').classList.remove('hidden');
       }
 
-      // Theme toggle (after initAuth so getCurrentUser works for OLED check)
-      initThemeToggle(!!authUser);
+      // Theme toggle
+      initThemeToggle();
 
       // Track presence as "home"
       updatePresence({ activity: 'home' });

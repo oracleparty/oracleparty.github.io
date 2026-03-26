@@ -40,7 +40,7 @@ async function init() {
     console.error('[Join] init error:', err);
   }
   attachListeners();
-  initThemeToggle(!!getCurrentUser());
+  initThemeToggle();
   loadPublicGames().catch(e => console.warn('[Join] loadPublicGames failed:', e));
 
   // Auto-join from URL param (e.g. join.html?code=ABCD from friends list)
