@@ -99,6 +99,9 @@
         $('#home-signin').classList.remove('hidden');
       }
 
+      // Theme toggle (after initAuth so getCurrentUser works for OLED check)
+      initThemeToggle(!!authUser);
+
       // Track presence as "home"
       updatePresence({ activity: 'home' });
 
@@ -172,9 +175,6 @@
       const result = await showSignInModal();
       if (result) window.location.reload();
     });
-
-    // --- Theme toggle ---
-    initThemeToggle(!!getCurrentUser());
 
     // --- Navigation with display name check ---
     $('#btn-host').addEventListener('click', async () => {

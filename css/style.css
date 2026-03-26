@@ -3155,15 +3155,17 @@ body::after {
   transform: scale(0.9);
 }
 
-/* Page-header variant (host, join, lobby, profile, game) */
-.page-header .theme-toggle,
-.game-header .theme-toggle {
+/* Page-header variant (host, join, lobby, profile) */
+.page-header .theme-toggle {
   position: static;
   border: none;
-  background: none;
-  width: 28px;
-  height: 28px;
+  background: var(--color-bg-deep);
+  width: 32px;
+  height: 32px;
   font-size: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* ============================================
