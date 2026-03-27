@@ -2040,8 +2040,10 @@ async function showScoresScreen() {
 
 function animateScores() {
   const btn = $('#btn-scores-action');
-  btn.disabled = true;
-  btn.style.opacity = '0.5';
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+  }
 
   const rows = document.querySelectorAll('.score-anim-row');
   const scoreEls = document.querySelectorAll('.score-anim-row__score');
