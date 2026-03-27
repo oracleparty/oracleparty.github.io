@@ -366,8 +366,10 @@ function renderPlayers() {
           ${honkBadge}
         </div>
         ${honkBtn}
-        <span class="player-item__name">${nameDisplay}</span>
-        ${titleHtml}
+        <div class="name-stack">
+          <span class="player-item__name">${nameDisplay}</span>
+          ${titleHtml}
+        </div>
         <span class="player-item__badges">${badges.join('')}</span>
       </div>
     `;

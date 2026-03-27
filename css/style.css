@@ -1248,6 +1248,16 @@ body::after {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Name + title vertical stack — used in all player rows */
+.name-stack {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
 .player-item {
   display: flex;
   align-items: center;
@@ -1262,8 +1272,6 @@ body::after {
 }
 
 .player-item__name {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1292,10 +1300,10 @@ body::after {
 .honk-btn {
   background: none;
   border: none;
-  padding: 8px;
-  min-width: 44px;
-  min-height: 44px;
-  font-size: 1.1rem;
+  padding: 4px;
+  min-width: 28px;
+  min-height: 28px;
+  font-size: 0.9rem;
   cursor: pointer;
   opacity: 0.6;
   transition: opacity 0.15s, transform 0.15s;
@@ -2091,8 +2099,6 @@ body::after {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2234,8 +2240,6 @@ body::after {
   font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text);
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2431,8 +2435,6 @@ body::after {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2531,8 +2533,6 @@ body::after {
   font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text);
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2999,8 +2999,7 @@ body::after {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex-shrink: 0;
-  max-width: 120px;
+  line-height: 1.2;
 }
 
 /* ============================================

@@ -1655,7 +1655,7 @@ function renderRevealAnswers(answers) {
     row.dataset.playerId = player.id;
     if (player.user_id) row.dataset.profileUserId = player.user_id;
 
-    const titleHtml = player.title ? ` <span class="player-title">${escapeHtml(player.title)}</span>` : '';
+    const titleHtml = player.title ? `<span class="player-title">${escapeHtml(player.title)}</span>` : '';
 
     if (answer) {
       row.dataset.answerId = answer.id;
@@ -1689,7 +1689,10 @@ function renderRevealAnswers(answers) {
         <div class="answer-row__top">
           ${honkAvatarHtml(player)}
           ${honkBtnHtml(player)}
-          <span class="answer-row__name">${escapeHtml(player.display_name)}${titleHtml}${hostBadge}</span>
+          <div class="name-stack">
+            <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
+            ${titleHtml}
+          </div>
           <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
           ${toggleHtml}
         </div>
@@ -1706,7 +1709,10 @@ function renderRevealAnswers(answers) {
         <div class="answer-row__top">
           ${honkAvatarHtml(player)}
           ${honkBtnHtml(player)}
-          <span class="answer-row__name">${escapeHtml(player.display_name)}${titleHtml}${hostBadge}</span>
+          <div class="name-stack">
+            <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
+            ${titleHtml}
+          </div>
         </div>
         <div class="answer-row__bottom">
           <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
@@ -1986,7 +1992,7 @@ async function showScoresScreen() {
                        delta < 0 ? 'score-anim-row__delta--negative' :
                        'score-anim-row__delta--zero';
     const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-    const titleHtml = p.title ? ` <span class="player-title">${escapeHtml(p.title)}</span>` : '';
+    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
 
     const isMe = String(p.id) === String(state.room.playerId);
     const honks = getHonkCount(p.id);
@@ -2000,7 +2006,10 @@ async function showScoresScreen() {
           ${honkBadge}
         </div>
         ${honkBtn}
-        <span class="score-anim-row__name">${escapeHtml(p.display_name)}${titleHtml}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
+        <div class="name-stack">
+          <span class="score-anim-row__name">${escapeHtml(p.display_name)}${p.is_host ? ' <span class="badge badge--host">Host</span>' : ''}</span>
+          ${titleHtml}
+        </div>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
         <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
       </div>
@@ -2290,7 +2299,7 @@ function renderFinalWagerPlayers(lockedWagers) {
 
   $('#fw-player-list').innerHTML = sorted.map(p => {
     const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-    const titleHtml = p.title ? ` <span class="player-title">${escapeHtml(p.title)}</span>` : '';
+    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
     const score = state.scores[p.id] || 0;
     const wagerVal = wagers[String(p.id)];
     const wagerDisplay = wagerVal !== undefined
@@ -2304,7 +2313,10 @@ function renderFinalWagerPlayers(lockedWagers) {
       <div class="fw-player-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         ${avatarHtml}
         ${honkBtn}
-        <span class="fw-player-row__name">${escapeHtml(p.display_name)}${titleHtml}</span>
+        <div class="name-stack">
+          <span class="fw-player-row__name">${escapeHtml(p.display_name)}</span>
+          ${titleHtml}
+        </div>
         <span class="fw-player-row__score">${score}</span>
         ${wagerDisplay}
       </div>
@@ -2730,7 +2742,7 @@ async function showResultsScreen() {
                     fwDelta < 0 ? 'score-anim-row__delta--negative' :
                     'score-anim-row__delta--zero';
     const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-    const titleHtml = p.title ? ` <span class="player-title">${escapeHtml(p.title)}</span>` : '';
+    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
     const placeLabel = PLACE_LABELS[i] || `${i + 1}th`;
     const placeClass = i < 3 ? `results-row__place--${PLACE_LABELS[i]}` : '';
 
@@ -2747,7 +2759,10 @@ async function showResultsScreen() {
           ${honkBadge}
         </div>
         ${honkBtn}
-        <span class="results-row__name">${escapeHtml(p.display_name)}${titleHtml}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
+        <div class="name-stack">
+          <span class="results-row__name">${escapeHtml(p.display_name)}${p.is_host ? ' <span class="badge badge--host">Host</span>' : ''}</span>
+          ${titleHtml}
+        </div>
         <span class="results-row__fw-delta ${fwClass}">${fwSign}${fwDelta}</span>
         <span class="results-row__score">${state.scores[p.id] || 0}</span>
       </div>
