@@ -365,11 +365,11 @@ function renderPlayers() {
           ${avatarHtml}
           ${honkBadge}
         </div>
-        ${honkBtn}
         <div class="name-stack">
           <span class="player-item__name">${nameDisplay}</span>
           ${titleHtml}
         </div>
+        ${honkBtn}
         <span class="player-item__badges">${badges.join('')}</span>
       </div>
     `;

@@ -1688,11 +1688,11 @@ function renderRevealAnswers(answers) {
       row.innerHTML = `
         <div class="answer-row__top">
           ${honkAvatarHtml(player)}
-          ${honkBtnHtml(player)}
           <div class="name-stack">
             <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
             ${titleHtml}
           </div>
+          ${honkBtnHtml(player)}
           <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
           ${toggleHtml}
         </div>
@@ -1708,11 +1708,11 @@ function renderRevealAnswers(answers) {
       row.innerHTML = `
         <div class="answer-row__top">
           ${honkAvatarHtml(player)}
-          ${honkBtnHtml(player)}
           <div class="name-stack">
             <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
             ${titleHtml}
           </div>
+          ${honkBtnHtml(player)}
         </div>
         <div class="answer-row__bottom">
           <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
@@ -2005,11 +2005,11 @@ async function showScoresScreen() {
           ${avatarHtml}
           ${honkBadge}
         </div>
-        ${honkBtn}
         <div class="name-stack">
           <span class="score-anim-row__name">${escapeHtml(p.display_name)}${p.is_host ? ' <span class="badge badge--host">Host</span>' : ''}</span>
           ${titleHtml}
         </div>
+        ${honkBtn}
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
         <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
       </div>
@@ -2312,11 +2312,11 @@ function renderFinalWagerPlayers(lockedWagers) {
     return `
       <div class="fw-player-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         ${avatarHtml}
-        ${honkBtn}
         <div class="name-stack">
           <span class="fw-player-row__name">${escapeHtml(p.display_name)}</span>
           ${titleHtml}
         </div>
+        ${honkBtn}
         <span class="fw-player-row__score">${score}</span>
         ${wagerDisplay}
       </div>
@@ -2758,11 +2758,11 @@ async function showResultsScreen() {
           ${avatarHtml}
           ${honkBadge}
         </div>
-        ${honkBtn}
         <div class="name-stack">
           <span class="results-row__name">${escapeHtml(p.display_name)}${p.is_host ? ' <span class="badge badge--host">Host</span>' : ''}</span>
           ${titleHtml}
         </div>
+        ${honkBtn}
         <span class="results-row__fw-delta ${fwClass}">${fwSign}${fwDelta}</span>
         <span class="results-row__score">${state.scores[p.id] || 0}</span>
       </div>
