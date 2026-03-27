@@ -620,14 +620,9 @@ function _activateHostControlsForCurrentPhase() {
   }
 
   if (phase === 'scores_reveal') {
-    // Scores screen: show action button + edit scores
+    // Scores screen: show action button
     const btn = $('#btn-scores-action');
     if (btn) btn.classList.remove('hidden');
-    const editBtn = $('#btn-edit-scores');
-    if (editBtn && state.currentQuestion > 0) {
-      editBtn.classList.remove('hidden');
-      editBtn.onclick = showScoreEditSheet;
-    }
   }
 
   if (phase === 'final_wager') {
@@ -1147,9 +1142,6 @@ function showQuestionScreen() {
   // leaving NO way to close the drawer. Game was completely blocked.
   hideChatBar();
 
-  // Hide scores corrections from previous round
-  const corrections = $('#scores-answer-corrections');
-  if (corrections) corrections.classList.add('hidden');
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
@@ -2039,14 +2031,6 @@ async function showScoresScreen() {
     }
   }
 
-  // Host: show "Edit Scores" button to review/correct past judgments
-  const editBtn = $('#btn-edit-scores');
-  if (state.room.isHost && state.currentQuestion > 0) {
-    editBtn.classList.remove('hidden');
-    editBtn.onclick = showScoreEditSheet;
-  } else {
-    editBtn.classList.add('hidden');
-  }
 }
 
 function animateScores() {
@@ -2173,114 +2157,11 @@ function showNextButtonOnScores() {
   btn.style.opacity = '1';
   btn.classList.remove('hidden');
 
-  // Host: show inline answer corrections for current question
-  renderScoresCorrections();
-
   // Footer content changed — reposition chat toggle above it
   requestAnimationFrame(repositionChatBar);
 }
 
-/**
- * Render compact answer rows with toggle switches on the scores screen,
- * so the host can correct judgments without opening the Edit Scores sheet.
- */
-function renderScoresCorrections() {
-  const wrapper = $('#scores-answer-corrections');
-  const list = $('#scores-corrections-list');
-  if (!wrapper || !list) return;
 
-  if (!state.room.isHost || !state.currentAnswers.length) {
-    wrapper.classList.add('hidden');
-    return;
-  }
-
-  list.innerHTML = '';
-
-  for (const player of state.players) {
-    const answer = state.currentAnswers.find(a => a.player_id === player.id);
-    if (!answer || !answer.submitted_answer) continue;
-
-    const isCorrect = answer.is_correct || false;
-    const row = document.createElement('div');
-    row.className = 'answer-row';
-    row.dataset.playerId = player.id;
-
-    const toggleClass = isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect';
-    const answerClass = isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect';
-
-    row.innerHTML = `
-      <div class="answer-row__top">
-        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
-        <span class="answer-row__wager ${isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect'}">${answer.wager || 0}</span>
-        <div class="answer-toggle ${toggleClass} answer-toggle--host" data-answer-id="${answer.id}">
-          <div class="answer-toggle__thumb"></div>
-        </div>
-      </div>
-      <div class="answer-row__bottom">
-        <span class="answer-row__answer ${answerClass}">${escapeHtml(answer.submitted_answer)}</span>
-      </div>
-    `;
-    list.appendChild(row);
-  }
-
-  // If no rows were rendered (all blank answers), hide the section
-  if (list.children.length === 0) {
-    wrapper.classList.add('hidden');
-    return;
-  }
-
-  // Wire toggle click handler
-  list.onclick = async (e) => {
-    const toggle = e.target.closest('.answer-toggle--host');
-    if (!toggle) return;
-
-    const answerId = toggle.dataset.answerId;
-    if (!answerId) return;
-
-    const answer = state.currentAnswers.find(a => String(a.id) === String(answerId));
-    if (!answer) return;
-
-    const newCorrect = !answer.is_correct;
-    const newScore = newCorrect ? answer.wager : (state.isFinalWagerRound ? -answer.wager : 0);
-
-    // Compute score change locally (don't fetch from DB — it hasn't been persisted yet)
-    const oldScoreEarned = answer.score_earned || 0;
-    answer.is_correct = newCorrect;
-    answer.score_earned = newScore;
-    state.scores[answer.player_id] = (state.scores[answer.player_id] || 0) - oldScoreEarned + newScore;
-
-    // Re-render the corrections section
-    renderScoresCorrections();
-
-    // Update score rows in the animated list above
-    document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
-      const pid = row.dataset.playerId;
-      const scoreEl = row.querySelector('.score-anim-row__score');
-      if (scoreEl) {
-        scoreEl.textContent = state.scores[pid] || 0;
-        scoreEl.dataset.to = state.scores[pid] || 0;
-        row.dataset.newScore = state.scores[pid] || 0;
-      }
-      const deltaEl = row.querySelector('.score-anim-row__delta');
-      if (deltaEl) {
-        const prev = state.previousScores[pid] || 0;
-        const curr = state.scores[pid] || 0;
-        const delta = curr - prev;
-        deltaEl.textContent = (delta > 0 ? '+' : '') + delta;
-        deltaEl.className = 'score-anim-row__delta ' + (
-          delta > 0 ? 'score-anim-row__delta--positive' :
-          delta < 0 ? 'score-anim-row__delta--negative' :
-          'score-anim-row__delta--zero'
-        );
-      }
-    });
-
-    // Persist to DB (fire-and-forget — Realtime won't interfere on scores_reveal phase)
-    updateAnswerJudgment(answerId, newCorrect, newScore);
-  };
-
-  wrapper.classList.remove('hidden');
-}
 
 async function handleFinalWager() {
   state.gamePhase = 'final_wager';
@@ -3078,6 +2959,29 @@ async function handleReviewQuestions() {
       playerAnswerHtml = `<div class="review-item__player-answer ${correctClass}">${escapeHtml(myAnswer.submitted_answer)}</div>`;
     }
 
+    // Host: show ALL player answers with toggle switches for score correction
+    let hostAnswersHtml = '';
+    if (state.room.isHost) {
+      const qAnswers = allAnswers.filter(a => a.question_number === i && a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__');
+      if (qAnswers.length > 0) {
+        const isFinalWager = i === state.totalQuestions;
+        hostAnswersHtml = '<div class="review-item__answers">' + qAnswers.map(a => {
+          const player = state.players.find(p => p.id === a.player_id);
+          const name = player ? escapeHtml(player.display_name) : 'Unknown';
+          const isCorrect = a.is_correct || false;
+          const toggleClass = isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect';
+          const answerClass = isCorrect ? 'review-item__player-answer--correct' : 'review-item__player-answer--incorrect';
+          return `<div class="review-answer-row" data-answer-id="${a.id}" data-question-idx="${i}" data-is-final="${isFinalWager}">
+            <span class="review-answer-row__name">${name}</span>
+            <span class="review-answer-row__text ${answerClass}">${escapeHtml(a.submitted_answer)}</span>
+            <div class="answer-toggle ${toggleClass} answer-toggle--host" data-answer-id="${a.id}">
+              <div class="answer-toggle__thumb"></div>
+            </div>
+          </div>`;
+        }).join('') + '</div>';
+      }
+    }
+
     const item = document.createElement('div');
     const isFlagged = existing === 'thumbs_down' || existing === 'flag';
     item.className = 'review-item' + (isFlagged ? ' review-item--flagged' : '');
@@ -3085,7 +2989,7 @@ async function handleReviewQuestions() {
       <div class="review-item__num">${label}</div>
       <div class="review-item__q">${escapeHtml(getQuestionText(q))}</div>
       <div class="review-item__a">${escapeHtml(getCorrectAnswer(q))}</div>
-      ${playerAnswerHtml}
+      ${state.room.isHost ? hostAnswersHtml : playerAnswerHtml}
       <div class="review-item__feedback">
         <button class="feedback-btn${existing === 'thumbs_up' ? ' feedback-btn--active' : ''}" data-type="thumbs_up" data-qid="${q.id}" aria-label="Thumbs up">👍</button>
         <button class="feedback-btn${existing === 'thumbs_down' ? ' feedback-btn--active' : ''}" data-type="thumbs_down" data-qid="${q.id}" aria-label="Thumbs down">👎</button>
@@ -3152,6 +3056,42 @@ async function handleReviewQuestions() {
       reviewItem.classList.toggle('review-item--flagged', fb === 'flag' || fb === 'thumbs_down');
     });
   });
+
+  // Host: wire toggle handlers for score correction
+  if (state.room.isHost) {
+    list.querySelectorAll('.answer-toggle--host').forEach(toggle => {
+      toggle.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const answerId = toggle.dataset.answerId;
+        const answer = allAnswers.find(a => String(a.id) === String(answerId));
+        if (!answer) return;
+        const row = toggle.closest('.review-answer-row');
+        const isFinalWager = row?.dataset.isFinal === 'true';
+
+        const newCorrect = !answer.is_correct;
+        const newScore = newCorrect ? answer.wager : (isFinalWager ? -answer.wager : 0);
+
+        // Update local state
+        answer.is_correct = newCorrect;
+        answer.score_earned = newScore;
+
+        // Update toggle visual
+        toggle.classList.toggle('answer-toggle--correct', newCorrect);
+        toggle.classList.toggle('answer-toggle--incorrect', !newCorrect);
+
+        // Update answer text color
+        const textEl = row?.querySelector('.review-answer-row__text');
+        if (textEl) {
+          textEl.classList.toggle('review-item__player-answer--correct', newCorrect);
+          textEl.classList.toggle('review-item__player-answer--incorrect', !newCorrect);
+        }
+
+        // Persist to DB then re-render results behind the overlay
+        await updateAnswerJudgment(answerId, newCorrect, newScore);
+        showResultsScreen();
+      });
+    });
+  }
 
   overlay.classList.add('active');
 
@@ -3851,9 +3791,6 @@ $('#question-browser-list').addEventListener('click', (e) => {
     });
   }
 });
-
-// Wire up the browser icon
-$('#btn-question-browser').onclick = openQuestionBrowser;
 
 // Swipe-down to dismiss bottom sheet
 (function initSheetSwipe() {
