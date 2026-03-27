@@ -2223,6 +2223,12 @@ function renderScoresCorrections() {
     list.appendChild(row);
   }
 
+  // If no rows were rendered (all blank answers), hide the section
+  if (list.children.length === 0) {
+    wrapper.classList.add('hidden');
+    return;
+  }
+
   // Wire toggle click handler
   list.onclick = async (e) => {
     const toggle = e.target.closest('.answer-toggle--host');
@@ -2237,15 +2243,16 @@ function renderScoresCorrections() {
     const newCorrect = !answer.is_correct;
     const newScore = newCorrect ? answer.wager : (state.isFinalWagerRound ? -answer.wager : 0);
 
-    // Update local cache
+    // Compute score change locally (don't fetch from DB — it hasn't been persisted yet)
+    const oldScoreEarned = answer.score_earned || 0;
     answer.is_correct = newCorrect;
     answer.score_earned = newScore;
+    state.scores[answer.player_id] = (state.scores[answer.player_id] || 0) - oldScoreEarned + newScore;
 
     // Re-render the corrections section
     renderScoresCorrections();
 
-    // Recalculate and update the score rows above
-    await updateScores();
+    // Update score rows in the animated list above
     document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
       const pid = row.dataset.playerId;
       const scoreEl = row.querySelector('.score-anim-row__score');
@@ -2254,7 +2261,6 @@ function renderScoresCorrections() {
         scoreEl.dataset.to = state.scores[pid] || 0;
         row.dataset.newScore = state.scores[pid] || 0;
       }
-      // Update delta
       const deltaEl = row.querySelector('.score-anim-row__delta');
       if (deltaEl) {
         const prev = state.previousScores[pid] || 0;
@@ -2269,8 +2275,8 @@ function renderScoresCorrections() {
       }
     });
 
-    // Persist to DB
-    await updateAnswerJudgment(answerId, newCorrect, newScore);
+    // Persist to DB (fire-and-forget — Realtime won't interfere on scores_reveal phase)
+    updateAnswerJudgment(answerId, newCorrect, newScore);
   };
 
   wrapper.classList.remove('hidden');
@@ -3646,7 +3652,7 @@ function initFeedbackListeners() {
 // STALE PLAYER AUTO-KICK (5 min disconnect → removed)
 // ============================================
 const STALE_TIMEOUT = 30 * 1000; // 30 seconds — fast fallback for when unload beacons fail
-let _staleCheckCount = 0;
+let _staleCheckCount = -1;
 
 async function checkStalePresence() {
   _staleCheckCount++;
