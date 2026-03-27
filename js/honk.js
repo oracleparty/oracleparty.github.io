@@ -17,24 +17,17 @@ honkAudio.preload = 'auto';
 let _honkMuted = false;
 
 // Mobile browsers require a user gesture before playing audio.
-// Unlock the HTMLAudioElement on the first tap anywhere on the page.
-// Uses muted + volume 0 for guaranteed silence (muted is a hard gate
-// that all browsers respect, unlike volume which can race on some devices).
+// Unlock the audio context on the first tap anywhere on the page by
+// playing a tiny silent WAV via a SEPARATE disposable Audio element.
+// This avoids touching honkAudio (no muted/paused state that could
+// interfere if the first user interaction is a honk button tap).
+const _SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 let _audioUnlocked = false;
 function _unlockAudio() {
   if (_audioUnlocked) return;
   _audioUnlocked = true;
-  honkAudio.muted = true;
-  honkAudio.volume = 0;
-  honkAudio.play().then(() => {
-    honkAudio.pause();
-    honkAudio.currentTime = 0;
-    honkAudio.muted = false;
-    honkAudio.volume = 1.0;
-  }).catch(() => {
-    honkAudio.muted = false;
-    honkAudio.volume = 1.0;
-  });
+  const tmp = new Audio(_SILENT_WAV);
+  tmp.play().catch(() => {});
   document.removeEventListener('touchstart', _unlockAudio, true);
   document.removeEventListener('click', _unlockAudio, true);
 }
