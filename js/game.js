@@ -2364,7 +2364,7 @@ function showScoreEditSheet() {
   answersEl.style.display = 'none';
   listEl.style.display = '';
 
-  const maxQ = Math.min(state.currentQuestion, state.questions.length);
+  const maxQ = Math.min(state.currentQuestion + 1, state.questions.length);
   listEl.innerHTML = '';
   for (let i = 0; i < maxQ; i++) {
     const q = state.questions[i];
@@ -3889,6 +3889,10 @@ function cleanup() {
   if (state._hotJoinPollId) {
     clearInterval(state._hotJoinPollId);
     state._hotJoinPollId = null;
+  }
+  if (state._dvAutoAdvanceId) {
+    clearTimeout(state._dvAutoAdvanceId);
+    state._dvAutoAdvanceId = null;
   }
   if (state.presenceHeartbeatId) {
     clearInterval(state.presenceHeartbeatId);
