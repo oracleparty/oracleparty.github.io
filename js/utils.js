@@ -12,7 +12,7 @@ export const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
  * Transition between two screens.
  * Fades out the current screen, then fades in the next.
  */
-export function transitionScreens(fromEl, toEl, duration = 800) {
+export function transitionScreens(fromEl, toEl, duration = 500) {
   return new Promise((resolve) => {
     fromEl.classList.add('fade-out');
     fromEl.classList.remove('active');

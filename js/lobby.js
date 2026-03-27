@@ -154,7 +154,7 @@ async function init() {
   playerPollInterval = setInterval(() => {
     loadPlayers();
     checkStalePresence();
-  }, 15000);
+  }, 8000);
 
   // Presence tracking (away/active state)
   presenceChannel = createPresenceChannel(room.id, String(room.playerId));

@@ -640,14 +640,16 @@ function _activateHostControlsForCurrentPhase() {
   }
 
   if (phase === 'difficulty_vote') {
-    // Difficulty vote: show Reveal Question button
-    const revealBtn = $('#btn-dv-reveal');
-    if (revealBtn) {
-      revealBtn.classList.remove('hidden');
-      revealBtn.disabled = false;
-      revealBtn.style.opacity = '1';
-      revealBtn.textContent = 'Reveal Question';
-      revealBtn.onclick = handleDifficultyVoteComplete;
+    // Difficulty vote: show Reveal Question button (host only)
+    if (state.room.isHost) {
+      const revealBtn = $('#btn-dv-reveal');
+      if (revealBtn) {
+        revealBtn.classList.remove('hidden');
+        revealBtn.disabled = false;
+        revealBtn.style.opacity = '1';
+        revealBtn.textContent = 'Reveal Question';
+        revealBtn.onclick = handleDifficultyVoteComplete;
+      }
     }
   }
 }
@@ -2260,8 +2262,9 @@ function showFinalWagerScreen() {
   // Transition
   const currentScreen = document.querySelector('.screen.active');
   const fwScreen = $('#final-wager-screen');
-  if (currentScreen && currentScreen !== fwScreen) {
-    transitionScreens(currentScreen, fwScreen);
+  if (currentScreen && currentScreen !== fwScreen && !_screenTransitioning) {
+    _screenTransitioning = true;
+    transitionScreens(currentScreen, fwScreen).finally(() => { _screenTransitioning = false; });
   }
 }
 
@@ -2496,6 +2499,15 @@ function showDifficultyVoteScreen() {
     revealBtn.classList.add('hidden');
   }
 
+  // Auto-advance timeout: if host hasn't revealed after 30s, auto-trigger
+  if (state.room.isHost) {
+    if (state._dvAutoAdvanceId) clearTimeout(state._dvAutoAdvanceId);
+    state._dvAutoAdvanceId = setTimeout(() => {
+      state._dvAutoAdvanceId = null;
+      if (state.gamePhase === 'difficulty_vote') handleDifficultyVoteComplete();
+    }, 30000);
+  }
+
   // Set up broadcast channel for votes
   if (state.difficultyVoteChannel) {
     supabase.removeChannel(state.difficultyVoteChannel);
@@ -2538,10 +2550,11 @@ function showDifficultyVoteScreen() {
   hideChatBar();
 
   // Screen transition
-  const currentScreen = document.querySelector('.screen[style*="display: flex"], .screen.active:not([style*="display: none"])');
+  const currentScreen = document.querySelector('.screen.active');
   const voteScreen = $('#difficulty-vote-screen');
-  if (currentScreen && currentScreen !== voteScreen) {
-    transitionScreens(currentScreen, voteScreen);
+  if (currentScreen && currentScreen !== voteScreen && !_screenTransitioning) {
+    _screenTransitioning = true;
+    transitionScreens(currentScreen, voteScreen).finally(() => { _screenTransitioning = false; });
   }
 }
 
@@ -2570,28 +2583,55 @@ function renderDifficultyTally() {
 }
 
 async function handleDifficultyVoteComplete() {
-  // Determine winner (majority, tie → medium)
+  // Clear auto-advance timeout
+  if (state._dvAutoAdvanceId) { clearTimeout(state._dvAutoAdvanceId); state._dvAutoAdvanceId = null; }
+
+  // Tally votes
   const tally = { easy: 0, medium: 0, hard: 0 };
   for (const d of Object.values(state.difficultyVotes)) {
     if (tally[d] !== undefined) tally[d]++;
   }
-  let winner = 'medium';
-  let maxVotes = 0;
-  for (const [diff, count] of Object.entries(tally)) {
-    if (count > maxVotes) { maxVotes = count; winner = diff; }
-  }
+
+  // Weighted random selection based on vote distribution
+  const total = tally.easy + tally.medium + tally.hard;
+  const weights = total === 0
+    ? { easy: 1, medium: 1, hard: 1 }
+    : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
+  const weightTotal = weights.easy + weights.medium + weights.hard;
+  const rand = Math.random() * weightTotal;
+  let winner;
+  if (rand < weights.easy) winner = 'easy';
+  else if (rand < weights.easy + weights.medium) winner = 'medium';
+  else winner = 'hard';
 
   state.votedDifficulty = winner;
 
-  // Show result briefly
-  const resultEl = $('#dv-result');
-  resultEl.textContent = `The group chose: ${winner.charAt(0).toUpperCase() + winner.slice(1)}`;
-  resultEl.classList.remove('hidden');
+  // Rapid highlight animation — cycle through options, slowing down like a roulette
+  const diffOptions = ['easy', 'medium', 'hard'];
+  const buttons = document.querySelectorAll('.dv-option');
+  let idx = 0;
+  let delay = 80;
+  const totalSteps = 15;
 
-  // Highlight winning button
-  document.querySelectorAll('.dv-option').forEach(btn => {
-    btn.classList.toggle('dv-option--winner', btn.dataset.difficulty === winner);
-  });
+  for (let step = 0; step < totalSteps; step++) {
+    buttons.forEach(b => b.classList.remove('dv-option--highlight'));
+    const current = diffOptions[idx % 3];
+    const btn = document.querySelector(`.dv-option--${current}`);
+    if (btn) btn.classList.add('dv-option--highlight');
+    idx++;
+    delay += 25;
+    await new Promise(r => setTimeout(r, delay));
+  }
+
+  // Land on winner
+  buttons.forEach(b => b.classList.remove('dv-option--highlight', 'dv-option--winner'));
+  const winnerBtn = document.querySelector(`.dv-option--${winner}`);
+  if (winnerBtn) winnerBtn.classList.add('dv-option--winner');
+
+  // Show result text
+  const resultEl = $('#dv-result');
+  resultEl.textContent = `${winner.charAt(0).toUpperCase() + winner.slice(1)}!`;
+  resultEl.classList.remove('hidden');
 
   // Fetch a question matching the voted difficulty
   const usedIds = state.questions.map(q => q.id);

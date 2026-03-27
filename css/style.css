@@ -63,7 +63,7 @@
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --duration-fast: 200ms;
   --duration-med:  400ms;
-  --duration-slow: 800ms;
+  --duration-slow: 500ms;
 }
 
 /* --- Dark Theme --- */
@@ -4019,10 +4019,16 @@ body::after {
   border-color: var(--color-primary);
   background: var(--color-primary-glow);
 }
+.dv-option--highlight {
+  border-color: var(--color-text-dim);
+  background: var(--color-surface);
+  transform: scale(1.05);
+}
 .dv-option--winner {
   border-color: var(--color-primary);
   background: var(--color-primary-glow);
   box-shadow: 0 0 0 3px var(--color-primary-glow);
+  transform: scale(1.08);
 }
 .dv-option:disabled {
   opacity: 0.5;
