@@ -263,6 +263,20 @@ export function fuzzyMatch(submitted, correct, alternates = []) {
     const threshold = Math.max(1, Math.floor(normalizedCandidate.length * 0.25));
     const distance = levenshteinDistance(normalizedSubmitted, normalizedCandidate);
     if (distance <= threshold) return true;
+
+    // Last name matching: if the correct answer contains a space (likely a name),
+    // accept any single word longer than 3 characters from the correct answer.
+    // e.g. "Antoinette" matches "Marie Antoinette", "Booth" matches "John Wilkes Booth"
+    if (normalizedCandidate.includes(' ')) {
+      const words = normalizedCandidate.split(/\s+/);
+      for (const word of words) {
+        if (word.length > 3) {
+          const wordDist = levenshteinDistance(normalizedSubmitted, word);
+          const wordThreshold = Math.max(1, Math.floor(word.length * 0.25));
+          if (wordDist <= wordThreshold) return true;
+        }
+      }
+    }
   }
 
   return false;

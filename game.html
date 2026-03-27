@@ -156,6 +156,7 @@
 
       <div class="game-footer">
         <button id="btn-scores-action" class="btn btn-primary btn-block hidden">Update Scores</button>
+        <button id="btn-edit-scores" class="btn-edit-scores hidden" aria-label="Edit scores">&#9998; Edit</button>
         <p id="scores-waiting-host" class="waiting-host-text hidden">Waiting for host...</p>
       </div>
     </div>
@@ -273,6 +274,19 @@
       <button id="btn-close-review" class="review-overlay__done">Done</button>
     </div>
     <div id="review-list" class="review-list"></div>
+  </div>
+
+  <!-- ==============================
+       Score Edit Bottom Sheet (Host Only)
+       ============================== -->
+  <div id="score-edit-sheet" class="bottom-sheet">
+    <div id="score-edit-backdrop" class="bottom-sheet__backdrop"></div>
+    <div id="score-edit-panel" class="bottom-sheet__panel">
+      <div class="bottom-sheet__handle"></div>
+      <div class="bottom-sheet__title">Edit Scores</div>
+      <div id="score-edit-question-list" class="bottom-sheet__list"></div>
+      <div id="score-edit-answers" style="display:none;"></div>
+    </div>
   </div>
 
   <!-- ==============================

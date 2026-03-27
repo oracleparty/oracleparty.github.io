@@ -1269,10 +1269,6 @@ body::after {
   width: 100%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  background: var(--color-surface);
-  border: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-md);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 .player-item {
@@ -1290,7 +1286,7 @@ body::after {
 
 .player-item__name {
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2119,7 +2115,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2262,7 +2258,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2459,7 +2455,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2559,7 +2555,7 @@ body::after {
   font-weight: 500;
   color: var(--color-text);
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3026,6 +3022,8 @@ body::after {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 120px;
 }
 
 /* ============================================
@@ -3922,6 +3920,59 @@ body::after {
 
 .profile-switch input:checked + .profile-switch__slider::before {
   transform: translateX(20px);
+}
+
+/* ============================================
+   SCORE EDIT (Host)
+   ============================================ */
+
+.btn-edit-scores {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: var(--space-xs) var(--space-sm);
+  margin: 0 auto;
+  display: block;
+}
+.btn-edit-scores:active {
+  color: var(--color-primary);
+}
+.btn-edit-scores.hidden {
+  display: none;
+}
+
+.score-edit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-bg-deep);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+.score-edit-row:active {
+  background: var(--color-bg-deep);
+}
+.score-edit-row__num {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--color-primary);
+  min-width: 28px;
+}
+.score-edit-row__text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ============================================

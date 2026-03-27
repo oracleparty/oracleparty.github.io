@@ -620,9 +620,14 @@ function _activateHostControlsForCurrentPhase() {
   }
 
   if (phase === 'scores_reveal') {
-    // Scores screen: show action button
+    // Scores screen: show action button + edit scores
     const btn = $('#btn-scores-action');
     if (btn) btn.classList.remove('hidden');
+    const editBtn = $('#btn-edit-scores');
+    if (editBtn && state.currentQuestion > 0) {
+      editBtn.classList.remove('hidden');
+      editBtn.onclick = showScoreEditSheet;
+    }
   }
 
   if (phase === 'final_wager') {
@@ -954,6 +959,11 @@ async function handlePhaseTransition(phase) {
       showDifficultyVoteScreen();
       break;
     case 'final_question':
+      // Guard: skip duplicate events (same pattern as 'question' phase guard).
+      // Without this, the host's question_started_at write triggers a second
+      // Realtime event that re-runs this handler, nulling the timestamp and
+      // restarting the timer in a loop.
+      if (state.gamePhase === 'final_question') return;
       state.isFinalWagerRound = true;
       // Reset for the final question round (same resets as 'question' phase)
       state.currentWager = state.finalWager;
@@ -2031,6 +2041,14 @@ async function showScoresScreen() {
     }
   }
 
+  // Host: show "Edit Scores" button to review/correct past judgments
+  const editBtn = $('#btn-edit-scores');
+  if (state.room.isHost && state.currentQuestion > 0) {
+    editBtn.classList.remove('hidden');
+    editBtn.onclick = showScoreEditSheet;
+  } else {
+    editBtn.classList.add('hidden');
+  }
 }
 
 function animateScores() {
@@ -2330,6 +2348,113 @@ async function handleRevealFinalQuestion() {
 // ============================================
 // SCORE EDIT (Host Only)
 // ============================================
+
+function showScoreEditSheet() {
+  const sheet = $('#score-edit-sheet');
+  const listEl = $('#score-edit-question-list');
+  const answersEl = $('#score-edit-answers');
+
+  answersEl.style.display = 'none';
+  listEl.style.display = '';
+
+  const maxQ = Math.min(state.currentQuestion, state.questions.length);
+  listEl.innerHTML = '';
+  for (let i = 0; i < maxQ; i++) {
+    const q = state.questions[i];
+    if (!q) continue;
+    const text = getQuestionText(q);
+    const truncated = text.length > 50 ? text.slice(0, 50) + '\u2026' : text;
+    const row = document.createElement('button');
+    row.className = 'score-edit-row';
+    row.innerHTML = `<span class="score-edit-row__num">Q${i + 1}</span> <span class="score-edit-row__text">${escapeHtml(truncated)}</span>`;
+    row.onclick = () => openScoreEditQuestion(i);
+    listEl.appendChild(row);
+  }
+
+  $('#score-edit-backdrop').onclick = () => sheet.classList.remove('active');
+  sheet.classList.add('active');
+}
+
+async function openScoreEditQuestion(questionNumber) {
+  const listEl = $('#score-edit-question-list');
+  const answersEl = $('#score-edit-answers');
+
+  listEl.style.display = 'none';
+  answersEl.style.display = '';
+  answersEl.innerHTML = '<p style="text-align:center; color: var(--color-text-muted);">Loading...</p>';
+
+  const answers = await fetchAnswersForQuestion(state.room.id, questionNumber);
+  const q = state.questions[questionNumber];
+
+  answersEl.innerHTML = `
+    <div style="margin-bottom: var(--space-md);">
+      <button class="btn btn-secondary" id="score-edit-back" style="font-size: var(--text-xs); padding: var(--space-xs) var(--space-sm);">&larr; Back</button>
+      <strong style="margin-left: var(--space-sm);">Q${questionNumber + 1}: ${escapeHtml(getCorrectAnswer(q))}</strong>
+    </div>
+  `;
+
+  for (const player of state.players) {
+    const answer = answers.find(a => String(a.player_id) === String(player.id));
+    if (!answer) continue;
+
+    const isCorrect = answer.is_correct || false;
+    const submittedText = (answer.submitted_answer || '').trim();
+    const displayText = (!submittedText || submittedText === '__WAGER_LOCKED__') ? 'No answer' : escapeHtml(submittedText);
+    const colorClass = isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect';
+
+    const row = document.createElement('div');
+    row.className = 'answer-row';
+    row.dataset.answerId = answer.id;
+    row.innerHTML = `
+      <div class="answer-row__top">
+        ${renderAvatar({ displayName: player.display_name, avatarColor: player.avatar_color, avatarEmoji: player.avatar_emoji })}
+        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+        <span class="answer-row__wager ${isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect'}">${answer.wager}</span>
+        <div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}" data-question-number="${questionNumber}" data-player-name="${escapeHtml(player.display_name)}">
+          <div class="answer-toggle__thumb"></div>
+        </div>
+      </div>
+      <div class="answer-row__bottom">
+        <span class="answer-row__answer ${colorClass}">${displayText}</span>
+      </div>
+    `;
+    answersEl.appendChild(row);
+  }
+
+  $('#score-edit-back').onclick = () => {
+    answersEl.style.display = 'none';
+    listEl.style.display = '';
+  };
+
+  answersEl.onclick = async (e) => {
+    const toggle = e.target.closest('.answer-toggle--host');
+    if (!toggle) return;
+
+    const answerId = toggle.dataset.answerId;
+    const qNum = parseInt(toggle.dataset.questionNumber, 10);
+    const playerName = toggle.dataset.playerName;
+    const answer = answers.find(a => String(a.id) === String(answerId));
+    if (!answer) return;
+
+    const newCorrect = !answer.is_correct;
+    const isFinal = qNum >= state.totalQuestions;
+    const newScore = newCorrect ? answer.wager : (isFinal ? -answer.wager : 0);
+
+    answer.is_correct = newCorrect;
+    answer.score_earned = newScore;
+
+    await updateAnswerJudgment(answerId, newCorrect, newScore);
+    await updateScores();
+    openScoreEditQuestion(qNum);
+    _lastScoresRenderedForQuestion = -1;
+    showScoresScreen();
+
+    const sign = newScore >= 0 ? '+' : '';
+    await sendMessage(state.room.id, 'System',
+      `Host changed Q${qNum + 1}: ${playerName} marked ${newCorrect ? 'correct' : 'incorrect'} (${sign}${newScore} points)`
+    );
+  };
+}
 
 // ============================================
 // DIFFICULTY VOTE SCREEN
