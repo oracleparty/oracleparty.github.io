@@ -38,10 +38,9 @@ document.addEventListener('click', _unlockAudio, true);
 export function setHonkMuted(muted) { _honkMuted = muted; }
 
 function playHonk() {
-  if (_honkMuted) return;
-  // Reuse single Audio instance — reset and replay instead of cloning
-  honkAudio.currentTime = 0;
-  honkAudio.play().catch(() => {});
+  const sound = new Audio('honk.mp3');
+  sound.volume = 1.0;
+  sound.play().catch(() => {});
 }
 
 // --- Animation ---

@@ -896,13 +896,18 @@ async function handlePhaseTransition(phase) {
       // Host skipped timer — stop local timer and auto-submit
       if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
       state.timerExpired = true;
-      // Auto-select LARGEST available wager if none was explicitly selected (punishes AFK)
-      if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
-        let found = false;
-        for (let i = state.totalQuestions; i >= 1; i--) {
-          if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
+      // Auto-select wager if none was explicitly selected
+      if (!state.wagerExplicitlySelected) {
+        if (state.isFinalWagerRound) {
+          state.currentWager = 20;
+        } else {
+          // Assign lowest available wager
+          let found = false;
+          for (let i = 1; i <= state.totalQuestions; i++) {
+            if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
+          }
+          if (!found) state.currentWager = 1;
         }
-        if (!found) state.currentWager = state.currentQuestion + 1;
       }
       if (!state.hasSubmitted) {
         // BUG 2 FIX: Show "Time's up!" feedback so the player knows why their answer
@@ -920,13 +925,18 @@ async function handlePhaseTransition(phase) {
       // Host clicked "Reveal Results" — stop local timer and show results
       if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
       state.timerExpired = true;
-      // Auto-select LARGEST available wager if none was explicitly selected (punishes AFK)
-      if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
-        let found = false;
-        for (let i = state.totalQuestions; i >= 1; i--) {
-          if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
+      // Auto-select wager if none was explicitly selected
+      if (!state.wagerExplicitlySelected) {
+        if (state.isFinalWagerRound) {
+          state.currentWager = 20;
+        } else {
+          // Assign lowest available wager
+          let found = false;
+          for (let i = 1; i <= state.totalQuestions; i++) {
+            if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
+          }
+          if (!found) state.currentWager = 1;
         }
-        if (!found) state.currentWager = state.currentQuestion + 1;
       }
       state.resultsRevealed = true;
       if (!state.hasSubmitted) {
@@ -1369,17 +1379,17 @@ async function handleTimerExpired() {
   const revealTimer = $('#reveal-timer');
   if (revealTimer) revealTimer.style.display = 'none';
 
-  // Auto-select LARGEST available wager if none was explicitly selected (punishes AFK)
-  if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
-    let found = false;
-    for (let i = state.totalQuestions; i >= 1; i--) {
-      if (!state.usedWagers.has(i)) {
-        state.currentWager = i;
-        found = true;
-        break;
+  // Auto-select wager if none was explicitly selected
+  if (!state.wagerExplicitlySelected) {
+    if (state.isFinalWagerRound) {
+      state.currentWager = 20;
+    } else {
+      let found = false;
+      for (let i = 1; i <= state.totalQuestions; i++) {
+        if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
       }
+      if (!found) state.currentWager = 1;
     }
-    if (!found) state.currentWager = state.currentQuestion + 1;
   }
 
   // Auto-submit with whatever is currently typed
@@ -1477,13 +1487,13 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   } else if (state.currentWager) {
     wager = state.currentWager;
   } else {
-    // Fallback: find LARGEST available wager (punishes AFK — auto-select paths should have set this already)
+    // Fallback: find lowest available wager
     wager = null;
-    for (let i = state.totalQuestions; i >= 1; i--) {
+    for (let i = 1; i <= state.totalQuestions; i++) {
       if (!state.usedWagers.has(i)) { wager = i; break; }
     }
     if (wager === null) {
-      wager = state.currentQuestion + 1;
+      wager = 1;
       console.warn('[Game] doSubmitAnswer: all wagers used, fallback to', wager);
     }
   }
@@ -1597,8 +1607,6 @@ async function showRevealScreen() {
     $('#reveal-waiting-host').classList.remove('hidden');
   }
 
-  // Pre-set chat bar offset so content has correct padding during transition
-  document.body.style.setProperty('--chat-bar-offset', '44px');
 
   // Transition to reveal screen — show chat bar AFTER transition so positioning is correct
   const currentScreen = document.querySelector('.screen.active');
@@ -2018,8 +2026,6 @@ async function showScoresScreen() {
     `;
   }).join('');
 
-  // Pre-set chat bar offset so content has correct padding during transition
-  document.body.style.setProperty('--chat-bar-offset', '44px');
 
   // Transition to scores screen — show chat bar AFTER transition
   const currentScreen = document.querySelector('.screen.active');
@@ -2606,29 +2612,12 @@ async function handleDifficultyVoteComplete() {
 
   state.votedDifficulty = winner;
 
-  // Rapid highlight animation — cycle through options, slowing down like a roulette
-  const diffOptions = ['easy', 'medium', 'hard'];
+  // Show winner immediately (animation disabled for now)
   const buttons = document.querySelectorAll('.dv-option');
-  let idx = 0;
-  let delay = 80;
-  const totalSteps = 15;
-
-  for (let step = 0; step < totalSteps; step++) {
-    buttons.forEach(b => b.classList.remove('dv-option--highlight'));
-    const current = diffOptions[idx % 3];
-    const btn = document.querySelector(`.dv-option--${current}`);
-    if (btn) btn.classList.add('dv-option--highlight');
-    idx++;
-    delay += 25;
-    await new Promise(r => setTimeout(r, delay));
-  }
-
-  // Land on winner
   buttons.forEach(b => b.classList.remove('dv-option--highlight', 'dv-option--winner'));
   const winnerBtn = document.querySelector(`.dv-option--${winner}`);
   if (winnerBtn) winnerBtn.classList.add('dv-option--winner');
 
-  // Show result text
   const resultEl = $('#dv-result');
   resultEl.textContent = `${winner.charAt(0).toUpperCase() + winner.slice(1)}!`;
   resultEl.classList.remove('hidden');
@@ -2809,8 +2798,6 @@ async function showResultsScreen() {
     `;
   }).join('');
 
-  // Pre-set chat bar offset so content has correct padding during transition
-  document.body.style.setProperty('--chat-bar-offset', '44px');
 
   // Transition — show chat bar AFTER transition
   const currentScreen = document.querySelector('.screen.active');
@@ -3301,28 +3288,17 @@ function showChatBar() {
   $('#chat-bar').classList.remove('hidden');
   setHonkMuted(false);
 
-  // Set content offset immediately so game-content padding adjusts on the same frame
-  document.body.style.setProperty('--chat-bar-offset', '44px');
-
   // Restore accumulated unread badge from messages that arrived during hidden phases
   if (state.unreadCount > 0 && !state.chatOpen) {
     const badge = $('#chat-bar-badge');
     badge.textContent = state.unreadCount;
     badge.classList.remove('hidden');
   }
-
-  // Position bar immediately (may measure old screen during transitions),
-  // then re-measure after the next frame and after transition completes.
-  repositionChatBar();
-  requestAnimationFrame(repositionChatBar);
-  setTimeout(repositionChatBar, 850);
 }
 
 function hideChatBar() {
   $('#chat-bar').classList.add('hidden');
   setHonkMuted(true);
-  document.body.style.setProperty('--chat-bar-offset', '0px');
-  // Always force-close the drawer when hiding the bar
   closeChatDrawer();
 }
 

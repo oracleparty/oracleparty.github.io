@@ -2753,10 +2753,7 @@ body::after {
 
 /* --- Chat Bar (slim bar below header) --- */
 .chat-bar {
-  position: fixed;
-  top: var(--chat-bar-top, 56px);
-  left: 0;
-  right: 0;
+  position: static;
   height: 40px;
   display: flex;
   align-items: center;
@@ -2764,10 +2761,8 @@ body::after {
   padding: 0 var(--space-lg);
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-surface-light);
-  z-index: 50;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: top var(--duration-fast) var(--ease-out);
 }
 
 .chat-bar:active {
