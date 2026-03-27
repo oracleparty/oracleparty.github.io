@@ -2356,85 +2356,6 @@ body::after {
   gap: var(--space-sm);
 }
 
-/* --- Question Browser Row --- */
-.qb-row {
-  background: var(--color-bg);
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
-}
-.qb-row__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-.qb-row__number {
-  font-family: var(--font-heading);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.qb-row__text {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 2px;
-}
-.qb-row__answer {
-  font-size: var(--text-xs);
-  color: var(--color-primary);
-  font-weight: 600;
-}
-.qb-row__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-}
-.qb-row__actions button {
-  background: none;
-  border: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  opacity: 0.5;
-  transition: opacity 0.15s, background 0.15s;
-}
-.qb-row__actions button.qb-active {
-  opacity: 1;
-  background: var(--color-surface-light);
-}
-
-/* Flag reason dropdown inside question browser — uses normal flow
-   (not absolute) so it isn't clipped by the panel's overflow-y:auto */
-.qb-flag-menu {
-  margin-top: var(--space-xs);
-  background: var(--color-surface);
-  border: 1px solid var(--color-surface-light);
-  border-radius: var(--radius-md);
-  padding: var(--space-xs) 0;
-  width: 100%;
-}
-.qb-flag-menu button {
-  display: block;
-  width: 100%;
-  padding: var(--space-xs) var(--space-md);
-  border: none;
-  border-radius: 0;
-  background: none;
-  color: var(--color-text);
-  font-size: var(--text-sm);
-  text-align: left;
-  cursor: pointer;
-  opacity: 1;
-}
-.qb-flag-menu button:active {
-  background: var(--color-surface-light);
-}
-
 /* --- Final Wager --- */
 .final-wager {
   text-align: center;
@@ -4001,42 +3922,6 @@ body::after {
 
 .profile-switch input:checked + .profile-switch__slider::before {
   transform: translateX(20px);
-}
-
-/* ============================================
-   SCORE EDIT (Host)
-   ============================================ */
-
-
-.score-edit-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  border: none;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-  border-bottom: 1px solid var(--color-bg-deep);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-text);
-}
-.score-edit-row:active {
-  background: var(--color-bg-deep);
-}
-.score-edit-row__num {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  color: var(--color-primary);
-  min-width: 28px;
-}
-.score-edit-row__text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ============================================
