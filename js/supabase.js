@@ -1228,6 +1228,61 @@ export async function upsertTitleUnlock(userId, wordId, level) {
 }
 
 // ============================================
+// LEADERBOARDS
+// ============================================
+
+/**
+ * Fetch all player_stats rows (cross-user) for leaderboard aggregation.
+ * RLS allows public read. Client-side groups by user_id.
+ */
+export async function fetchAllPlayerStatsForLeaderboard() {
+  const { data, error } = await supabase
+    .from('player_stats')
+    .select('user_id, category, questions_answered, correct_answers, games_played, wins');
+  if (error) { console.error('[Supabase] fetchAllPlayerStatsForLeaderboard failed:', error.message); return []; }
+  return data || [];
+}
+
+/**
+ * Fetch category leaderboard: top players for a specific category.
+ * Minimum 20 questions answered. Sorted by accuracy desc client-side.
+ */
+export async function fetchCategoryLeaderboard(category) {
+  const { data, error } = await supabase
+    .from('player_stats')
+    .select('user_id, questions_answered, correct_answers, games_played, wins')
+    .eq('category', category)
+    .gte('questions_answered', 20);
+  if (error) { console.error('[Supabase] fetchCategoryLeaderboard failed:', error.message); return []; }
+  return data || [];
+}
+
+/**
+ * Fetch game_history entries within a date range (for weekly leaderboard).
+ */
+export async function fetchGameHistorySince(sinceDate) {
+  const { data, error } = await supabase
+    .from('game_history')
+    .select('user_id, score, placement, total_players, played_at')
+    .gte('played_at', sinceDate);
+  if (error) { console.error('[Supabase] fetchGameHistorySince failed:', error.message); return []; }
+  return data || [];
+}
+
+/**
+ * Batch-fetch profiles for an array of user IDs (for leaderboard display).
+ */
+export async function fetchProfilesBatch(userIds) {
+  if (!userIds.length) return [];
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id, display_name, discriminator, avatar_color, avatar_emoji, title_slot1, title_slot2, title_slot3, title_builder_unlocked')
+    .in('user_id', userIds);
+  if (error) { console.error('[Supabase] fetchProfilesBatch failed:', error.message); return []; }
+  return data || [];
+}
+
+// ============================================
 // SITE SETTINGS (Admin)
 // ============================================
 

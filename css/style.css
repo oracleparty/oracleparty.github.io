@@ -4358,3 +4358,146 @@ body::after {
   font-size: var(--text-xs);
 }
 
+/* ============================================
+   LEADERBOARDS
+   ============================================ */
+
+.leaderboard-tab {
+  width: 100%;
+  padding: var(--space-sm) var(--space-lg);
+}
+
+.leaderboard-list {
+  width: 100%;
+}
+
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-bg-deep);
+}
+.leaderboard-row:last-child { border-bottom: none; }
+
+.leaderboard-row--me {
+  background: var(--color-primary-glow);
+  border-radius: var(--radius-sm);
+}
+
+.leaderboard-rank {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-text-dim);
+  min-width: 24px;
+  text-align: center;
+}
+.leaderboard-row:nth-child(1) .leaderboard-rank { color: #d4a017; }
+.leaderboard-row:nth-child(2) .leaderboard-rank { color: #8d8d8d; }
+.leaderboard-row:nth-child(3) .leaderboard-rank { color: #a0714f; }
+
+.leaderboard-row__info {
+  flex: 1;
+  min-width: 0;
+}
+.leaderboard-row__name {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.leaderboard-row__title {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.leaderboard-row__stats {
+  text-align: right;
+  flex-shrink: 0;
+}
+.leaderboard-row__primary {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.leaderboard-row__secondary {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.leaderboard-empty,
+.leaderboard-loading {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+  padding: var(--space-xl) 0;
+}
+
+.leaderboard-reset-note {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-xs) var(--space-lg);
+}
+
+/* Tertiary button (home screen leaderboard link) */
+.btn-tertiary {
+  background: none;
+  border: none;
+  color: var(--color-text-dim);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: var(--space-sm);
+  text-decoration: underline;
+  width: 100%;
+  text-align: center;
+}
+.btn-tertiary:active {
+  color: var(--color-primary);
+}
+
+/* ============================================
+   ROOM SESSION SCORES (Lobby)
+   ============================================ */
+
+.room-scores {
+  padding: 0 var(--space-lg) var(--space-sm);
+}
+
+.room-score-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-sm);
+}
+.room-score-row--me {
+  background: var(--color-primary-glow);
+  border-radius: var(--radius-sm);
+}
+.room-score-row__rank {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--color-text-dim);
+  min-width: 20px;
+  text-align: center;
+}
+.room-score-row__name {
+  flex: 1;
+  font-family: var(--font-heading);
+  color: var(--color-text);
+}
+.room-score-row__score {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-primary);
+}
+

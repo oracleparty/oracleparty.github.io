@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#F8F7F4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Oracle Party — Leaderboards</title>
+  <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="screen screen--scrollable active" style="display: flex; flex-direction: column;">
+
+    <div class="page-header">
+      <button class="page-header__back" id="btn-back">&larr;</button>
+      <h1 class="page-header__title">Leaderboards</h1>
+      <button class="theme-toggle" aria-label="Toggle theme">&#x1F319;</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="profile-tabs">
+      <button class="profile-tab active" data-tab="global">Global</button>
+      <button class="profile-tab" data-tab="weekly">Weekly</button>
+      <button class="profile-tab" data-tab="category">Category</button>
+      <button class="profile-tab" data-tab="friends">Friends</button>
+    </div>
+
+    <!-- Global -->
+    <div id="tab-global" class="leaderboard-tab">
+      <div id="lb-global-list" class="leaderboard-list">
+        <p class="leaderboard-loading">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Weekly -->
+    <div id="tab-weekly" class="leaderboard-tab" style="display:none;">
+      <p class="leaderboard-reset-note" id="weekly-reset-note"></p>
+      <div id="lb-weekly-list" class="leaderboard-list">
+        <p class="leaderboard-loading">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Category -->
+    <div id="tab-category" class="leaderboard-tab" style="display:none;">
+      <select id="lb-category-select" class="input" style="margin: var(--space-sm) var(--space-lg);">
+        <option value="history">History</option>
+        <option value="science">Science</option>
+        <option value="nature">Nature</option>
+        <option value="arts-literature">Arts & Lit</option>
+        <option value="culture-society">Culture</option>
+        <option value="pop-culture">Pop Culture</option>
+        <option value="world-geography">Geography</option>
+        <option value="technology">Technology</option>
+        <option value="sports">Sports</option>
+        <option value="food">Food</option>
+        <option value="logic">Logic</option>
+        <option value="wild-card">Wild Card</option>
+      </select>
+      <div id="lb-category-list" class="leaderboard-list">
+        <p class="leaderboard-loading">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Friends -->
+    <div id="tab-friends" class="leaderboard-tab" style="display:none;">
+      <div id="lb-friends-list" class="leaderboard-list">
+        <p class="leaderboard-loading">Loading...</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Display Name Modal -->
+  <div id="display-name-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">Who Goes There?</h2>
+      <input type="text" id="display-name-input" class="input" placeholder="Enter your name" aria-label="Display name" maxlength="20" autocomplete="off" spellcheck="false">
+      <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
+      <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/leaderboard.js"></script>
+
+</body>
+</html>

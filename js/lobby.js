@@ -226,6 +226,26 @@ async function init() {
   // Position chat bar below header
   repositionChatBar();
 
+  // Room session leaderboard (cumulative scores across games in this room)
+  const roomScoresKey = `oracle_party_room_scores_${room.id}`;
+  const roomScores = JSON.parse(sessionStorage.getItem(roomScoresKey) || '{}');
+  if (Object.keys(roomScores).length > 0) {
+    const scoresSection = $('#room-scores');
+    const scoresList = $('#room-scores-list');
+    if (scoresSection && scoresList) {
+      scoresSection.style.display = '';
+      const sorted = Object.entries(roomScores).sort((a, b) => b[1] - a[1]);
+      scoresList.innerHTML = sorted.map(([name, score], i) => {
+        const isMe = name === getDisplayName();
+        return `<div class="room-score-row${isMe ? ' room-score-row--me' : ''}">
+          <span class="room-score-row__rank">${i + 1}</span>
+          <span class="room-score-row__name">${escapeHtml(name)}</span>
+          <span class="room-score-row__score">${score} pts</span>
+        </div>`;
+      }).join('');
+    }
+  }
+
   // System message — detect if returning from a game
   // BUG 1 FIX: When returning via Play Again, show a clear message so the chat
   // doesn't look "empty". Chat messages are loaded from DB (they're preserved),

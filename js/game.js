@@ -2702,6 +2702,14 @@ async function showResultsScreen() {
     }
   }
 
+  // Room session cumulative scores (for lobby leaderboard)
+  const roomScoresKey = `oracle_party_room_scores_${state.room.id}`;
+  const cumulative = JSON.parse(sessionStorage.getItem(roomScoresKey) || '{}');
+  for (const p of state.players) {
+    cumulative[p.display_name] = (cumulative[p.display_name] || 0) + (state.scores[p.id] || 0);
+  }
+  sessionStorage.setItem(roomScoresKey, JSON.stringify(cumulative));
+
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   $('#results-category').textContent = `${meta.icon} ${meta.label}`;
 
