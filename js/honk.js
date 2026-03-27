@@ -17,17 +17,21 @@ honkAudio.preload = 'auto';
 let _honkMuted = false;
 
 // Mobile browsers require a user gesture before playing audio.
-// Unlock the audio context on the first tap anywhere on the page.
+// Unlock the audio context on the first tap anywhere on the page
+// using a silent buffer — never plays the actual honk sound.
 let _audioUnlocked = false;
 function _unlockAudio() {
   if (_audioUnlocked) return;
   _audioUnlocked = true;
-  honkAudio.volume = 0;
-  honkAudio.play().then(() => {
-    honkAudio.pause();
-    honkAudio.currentTime = 0;
-    honkAudio.volume = 1.0;
-  }).catch(() => {});
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+    ctx.close().catch(() => {});
+  } catch (e) { /* AudioContext not available */ }
   document.removeEventListener('touchstart', _unlockAudio, true);
   document.removeEventListener('click', _unlockAudio, true);
 }
@@ -74,9 +78,6 @@ function spawnGooseEmoji() {
  * @param {string} playerId - local player's ID
  * @param {Function} onCountUpdate - callback(playerId, newCount) for UI updates
  */
-let _countUpdateTimer = null;
-const _pendingCountTargets = new Set();
-
 export function initHonkSystem(roomId, playerId, onCountUpdate) {
   // Reset counts for new game/session
   for (const key in honkCounts) delete honkCounts[key];
@@ -87,23 +88,9 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
     .on('broadcast', { event: 'honk' }, ({ payload }) => {
       const targetId = String(payload.target_id);
 
-      // Update count instantly (in memory)
+      // Update count and UI immediately — no debounce, honk spam is fun
       honkCounts[targetId] = (honkCounts[targetId] || 0) + 1;
-
-      // Debounce UI update — batch rapid honks into one render per 100ms.
-      // Track ALL targets that received honks, not just the last one.
-      _pendingCountTargets.add(targetId);
-      if (!_countUpdateTimer) {
-        _countUpdateTimer = setTimeout(() => {
-          _countUpdateTimer = null;
-          if (onCountUpdate) {
-            for (const tid of _pendingCountTargets) {
-              onCountUpdate(tid, honkCounts[tid]);
-            }
-          }
-          _pendingCountTargets.clear();
-        }, 100);
-      }
+      if (onCountUpdate) onCountUpdate(targetId, honkCounts[targetId]);
 
       // If I'm the honked player, react! (skip sound+animation when muted)
       if (targetId === localPlayerId && !_honkMuted) {

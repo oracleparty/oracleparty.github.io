@@ -322,10 +322,10 @@ async function init() {
   }, 15000);
 
   // Poll for stale disconnected players (auto-kick after 5 min)
-  state.stalePollId = setInterval(checkStalePresence, 10000);
+  state.stalePollId = setInterval(checkStalePresence, 30000);
 
   // Periodic sync to catch missed Realtime messages after brief disconnections
-  state._syncIntervalId = setInterval(syncToCurrentState, 30000);
+  state._syncIntervalId = setInterval(syncToCurrentState, 60000);
 
   loadChatMessages();
   attachChatListeners();
@@ -1147,6 +1147,10 @@ function showQuestionScreen() {
   // leaving NO way to close the drawer. Game was completely blocked.
   hideChatBar();
 
+  // Hide scores corrections from previous round
+  const corrections = $('#scores-answer-corrections');
+  if (corrections) corrections.classList.add('hidden');
+
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
 
@@ -1589,6 +1593,9 @@ async function showRevealScreen() {
     $('#reveal-waiting-host').classList.remove('hidden');
   }
 
+  // Pre-set chat bar offset so content has correct padding during transition
+  document.body.style.setProperty('--chat-bar-offset', '44px');
+
   // Transition to reveal screen — show chat bar AFTER transition so positioning is correct
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
@@ -1998,6 +2005,9 @@ async function showScoresScreen() {
     `;
   }).join('');
 
+  // Pre-set chat bar offset so content has correct padding during transition
+  document.body.style.setProperty('--chat-bar-offset', '44px');
+
   // Transition to scores screen — show chat bar AFTER transition
   const currentScreen = document.querySelector('.screen.active');
   const scoresScreen = $('#scores-screen');
@@ -2162,8 +2172,108 @@ function showNextButtonOnScores() {
   btn.disabled = false;
   btn.style.opacity = '1';
   btn.classList.remove('hidden');
+
+  // Host: show inline answer corrections for current question
+  renderScoresCorrections();
+
   // Footer content changed — reposition chat toggle above it
   requestAnimationFrame(repositionChatBar);
+}
+
+/**
+ * Render compact answer rows with toggle switches on the scores screen,
+ * so the host can correct judgments without opening the Edit Scores sheet.
+ */
+function renderScoresCorrections() {
+  const wrapper = $('#scores-answer-corrections');
+  const list = $('#scores-corrections-list');
+  if (!wrapper || !list) return;
+
+  if (!state.room.isHost || !state.currentAnswers.length) {
+    wrapper.classList.add('hidden');
+    return;
+  }
+
+  list.innerHTML = '';
+
+  for (const player of state.players) {
+    const answer = state.currentAnswers.find(a => a.player_id === player.id);
+    if (!answer || !answer.submitted_answer) continue;
+
+    const isCorrect = answer.is_correct || false;
+    const row = document.createElement('div');
+    row.className = 'answer-row';
+    row.dataset.playerId = player.id;
+
+    const toggleClass = isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect';
+    const answerClass = isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect';
+
+    row.innerHTML = `
+      <div class="answer-row__top">
+        <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
+        <span class="answer-row__wager ${isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect'}">${answer.wager || 0}</span>
+        <div class="answer-toggle ${toggleClass} answer-toggle--host" data-answer-id="${answer.id}">
+          <div class="answer-toggle__thumb"></div>
+        </div>
+      </div>
+      <div class="answer-row__bottom">
+        <span class="answer-row__answer ${answerClass}">${escapeHtml(answer.submitted_answer)}</span>
+      </div>
+    `;
+    list.appendChild(row);
+  }
+
+  // Wire toggle click handler
+  list.onclick = async (e) => {
+    const toggle = e.target.closest('.answer-toggle--host');
+    if (!toggle) return;
+
+    const answerId = toggle.dataset.answerId;
+    if (!answerId) return;
+
+    const answer = state.currentAnswers.find(a => String(a.id) === String(answerId));
+    if (!answer) return;
+
+    const newCorrect = !answer.is_correct;
+    const newScore = newCorrect ? answer.wager : (state.isFinalWagerRound ? -answer.wager : 0);
+
+    // Update local cache
+    answer.is_correct = newCorrect;
+    answer.score_earned = newScore;
+
+    // Re-render the corrections section
+    renderScoresCorrections();
+
+    // Recalculate and update the score rows above
+    await updateScores();
+    document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
+      const pid = row.dataset.playerId;
+      const scoreEl = row.querySelector('.score-anim-row__score');
+      if (scoreEl) {
+        scoreEl.textContent = state.scores[pid] || 0;
+        scoreEl.dataset.to = state.scores[pid] || 0;
+        row.dataset.newScore = state.scores[pid] || 0;
+      }
+      // Update delta
+      const deltaEl = row.querySelector('.score-anim-row__delta');
+      if (deltaEl) {
+        const prev = state.previousScores[pid] || 0;
+        const curr = state.scores[pid] || 0;
+        const delta = curr - prev;
+        deltaEl.textContent = (delta > 0 ? '+' : '') + delta;
+        deltaEl.className = 'score-anim-row__delta ' + (
+          delta > 0 ? 'score-anim-row__delta--positive' :
+          delta < 0 ? 'score-anim-row__delta--negative' :
+          'score-anim-row__delta--zero'
+        );
+      }
+    });
+
+    // Persist to DB
+    await updateAnswerJudgment(answerId, newCorrect, newScore);
+  };
+
+  wrapper.classList.remove('hidden');
 }
 
 async function handleFinalWager() {
@@ -2767,6 +2877,9 @@ async function showResultsScreen() {
       </div>
     `;
   }).join('');
+
+  // Pre-set chat bar offset so content has correct padding during transition
+  document.body.style.setProperty('--chat-bar-offset', '44px');
 
   // Transition — show chat bar AFTER transition
   const currentScreen = document.querySelector('.screen.active');
@@ -3533,8 +3646,10 @@ function initFeedbackListeners() {
 // STALE PLAYER AUTO-KICK (5 min disconnect → removed)
 // ============================================
 const STALE_TIMEOUT = 30 * 1000; // 30 seconds — fast fallback for when unload beacons fail
+let _staleCheckCount = 0;
 
 async function checkStalePresence() {
+  _staleCheckCount++;
   const now = Date.now();
   for (const [id, since] of state.awayTimestamps) {
     if (now - since < STALE_TIMEOUT) continue;
@@ -3559,11 +3674,13 @@ async function checkStalePresence() {
 
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
-  // IDENTITY only sends the primary key). Re-fetch players and check.
-  const freshPlayers = await fetchPlayers(state.room.id);
-  if (freshPlayers.length > 0) {
-    // Always update — count OR is_host status may have changed
-    state.players = freshPlayers;
+  // IDENTITY only sends the primary key). Re-fetch players every 3rd call
+  // to reduce DB load while still catching missed events.
+  if (_staleCheckCount % 3 === 0) {
+    const freshPlayers = await fetchPlayers(state.room.id);
+    if (freshPlayers.length > 0) {
+      state.players = freshPlayers;
+    }
   }
   if (state.players.length > 0 && !state.players.some(p => p.is_host)) {
     // No host found — promote next player (same logic as handlePlayerChange)
