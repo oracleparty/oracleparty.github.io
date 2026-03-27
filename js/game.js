@@ -1688,10 +1688,10 @@ function renderRevealAnswers(answers) {
       row.innerHTML = `
         <div class="answer-row__top">
           ${honkAvatarHtml(player)}
+          ${honkBtnHtml(player)}
           <span class="answer-row__name">${escapeHtml(player.display_name)}${titleHtml}${hostBadge}</span>
           <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
           ${toggleHtml}
-          ${honkBtnHtml(player)}
         </div>
         <div class="answer-row__bottom">
           <span class="answer-row__answer ${colorClass}${emptyClass}">
@@ -1705,8 +1705,8 @@ function renderRevealAnswers(answers) {
       row.innerHTML = `
         <div class="answer-row__top">
           ${honkAvatarHtml(player)}
-          <span class="answer-row__name">${escapeHtml(player.display_name)}${titleHtml}${hostBadge}</span>
           ${honkBtnHtml(player)}
+          <span class="answer-row__name">${escapeHtml(player.display_name)}${titleHtml}${hostBadge}</span>
         </div>
         <div class="answer-row__bottom">
           <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
@@ -1999,10 +1999,10 @@ async function showScoresScreen() {
           ${avatarHtml}
           ${honkBadge}
         </div>
+        ${honkBtn}
         <span class="score-anim-row__name">${escapeHtml(p.display_name)}${titleHtml}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="score-anim-row__delta ${deltaClass}">${deltaSign}${delta}</span>
         <span class="score-anim-row__score" data-from="${prevScore}" data-to="${newScore}">${prevScore}</span>
-        ${honkBtn}
       </div>
     `;
   }).join('');
@@ -2019,26 +2019,13 @@ async function showScoresScreen() {
     showChatBar();
   }
 
-  // Host: show "Update Scores" button; non-host: auto-animate after delay
+  // Auto-animate scores for everyone (including host) — no manual trigger
   const btn = $('#btn-scores-action');
-  if (state.room.isHost) {
-    if (hasPreviousScores) {
-      btn.classList.remove('hidden');
-      btn.textContent = 'Update Scores';
-      btn.onclick = () => animateScores();
-      btn.disabled = false;
-      btn.style.opacity = '1';
-    } else {
-      // Reconnect: show final state immediately
-      showFinalScoresState();
-    }
+  btn.classList.add('hidden');
+  if (hasPreviousScores) {
+    setTimeout(() => animateScores(), 800);
   } else {
-    btn.classList.add('hidden');
-    if (hasPreviousScores) {
-      setTimeout(() => animateScores(), 1500);
-    } else {
-      showFinalScoresState();
-    }
+    showFinalScoresState();
   }
 
   // Host: show "Edit Scores" button to review/correct past judgments
@@ -2174,6 +2161,9 @@ function showNextButtonOnScores() {
   btn.disabled = false;
   btn.style.opacity = '1';
   btn.classList.remove('hidden');
+  // Use subtle secondary style instead of big primary CTA
+  btn.classList.remove('btn-primary');
+  btn.classList.add('btn-secondary');
 
   // Footer content changed — reposition chat toggle above it
   requestAnimationFrame(repositionChatBar);
@@ -2311,10 +2301,10 @@ function renderFinalWagerPlayers(lockedWagers) {
     return `
       <div class="fw-player-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         ${avatarHtml}
+        ${honkBtn}
         <span class="fw-player-row__name">${escapeHtml(p.display_name)}${titleHtml}</span>
         <span class="fw-player-row__score">${score}</span>
         ${wagerDisplay}
-        ${honkBtn}
       </div>
     `;
   }).join('');
@@ -2754,10 +2744,10 @@ async function showResultsScreen() {
           ${avatarHtml}
           ${honkBadge}
         </div>
+        ${honkBtn}
         <span class="results-row__name">${escapeHtml(p.display_name)}${titleHtml}${p.is_host ? '<span class="badge badge--host">Host</span>' : ''}</span>
         <span class="results-row__fw-delta ${fwClass}">${fwSign}${fwDelta}</span>
         <span class="results-row__score">${state.scores[p.id] || 0}</span>
-        ${honkBtn}
       </div>
     `;
   }).join('');

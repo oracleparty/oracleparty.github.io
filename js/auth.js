@@ -3,7 +3,7 @@
 // ============================================
 
 import { $, calculateTitle } from './utils.js';
-import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock } from './supabase.js';
+import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle } from './titles.js';
 
@@ -132,6 +132,8 @@ export async function initAuth() {
         }).catch(() => {});
         // Init global presence (non-blocking, only if user has friends)
         initGlobalPresence(session.user.id, profile.show_online_status !== false).catch(() => {});
+        // Subscribe to incoming friend requests for popup notifications
+        _initFriendRequestNotifications(session.user.id);
       } else if (!_currentProfile) {
         // Session exists but no profile — retry creation (handles partial signup)
         const displayName = getDisplayName() || session.user.user_metadata?.display_name;
@@ -450,4 +452,57 @@ function _injectSignInModal() {
     </div>
   `;
   document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// ============================================
+// FRIEND REQUEST NOTIFICATIONS
+// ============================================
+
+let _friendReqChannel = null;
+
+function _initFriendRequestNotifications(userId) {
+  if (_friendReqChannel) return;
+  _friendReqChannel = subscribeToFriendRequests(userId, async (payload) => {
+    if (payload.eventType !== 'INSERT' || payload.new?.status !== 'pending') return;
+    const { data: sender } = await fetchProfile(payload.new.sender_id);
+    const senderName = sender?.display_name || 'Someone';
+    _showFriendRequestToast(senderName, payload.new.id);
+  });
+}
+
+function _showFriendRequestToast(senderName, requestId) {
+  const existing = document.getElementById('friend-request-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'friend-request-toast';
+  toast.style.cssText = `
+    position: fixed; top: var(--space-lg); left: var(--space-lg); right: var(--space-lg);
+    background: var(--color-surface); border: 1px solid var(--color-surface-light);
+    border-radius: var(--radius-md); padding: var(--space-md);
+    z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap;
+  `;
+  toast.innerHTML = `
+    <span style="flex:1; font-size: var(--text-sm); font-weight: 500;">${senderName} sent a friend request</span>
+    <button data-fr-accept="${requestId}" class="btn btn-primary" style="padding: var(--space-xs) var(--space-md); font-size: var(--text-xs);">Accept</button>
+    <button data-fr-decline="${requestId}" class="btn btn-secondary" style="padding: var(--space-xs) var(--space-md); font-size: var(--text-xs);">Decline</button>
+  `;
+  document.body.appendChild(toast);
+
+  toast.onclick = async (e) => {
+    const accept = e.target.closest('[data-fr-accept]');
+    const decline = e.target.closest('[data-fr-decline]');
+    if (accept) {
+      accept.disabled = true;
+      await acceptFriendRequest(parseInt(accept.dataset.frAccept));
+      toast.remove();
+    } else if (decline) {
+      decline.disabled = true;
+      await declineFriendRequest(parseInt(decline.dataset.frDecline));
+      toast.remove();
+    }
+  };
+
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 10000);
 }

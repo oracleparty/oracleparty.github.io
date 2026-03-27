@@ -15,6 +15,7 @@ import {
   fetchSentRequests,
   acceptFriendRequest,
   declineFriendRequest,
+  cancelFriendRequest,
   createFriendship,
   removeFriend,
   fetchFriends,
@@ -271,11 +272,8 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       const alreadyFriends = await isFriend(viewer.user.id, userId);
       if (alreadyFriends) {
         actionsHtml = `<button class="btn btn-secondary btn-block" id="profile-card-remove-friend">Remove Friend</button>`;
-      } else if (roomId) {
-        // In shared room → instant add
-        actionsHtml = `<button class="btn btn-primary btn-block" id="profile-card-add-friend" data-instant="true">Add Friend</button>`;
       } else {
-        // Not in room → send request
+        // Send friend request (always requires acceptance)
         actionsHtml = `<button class="btn btn-secondary btn-block" id="profile-card-add-friend">Add Friend</button>`;
       }
     } else if (!viewer) {
@@ -309,16 +307,6 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     addFriendBtn.onclick = async () => {
       sheet.classList.remove('active');
       await showSignUpModal();
-    };
-  } else if (addFriendBtn && addFriendBtn.dataset.instant) {
-    // Instant add from shared room
-    addFriendBtn.onclick = async () => {
-      const viewer = getCurrentUser();
-      if (!viewer) return;
-      addFriendBtn.disabled = true;
-      addFriendBtn.textContent = 'Adding...';
-      await createFriendship(viewer.user.id, userId, 'lobby');
-      addFriendBtn.textContent = 'Friends \u2713';
     };
   } else if (addFriendBtn) {
     // Send friend request
@@ -740,6 +728,52 @@ async function loadFriendsTab(userId) {
     };
   } else {
     pendingSection.style.display = 'none';
+  }
+
+  // Sent requests (outgoing) — show with cancel button
+  const sentRequests = await fetchSentRequests(userId);
+  if (sentRequests.length > 0) {
+    const receiverIds = sentRequests.map(r => r.receiver_id);
+    const sentProfiles = await _batchFetchProfiles(receiverIds);
+
+    // Inject sent section after pending section
+    let sentSection = document.getElementById('sent-requests-section');
+    if (!sentSection) {
+      sentSection = document.createElement('div');
+      sentSection.id = 'sent-requests-section';
+      pendingSection.parentNode.insertBefore(sentSection, pendingSection.nextSibling);
+    }
+    sentSection.style.display = '';
+    sentSection.innerHTML = `
+      <div class="section-title" style="margin-top: var(--space-md);">Sent Requests</div>
+      <div id="sent-requests-list"></div>
+    `;
+    const sentListEl = sentSection.querySelector('#sent-requests-list');
+    sentListEl.innerHTML = sentRequests.map(req => {
+      const p = sentProfiles[req.receiver_id] || {};
+      const avatar = renderAvatar({ displayName: p.display_name || '?', avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+      return `<div class="request-row" data-request-id="${req.id}">
+        ${avatar}
+        <div class="request-row__info">
+          <div class="request-row__name">${escapeHtml(p.display_name || 'Unknown')}</div>
+        </div>
+        <div class="request-row__actions">
+          <button class="btn btn-secondary" data-cancel="${req.id}">Cancel</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    sentListEl.onclick = async (e) => {
+      const cancelBtn = e.target.closest('[data-cancel]');
+      if (!cancelBtn) return;
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = '...';
+      await cancelFriendRequest(parseInt(cancelBtn.dataset.cancel));
+      loadFriendsTab(userId);
+    };
+  } else {
+    const sentSection = document.getElementById('sent-requests-section');
+    if (sentSection) sentSection.style.display = 'none';
   }
 
   // Load friends list

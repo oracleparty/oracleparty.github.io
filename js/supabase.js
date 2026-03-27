@@ -1415,6 +1415,20 @@ export async function declineFriendRequest(requestId) {
 }
 
 /**
+ * Cancel (revoke) a pending friend request sent by the current user.
+ * Deletes the request row entirely so the sender can re-send later.
+ */
+export async function cancelFriendRequest(requestId) {
+  const { error } = await supabase
+    .from('friend_requests')
+    .delete()
+    .eq('id', requestId);
+
+  if (error) console.error('[Supabase] cancelFriendRequest failed:', error.message);
+  return { error };
+}
+
+/**
  * Create a friendship between two users (instant add from lobby/game).
  * Enforces canonical ordering: user_a < user_b.
  */
