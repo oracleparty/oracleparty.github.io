@@ -69,12 +69,14 @@ export async function createRoom({ hostName, category, subcategory, whoCanJoin, 
     code: generateRoomCode(),
     host_name: hostName,
     category,
-    subcategory: subcategory || null,
     who_can_join: whoCanJoin,
     questions_per_game: questionsPerGame,
     question_timer: questionTimer,
     status: 'lobby'
   };
+  // Only include subcategory if set — omit entirely if null so the INSERT
+  // works even when the subcategory column hasn't been added to the DB yet
+  if (subcategory) roomPayload.subcategory = subcategory;
 
   const { data, error } = await supabase
     .from('rooms')

@@ -215,6 +215,11 @@ function showSettings(cat) {
 
 // --- Create room and navigate to lobby ---
 async function handleHostGame() {
+  if (!selectedCategory) {
+    hostError.textContent = 'Please select a category first.';
+    return;
+  }
+
   btnHostGame.classList.add('is-loading');
   btnHostGame.textContent = 'Creating...';
   hostError.textContent = '';
