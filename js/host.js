@@ -84,6 +84,7 @@ function renderCategories(cats, playCounts = {}) {
     if (hasSubs) {
       subsHtml = `
         <div class="subcategory-options">
+          <div class="subcategory-header">${meta.icon} ${meta.label}</div>
           <div class="subcategory-option subcategory-option--all" data-subcategory="" role="button">All ${meta.label}</div>
           <div class="subcategory-grid">
             ${meta.subcategories.map(s => `
