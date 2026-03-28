@@ -9,7 +9,12 @@ import { initThemeToggle } from './theme.js';
 
 // Category display config (shared with host.js)
 const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History' },
+  'history':          { icon: '\u23F3', label: 'History', subcategories: [
+    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
+    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
+    { key: 'early_modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
+    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
+  ]},
   'science':          { icon: '\u2697\uFE0F', label: 'Science' },
   'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
   'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Lit' },
@@ -184,6 +189,11 @@ async function loadPublicGames() {
   const fragment = document.createDocumentFragment();
   for (const room of rooms) {
     const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
+    let catLabel = meta.label;
+    if (room.subcategory && meta.subcategories) {
+      const sub = meta.subcategories.find(s => s.key === room.subcategory);
+      if (sub) catLabel += ` \u2014 ${sub.label}`;
+    }
     const row = document.createElement('button');
     row.className = 'public-game-row';
     row.dataset.code = room.code;
@@ -191,7 +201,7 @@ async function loadPublicGames() {
       <span class="public-game-row__icon">${meta.icon}</span>
       <div class="public-game-row__info">
         <div class="public-game-row__host">${escapeHtml(room.host_name)}'s game</div>
-        <div class="public-game-row__category">${meta.label} &middot; ${room.questions_per_game}Q &middot; ${room.question_timer}s</div>
+        <div class="public-game-row__category">${catLabel} &middot; ${room.questions_per_game}Q &middot; ${room.question_timer}s</div>
       </div>
       <div class="public-game-row__meta">
         <div class="public-game-row__code">${room.code}</div>

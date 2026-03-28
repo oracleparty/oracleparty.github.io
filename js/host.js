@@ -10,7 +10,12 @@ import { initThemeToggle } from './theme.js';
 
 // --- Category display config ---
 const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History' },
+  'history':          { icon: '\u23F3', label: 'History', subcategories: [
+    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
+    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
+    { key: 'early_modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
+    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
+  ]},
   'science':          { icon: '\u2697\uFE0F', label: 'Science' },
   'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
   'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature' },
@@ -28,6 +33,7 @@ const CATEGORY_META = {
 let categories = [];
 let categoryPlayCounts = {};
 let selectedCategory = null;
+let selectedSubcategory = null;
 let settings = {
   whoCanJoin: 'anyone',
   questionsPerGame: 10,
@@ -72,12 +78,29 @@ function renderCategories(cats, playCounts = {}) {
   categoryGrid.innerHTML = cats.map(cat => {
     const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
     const plays = playCounts[cat.name] || 0;
+    const hasSubs = meta.subcategories && meta.subcategories.length > 0;
+
+    let subsHtml = '';
+    if (hasSubs) {
+      subsHtml = `
+        <div class="subcategory-options">
+          <button class="subcategory-option subcategory-option--all" data-subcategory="">All ${meta.label}</button>
+          <div class="subcategory-grid">
+            ${meta.subcategories.map(s => `
+              <button class="subcategory-option" data-subcategory="${s.key}">${s.icon} ${s.label}</button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     return `
-      <button class="category-card" data-category="${cat.name}">
+      <button class="category-card${hasSubs ? ' category-card--has-subs' : ''}" data-category="${cat.name}">
         <div class="category-card__icon">${meta.icon}</div>
         <div class="category-card__name">${meta.label}</div>
         <div class="category-card__count">${cat.count} questions</div>
         <div class="category-card__plays">${plays.toLocaleString()} plays</div>
+        ${subsHtml}
       </button>
     `;
   }).join('');
@@ -111,6 +134,20 @@ function attachListeners() {
 
   // Category card selection (event delegation)
   categoryGrid.addEventListener('click', (e) => {
+    // Check if a subcategory option was clicked
+    const subOption = e.target.closest('.subcategory-option');
+    if (subOption) {
+      e.stopPropagation();
+      const card = subOption.closest('.category-card');
+      const catName = card.dataset.category;
+      const cat = categories.find(c => c.name === catName);
+      if (!cat) return;
+      selectedCategory = cat;
+      selectedSubcategory = subOption.dataset.subcategory || null;
+      showSettings(cat);
+      return;
+    }
+
     const card = e.target.closest('.category-card');
     if (!card) return;
 
@@ -118,7 +155,19 @@ function attachListeners() {
     const cat = categories.find(c => c.name === catName);
     if (!cat) return;
 
+    const meta = CATEGORY_META[catName];
+    if (meta?.subcategories?.length) {
+      // Has subcategories — toggle expansion instead of selecting
+      const wasExpanded = card.classList.contains('expanded');
+      // Collapse any other expanded card first
+      categoryGrid.querySelectorAll('.category-card.expanded').forEach(c => c.classList.remove('expanded'));
+      if (!wasExpanded) card.classList.add('expanded');
+      return;
+    }
+
+    // No subcategories — select directly
     selectedCategory = cat;
+    selectedSubcategory = null;
     showSettings(cat);
   });
 
@@ -151,7 +200,12 @@ function attachListeners() {
 function showSettings(cat) {
   const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
   $('.selected-category__icon').textContent = meta.icon;
-  $('.selected-category__name').textContent = meta.label;
+  let label = meta.label;
+  if (selectedSubcategory && meta.subcategories) {
+    const sub = meta.subcategories.find(s => s.key === selectedSubcategory);
+    if (sub) label += ` \u2014 ${sub.label}`;
+  }
+  $('.selected-category__name').textContent = label;
   $('.selected-category__count').textContent = `${cat.count} questions`;
   hostError.textContent = '';
 
@@ -169,6 +223,7 @@ async function handleHostGame() {
     const { data, error } = await createRoom({
       hostName,
       category: selectedCategory.name,
+      subcategory: selectedSubcategory || null,
       whoCanJoin: settings.whoCanJoin,
       questionsPerGame: settings.questionsPerGame,
       questionTimer: settings.questionTimer
@@ -212,6 +267,7 @@ async function handleHostGame() {
       code: data.code,
       hostName: data.host_name,
       category: data.category,
+      subcategory: data.subcategory || null,
       isHost: true,
       playerId: player.id,
       settings: {

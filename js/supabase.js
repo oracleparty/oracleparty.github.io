@@ -64,11 +64,12 @@ export function generateRoomCode() {
  * Create a new room in Supabase.
  * Retries once on code collision.
  */
-export async function createRoom({ hostName, category, whoCanJoin, questionsPerGame, questionTimer }) {
+export async function createRoom({ hostName, category, subcategory, whoCanJoin, questionsPerGame, questionTimer }) {
   const roomPayload = {
     code: generateRoomCode(),
     host_name: hostName,
     category,
+    subcategory: subcategory || null,
     who_can_join: whoCanJoin,
     questions_per_game: questionsPerGame,
     question_timer: questionTimer,
@@ -555,15 +556,20 @@ export function unsubscribe(channel) {
  *   4. Back of line: questions ALL players got correct are used last
  *   5. Graceful degradation: falls back to least-recently-seen, never errors
  */
-export async function fetchQuestionsByCategory(category, limit, excludeIds = [], playerUserIds = []) {
+export async function fetchQuestionsByCategory(category, limit, excludeIds = [], playerUserIds = [], subcategory = null) {
   // Fetch a large pool — we need enough to be selective
   const fetchCount = Math.min(500, Math.max((limit + excludeIds.length) * 5, 100));
-  const { data, error } = await supabase
+  let query = supabase
     .from('questions')
     .select('*')
     .contains('categories', [category])
-    .eq('format', 'open')
-    .limit(fetchCount);
+    .eq('format', 'open');
+
+  if (subcategory) {
+    query = query.eq('subcategory', subcategory);
+  }
+
+  const { data, error } = await query.limit(fetchCount);
 
   if (error) {
     console.error('[Supabase] fetchQuestionsByCategory failed:', error.message);
@@ -735,14 +741,19 @@ export async function appendUsedQuestionIds(roomId, newIds) {
  * Used for the final question after difficulty vote.
  * Excludes any questionIds already used in this game.
  */
-export async function fetchQuestionByDifficulty(category, difficulty, excludeIds = []) {
+export async function fetchQuestionByDifficulty(category, difficulty, excludeIds = [], subcategory = null) {
   let query = supabase
     .from('questions')
     .select('*')
     .contains('categories', [category])
     .eq('format', 'open')
-    .eq('difficulty', difficulty)
-    .limit(20);
+    .eq('difficulty', difficulty);
+
+  if (subcategory) {
+    query = query.eq('subcategory', subcategory);
+  }
+
+  query = query.limit(20);
 
   const { data, error } = await query;
   if (error || !data || data.length === 0) {

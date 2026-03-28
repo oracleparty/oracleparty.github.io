@@ -33,7 +33,12 @@ import { initThemeToggle } from './theme.js';
 
 // Category display config
 const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History' },
+  'history':          { icon: '\u23F3', label: 'History', subcategories: [
+    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
+    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
+    { key: 'early_modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
+    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
+  ]},
   'science':          { icon: '\u2697\uFE0F', label: 'Science' },
   'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
   'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature' },
@@ -758,7 +763,12 @@ async function handleStartGame() {
 // --- Settings Modal (host) ---
 function updateCategoryDisplay() {
   const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
-  lobbyCategory.textContent = `${meta.icon} ${meta.label}`;
+  let label = `${meta.icon} ${meta.label}`;
+  if (room.subcategory && meta.subcategories) {
+    const sub = meta.subcategories.find(s => s.key === room.subcategory);
+    if (sub) label += ` \u2014 ${sub.label}`;
+  }
+  lobbyCategory.textContent = label;
 }
 
 function openSettingsModal() {

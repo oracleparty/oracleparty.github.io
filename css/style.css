@@ -778,6 +778,47 @@ body::after {
   margin-top: 1px;
 }
 
+/* --- Subcategory Expansion --- */
+.category-card.expanded {
+  grid-column: 1 / -1;
+}
+.subcategory-options {
+  display: none;
+  width: 100%;
+  margin-top: var(--space-sm);
+}
+.category-card.expanded .subcategory-options {
+  display: block;
+}
+.subcategory-option {
+  display: block;
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-surface-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: center;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.subcategory-option:active {
+  background: var(--color-primary-glow);
+  border-color: var(--color-primary);
+}
+.subcategory-option--all {
+  margin-bottom: var(--space-xs);
+  font-weight: 600;
+}
+.subcategory-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xs);
+}
+
 /* Staggered entrance for category cards (host page only — not lobby settings modal) */
 #category-screen.active .category-card {
   animation: card-enter 0.4s var(--ease-out) both;

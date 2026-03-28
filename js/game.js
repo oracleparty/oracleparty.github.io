@@ -60,7 +60,12 @@ import { updatePresence } from './presence.js';
 
 // Category display config
 const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History' },
+  'history':          { icon: '\u23F3', label: 'History', subcategories: [
+    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
+    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
+    { key: 'early_modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
+    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
+  ]},
   'science':          { icon: '\u2697\uFE0F', label: 'Science' },
   'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
   'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature' },
@@ -73,6 +78,16 @@ const CATEGORY_META = {
   'logic':            { icon: '\uD83E\uDDE9', label: 'Logic' },
   'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card' }
 };
+
+function getCategoryLabel() {
+  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
+  let label = `${meta.icon} ${meta.label}`;
+  if (state.room.subcategory && meta.subcategories) {
+    const sub = meta.subcategories.find(s => s.key === state.room.subcategory);
+    if (sub) label += ` \u2014 ${sub.label}`;
+  }
+  return label;
+}
 
 // --- State ---
 const state = {
@@ -419,7 +434,7 @@ async function initHostGame() {
   const playerUserIds = state.players.map(p => p.user_id).filter(Boolean);
 
   // Fetch totalQuestions + 1 (extra for final wager round) with smart selection
-  const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds);
+  const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, state.room.subcategory || null);
 
   if (questions.length === 0) {
     $('#game-loading .game-loading__text').textContent = 'No questions found for this category.';
@@ -1112,8 +1127,7 @@ function showQuestionScreen() {
   const q = state.questions[state.currentQuestion];
   if (!q) return;
 
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#question-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#question-category').textContent = getCategoryLabel();
 
   $('#question-text').textContent = getQuestionText(q);
 
@@ -1538,8 +1552,7 @@ async function showRevealScreen() {
   const q = state.questions[state.currentQuestion];
   if (!q) return;
 
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#reveal-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#reveal-category').textContent = getCategoryLabel();
   $('#reveal-progress').textContent = state.isFinalWagerRound
     ? 'Final Question'
     : `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
@@ -1977,8 +1990,7 @@ async function showScoresScreen() {
     state.shownQuestionIndices.push(state.currentQuestion);
   }
 
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#scores-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#scores-category').textContent = getCategoryLabel();
   $('#scores-progress').textContent = state.isFinalWagerRound
     ? 'Final Question'
     : `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
@@ -2213,8 +2225,7 @@ async function handleShowResults() {
 function showFinalWagerScreen() {
   state.isFinalWagerRound = true;
 
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#fw-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#fw-category').textContent = getCategoryLabel();
   $('#fw-current-score').textContent = state.scores[state.room.playerId] || 0;
 
   const status = $('#fw-status');
@@ -2481,8 +2492,7 @@ function showDifficultyVoteScreen() {
   state.difficultyVotes = {};
   state.votedDifficulty = null;
 
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#dv-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#dv-category').textContent = getCategoryLabel();
   $('#dv-status').classList.add('hidden');
   $('#dv-result').classList.add('hidden');
   $('#dv-tally').innerHTML = '';
@@ -2627,7 +2637,7 @@ async function handleDifficultyVoteComplete() {
 
   // Fetch a question matching the voted difficulty
   const usedIds = state.questions.map(q => q.id);
-  const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds);
+  const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
 
   if (q) {
     // Replace the pre-fetched final question with the voted one
@@ -2740,8 +2750,7 @@ async function showResultsScreen() {
   }
   sessionStorage.setItem(roomScoresKey, JSON.stringify(cumulative));
 
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  $('#results-category').textContent = `${meta.icon} ${meta.label}`;
+  $('#results-category').textContent = getCategoryLabel();
 
   // Sort players by final score
   const sorted = [...state.players].sort((a, b) =>
