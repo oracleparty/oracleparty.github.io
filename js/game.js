@@ -415,8 +415,11 @@ async function initHostGame() {
   const { data: roomForExclude } = await fetchRoom(state.room.id);
   const excludeIds = roomForExclude?.used_question_ids || [];
 
-  // Fetch totalQuestions + 1 (extra for final wager round), excluding previously used questions
-  const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds);
+  // Collect logged-in player user IDs for smart question selection
+  const playerUserIds = state.players.map(p => p.user_id).filter(Boolean);
+
+  // Fetch totalQuestions + 1 (extra for final wager round) with smart selection
+  const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds);
 
   if (questions.length === 0) {
     $('#game-loading .game-loading__text').textContent = 'No questions found for this category.';

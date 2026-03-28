@@ -547,10 +547,17 @@ export function unsubscribe(channel) {
  * Fetch questions for a category.
  * Fetches extra and shuffles client-side since PostgREST has no random order.
  * Tries common column names for question text/answer fields.
+ *
+ * Smart selection (when playerUserIds provided):
+ *   1. Room dedup: excludeIds filters out all questions used in this room session
+ *   2. Fresh first: questions no player has seen are prioritized
+ *   3. Redemption: 5% chance per player per slot of drawing a question they got wrong
+ *   4. Back of line: questions ALL players got correct are used last
+ *   5. Graceful degradation: falls back to least-recently-seen, never errors
  */
-export async function fetchQuestionsByCategory(category, limit, excludeIds = []) {
-  // Fetch extra to account for excluded IDs + shuffling
-  const fetchCount = Math.min((limit + excludeIds.length) * 3, 200);
+export async function fetchQuestionsByCategory(category, limit, excludeIds = [], playerUserIds = []) {
+  // Fetch a large pool — we need enough to be selective
+  const fetchCount = Math.min(500, Math.max((limit + excludeIds.length) * 5, 100));
   const { data, error } = await supabase
     .from('questions')
     .select('*')
@@ -563,16 +570,142 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [])
     return [];
   }
 
-  // Filter out previously used questions (client-side — PostgREST doesn't support NOT IN for arrays well)
+  // Filter out room-used questions
   const excludeSet = new Set(excludeIds);
-  const filtered = excludeSet.size > 0 ? data.filter(q => !excludeSet.has(q.id)) : data;
+  const available = excludeSet.size > 0 ? data.filter(q => !excludeSet.has(q.id)) : [...data];
 
-  // Shuffle and take requested count
-  for (let i = filtered.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+  if (available.length === 0) {
+    // Graceful degradation: if ALL questions are excluded, use any from the category
+    console.warn('[Supabase] All questions excluded, falling back to unfiltered pool');
+    return _shuffle(data).slice(0, limit);
   }
-  return filtered.slice(0, limit);
+
+  // If no logged-in players, just shuffle and return (guest-only game)
+  if (playerUserIds.length === 0) {
+    return _shuffle(available).slice(0, limit);
+  }
+
+  // Fetch question history for all logged-in players in the room
+  const history = await fetchQuestionHistoryForUsers(playerUserIds);
+
+  // Build lookup: questionId → { seenBy, correctBy, wrongBy }
+  const histMap = {};
+  for (const h of history) {
+    const qid = h.question_id;
+    if (!histMap[qid]) histMap[qid] = { seenBy: new Set(), correctBy: new Set(), wrongBy: new Set(), lastSeen: 0 };
+    histMap[qid].seenBy.add(h.user_id);
+    if (h.times_correct > 0 && h.times_correct >= h.times_seen) {
+      histMap[qid].correctBy.add(h.user_id);
+    }
+    if (h.times_seen > h.times_correct) {
+      histMap[qid].wrongBy.add(h.user_id);
+    }
+    const ts = new Date(h.last_seen_at).getTime();
+    if (ts > histMap[qid].lastSeen) histMap[qid].lastSeen = ts;
+  }
+
+  const loggedInCount = playerUserIds.length;
+
+  // Bucket questions
+  const fresh = [];       // No player has seen it
+  const redemption = [];  // At least one player got it wrong
+  const seenMixed = [];   // Some seen, not all mastered
+  const mastered = [];    // ALL logged-in players got it correct
+
+  for (const q of available) {
+    const h = histMap[q.id];
+    if (!h || h.seenBy.size === 0) {
+      fresh.push(q);
+    } else if (h.correctBy.size >= loggedInCount) {
+      mastered.push(q);
+    } else if (h.wrongBy.size > 0) {
+      redemption.push(q);
+    } else {
+      seenMixed.push(q);
+    }
+  }
+
+  // Sort fallback pools by least-recently-seen
+  seenMixed.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
+  mastered.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
+
+  // Shuffle fresh and redemption pools
+  _shuffle(fresh);
+  _shuffle(redemption);
+
+  // Build the final selection
+  const selected = [];
+  let freshIdx = 0;
+  let redemptionIdx = 0;
+  let seenIdx = 0;
+  let masteredIdx = 0;
+
+  for (let i = 0; i < limit; i++) {
+    // 5% chance per logged-in player of a redemption question
+    const redemptionChance = 1 - Math.pow(0.95, loggedInCount); // ~5% for 1 player, ~10% for 2, etc.
+    if (redemptionIdx < redemption.length && Math.random() < redemptionChance) {
+      selected.push(redemption[redemptionIdx++]);
+      continue;
+    }
+
+    // Fresh questions first
+    if (freshIdx < fresh.length) {
+      selected.push(fresh[freshIdx++]);
+      continue;
+    }
+
+    // Seen but not mastered (least recently seen first)
+    if (seenIdx < seenMixed.length) {
+      selected.push(seenMixed[seenIdx++]);
+      continue;
+    }
+
+    // Redemption leftovers
+    if (redemptionIdx < redemption.length) {
+      selected.push(redemption[redemptionIdx++]);
+      continue;
+    }
+
+    // Mastered (last resort, least recently seen first)
+    if (masteredIdx < mastered.length) {
+      selected.push(mastered[masteredIdx++]);
+      continue;
+    }
+
+    // Absolute fallback: allow room repeats (should be very rare)
+    if (data.length > 0) {
+      const fallback = data[Math.floor(Math.random() * data.length)];
+      selected.push(fallback);
+    }
+  }
+
+  return selected;
+}
+
+/** Fisher-Yates shuffle (in-place, returns same array). */
+function _shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Fetch question history for multiple users.
+ * Returns array of { user_id, question_id, times_seen, times_correct, last_seen_at }.
+ */
+export async function fetchQuestionHistoryForUsers(userIds) {
+  if (!userIds || userIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('question_history')
+    .select('user_id, question_id, times_seen, times_correct, last_seen_at')
+    .in('user_id', userIds);
+  if (error) {
+    console.error('[Supabase] fetchQuestionHistoryForUsers failed:', error.message);
+    return [];
+  }
+  return data || [];
 }
 
 /**
