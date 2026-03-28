@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens } from './utils.js';
-import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 
@@ -292,43 +292,32 @@ function attachListeners() {
 }
 
 // --- Show settings screen with selected category ---
-async function showSettings(cat) {
+function _updateSettingsBadge(cat) {
   const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
   let icon = meta.icon;
   let label = meta.label;
   if (selectedSubcategory && meta.subcategories) {
     const sub = meta.subcategories.find(s => s.key === selectedSubcategory);
-    if (sub) { icon = sub.icon; label = sub.label; }
+    if (sub) {
+      icon = sub.icon;
+      label = `${meta.label} \u2014 ${sub.label}`;
+    }
   }
   $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
+  $('.selected-category__count').textContent = `${cat.count} questions`;
+}
+
+function showSettings(cat) {
+  _updateSettingsBadge(cat);
   hostError.textContent = '';
-
-  const count = selectedSubcategory
-    ? await fetchQuestionCount(cat.name, selectedSubcategory)
-    : cat.count;
-  $('.selected-category__count').textContent = `${count} questions`;
-
   transitionScreens(categoryScreen, settingsScreen);
 }
 
 /** Update settings badge without screen transition (used by category sheet). */
-async function showSettingsUpdate() {
+function showSettingsUpdate() {
   if (!selectedCategory) return;
-  const meta = CATEGORY_META[selectedCategory.name] || { icon: '?', label: selectedCategory.name };
-  let icon = meta.icon;
-  let label = meta.label;
-  if (selectedSubcategory && meta.subcategories) {
-    const sub = meta.subcategories.find(s => s.key === selectedSubcategory);
-    if (sub) { icon = sub.icon; label = sub.label; }
-  }
-  $('.selected-category__icon').textContent = icon;
-  $('.selected-category__name').textContent = label;
-
-  const count = selectedSubcategory
-    ? await fetchQuestionCount(selectedCategory.name, selectedSubcategory)
-    : selectedCategory.count;
-  $('.selected-category__count').textContent = `${count} questions`;
+  _updateSettingsBadge(selectedCategory);
 }
 
 // --- Create room and navigate to lobby ---
