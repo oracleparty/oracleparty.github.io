@@ -88,9 +88,86 @@ function renderCategories(cats, playCounts = {}) {
     `;
   }).join('');
 
-  // Hide subcategory picker when categories re-render (e.g. search)
-  const picker = $('#subcategory-picker');
-  if (picker) picker.style.display = 'none';
+  // Collapse subcategory view when categories re-render (e.g. search)
+  const subView = $('#subcategory-view');
+  if (subView) subView.style.display = 'none';
+  const catList = $('#category-list');
+  if (catList) catList.style.display = '';
+}
+
+// --- Subcategory drill-in ---
+function drillIntoSubcategories(cat, meta) {
+  const catList = $('#category-list');
+  const subView = $('#subcategory-view');
+  const title = $('#subcategory-view__title');
+  const options = $('#subcategory-view__options');
+
+  title.textContent = `${meta.icon} ${meta.label}`;
+  options.innerHTML = `
+    <div class="subcategory-row subcategory-row--all" data-category="${cat.name}" data-subcategory="">
+      <span class="subcategory-row__icon">${meta.icon}</span>
+      <span class="subcategory-row__label">All ${meta.label}</span>
+    </div>
+    ${meta.subcategories.map(s => `
+      <div class="subcategory-row" data-category="${cat.name}" data-subcategory="${s.key}">
+        <span class="subcategory-row__icon">${s.icon}</span>
+        <span class="subcategory-row__label">${s.label}</span>
+      </div>
+    `).join('')}
+  `;
+
+  catList.style.display = 'none';
+  subView.style.display = '';
+  // Scroll to top of the screen
+  document.querySelector('#category-screen')?.scrollTo(0, 0);
+}
+
+function drillBack() {
+  const catList = $('#category-list');
+  const subView = $('#subcategory-view');
+  subView.style.display = 'none';
+  catList.style.display = '';
+}
+
+// --- Category bottom sheet (for settings screen) ---
+function openCategorySheet() {
+  const sheet = $('#category-sheet');
+  const list = $('#category-sheet-list');
+
+  list.innerHTML = categories.map(cat => {
+    const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
+    const hasSubs = meta.subcategories?.length > 0;
+    const isSelected = selectedCategory?.name === cat.name;
+    return `
+      <div class="category-sheet-row${isSelected ? ' selected' : ''}" data-category="${cat.name}">
+        <span class="category-sheet-row__icon">${meta.icon}</span>
+        <span class="category-sheet-row__label">${meta.label}</span>
+        ${hasSubs ? '<span class="category-sheet-row__chevron">›</span>' : ''}
+      </div>
+    `;
+  }).join('');
+
+  sheet.classList.add('active');
+
+  // Dismiss on backdrop
+  sheet.querySelector('.bottom-sheet__backdrop').onclick = () => sheet.classList.remove('active');
+}
+
+function showCategorySheetSubcategories(cat, meta) {
+  const list = $('#category-sheet-list');
+  list.innerHTML = `
+    <div class="category-sheet-back" data-action="back">← ${meta.label}</div>
+    <div class="category-sheet-row subcategory-row--all" data-category="${cat.name}" data-subcategory="">
+      <span class="category-sheet-row__icon">${meta.icon}</span>
+      <span class="category-sheet-row__label">All ${meta.label}</span>
+    </div>
+    ${meta.subcategories.map(s => `
+      <div class="category-sheet-row" data-category="${cat.name}" data-subcategory="${s.key}">
+        <span class="category-sheet-row__icon">${s.icon}</span>
+        <span class="category-sheet-row__label">${s.label}</span>
+      </div>
+    `).join('')}
+  `;
 }
 
 // --- Attach all event listeners ---
@@ -123,36 +200,69 @@ function attachListeners() {
   categoryGrid.addEventListener('click', (e) => {
     const card = e.target.closest('.category-card');
     if (!card) return;
-
     const catName = card.dataset.category;
     const cat = categories.find(c => c.name === catName);
     if (!cat) return;
-
     const meta = CATEGORY_META[catName];
+
     if (meta?.subcategories?.length) {
-      // Has subcategories — show picker below the grid
-      categoryGrid.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      showSubcategoryPicker(cat, meta);
+      drillIntoSubcategories(cat, meta);
       return;
     }
 
-    // No subcategories — select directly
     selectedCategory = cat;
     selectedSubcategory = null;
     showSettings(cat);
   });
 
-  // Subcategory picker (event delegation)
-  $('#subcategory-picker').addEventListener('click', (e) => {
-    const option = e.target.closest('.subcategory-option');
-    if (!option) return;
-    const catName = option.dataset.category;
+  // Subcategory view — option tap + back arrow
+  $('#subcategory-view__options').addEventListener('click', (e) => {
+    const row = e.target.closest('.subcategory-row');
+    if (!row) return;
+    const catName = row.dataset.category;
     const cat = categories.find(c => c.name === catName);
     if (!cat) return;
     selectedCategory = cat;
-    selectedSubcategory = option.dataset.subcategory || null;
+    selectedSubcategory = row.dataset.subcategory || null;
     showSettings(cat);
+  });
+  $('#subcategory-back').addEventListener('click', drillBack);
+
+  // Settings badge — tap to open category sheet
+  $('#selected-category').addEventListener('click', openCategorySheet);
+
+  // Category sheet — row taps
+  $('#category-sheet-list').addEventListener('click', (e) => {
+    const back = e.target.closest('[data-action="back"]');
+    if (back) { openCategorySheet(); return; } // Go back to full list
+
+    const row = e.target.closest('.category-sheet-row');
+    if (!row) return;
+    const catName = row.dataset.category;
+    const cat = categories.find(c => c.name === catName);
+    if (!cat) return;
+    const meta = CATEGORY_META[catName];
+
+    // If row has subcategory attribute, it's a subcategory selection
+    if (row.dataset.subcategory !== undefined) {
+      selectedCategory = cat;
+      selectedSubcategory = row.dataset.subcategory || null;
+      $('#category-sheet').classList.remove('active');
+      showSettingsUpdate();
+      return;
+    }
+
+    // If category has subs, drill into subcategory list
+    if (meta?.subcategories?.length) {
+      showCategorySheetSubcategories(cat, meta);
+      return;
+    }
+
+    // No subs — select directly
+    selectedCategory = cat;
+    selectedSubcategory = null;
+    $('#category-sheet').classList.remove('active');
+    showSettingsUpdate();
   });
 
   // Toggle selectors (event delegation)
@@ -196,22 +306,22 @@ function showSettings(cat) {
   transitionScreens(categoryScreen, settingsScreen);
 }
 
-// --- Create room and navigate to lobby ---
-function showSubcategoryPicker(cat, meta) {
-  const picker = $('#subcategory-picker');
-  picker.innerHTML = `
-    <div class="subcategory-header">${meta.icon} ${meta.label}</div>
-    <div class="subcategory-option subcategory-option--all" data-category="${cat.name}" data-subcategory="" role="button">All ${meta.label}</div>
-    <div class="subcategory-grid">
-      ${meta.subcategories.map(s =>
-        `<div class="subcategory-option" data-category="${cat.name}" data-subcategory="${s.key}" role="button">${s.icon} ${s.label}</div>`
-      ).join('')}
-    </div>
-  `;
-  picker.style.display = '';
-  // Scroll picker into view
-  picker.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+/** Update settings badge without screen transition (used by category sheet). */
+function showSettingsUpdate() {
+  if (!selectedCategory) return;
+  const meta = CATEGORY_META[selectedCategory.name] || { icon: '?', label: selectedCategory.name };
+  $('.selected-category__icon').textContent = meta.icon;
+  let label = meta.label;
+  if (selectedSubcategory && meta.subcategories) {
+    const sub = meta.subcategories.find(s => s.key === selectedSubcategory);
+    if (sub) label += ` \u2014 ${sub.label}`;
+  }
+  $('.selected-category__name').textContent = label;
+  $('.selected-category__count').textContent = `${selectedCategory.count} questions`;
 }
+
+// --- Create room and navigate to lobby ---
+
 
 async function handleHostGame() {
   if (!selectedCategory) {

@@ -19,24 +19,34 @@
       <h1 class="page-header__title">Choose Category</h1>
       <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
     </header>
-    <div class="page-content">
-      <div class="category-search">
-        <input
-          type="text"
-          id="category-search"
-          class="input"
-          placeholder="Search categories..."
-          autocomplete="off"
-          spellcheck="false"
-        >
+    <div class="page-content" style="position: relative; overflow: hidden;">
+      <!-- Category list (main view) -->
+      <div id="category-list">
+        <div class="category-search">
+          <input
+            type="text"
+            id="category-search"
+            class="input"
+            placeholder="Search categories..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+        <div id="category-grid" class="category-grid">
+          <!-- JS populates category cards -->
+        </div>
+        <div class="placeholder-section">
+          <p class="placeholder-section__title">Community Packs</p>
+          <p class="placeholder-section__text">Coming soon</p>
+        </div>
       </div>
-      <div id="category-grid" class="category-grid">
-        <!-- JS populates category cards -->
-      </div>
-      <div id="subcategory-picker" class="subcategory-picker" style="display:none;"></div>
-      <div class="placeholder-section">
-        <p class="placeholder-section__title">Community Packs</p>
-        <p class="placeholder-section__text">Coming soon</p>
+      <!-- Subcategory drill-in view (slides in from right) -->
+      <div id="subcategory-view" style="display:none;">
+        <div class="subcategory-view__header">
+          <button id="subcategory-back" class="back-btn" aria-label="Back to categories">&larr;</button>
+          <span id="subcategory-view__title" class="page-header__title"></span>
+        </div>
+        <div id="subcategory-view__options"></div>
       </div>
     </div>
   </div>
@@ -48,7 +58,7 @@
       <h1 class="page-header__title">Game Settings</h1>
     </header>
     <div class="page-content">
-      <div id="selected-category" class="selected-category">
+      <div id="selected-category" class="selected-category" role="button" style="cursor:pointer;">
         <div class="selected-category__icon"></div>
         <div class="selected-category__name"></div>
         <div class="selected-category__count"></div>
@@ -85,6 +95,16 @@
 
       <button id="btn-host-game" class="btn btn-primary btn-block">Host Game</button>
       <p id="host-error" class="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- ===== CATEGORY BOTTOM SHEET (settings screen) ===== -->
+  <div id="category-sheet" class="bottom-sheet">
+    <div class="bottom-sheet__backdrop"></div>
+    <div class="bottom-sheet__panel">
+      <div class="bottom-sheet__handle"></div>
+      <div class="bottom-sheet__title">Choose Category</div>
+      <div id="category-sheet-list"></div>
     </div>
   </div>
 

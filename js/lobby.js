@@ -492,11 +492,47 @@ function attachSettingsListeners() {
     if (e.target === settingsModal) closeSettingsModal();
   });
   settingsCategoryGrid.addEventListener('click', (e) => {
-    const card = e.target.closest('.category-card');
-    if (!card) return;
-    settingsCategoryGrid.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
-    card.classList.add('selected');
-    handleSettingChange('category', card.dataset.category);
+    if (e.target.closest('#settings-category-tap')) {
+      openLobbyCategorySheet();
+    }
+  });
+
+  // Category bottom sheet — row taps
+  $('#category-sheet-list').addEventListener('click', (e) => {
+    const back = e.target.closest('[data-action="back"]');
+    if (back) { openLobbyCategorySheet(); return; }
+
+    const row = e.target.closest('.category-sheet-row');
+    if (!row) return;
+    const catName = row.dataset.category;
+    const meta = CATEGORY_META[catName];
+
+    // Subcategory selection
+    if (row.dataset.subcategory !== undefined) {
+      handleSettingChange('category', catName);
+      if (row.dataset.subcategory) {
+        room.subcategory = row.dataset.subcategory;
+      } else {
+        room.subcategory = null;
+      }
+      updateGameState(room.id, { subcategory: room.subcategory });
+      sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+      updateCategoryDisplay();
+      renderSettingsCategories();
+      $('#category-sheet').classList.remove('active');
+      return;
+    }
+
+    // Category with subs — drill in
+    if (meta?.subcategories?.length) {
+      showLobbyCategorySheetSubs(catName);
+      return;
+    }
+
+    // Category without subs — select directly
+    handleSettingChange('category', catName);
+    renderSettingsCategories();
+    $('#category-sheet').classList.remove('active');
   });
   settingsModal.querySelectorAll('.toggle-group').forEach(group => {
     group.addEventListener('click', (e) => {
@@ -782,15 +818,59 @@ function closeSettingsModal() {
 }
 
 function renderSettingsCategories() {
-  settingsCategoryGrid.innerHTML = Object.entries(CATEGORY_META).map(([name, meta]) => {
-    const selected = name === room.category ? 'selected' : '';
+  const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
+  let label = meta.label;
+  if (room.subcategory && meta.subcategories) {
+    const sub = meta.subcategories.find(s => s.key === room.subcategory);
+    if (sub) label += ` \u2014 ${sub.label}`;
+  }
+  settingsCategoryGrid.innerHTML = `
+    <div class="category-sheet-row selected" id="settings-category-tap" style="cursor:pointer;">
+      <span class="category-sheet-row__icon">${meta.icon}</span>
+      <span class="category-sheet-row__label">${label}</span>
+      <span class="category-sheet-row__chevron">\u203A</span>
+    </div>
+  `;
+}
+
+function openLobbyCategorySheet() {
+  const sheet = $('#category-sheet');
+  const list = $('#category-sheet-list');
+
+  const allCats = Object.entries(CATEGORY_META);
+  list.innerHTML = allCats.map(([name, meta]) => {
+    const hasSubs = meta.subcategories?.length > 0;
+    const isSelected = name === room.category;
     return `
-      <div class="category-card ${selected}" data-category="${name}">
-        <div class="category-card__icon">${meta.icon}</div>
-        <div class="category-card__name">${meta.label}</div>
+      <div class="category-sheet-row${isSelected ? ' selected' : ''}" data-category="${name}">
+        <span class="category-sheet-row__icon">${meta.icon}</span>
+        <span class="category-sheet-row__label">${meta.label}</span>
+        ${hasSubs ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
     `;
   }).join('');
+
+  sheet.classList.add('active');
+  sheet.querySelector('.bottom-sheet__backdrop').onclick = () => sheet.classList.remove('active');
+}
+
+function showLobbyCategorySheetSubs(catName) {
+  const meta = CATEGORY_META[catName];
+  if (!meta?.subcategories) return;
+  const list = $('#category-sheet-list');
+  list.innerHTML = `
+    <div class="category-sheet-back" data-action="back">\u2190 ${meta.label}</div>
+    <div class="category-sheet-row" data-category="${catName}" data-subcategory="">
+      <span class="category-sheet-row__icon">${meta.icon}</span>
+      <span class="category-sheet-row__label">All ${meta.label}</span>
+    </div>
+    ${meta.subcategories.map(s => `
+      <div class="category-sheet-row" data-category="${catName}" data-subcategory="${s.key}">
+        <span class="category-sheet-row__icon">${s.icon}</span>
+        <span class="category-sheet-row__label">${s.label}</span>
+      </div>
+    `).join('')}
+  `;
 }
 
 function syncTogglesToSettings() {
