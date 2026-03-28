@@ -2618,6 +2618,8 @@ async function handleDifficultyVoteComplete() {
   if (state._dvProcessing) return;
   state._dvProcessing = true;
 
+  try {
+
   // Disable button immediately
   const revealBtn = $('#btn-dv-reveal');
   if (revealBtn) { revealBtn.disabled = true; revealBtn.style.opacity = '0.5'; }
@@ -2684,7 +2686,11 @@ async function handleDifficultyVoteComplete() {
     game_phase: 'final_question',
     current_question: state.totalQuestions
   });
-  state._dvProcessing = false;
+  } catch (err) {
+    console.error('[Game] handleDifficultyVoteComplete failed:', err);
+  } finally {
+    state._dvProcessing = false;
+  }
 }
 
 // ============================================
