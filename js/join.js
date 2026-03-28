@@ -144,6 +144,7 @@ async function joinRoom(code) {
       code: room.code,
       hostName: room.host_name,
       category: room.category,
+      subcategory: room.subcategory || null,
       isHost: false,
       playerId: player.id,
       settings: {

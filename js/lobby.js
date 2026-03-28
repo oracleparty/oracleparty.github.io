@@ -806,6 +806,7 @@ function syncTogglesToSettings() {
 async function handleSettingChange(key, value) {
   const columnMap = {
     category: 'category',
+    subcategory: 'subcategory',
     whoCanJoin: 'who_can_join',
     questionsPerGame: 'questions_per_game',
     questionTimer: 'question_timer'
@@ -816,7 +817,11 @@ async function handleSettingChange(key, value) {
   // Update local state
   if (key === 'category') {
     room.category = value;
+    // Reset subcategory when category changes (subcategory may not apply to new category)
+    room.subcategory = null;
     updateCategoryDisplay();
+    // Persist subcategory reset to DB
+    updateGameState(room.id, { subcategory: null });
   } else {
     room.settings[key] = value;
   }
@@ -856,9 +861,17 @@ function handleRoomChange(payload) {
 
     if (newRoom.category && newRoom.category !== room.category) {
       room.category = newRoom.category;
+      room.subcategory = newRoom.subcategory || null;
       updateCategoryDisplay();
       const meta = CATEGORY_META[room.category] || { label: room.category };
       addSystemMessage(`Host changed category to ${meta.label}`);
+      changed = true;
+    }
+
+    // Subcategory changed independently (same category, different sub)
+    if (newRoom.subcategory !== undefined && newRoom.subcategory !== room.subcategory && !changed) {
+      room.subcategory = newRoom.subcategory;
+      updateCategoryDisplay();
       changed = true;
     }
 
