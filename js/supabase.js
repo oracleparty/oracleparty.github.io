@@ -616,7 +616,7 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
     const h = histMap[q.id];
     if (!h || h.seenBy.size === 0) {
       fresh.push(q);
-    } else if (h.correctBy.size >= loggedInCount) {
+    } else if (h.seenBy.size >= loggedInCount && h.correctBy.size >= loggedInCount) {
       mastered.push(q);
     } else if (h.wrongBy.size > 0) {
       redemption.push(q);
@@ -633,8 +633,9 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
   _shuffle(fresh);
   _shuffle(redemption);
 
-  // Build the final selection
+  // Build the final selection (track IDs to prevent duplicates in fallback)
   const selected = [];
+  const selectedIds = new Set();
   let freshIdx = 0;
   let redemptionIdx = 0;
   let seenIdx = 0;
@@ -644,38 +645,44 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
     // 5% chance per logged-in player of a redemption question
     const redemptionChance = 1 - Math.pow(0.95, loggedInCount); // ~5% for 1 player, ~10% for 2, etc.
     if (redemptionIdx < redemption.length && Math.random() < redemptionChance) {
-      selected.push(redemption[redemptionIdx++]);
+      const q = redemption[redemptionIdx++];
+      selected.push(q); selectedIds.add(q.id);
       continue;
     }
 
     // Fresh questions first
     if (freshIdx < fresh.length) {
-      selected.push(fresh[freshIdx++]);
+      const q = fresh[freshIdx++];
+      selected.push(q); selectedIds.add(q.id);
       continue;
     }
 
     // Seen but not mastered (least recently seen first)
     if (seenIdx < seenMixed.length) {
-      selected.push(seenMixed[seenIdx++]);
+      const q = seenMixed[seenIdx++];
+      selected.push(q); selectedIds.add(q.id);
       continue;
     }
 
     // Redemption leftovers
     if (redemptionIdx < redemption.length) {
-      selected.push(redemption[redemptionIdx++]);
+      const q = redemption[redemptionIdx++];
+      selected.push(q); selectedIds.add(q.id);
       continue;
     }
 
     // Mastered (last resort, least recently seen first)
     if (masteredIdx < mastered.length) {
-      selected.push(mastered[masteredIdx++]);
+      const q = mastered[masteredIdx++];
+      selected.push(q); selectedIds.add(q.id);
       continue;
     }
 
-    // Absolute fallback: allow room repeats (should be very rare)
-    if (data.length > 0) {
-      const fallback = data[Math.floor(Math.random() * data.length)];
-      selected.push(fallback);
+    // Absolute fallback: allow room repeats, but skip duplicates
+    const unused = data.filter(q => !selectedIds.has(q.id));
+    if (unused.length > 0) {
+      const q = unused[Math.floor(Math.random() * unused.length)];
+      selected.push(q); selectedIds.add(q.id);
     }
   }
 
