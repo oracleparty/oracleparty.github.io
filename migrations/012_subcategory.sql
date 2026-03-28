@@ -11,7 +11,7 @@ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS subcategory TEXT;
 -- Backfill the 120 history questions from their fun_fact era tags
 UPDATE questions SET subcategory = 'ancient' WHERE fun_fact = 'Era: Ancient' AND subcategory IS NULL;
 UPDATE questions SET subcategory = 'medieval' WHERE fun_fact = 'Era: Medieval' AND subcategory IS NULL;
-UPDATE questions SET subcategory = 'early_modern' WHERE fun_fact = 'Era: Early Modern' AND subcategory IS NULL;
+UPDATE questions SET subcategory = 'early-modern' WHERE fun_fact = 'Era: Early Modern' AND subcategory IS NULL;
 UPDATE questions SET subcategory = 'modern' WHERE fun_fact = 'Era: Modern' AND subcategory IS NULL;
 
 -- Index for efficient filtering

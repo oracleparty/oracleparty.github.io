@@ -2,10 +2,10 @@
 -- The exact match 'Era: Early Modern' may not match if there are subtle
 -- differences in whitespace or casing in the actual DB data.
 
-UPDATE questions SET subcategory = 'early_modern'
+UPDATE questions SET subcategory = 'early-modern'
 WHERE subcategory IS NULL
   AND (
     fun_fact ILIKE '%Early Modern%'
-    OR fun_fact ILIKE '%early_modern%'
+    OR fun_fact ILIKE '%early-modern%'
     OR fun_fact ILIKE '%earlymodern%'
   );
