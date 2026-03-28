@@ -1266,13 +1266,18 @@ export async function fetchGameHistory(userId, limit = 5) {
  * Upsert player_stats for a user+category after a game completes.
  * Increments aggregate stats (questions_answered, correct_answers, games_played, wins).
  */
-export async function upsertPlayerStats(userId, category, questionsAnswered, correctAnswers, won) {
-  const { data: existing } = await supabase
+export async function upsertPlayerStats(userId, category, questionsAnswered, correctAnswers, won, subcategory = null) {
+  let query = supabase
     .from('player_stats')
     .select('*')
     .eq('user_id', userId)
-    .eq('category', category)
-    .maybeSingle();
+    .eq('category', category);
+  if (subcategory) {
+    query = query.eq('subcategory', subcategory);
+  } else {
+    query = query.is('subcategory', null);
+  }
+  const { data: existing } = await query.maybeSingle();
 
   if (existing) {
     const { error } = await supabase.from('player_stats').update({
@@ -1283,14 +1288,16 @@ export async function upsertPlayerStats(userId, category, questionsAnswered, cor
     }).eq('id', existing.id);
     if (error) console.error('[Supabase] upsertPlayerStats update failed:', error.message);
   } else {
-    const { error } = await supabase.from('player_stats').insert({
+    const row = {
       user_id: userId,
       category,
       questions_answered: questionsAnswered,
       correct_answers: correctAnswers,
       games_played: 1,
       wins: won ? 1 : 0
-    });
+    };
+    if (subcategory) row.subcategory = subcategory;
+    const { error } = await supabase.from('player_stats').insert(row);
     if (error) console.error('[Supabase] upsertPlayerStats insert failed:', error.message);
   }
 }
@@ -1298,15 +1305,17 @@ export async function upsertPlayerStats(userId, category, questionsAnswered, cor
 /**
  * Insert a game_history entry when a game completes.
  */
-export async function insertGameHistoryEntry({ userId, roomId, category, score, placement, totalPlayers }) {
-  const { error } = await supabase.from('game_history').insert({
+export async function insertGameHistoryEntry({ userId, roomId, category, subcategory, score, placement, totalPlayers }) {
+  const row = {
     user_id: userId,
     room_id: roomId,
     category,
     score,
     placement,
     total_players: totalPlayers
-  });
+  };
+  if (subcategory) row.subcategory = subcategory;
+  const { error } = await supabase.from('game_history').insert(row);
   if (error) console.error('[Supabase] insertGameHistoryEntry failed:', error.message);
 }
 
@@ -1415,12 +1424,18 @@ export async function fetchAllPlayerStatsForLeaderboard() {
  * Fetch category leaderboard: top players for a specific category.
  * Minimum 20 questions answered. Sorted by accuracy desc client-side.
  */
-export async function fetchCategoryLeaderboard(category) {
-  const { data, error } = await supabase
+export async function fetchCategoryLeaderboard(category, subcategory = null) {
+  let query = supabase
     .from('player_stats')
-    .select('user_id, questions_answered, correct_answers, games_played, wins')
+    .select('user_id, questions_answered, correct_answers, games_played, wins, subcategory')
     .eq('category', category)
     .gte('questions_answered', 20);
+  if (subcategory) {
+    query = query.eq('subcategory', subcategory);
+  } else {
+    query = query.is('subcategory', null);
+  }
+  const { data, error } = await query;
   if (error) { console.error('[Supabase] fetchCategoryLeaderboard failed:', error.message); return []; }
   return data || [];
 }

@@ -512,17 +512,63 @@ export async function initProfilePage() {
 
   // Per-category breakdown
   if (categoriesEl) {
-    categoriesEl.innerHTML = stats.length > 0
-      ? stats.map(s => {
-          const meta = CATEGORY_META[s.category] || { icon: '?', label: s.category };
-          const acc = s.questions_answered > 0 ? Math.round((s.correct_answers / s.questions_answered) * 100) : 0;
-          return `<div class="profile-category-row">
+    // Separate category-level stats (subcategory=null) from subcategory stats
+    const catStats = stats.filter(s => !s.subcategory);
+    const subStats = stats.filter(s => s.subcategory);
+
+    if (catStats.length > 0) {
+      categoriesEl.innerHTML = catStats.map(s => {
+        const meta = CATEGORY_META[s.category] || { icon: '?', label: s.category };
+        const acc = s.questions_answered > 0 ? Math.round((s.correct_answers / s.questions_answered) * 100) : 0;
+        const hasSubs = subStats.some(sub => sub.category === s.category);
+
+        // Build subcategory rows if any exist
+        let subHtml = '';
+        if (hasSubs) {
+          const subs = subStats.filter(sub => sub.category === s.category);
+          subHtml = `<div class="profile-subcategory-rows" style="display:none;">
+            ${subs.map(sub => {
+              const subMeta = meta.subcategories?.find(sc => sc.key === sub.subcategory);
+              const subIcon = subMeta?.icon || '';
+              const subLabel = subMeta?.label || sub.subcategory;
+              const subAcc = sub.questions_answered > 0 ? Math.round((sub.correct_answers / sub.questions_answered) * 100) : 0;
+              return `<div class="profile-category-row profile-category-row--sub">
+                <span>${subIcon}</span>
+                <span class="profile-category-row__name">${escapeHtml(subLabel)}</span>
+                <span class="profile-category-row__accuracy">${subAcc}% <small>(${sub.questions_answered}Q)</small></span>
+              </div>`;
+            }).join('')}
+          </div>`;
+        }
+
+        return `<div class="profile-category-group" data-category="${s.category}">
+          <div class="profile-category-row${hasSubs ? ' profile-category-row--expandable' : ''}">
             <span>${meta.icon}</span>
             <span class="profile-category-row__name">${meta.label}</span>
             <span class="profile-category-row__accuracy">${acc}%</span>
-          </div>`;
-        }).join('')
-      : '<p class="profile-empty">Play some games to see category stats</p>';
+            ${hasSubs ? '<span class="profile-category-row__chevron">›</span>' : ''}
+          </div>
+          ${subHtml}
+        </div>`;
+      }).join('');
+
+      // Wire expand/collapse on category rows with subcategories
+      categoriesEl.querySelectorAll('.profile-category-row--expandable').forEach(row => {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => {
+          const group = row.closest('.profile-category-group');
+          const subRows = group.querySelector('.profile-subcategory-rows');
+          const chevron = row.querySelector('.profile-category-row__chevron');
+          if (subRows) {
+            const showing = subRows.style.display !== 'none';
+            subRows.style.display = showing ? 'none' : '';
+            if (chevron) chevron.textContent = showing ? '›' : '⌄';
+          }
+        });
+      });
+    } else {
+      categoriesEl.innerHTML = '<p class="profile-empty">Play some games to see category stats</p>';
+    }
   }
 
   // Recent games

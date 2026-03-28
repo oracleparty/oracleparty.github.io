@@ -15,6 +15,16 @@ import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
 
+// Subcategory definitions for categories that have them
+const SUBCATEGORIES = {
+  'history': [
+    { key: 'ancient', label: 'Ancient' },
+    { key: 'medieval', label: 'Medieval' },
+    { key: 'early-modern', label: 'Early Modern' },
+    { key: 'modern', label: 'Modern' },
+  ]
+};
+
 // ============================================
 // INIT
 // ============================================
@@ -35,7 +45,15 @@ async function init() {
   });
 
   // Category selector
-  $('#lb-category-select').onchange = () => loadTab('category');
+  $('#lb-category-select').onchange = () => {
+    updateSubcategorySelect();
+    _loadedTabs.delete('category');
+    loadTab('category');
+  };
+  $('#lb-subcategory-select').onchange = () => {
+    _loadedTabs.delete('category');
+    loadTab('category');
+  };
 
   // Back button
   $('#btn-back').addEventListener('click', () => { window.location.href = 'index.html'; });
@@ -169,12 +187,27 @@ async function loadWeeklyLeaderboard() {
 // CATEGORY LEADERBOARD
 // ============================================
 
+function updateSubcategorySelect() {
+  const category = $('#lb-category-select').value;
+  const subSelect = $('#lb-subcategory-select');
+  const subs = SUBCATEGORIES[category];
+  if (subs) {
+    subSelect.innerHTML = `<option value="">All</option>` +
+      subs.map(s => `<option value="${s.key}">${s.label}</option>`).join('');
+    subSelect.style.display = '';
+  } else {
+    subSelect.innerHTML = '';
+    subSelect.style.display = 'none';
+  }
+}
+
 async function loadCategoryLeaderboard() {
   const container = $('#lb-category-list');
   const category = $('#lb-category-select').value;
+  const subcategory = $('#lb-subcategory-select').value || null;
   container.innerHTML = '<p class="leaderboard-loading">Loading...</p>';
 
-  const stats = await fetchCategoryLeaderboard(category);
+  const stats = await fetchCategoryLeaderboard(category, subcategory);
 
   if (stats.length === 0) {
     container.innerHTML = '<p class="leaderboard-empty">No qualified players yet (min 20 questions).</p>';

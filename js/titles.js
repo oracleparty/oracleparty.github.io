@@ -158,6 +158,56 @@ export const TITLE_WORDS = {
     levelMultiplier: 1
   },
 
+  // --- History subcategory words (Slot 2, unlock at deeper tiers) ---
+  chronicles: {
+    slot: 2, word: 'Chronicles', rarity: 'rare',
+    hint: 'Temples and empires lost to sand',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'ancient', tier: 'Scholar' } },
+    levelMultiplier: 1
+  },
+  antiquity: {
+    slot: 2, word: 'Antiquity', rarity: 'epic',
+    hint: 'Before written memory, there was you',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'ancient', tier: 'Oracle' } },
+    levelMultiplier: 1
+  },
+  crusade: {
+    slot: 2, word: 'Crusade', rarity: 'rare',
+    hint: 'Swords and shields in distant lands',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'medieval', tier: 'Scholar' } },
+    levelMultiplier: 1
+  },
+  dynasty: {
+    slot: 2, word: 'Dynasty', rarity: 'epic',
+    hint: 'Crowns pass but the bloodline endures',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'medieval', tier: 'Oracle' } },
+    levelMultiplier: 1
+  },
+  renaissance: {
+    slot: 2, word: 'Renaissance', rarity: 'rare',
+    hint: 'The world reborn through curious minds',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'early-modern', tier: 'Scholar' } },
+    levelMultiplier: 1
+  },
+  revolution: {
+    slot: 2, word: 'Revolution', rarity: 'epic',
+    hint: 'When the old order crumbles',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'early-modern', tier: 'Oracle' } },
+    levelMultiplier: 1
+  },
+  atomic: {
+    slot: 2, word: 'Atomic', rarity: 'rare',
+    hint: 'The century that split the atom and the world',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'modern', tier: 'Scholar' } },
+    levelMultiplier: 1
+  },
+  eternal: {
+    slot: 2, word: 'Eternal', rarity: 'legendary',
+    hint: 'All of time bends to your knowledge',
+    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'modern', tier: 'Oracle' } },
+    levelMultiplier: 1
+  },
+
   // ============================================
   // SLOT 3: TIER (rank/achievement words)
   // ============================================
@@ -250,7 +300,15 @@ function computeCategoryTiers(stats) {
     else if (score >= TIER_THRESHOLDS.Master) tier = 'Master';
     else if (score >= TIER_THRESHOLDS.Scholar) tier = 'Scholar';
     else if (score >= TIER_THRESHOLDS.Apprentice) tier = 'Apprentice';
-    if (tier) tiers[s.category] = tier;
+    if (!tier) continue;
+    // Category-level tier (rows where subcategory is null)
+    if (!s.subcategory) {
+      tiers[s.category] = tier;
+    }
+    // Subcategory-level tier (rows where subcategory is set)
+    if (s.subcategory) {
+      tiers[`${s.category}:${s.subcategory}`] = tier;
+    }
   }
   return tiers;
 }
@@ -286,8 +344,11 @@ function computeWordLevel(wordDef, categoryTiers, aggStats, profile, context) {
   switch (type) {
     case 'mastery': {
       if (condition.category && condition.tier) {
-        // Specific category must reach specific tier
-        const playerTier = categoryTiers[condition.category];
+        // Subcategory-specific mastery: use "category:subcategory" key
+        const tierKey = condition.subcategory
+          ? `${condition.category}:${condition.subcategory}`
+          : condition.category;
+        const playerTier = categoryTiers[tierKey];
         if (!playerTier) return 0;
         const tierOrder = ['Apprentice', 'Scholar', 'Master', 'Oracle'];
         const required = tierOrder.indexOf(condition.tier);

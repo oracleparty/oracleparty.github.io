@@ -45,20 +45,23 @@
 
     <!-- Category -->
     <div id="tab-category" class="leaderboard-tab" style="display:none;">
-      <select id="lb-category-select" class="input" style="margin: var(--space-sm) var(--space-lg);">
-        <option value="history">History</option>
-        <option value="science">Science</option>
-        <option value="nature">Nature</option>
-        <option value="arts-literature">Arts & Lit</option>
-        <option value="culture-society">Culture</option>
-        <option value="pop-culture">Pop Culture</option>
-        <option value="world-geography">Geography</option>
-        <option value="technology">Technology</option>
-        <option value="sports">Sports</option>
-        <option value="food">Food</option>
-        <option value="logic">Logic</option>
-        <option value="wild-card">Wild Card</option>
-      </select>
+      <div style="display: flex; gap: var(--space-xs); margin: var(--space-sm) var(--space-lg);">
+        <select id="lb-category-select" class="input" style="flex: 1;">
+          <option value="history">History</option>
+          <option value="science">Science</option>
+          <option value="nature">Nature</option>
+          <option value="arts-literature">Arts & Lit</option>
+          <option value="culture-society">Culture</option>
+          <option value="pop-culture">Pop Culture</option>
+          <option value="world-geography">Geography</option>
+          <option value="technology">Technology</option>
+          <option value="sports">Sports</option>
+          <option value="food">Food</option>
+          <option value="logic">Logic</option>
+          <option value="wild-card">Wild Card</option>
+        </select>
+        <select id="lb-subcategory-select" class="input" style="flex: 1; display: none;"></select>
+      </div>
       <div id="lb-category-list" class="leaderboard-list">
         <p class="leaderboard-loading">Loading...</p>
       </div>

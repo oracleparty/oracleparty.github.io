@@ -3552,6 +3552,23 @@ body::after {
   font-weight: 600;
   color: var(--color-primary);
 }
+.profile-category-row__accuracy small {
+  font-weight: 400;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+.profile-category-row__chevron {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  transition: transform var(--duration-fast);
+}
+.profile-category-row--sub {
+  padding-left: var(--space-xl);
+  font-size: var(--text-sm);
+}
+.profile-category-row--expandable:active {
+  background: var(--color-bg-deep);
+}
 
 .profile-game-row {
   display: flex;

@@ -2710,9 +2710,16 @@ async function showResultsScreen() {
       const placement = sortedForPlacement.findIndex(p => String(p.id) === String(state.room.playerId)) + 1;
       const won = placement === 1;
       // Fire-and-forget — don't block results rendering
-      upsertPlayerStats(uid, cat, totalAnswered, correctCount, won);
+      // Write overall category stats (subcategory=null)
+      upsertPlayerStats(uid, cat, totalAnswered, correctCount, won, null);
+      // Also write subcategory-specific stats if a subcategory was selected
+      const sub = state.room.subcategory || null;
+      if (sub) {
+        upsertPlayerStats(uid, cat, totalAnswered, correctCount, won, sub);
+      }
       insertGameHistoryEntry({
         userId: uid, roomId: state.room.id, category: cat,
+        subcategory: sub,
         score: state.scores[state.room.playerId] || 0,
         placement, totalPlayers: state.players.length
       });
