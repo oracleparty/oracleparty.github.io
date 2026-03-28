@@ -222,6 +222,7 @@ function attachListeners() {
     if (!row) return;
     const catName = row.dataset.category;
     const cat = categories.find(c => c.name === catName);
+    console.log('[Host] Subcategory tapped:', { catName, cat, count: cat?.count, subcategory: row.dataset.subcategory });
     if (!cat) return;
     selectedCategory = cat;
     selectedSubcategory = row.dataset.subcategory || null;
