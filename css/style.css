@@ -665,8 +665,15 @@ body::after {
 
 /* --- Page Content Area --- */
 .page-content {
+  flex: 1;
   width: 100%;
   padding: 0 var(--space-lg) var(--space-lg);
+}
+
+/* On scrollable screens, page-content must NOT constrain its height —
+   let it take natural content height so the parent screen scrolls */
+.screen--scrollable .page-content {
+  flex: none;
 }
 
 .page-content--centered {
