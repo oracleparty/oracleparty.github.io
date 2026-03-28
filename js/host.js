@@ -78,33 +78,19 @@ function renderCategories(cats, playCounts = {}) {
   categoryGrid.innerHTML = cats.map(cat => {
     const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
     const plays = playCounts[cat.name] || 0;
-    const hasSubs = meta.subcategories && meta.subcategories.length > 0;
-
-    let subsHtml = '';
-    if (hasSubs) {
-      subsHtml = `
-        <div class="subcategory-options">
-          <div class="subcategory-header">${meta.icon} ${meta.label}</div>
-          <div class="subcategory-option subcategory-option--all" data-subcategory="" role="button">All ${meta.label}</div>
-          <div class="subcategory-grid">
-            ${meta.subcategories.map(s => `
-              <div class="subcategory-option" data-subcategory="${s.key}" role="button">${s.icon} ${s.label}</div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    }
-
     return `
       <div class="category-card" data-category="${cat.name}">
         <div class="category-card__icon">${meta.icon}</div>
         <div class="category-card__name">${meta.label}</div>
         <div class="category-card__count">${cat.count} questions</div>
         <div class="category-card__plays">${plays.toLocaleString()} plays</div>
-        ${subsHtml}
       </div>
     `;
   }).join('');
+
+  // Hide subcategory picker when categories re-render (e.g. search)
+  const picker = $('#subcategory-picker');
+  if (picker) picker.style.display = 'none';
 }
 
 // --- Attach all event listeners ---
@@ -135,20 +121,6 @@ function attachListeners() {
 
   // Category card selection (event delegation)
   categoryGrid.addEventListener('click', (e) => {
-    // Check if a subcategory option was clicked
-    const subOption = e.target.closest('.subcategory-option');
-    if (subOption) {
-      e.stopPropagation();
-      const card = subOption.closest('.category-card');
-      const catName = card.dataset.category;
-      const cat = categories.find(c => c.name === catName);
-      if (!cat) return;
-      selectedCategory = cat;
-      selectedSubcategory = subOption.dataset.subcategory || null;
-      showSettings(cat);
-      return;
-    }
-
     const card = e.target.closest('.category-card');
     if (!card) return;
 
@@ -158,17 +130,28 @@ function attachListeners() {
 
     const meta = CATEGORY_META[catName];
     if (meta?.subcategories?.length) {
-      // Has subcategories — toggle expansion instead of selecting
-      const wasExpanded = card.classList.contains('expanded');
-      // Collapse any other expanded card first
-      categoryGrid.querySelectorAll('.category-card.expanded').forEach(c => c.classList.remove('expanded'));
-      if (!wasExpanded) card.classList.add('expanded');
+      // Has subcategories — show picker below the grid
+      categoryGrid.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      showSubcategoryPicker(cat, meta);
       return;
     }
 
     // No subcategories — select directly
     selectedCategory = cat;
     selectedSubcategory = null;
+    showSettings(cat);
+  });
+
+  // Subcategory picker (event delegation)
+  $('#subcategory-picker').addEventListener('click', (e) => {
+    const option = e.target.closest('.subcategory-option');
+    if (!option) return;
+    const catName = option.dataset.category;
+    const cat = categories.find(c => c.name === catName);
+    if (!cat) return;
+    selectedCategory = cat;
+    selectedSubcategory = option.dataset.subcategory || null;
     showSettings(cat);
   });
 
@@ -214,6 +197,22 @@ function showSettings(cat) {
 }
 
 // --- Create room and navigate to lobby ---
+function showSubcategoryPicker(cat, meta) {
+  const picker = $('#subcategory-picker');
+  picker.innerHTML = `
+    <div class="subcategory-header">${meta.icon} ${meta.label}</div>
+    <div class="subcategory-option subcategory-option--all" data-category="${cat.name}" data-subcategory="" role="button">All ${meta.label}</div>
+    <div class="subcategory-grid">
+      ${meta.subcategories.map(s =>
+        `<div class="subcategory-option" data-category="${cat.name}" data-subcategory="${s.key}" role="button">${s.icon} ${s.label}</div>`
+      ).join('')}
+    </div>
+  `;
+  picker.style.display = '';
+  // Scroll picker into view
+  picker.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 async function handleHostGame() {
   if (!selectedCategory) {
     hostError.textContent = 'Please select a category first.';

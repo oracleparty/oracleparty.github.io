@@ -782,26 +782,14 @@ body::after {
   margin-top: 1px;
 }
 
-/* --- Subcategory Expansion --- */
-/* --- Subcategory Expansion --- */
-.category-card.expanded {
-  grid-column: 1 / -1;
-  padding: var(--space-md);
-  border-color: var(--color-primary);
-}
-/* Hide ALL original card content — subcategory options replace it */
-.category-card.expanded > .category-card__icon,
-.category-card.expanded > .category-card__name,
-.category-card.expanded > .category-card__count,
-.category-card.expanded > .category-card__plays {
-  display: none;
-}
-.subcategory-options {
-  display: none;
+/* --- Subcategory Picker (shown below grid when category with subs is tapped) --- */
+.subcategory-picker {
   width: 100%;
-}
-.category-card.expanded .subcategory-options {
-  display: block;
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-lg);
 }
 .subcategory-header {
   font-family: var(--font-heading);
