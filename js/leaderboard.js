@@ -55,6 +55,9 @@ async function init() {
     loadTab('category');
   };
 
+  // Initialize subcategory select for default category
+  updateSubcategorySelect();
+
   // Back button
   $('#btn-back').addEventListener('click', () => { window.location.href = 'index.html'; });
   history.pushState({ page: 'leaderboard' }, '');

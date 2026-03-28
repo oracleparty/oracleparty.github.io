@@ -46,7 +46,12 @@ export const CURATED_EMOJIS = [
 ];
 
 const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History' },
+  'history':          { icon: '\u23F3', label: 'History', subcategories: [
+    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
+    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
+    { key: 'early-modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
+    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
+  ]},
   'science':          { icon: '\u2697\uFE0F', label: 'Science' },
   'nature':           { icon: '\u{1F33F}', label: 'Nature' },
   'arts-literature':  { icon: '\u{1F4DC}', label: 'Arts & Lit' },
