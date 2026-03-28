@@ -668,8 +668,6 @@ body::after {
   flex: 1;
   width: 100%;
   padding: 0 var(--space-lg) var(--space-lg);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .page-content--centered {

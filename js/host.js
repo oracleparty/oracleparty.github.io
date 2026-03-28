@@ -84,10 +84,10 @@ function renderCategories(cats, playCounts = {}) {
     if (hasSubs) {
       subsHtml = `
         <div class="subcategory-options">
-          <button class="subcategory-option subcategory-option--all" data-subcategory="">All ${meta.label}</button>
+          <div class="subcategory-option subcategory-option--all" data-subcategory="" role="button">All ${meta.label}</div>
           <div class="subcategory-grid">
             ${meta.subcategories.map(s => `
-              <button class="subcategory-option" data-subcategory="${s.key}">${s.icon} ${s.label}</button>
+              <div class="subcategory-option" data-subcategory="${s.key}" role="button">${s.icon} ${s.label}</div>
             `).join('')}
           </div>
         </div>
@@ -95,13 +95,13 @@ function renderCategories(cats, playCounts = {}) {
     }
 
     return `
-      <button class="category-card${hasSubs ? ' category-card--has-subs' : ''}" data-category="${cat.name}">
+      <div class="category-card" data-category="${cat.name}">
         <div class="category-card__icon">${meta.icon}</div>
         <div class="category-card__name">${meta.label}</div>
         <div class="category-card__count">${cat.count} questions</div>
         <div class="category-card__plays">${plays.toLocaleString()} plays</div>
         ${subsHtml}
-      </button>
+      </div>
     `;
   }).join('');
 }

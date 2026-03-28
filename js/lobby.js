@@ -785,10 +785,10 @@ function renderSettingsCategories() {
   settingsCategoryGrid.innerHTML = Object.entries(CATEGORY_META).map(([name, meta]) => {
     const selected = name === room.category ? 'selected' : '';
     return `
-      <button class="category-card ${selected}" data-category="${name}">
+      <div class="category-card ${selected}" data-category="${name}">
         <div class="category-card__icon">${meta.icon}</div>
         <div class="category-card__name">${meta.label}</div>
-      </button>
+      </div>
     `;
   }).join('');
 }
