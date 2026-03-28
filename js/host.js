@@ -307,13 +307,14 @@ async function _updateSettingsBadge(cat) {
   $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
 
-  // Show subcategory count if selected, otherwise full category count
-  let count = cat.count;
+  // Show parent count immediately, then update with subcategory count
+  const countEl = $('.selected-category__count');
+  countEl.textContent = cat.count ? `${cat.count} questions` : '';
   if (selectedSubcategory) {
-    const subCount = await fetchQuestionCount(cat.name, selectedSubcategory);
-    if (subCount > 0) count = subCount;
+    fetchQuestionCount(cat.name, selectedSubcategory).then(subCount => {
+      countEl.textContent = `${subCount} questions`;
+    });
   }
-  $('.selected-category__count').textContent = count ? `${count} questions` : '';
 }
 
 function showSettings(cat) {
