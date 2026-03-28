@@ -293,6 +293,7 @@ function attachListeners() {
 
 // --- Show settings screen with selected category ---
 function _updateSettingsBadge(cat) {
+  if (!cat) return;
   const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
   let icon = meta.icon;
   let label = meta.label;
@@ -305,7 +306,8 @@ function _updateSettingsBadge(cat) {
   }
   $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
-  $('.selected-category__count').textContent = `${cat.count} questions`;
+  const count = cat.count != null ? cat.count : '';
+  $('.selected-category__count').textContent = count ? `${count} questions` : '';
 }
 
 function showSettings(cat) {
