@@ -51,6 +51,21 @@ export async function fetchCategories() {
 }
 
 /**
+ * Count questions matching a category + optional subcategory.
+ */
+export async function fetchQuestionCount(category, subcategory = null) {
+  let query = supabase
+    .from('questions')
+    .select('id', { count: 'exact', head: true })
+    .contains('categories', [category])
+    .eq('format', 'open');
+  if (subcategory) query = query.eq('subcategory', subcategory);
+  const { count, error } = await query;
+  if (error) { console.error('[Supabase] fetchQuestionCount failed:', error.message); return 0; }
+  return count || 0;
+}
+
+/**
  * Generate a random 4-letter room code (A-Z).
  */
 export function generateRoomCode() {

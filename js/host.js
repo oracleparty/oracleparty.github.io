@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens } from './utils.js';
-import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 
@@ -292,7 +292,7 @@ function attachListeners() {
 }
 
 // --- Show settings screen with selected category ---
-function showSettings(cat) {
+async function showSettings(cat) {
   const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
   $('.selected-category__icon').textContent = meta.icon;
   let label = meta.label;
@@ -301,14 +301,19 @@ function showSettings(cat) {
     if (sub) label += ` \u2014 ${sub.label}`;
   }
   $('.selected-category__name').textContent = label;
-  $('.selected-category__count').textContent = `${cat.count} questions`;
   hostError.textContent = '';
+
+  // Show count for the specific subcategory if selected, or full category
+  const count = selectedSubcategory
+    ? await fetchQuestionCount(cat.name, selectedSubcategory)
+    : cat.count;
+  $('.selected-category__count').textContent = `${count} questions`;
 
   transitionScreens(categoryScreen, settingsScreen);
 }
 
 /** Update settings badge without screen transition (used by category sheet). */
-function showSettingsUpdate() {
+async function showSettingsUpdate() {
   if (!selectedCategory) return;
   const meta = CATEGORY_META[selectedCategory.name] || { icon: '?', label: selectedCategory.name };
   $('.selected-category__icon').textContent = meta.icon;
@@ -318,7 +323,11 @@ function showSettingsUpdate() {
     if (sub) label += ` \u2014 ${sub.label}`;
   }
   $('.selected-category__name').textContent = label;
-  $('.selected-category__count').textContent = `${selectedCategory.count} questions`;
+
+  const count = selectedSubcategory
+    ? await fetchQuestionCount(selectedCategory.name, selectedSubcategory)
+    : selectedCategory.count;
+  $('.selected-category__count').textContent = `${count} questions`;
 }
 
 // --- Create room and navigate to lobby ---
