@@ -1186,6 +1186,11 @@ function showQuestionScreen() {
   // leaving NO way to close the drawer. Game was completely blocked.
   hideChatBar();
 
+  // If chat drawer is still open, notify the player in-chat that a new question started
+  if (state.chatOpen) {
+    const qNum = state.isFinalWagerRound ? 'Final' : `Q${state.currentQuestion + 1}`;
+    _appendLocalChatNotice(`\u23F1 ${qNum} started — timer is running!`);
+  }
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
@@ -1629,7 +1634,8 @@ async function showRevealScreen() {
   }
 
 
-  // Transition to reveal screen — show chat bar AFTER transition so positioning is correct
+  // Pre-set chat bar offset so content padding is correct during transition
+  document.body.style.setProperty('--chat-bar-offset', '44px');
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
@@ -2047,7 +2053,8 @@ async function showScoresScreen() {
   }).join('');
 
 
-  // Transition to scores screen — show chat bar AFTER transition
+  // Pre-set chat bar offset so content padding is correct during transition
+  document.body.style.setProperty('--chat-bar-offset', '44px');
   const currentScreen = document.querySelector('.screen.active');
   const scoresScreen = $('#scores-screen');
   if (currentScreen && currentScreen !== scoresScreen) {
@@ -2607,6 +2614,14 @@ function renderDifficultyTally() {
 }
 
 async function handleDifficultyVoteComplete() {
+  // Re-entrance guard — prevent multiple concurrent calls
+  if (state._dvProcessing) return;
+  state._dvProcessing = true;
+
+  // Disable button immediately
+  const revealBtn = $('#btn-dv-reveal');
+  if (revealBtn) { revealBtn.disabled = true; revealBtn.style.opacity = '0.5'; }
+
   // Clear auto-advance timeout
   if (state._dvAutoAdvanceId) { clearTimeout(state._dvAutoAdvanceId); state._dvAutoAdvanceId = null; }
 
@@ -2669,6 +2684,7 @@ async function handleDifficultyVoteComplete() {
     game_phase: 'final_question',
     current_question: state.totalQuestions
   });
+  state._dvProcessing = false;
 }
 
 // ============================================
@@ -2823,7 +2839,8 @@ async function showResultsScreen() {
   }).join('');
 
 
-  // Transition — show chat bar AFTER transition
+  // Pre-set chat bar offset so content padding is correct during transition
+  document.body.style.setProperty('--chat-bar-offset', '44px');
   const currentScreen = document.querySelector('.screen.active');
   const resultsScreen = $('#results-screen');
   if (currentScreen && currentScreen !== resultsScreen) {
@@ -3332,7 +3349,8 @@ function hideChatBar() {
   $('#chat-bar').classList.add('hidden');
   setHonkMuted(true);
   document.body.style.setProperty('--chat-bar-offset', '0px');
-  closeChatDrawer();
+  // Don't close the drawer — let players finish typing.
+  // The drawer has its own close button and backdrop tap.
 }
 
 function attachChatListeners() {
@@ -3377,6 +3395,17 @@ function toggleChatDrawer() {
  * - hideChatBar()
  * - toggleChatDrawer() when already open
  */
+/** Append a local-only notice to the chat drawer (not sent to DB). */
+function _appendLocalChatNotice(text) {
+  const messagesEl = $('#chat-drawer-messages');
+  if (!messagesEl) return;
+  const notice = document.createElement('div');
+  notice.className = 'chat-msg chat-msg--system';
+  notice.textContent = text;
+  messagesEl.appendChild(notice);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 function closeChatDrawer() {
   state.chatOpen = false;
   $('#chat-bar').classList.remove('open');
