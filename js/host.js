@@ -177,8 +177,9 @@ function attachListeners() {
     window.location.href = 'index.html';
   });
 
-  // Back to category screen
+  // Back to category screen — reset drill-in state
   $('#btn-back-category').addEventListener('click', () => {
+    drillBack(); // Ensure category grid is visible, subcategory view hidden
     transitionScreens(settingsScreen, categoryScreen);
   });
 

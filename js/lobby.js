@@ -507,18 +507,14 @@ function attachSettingsListeners() {
     const catName = row.dataset.category;
     const meta = CATEGORY_META[catName];
 
-    // Subcategory selection
+    // Subcategory selection — set both category and subcategory in one update
     if (row.dataset.subcategory !== undefined) {
-      handleSettingChange('category', catName);
-      if (row.dataset.subcategory) {
-        room.subcategory = row.dataset.subcategory;
-      } else {
-        room.subcategory = null;
-      }
-      updateGameState(room.id, { subcategory: room.subcategory });
-      sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+      room.category = catName;
+      room.subcategory = row.dataset.subcategory || null;
       updateCategoryDisplay();
       renderSettingsCategories();
+      sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+      updateGameState(room.id, { category: catName, subcategory: room.subcategory });
       $('#category-sheet').classList.remove('active');
       return;
     }
