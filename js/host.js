@@ -294,16 +294,16 @@ function attachListeners() {
 // --- Show settings screen with selected category ---
 async function showSettings(cat) {
   const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
-  $('.selected-category__icon').textContent = meta.icon;
+  let icon = meta.icon;
   let label = meta.label;
   if (selectedSubcategory && meta.subcategories) {
     const sub = meta.subcategories.find(s => s.key === selectedSubcategory);
-    if (sub) label += ` \u2014 ${sub.label}`;
+    if (sub) { icon = sub.icon; label = sub.label; }
   }
+  $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
   hostError.textContent = '';
 
-  // Show count for the specific subcategory if selected, or full category
   const count = selectedSubcategory
     ? await fetchQuestionCount(cat.name, selectedSubcategory)
     : cat.count;
@@ -316,12 +316,13 @@ async function showSettings(cat) {
 async function showSettingsUpdate() {
   if (!selectedCategory) return;
   const meta = CATEGORY_META[selectedCategory.name] || { icon: '?', label: selectedCategory.name };
-  $('.selected-category__icon').textContent = meta.icon;
+  let icon = meta.icon;
   let label = meta.label;
   if (selectedSubcategory && meta.subcategories) {
     const sub = meta.subcategories.find(s => s.key === selectedSubcategory);
-    if (sub) label += ` \u2014 ${sub.label}`;
+    if (sub) { icon = sub.icon; label = sub.label; }
   }
+  $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
 
   const count = selectedSubcategory
