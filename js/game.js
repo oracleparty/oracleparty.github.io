@@ -80,6 +80,7 @@ const CATEGORY_META = {
 };
 
 function getCategoryLabel() {
+  if (!state.room) return '?';
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   let label = `${meta.icon} ${meta.label}`;
   if (state.room.subcategory && meta.subcategories) {
@@ -687,7 +688,11 @@ function handleRoomChange(payload) {
   }
 
   if (!payload.new) return;
-  const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status } = payload.new;
+  const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status, category, subcategory } = payload.new;
+
+  // Sync category/subcategory if changed (host changed settings)
+  if (category && state.room) state.room.category = category;
+  if (subcategory !== undefined && state.room) state.room.subcategory = subcategory;
 
   // BUG 2 FIX: When room status changes to 'lobby', DON'T auto-navigate all players.
   // Instead show an in-page notification so players can choose when to return.
@@ -3300,17 +3305,26 @@ function showChatBar() {
   $('#chat-bar').classList.remove('hidden');
   setHonkMuted(false);
 
+  // Set content offset so game-content padding clears the fixed bar
+  document.body.style.setProperty('--chat-bar-offset', '44px');
+
   // Restore accumulated unread badge from messages that arrived during hidden phases
   if (state.unreadCount > 0 && !state.chatOpen) {
     const badge = $('#chat-bar-badge');
     badge.textContent = state.unreadCount;
     badge.classList.remove('hidden');
   }
+
+  // Position bar below the active screen's header
+  repositionChatBar();
+  requestAnimationFrame(repositionChatBar);
+  setTimeout(repositionChatBar, 550);
 }
 
 function hideChatBar() {
   $('#chat-bar').classList.add('hidden');
   setHonkMuted(true);
+  document.body.style.setProperty('--chat-bar-offset', '0px');
   closeChatDrawer();
 }
 
