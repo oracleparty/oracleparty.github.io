@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens } from './utils.js';
-import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 
@@ -222,7 +222,6 @@ function attachListeners() {
     if (!row) return;
     const catName = row.dataset.category;
     const cat = categories.find(c => c.name === catName);
-    console.log('[Host] Subcategory tapped:', { catName, cat, count: cat?.count, subcategory: row.dataset.subcategory });
     if (!cat) return;
     selectedCategory = cat;
     selectedSubcategory = row.dataset.subcategory || null;
@@ -293,7 +292,7 @@ function attachListeners() {
 }
 
 // --- Show settings screen with selected category ---
-function _updateSettingsBadge(cat) {
+async function _updateSettingsBadge(cat) {
   if (!cat) return;
   const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
   let icon = meta.icon;
@@ -307,7 +306,13 @@ function _updateSettingsBadge(cat) {
   }
   $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
-  const count = cat.count != null ? cat.count : '';
+
+  // Show subcategory count if selected, otherwise full category count
+  let count = cat.count;
+  if (selectedSubcategory) {
+    const subCount = await fetchQuestionCount(cat.name, selectedSubcategory);
+    if (subCount > 0) count = subCount;
+  }
   $('.selected-category__count').textContent = count ? `${count} questions` : '';
 }
 
