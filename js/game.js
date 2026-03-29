@@ -2302,6 +2302,7 @@ function showFinalWagerScreen() {
       dvOptions.forEach(b => b.classList.remove('dv-option--selected'));
       btn.classList.add('dv-option--selected');
       state.difficultyVotes[state.room.playerId] = btn.dataset.difficulty;
+      _renderInlineDvTally();
       if (state.difficultyVoteChannel) {
         state.difficultyVoteChannel.send({
           type: 'broadcast', event: 'vote',
@@ -2318,11 +2319,7 @@ function showFinalWagerScreen() {
     .on('broadcast', { event: 'vote' }, ({ payload }) => {
       if (payload?.playerId && payload?.difficulty) {
         state.difficultyVotes[payload.playerId] = payload.difficulty;
-        const tallyEl = $('#dv-inline-tally');
-        if (tallyEl) {
-          const count = Object.keys(state.difficultyVotes).length;
-          tallyEl.textContent = `${count} vote${count !== 1 ? 's' : ''}`;
-        }
+        _renderInlineDvTally();
       }
     })
     .subscribe();
@@ -2412,6 +2409,26 @@ async function updateFinalWagerPlayerList() {
     }
   }
   renderFinalWagerPlayers(wagers);
+}
+
+function _renderInlineDvTally() {
+  const tallyEl = $('#dv-inline-tally');
+  if (!tallyEl) return;
+  const groups = { easy: [], medium: [], hard: [] };
+  for (const [pid, diff] of Object.entries(state.difficultyVotes)) {
+    if (groups[diff]) groups[diff].push(pid);
+  }
+  function avatars(pids) {
+    return pids.map(pid => {
+      const p = state.players.find(pl => String(pl.id) === String(pid));
+      return p ? renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '20px' }) : '';
+    }).join('');
+  }
+  tallyEl.innerHTML = `
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--easy">Easy</span>${avatars(groups.easy)}</div>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--medium">Medium</span>${avatars(groups.medium)}</div>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--hard">Hard</span>${avatars(groups.hard)}</div>
+  `;
 }
 
 async function handleRevealFinalQuestion() {
