@@ -1839,6 +1839,17 @@ function doReveal() {
   // Now mark revealed — subsequent renders will apply colors immediately
   state.resultsRevealed = true;
 
+  // Write per-question mastery in real-time (fire-and-forget).
+  // This way mastery is recorded even if the game crashes before results.
+  const authUser = getCurrentUser();
+  if (authUser) {
+    const uid = authUser.user.id;
+    const myAnswer = state.currentAnswers.find(a => String(a.player_id) === String(state.room.playerId));
+    if (myAnswer?.question_id) {
+      upsertQuestionHistory(uid, myAnswer.question_id, !!myAnswer.is_correct);
+    }
+  }
+
   // Animate: add color classes on next frame so CSS transition fires
   requestAnimationFrame(() => {
     document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
@@ -2734,12 +2745,8 @@ async function showResultsScreen() {
         score: state.scores[state.room.playerId] || 0,
         placement, totalPlayers: state.players.length
       });
-      // Per-question mastery tracking (fire-and-forget)
-      for (const a of myAnswers) {
-        if (a.question_id) {
-          upsertQuestionHistory(uid, a.question_id, !!a.is_correct);
-        }
-      }
+      // Per-question mastery is now written in real-time during doReveal().
+      // No need to write again here — upsertQuestionHistory would double-count times_seen.
 
       // Title system: evaluate unlocks after stats are written
       // Re-fetch stats (they were just upserted) and check all word conditions
