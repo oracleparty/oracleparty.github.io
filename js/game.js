@@ -2330,6 +2330,9 @@ function showFinalWagerScreen() {
     })
     .subscribe();
 
+  // Show initial tally (empty rows with labels)
+  _renderInlineDvTally();
+
   hideChatBar();
 
   // Transition
