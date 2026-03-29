@@ -1028,7 +1028,12 @@ export async function testConnection() {
 // QUESTION FEEDBACK
 // ============================================
 
-export async function upsertQuestionFeedback({ questionId, roomId, playerName, feedbackType, flagReason }) {
+export async function upsertQuestionFeedback({ questionId, roomId, playerName, feedbackType, flagReason, userId }) {
+  // Auto-detect userId from auth session if not provided
+  if (!userId) {
+    try { const { data: { session } } = await supabase.auth.getSession(); userId = session?.user?.id; } catch (e) {}
+  }
+  // Room-level feedback (for all players including guests)
   const { error } = await supabase
     .from('question_feedback')
     .upsert({
@@ -1038,31 +1043,68 @@ export async function upsertQuestionFeedback({ questionId, roomId, playerName, f
       feedback_type: feedbackType,
       flag_reason: flagReason || null
     }, { onConflict: 'question_id,room_id,player_name' });
-
   if (error) console.error('[Supabase] upsertQuestionFeedback failed:', error.message);
+
+  // Account-level feedback (persists across games for logged-in users)
+  if (userId) {
+    const { error: e2 } = await supabase
+      .from('question_feedback')
+      .upsert({
+        question_id: questionId,
+        room_id: '__account__',
+        player_name: userId,
+        feedback_type: feedbackType,
+        flag_reason: flagReason || null
+      }, { onConflict: 'question_id,room_id,player_name' });
+    if (e2) console.error('[Supabase] upsertQuestionFeedback (account) failed:', e2.message);
+  }
 }
 
-export async function deleteQuestionFeedback({ questionId, roomId, playerName }) {
+export async function deleteQuestionFeedback({ questionId, roomId, playerName, userId }) {
+  if (!userId) {
+    try { const { data: { session } } = await supabase.auth.getSession(); userId = session?.user?.id; } catch (e) {}
+  }
   const { error } = await supabase
     .from('question_feedback')
     .delete()
     .match({ question_id: questionId, room_id: roomId, player_name: playerName });
-
   if (error) console.error('[Supabase] deleteQuestionFeedback failed:', error.message);
+
+  // Also delete account-level record
+  if (userId) {
+    await supabase.from('question_feedback').delete()
+      .match({ question_id: questionId, room_id: '__account__', player_name: userId });
+  }
 }
 
-export async function fetchQuestionFeedback(roomId, playerName) {
+export async function fetchQuestionFeedback(roomId, playerName, userId) {
+  if (!userId) {
+    try { const { data: { session } } = await supabase.auth.getSession(); userId = session?.user?.id; } catch (e) {}
+  }
+  // Fetch room-level feedback
   const { data, error } = await supabase
     .from('question_feedback')
     .select('question_id, feedback_type')
     .eq('room_id', roomId)
     .eq('player_name', playerName);
+  if (error) { console.error('[Supabase] fetchQuestionFeedback failed:', error.message); return []; }
+  const results = data || [];
 
-  if (error) {
-    console.error('[Supabase] fetchQuestionFeedback failed:', error.message);
-    return [];
+  // Merge account-level feedback (persisted from previous games)
+  if (userId) {
+    const { data: acct } = await supabase
+      .from('question_feedback')
+      .select('question_id, feedback_type')
+      .eq('room_id', '__account__')
+      .eq('player_name', userId);
+    if (acct) {
+      const existing = new Set(results.map(r => r.question_id));
+      for (const r of acct) {
+        if (!existing.has(r.question_id)) results.push(r);
+      }
+    }
   }
-  return data;
+  return results;
 }
 
 // ============================================
