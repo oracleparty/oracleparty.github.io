@@ -4286,10 +4286,15 @@ body::after {
   justify-content: center;
   gap: var(--space-sm);
 }
-.dv-inline__tally {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
+.dv-option__label {
+  display: block;
+}
+.dv-option__avatars {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
   margin-top: var(--space-xs);
+  min-height: 18px;
 }
 
 .difficulty-vote__tally {

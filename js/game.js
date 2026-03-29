@@ -2421,23 +2421,18 @@ async function updateFinalWagerPlayerList() {
 }
 
 function _renderInlineDvTally() {
-  const tallyEl = $('#dv-inline-tally');
-  if (!tallyEl) return;
   const groups = { easy: [], medium: [], hard: [] };
   for (const [pid, diff] of Object.entries(state.difficultyVotes)) {
     if (groups[diff]) groups[diff].push(pid);
   }
-  function avatars(pids) {
-    return pids.map(pid => {
+  for (const diff of ['easy', 'medium', 'hard']) {
+    const container = document.querySelector(`[data-dv-avatars="${diff}"]`);
+    if (!container) continue;
+    container.innerHTML = groups[diff].map(pid => {
       const p = state.players.find(pl => String(pl.id) === String(pid));
-      return p ? renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '20px' }) : '';
+      return p ? renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '18px' }) : '';
     }).join('');
   }
-  tallyEl.innerHTML = `
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--easy">Easy</span>${avatars(groups.easy)}</div>
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--medium">Medium</span>${avatars(groups.medium)}</div>
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--hard">Hard</span>${avatars(groups.hard)}</div>
-  `;
 }
 
 async function handleRevealFinalQuestion() {
