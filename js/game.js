@@ -3345,27 +3345,20 @@ function repositionChatBar() {
 }
 
 function showChatBar() {
-  const bar = $('#chat-bar');
-  bar.classList.remove('hidden');
+  $('#chat-bar').classList.remove('hidden');
   setHonkMuted(false);
 
-  // Move bar into the active screen's game-body, between header and content
-  const activeScreen = document.querySelector('.screen.active');
-  const content = activeScreen?.querySelector('.game-content');
-  if (content && content.parentNode) {
-    content.parentNode.insertBefore(bar, content);
-  }
-
-  // Restore accumulated unread badge from messages that arrived during hidden phases
+  // Restore accumulated unread badge
   if (state.unreadCount > 0 && !state.chatOpen) {
     const badge = $('#chat-bar-badge');
     badge.textContent = state.unreadCount;
     badge.classList.remove('hidden');
   }
 
-  // Position the drawer below the bar
+  // Position bar below the active screen's header, position drawer below bar
   repositionChatBar();
   requestAnimationFrame(repositionChatBar);
+  setTimeout(repositionChatBar, 550);
 }
 
 function hideChatBar() {
