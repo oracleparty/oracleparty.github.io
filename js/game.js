@@ -713,7 +713,9 @@ function handleRoomChange(payload) {
     return;
   }
 
-  if (!state.room.isHost && state.questions.length === 0 && question_ids && question_ids.length > 0) {
+  const questionIdsChanged = question_ids && question_ids.length > 0 &&
+    (state.questions.length === 0 || question_ids.join(',') !== state.questions.map(q => q.id).join(','));
+  if (!state.room.isHost && questionIdsChanged) {
     // Clear hot-join fallback poll if running — Realtime delivered the data first
     if (state._hotJoinPollId) {
       clearInterval(state._hotJoinPollId);
@@ -1118,8 +1120,13 @@ function showCountdownScreen() {
 // ============================================
 
 function showQuestionScreen() {
-  const q = state.questions[state.currentQuestion];
-  if (!q) return;
+  let q = state.questions[state.currentQuestion];
+  if (!q) {
+    // Question missing — try to use the last available question as fallback
+    console.warn(`[Game] Question ${state.currentQuestion} missing, using fallback`);
+    q = state.questions[state.questions.length - 1];
+    if (!q) return; // Truly no questions at all
+  }
 
   $('#question-category').textContent = getCategoryLabel();
 
@@ -2463,10 +2470,7 @@ async function handleRevealFinalQuestion() {
   try {
     const usedIds = state.questions.map(q => q.id);
     const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
-    if (q) {
-      state.questions[state.totalQuestions] = q;
-      try { await saveQuestionIds(state.room.id, state.questions.map(qn => qn.id)); } catch (e) {}
-    }
+    if (q) state.questions[state.totalQuestions] = q;
   } catch (e) { /* Use pre-fetched question */ }
 
   // Clean up vote channel
@@ -2488,10 +2492,12 @@ async function handleRevealFinalQuestion() {
 
   showQuestionScreen();
 
-  // Broadcast to other players
+  // Broadcast to other players — include question_ids so non-host gets the updated question
+  const questionIds = state.questions.map(qn => qn.id);
   await updateGameState(state.room.id, {
     game_phase: 'final_question',
-    current_question: state.totalQuestions
+    current_question: state.totalQuestions,
+    question_ids: questionIds
   });
 }
 
