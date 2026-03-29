@@ -1825,9 +1825,12 @@ export function subscribeToFriendRequests(userId, callback) {
 }
 
 export async function fetchCategoryPlayCounts() {
+  // Use player_stats.games_played (persists even if rooms/players are deleted)
+  // instead of game_plays (which cascades with room deletion).
   const { data, error } = await supabase
-    .from('game_plays')
-    .select('category');
+    .from('player_stats')
+    .select('category, games_played')
+    .is('subcategory', null); // Only category-level rows
 
   if (error) {
     console.error('[Supabase] fetchCategoryPlayCounts failed:', error.message);
@@ -1836,7 +1839,7 @@ export async function fetchCategoryPlayCounts() {
 
   const counts = {};
   for (const row of (data || [])) {
-    counts[row.category] = (counts[row.category] || 0) + 1;
+    counts[row.category] = (counts[row.category] || 0) + (row.games_played || 0);
   }
   return counts;
 }

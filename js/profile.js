@@ -23,7 +23,8 @@ import {
   searchProfiles,
   fetchTitleUnlocks,
   fetchMasteryCounts,
-  fetchCategories
+  fetchCategories,
+  fetchQuestionCount
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
@@ -467,6 +468,17 @@ export async function initProfilePage() {
       const catTotals = {};
       for (const c of allCats) catTotals[c.name] = c.count;
 
+      // Fetch subcategory counts for categories that have them
+      const subTotals = {}; // "category|subcategory" → count
+      const subFetches = [];
+      for (const [cat] of Object.entries(_mastery).filter(([k]) => k.includes('|'))) {
+        const [catName, subKey] = cat.split('|');
+        subFetches.push(
+          fetchQuestionCount(catName, subKey).then(count => { subTotals[cat] = count; }).catch(() => {})
+        );
+      }
+      await Promise.all(subFetches);
+
       const totalQuestions = allCats.reduce((s, c) => s + c.count, 0);
       const overallPct = totalQuestions > 0 ? Math.round((totalMastered / totalQuestions) * 100) : 0;
 
@@ -490,12 +502,14 @@ export async function initProfilePage() {
           let subHtml = '';
           if (hasSubs) {
             const subs = meta.subcategories.map(s => {
-              const subMastered = _mastery[`${cat}|${s.key}`] || 0;
+              const subKey = `${cat}|${s.key}`;
+              const subMastered = _mastery[subKey] || 0;
               if (subMastered === 0) return '';
+              const subTotal = subTotals[subKey] || 0;
               return `<div class="mastery-row mastery-row--sub">
                 <span class="mastery-row__icon">${s.icon}</span>
                 <span class="mastery-row__name">${s.label}</span>
-                <span class="mastery-row__count">${subMastered}</span>
+                <span class="mastery-row__fraction">${subMastered}${subTotal ? '/' + subTotal : ''}</span>
               </div>`;
             }).filter(Boolean).join('');
             if (subs) subHtml = `<div class="mastery-sub-rows" style="display:none;">${subs}</div>`;
