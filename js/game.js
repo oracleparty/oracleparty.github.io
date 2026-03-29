@@ -713,22 +713,25 @@ function handleRoomChange(payload) {
     return;
   }
 
-  const questionIdsChanged = question_ids && question_ids.length > 0 &&
-    (state.questions.length === 0 || question_ids.join(',') !== state.questions.map(q => q.id).join(','));
-  if (!state.room.isHost && questionIdsChanged) {
-    // Clear hot-join fallback poll if running — Realtime delivered the data first
-    if (state._hotJoinPollId) {
-      clearInterval(state._hotJoinPollId);
-      state._hotJoinPollId = null;
-    }
+  if (!state.room.isHost && question_ids && question_ids.length > 0 && state.questions.length === 0) {
+    // First time receiving questions (initial load / hot-join)
+    if (state._hotJoinPollId) { clearInterval(state._hotJoinPollId); state._hotJoinPollId = null; }
     state.totalQuestions = Math.max(1, question_ids.length - 1);
     fetchQuestionsByIds(question_ids).then(async qs => {
       state.questions = qs;
       if (qs.length > 0) resolveFieldMap(qs[0]);
       await updateScores();
       if (game_phase) handlePhaseTransition(game_phase);
-    });
+    }).catch(() => {});
     return;
+  }
+
+  // If question IDs changed mid-game (e.g., difficulty vote replaced final question),
+  // re-fetch in the background but DON'T block phase transition
+  if (!state.room.isHost && question_ids && question_ids.length > 0 && state.questions.length > 0) {
+    fetchQuestionsByIds(question_ids).then(qs => {
+      if (qs.length > 0) { state.questions = qs; resolveFieldMap(qs[0]); }
+    }).catch(() => {});
   }
 
   if (current_question !== undefined) {
