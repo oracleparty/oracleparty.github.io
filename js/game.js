@@ -2501,6 +2501,7 @@ function showDifficultyVoteScreen() {
   state.difficultyVotes = {};
   state.votedDifficulty = null;
   state._dvProcessing = false;
+  _screenTransitioning = false; // Reset in case previous transition got stuck
 
   $('#dv-category').textContent = getCategoryLabel();
   $('#dv-status').classList.add('hidden');
@@ -2538,7 +2539,7 @@ function showDifficultyVoteScreen() {
     if (_dvCountdown <= 0) {
       clearInterval(state._dvTimerId);
       state._dvTimerId = null;
-      _lockVotesAndReveal();
+      if (state.room.isHost) _lockVotesAndReveal();
     }
   }, 1000);
 
@@ -2568,6 +2569,14 @@ function showDifficultyVoteScreen() {
   });
 
   hideChatBar();
+
+  // Nuclear failsafe: if STILL on difficulty_vote after 20s, force advance
+  setTimeout(() => {
+    if (state.gamePhase === 'difficulty_vote' && state.room.isHost && !state._dvProcessing) {
+      console.warn('[Game] Nuclear failsafe: forcing advance from difficulty_vote');
+      _lockVotesAndReveal();
+    }
+  }, 20000);
 
   const currentScreen = document.querySelector('.screen.active');
   const voteScreen = $('#difficulty-vote-screen');
@@ -2655,18 +2664,23 @@ async function _lockVotesAndReveal() {
 
     const questionIds = state.questions.map(qn => qn.id);
     await saveQuestionIds(state.room.id, questionIds);
-    await updateGameState(state.room.id, {
+    const { error: advanceErr } = await updateGameState(state.room.id, {
       game_phase: 'final_question',
       current_question: state.totalQuestions
     });
+
+    // If updateGameState failed (returns error but doesn't throw), retry once
+    if (advanceErr) {
+      console.error('[Game] First advance attempt failed:', advanceErr.message);
+      await new Promise(r => setTimeout(r, 1000));
+      await updateGameState(state.room.id, { game_phase: 'final_question', current_question: state.totalQuestions });
+    }
   } catch (err) {
     console.error('[Game] _lockVotesAndReveal failed:', err);
-    // FAILSAFE: default to medium and advance anyway
+    // FAILSAFE: try one more time to advance
     try {
-      state.votedDifficulty = 'medium';
+      state.votedDifficulty = state.votedDifficulty || 'medium';
       if (state.difficultyVoteChannel) { supabase.removeChannel(state.difficultyVoteChannel); state.difficultyVoteChannel = null; }
-      const questionIds = state.questions.map(qn => qn.id);
-      await saveQuestionIds(state.room.id, questionIds);
       await updateGameState(state.room.id, { game_phase: 'final_question', current_question: state.totalQuestions });
     } catch (e2) {
       console.error('[Game] Failsafe also failed:', e2);
