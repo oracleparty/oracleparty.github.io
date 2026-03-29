@@ -1966,11 +1966,17 @@ async function handleNextQuestion() {
   const isLastQuestion = state.currentQuestion >= state.totalQuestions - 1;
 
   if (isLastQuestion) {
+    // Apply locally first — don't depend on Realtime echo
+    state.gamePhase = 'results';
+    showResultsScreen();
     await updateGameState(state.room.id, { game_phase: 'results' });
   } else {
+    // Apply locally first
+    state.currentQuestion = state.currentQuestion + 1;
+    handlePhaseTransition('question');
     await updateGameState(state.room.id, {
       game_phase: 'question',
-      current_question: state.currentQuestion + 1
+      current_question: state.currentQuestion
     });
   }
 }
@@ -2375,8 +2381,10 @@ async function updateFinalWagerPlayerList() {
 }
 
 async function handleRevealFinalQuestion() {
-  // Go to difficulty vote first — players vote on Easy/Medium/Hard
-  // before the final question is revealed
+  // Apply locally first — don't depend on Realtime echo
+  state.isFinalWagerRound = true;
+  state.gamePhase = 'difficulty_vote';
+  showDifficultyVoteScreen();
   await updateGameState(state.room.id, {
     game_phase: 'difficulty_vote'
   });
