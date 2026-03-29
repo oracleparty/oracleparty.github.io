@@ -22,13 +22,15 @@ import {
   subscribeToMessages,
   subscribeToRoom,
   unsubscribe,
-  createPresenceChannel
+  createPresenceChannel,
+  fetchPlayerStats
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
+import { computeCategoryTiers } from './titles.js';
 import { initThemeToggle } from './theme.js';
 
 // Category display config
@@ -80,6 +82,9 @@ const btnSettings = $('#btn-settings');
 const settingsModal = $('#settings-modal');
 const btnCloseSettings = $('#btn-close-settings');
 const settingsCategoryGrid = $('#settings-category-grid');
+
+// Player tier badges (user_id → tier string)
+let _playerTiers = {};
 
 // Chat bar state
 let chatOpen = false;
@@ -324,6 +329,8 @@ function attachListeners() {
 async function loadPlayers() {
   players = await fetchPlayers(room.id);
   sortPlayers();
+  // Load tier badges for logged-in players (non-blocking)
+  _loadPlayerTiers();
   renderPlayers();
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
@@ -342,12 +349,35 @@ function sortPlayers() {
   });
 }
 
+async function _loadPlayerTiers() {
+  const cat = room.category;
+  const userIds = players.map(p => p.user_id).filter(Boolean);
+  if (userIds.length === 0) return;
+  for (const uid of userIds) {
+    try {
+      const stats = await fetchPlayerStats(uid);
+      const tiers = computeCategoryTiers(stats || []);
+      if (tiers[cat]) _playerTiers[uid] = tiers[cat];
+    } catch (e) { /* non-critical */ }
+  }
+  renderPlayers(); // Re-render with tiers
+}
+
+// Tier colors for lobby badges
+const TIER_COLORS = { Novice: '#999', Apprentice: '#4ADE80', Scholar: '#60A5FA', Master: '#A78BFA', Oracle: '#C68A2E' };
+
 function renderPlayers() {
   playerCountEl.textContent = `(${players.length})`;
 
   playerListEl.innerHTML = players.map(p => {
     const badges = [];
     if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
+    // Tier badge for the selected category
+    const tier = _playerTiers[p.user_id];
+    if (tier) {
+      const color = TIER_COLORS[tier] || '#999';
+      badges.push(`<span class="badge badge--tier" style="color:${color};">${tier}</span>`);
+    }
     if (p.is_ready) {
       badges.push('<span class="badge badge--ready">Ready</span>');
     } else if (!p.is_host) {

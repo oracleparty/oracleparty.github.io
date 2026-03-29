@@ -289,7 +289,7 @@ const TIER_THRESHOLDS = {
  * Compute the category tier for each category from player_stats.
  * Returns { 'history': 'Scholar', 'science': 'Apprentice', ... }
  */
-function computeCategoryTiers(stats) {
+export function computeCategoryTiers(stats) {
   const tiers = {};
   for (const s of (stats || [])) {
     if (s.questions_answered < 20) continue;

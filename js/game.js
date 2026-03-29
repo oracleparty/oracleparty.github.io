@@ -2860,6 +2860,35 @@ async function showResultsScreen() {
   $('#btn-quit-game').onclick = handleQuitGame;
   $('#btn-review-questions').onclick = handleReviewQuestions;
 
+  // Mastery gained — show for logged-in players
+  const authUser = getCurrentUser();
+  if (authUser) {
+    const myCorrect = allAnswers.filter(a =>
+      String(a.player_id) === String(state.room.playerId) && a.is_correct &&
+      a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__'
+    );
+    if (myCorrect.length > 0) {
+      const masteryEl = document.createElement('div');
+      masteryEl.className = 'results-mastery';
+      masteryEl.innerHTML = `
+        <div class="results-mastery__summary">\u2B50 Mastered ${myCorrect.length} question${myCorrect.length > 1 ? 's' : ''}</div>
+        <div class="results-mastery__detail" style="display:none;">
+          ${myCorrect.map(a => {
+            const q = state.questions.find(qu => qu.id === a.question_id);
+            const qText = q ? getQuestionText(q) : 'Unknown question';
+            const aText = q ? getCorrectAnswer(q) : a.submitted_answer;
+            return `<div class="results-mastery__item"><span class="results-mastery__q">${escapeHtml(qText)}</span><span class="results-mastery__a">${escapeHtml(aText)}</span></div>`;
+          }).join('')}
+        </div>
+      `;
+      masteryEl.querySelector('.results-mastery__summary').onclick = () => {
+        const detail = masteryEl.querySelector('.results-mastery__detail');
+        detail.style.display = detail.style.display === 'none' ? '' : 'none';
+      };
+      $('#results-list')?.after(masteryEl);
+    }
+  }
+
   // Guest sign-up nudges — personalized with actual session data
   if (!getCurrentUser() && !state._guestNudgeProcessed) {
     state._guestNudgeProcessed = true;

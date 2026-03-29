@@ -21,7 +21,8 @@ import {
   fetchFriends,
   isFriend,
   searchProfiles,
-  fetchTitleUnlocks
+  fetchTitleUnlocks,
+  fetchMasteryCounts
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
@@ -437,10 +438,20 @@ export async function initProfilePage() {
   };
 
   // Fetch stats + games
-  const [stats, games] = await Promise.all([
+  const [stats, games, masteryData] = await Promise.all([
     fetchPlayerStats(userId),
-    fetchGameHistory(userId, 5)
+    fetchGameHistory(userId, 5),
+    fetchMasteryCounts(userId).catch(() => [])
   ]);
+
+  // Build mastery lookup: { "history": N, "history|ancient": N, ... }
+  const _mastery = {};
+  for (const m of masteryData) {
+    const catKey = m.category;
+    const subKey = m.subcategory ? `${m.category}|${m.subcategory}` : null;
+    _mastery[catKey] = (_mastery[catKey] || 0) + m.mastered;
+    if (subKey) _mastery[subKey] = (_mastery[subKey] || 0) + m.mastered;
+  }
 
   // Title — use custom title if builder is unlocked, otherwise auto-title
   const customTitle = buildDisplayTitle(profile);
@@ -537,20 +548,23 @@ export async function initProfilePage() {
               const subIcon = subMeta?.icon || '';
               const subLabel = subMeta?.label || sub.subcategory;
               const subAcc = sub.questions_answered > 0 ? Math.round((sub.correct_answers / sub.questions_answered) * 100) : 0;
+              const subMastered = _mastery[`${sub.category}|${sub.subcategory}`] || 0;
               return `<div class="profile-category-row profile-category-row--sub">
                 <span>${subIcon}</span>
                 <span class="profile-category-row__name">${escapeHtml(subLabel)}</span>
-                <span class="profile-category-row__accuracy">${subAcc}% <small>(${sub.questions_answered}Q)</small></span>
+                <span class="profile-category-row__accuracy">${subAcc}% <small class="profile-mastery-fraction">${subMastered}/${sub.questions_answered}Q</small></span>
               </div>`;
             }).join('')}
           </div>`;
         }
 
+        const catMastered = _mastery[s.category] || 0;
+
         return `<div class="profile-category-group" data-category="${s.category}">
           <div class="profile-category-row${hasSubs ? ' profile-category-row--expandable' : ''}">
             <span>${meta.icon}</span>
             <span class="profile-category-row__name">${meta.label}</span>
-            <span class="profile-category-row__accuracy">${acc}%</span>
+            <span class="profile-category-row__accuracy">${acc}% <small class="profile-mastery-fraction">${catMastered}/${s.questions_answered}Q</small></span>
             ${hasSubs ? '<span class="profile-category-row__chevron">›</span>' : ''}
           </div>
           ${subHtml}

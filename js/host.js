@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens } from './utils.js';
-import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 
@@ -34,6 +34,8 @@ let categories = [];
 let categoryPlayCounts = {};
 let selectedCategory = null;
 let selectedSubcategory = null;
+let _masteryCounts = {}; // { categoryName: masteredCount }
+let _isLoggedIn = false;
 let settings = {
   whoCanJoin: 'anyone',
   questionsPerGame: 10,
@@ -60,6 +62,19 @@ async function init() {
       console.warn('[Host] Could not load play counts:', e);
       categoryPlayCounts = {};
     }
+    // Load mastery for logged-in users (non-critical)
+    const authUser = getCurrentUser();
+    if (authUser?.user?.id) {
+      _isLoggedIn = true;
+      try {
+        const masteryData = await fetchMasteryCounts(authUser.user.id);
+        for (const m of masteryData) {
+          if (!m.subcategory) {
+            _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
+          }
+        }
+      } catch (e) { console.warn('[Host] Could not load mastery:', e); }
+    }
     renderCategories(categories, categoryPlayCounts);
   } catch (err) {
     console.error('[Host] Init error:', err);
@@ -78,12 +93,24 @@ function renderCategories(cats, playCounts = {}) {
   categoryGrid.innerHTML = cats.map(cat => {
     const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
     const plays = playCounts[cat.name] || 0;
+    const mastered = _masteryCounts[cat.name] || 0;
+    const total = cat.count || 1;
+    const pct = Math.round((mastered / total) * 100);
+    const masteryHtml = _isLoggedIn && mastered > 0 ? `
+      <div class="category-card__mastery">
+        <span class="category-card__mastery-text">${mastered}/${total} mastered</span>
+        <div class="category-card__mastery-bar">
+          <div class="category-card__mastery-fill" style="width: ${pct}%"></div>
+        </div>
+      </div>
+    ` : '';
     return `
       <div class="category-card" data-category="${cat.name}">
         <div class="category-card__icon">${meta.icon}</div>
         <div class="category-card__name">${meta.label}</div>
         <div class="category-card__count">${cat.count} questions</div>
         <div class="category-card__plays">${plays.toLocaleString()} plays</div>
+        ${masteryHtml}
       </div>
     `;
   }).join('');

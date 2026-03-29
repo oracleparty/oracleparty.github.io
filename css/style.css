@@ -781,6 +781,27 @@ body::after {
   opacity: 0.6;
   margin-top: 1px;
 }
+.category-card__mastery {
+  margin-top: var(--space-xs);
+}
+.category-card__mastery-text {
+  font-size: 0.6rem;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.category-card__mastery-bar {
+  height: 3px;
+  background: var(--color-surface-light);
+  border-radius: 2px;
+  margin-top: 3px;
+  overflow: hidden;
+}
+.category-card__mastery-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 2px;
+  transition: width 0.5s var(--ease-out);
+}
 
 /* --- Subcategory Drill-in View --- */
 .subcategory-view__header {
@@ -1329,6 +1350,11 @@ body::after {
 .badge--ready {
   background: rgba(58, 138, 79, 0.1);
   color: var(--color-success);
+}
+.badge--tier {
+  background: transparent;
+  font-size: 0.55rem;
+  opacity: 0.8;
 }
 
 .badge--not-ready {
@@ -2668,6 +2694,39 @@ body::after {
   padding-right: var(--space-md);
 }
 
+/* --- Results Mastery Gained --- */
+.results-mastery {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  margin-top: var(--space-sm);
+}
+.results-mastery__summary {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-align: center;
+}
+.results-mastery__detail {
+  margin-top: var(--space-sm);
+}
+.results-mastery__item {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--color-surface-light);
+}
+.results-mastery__q {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+.results-mastery__a {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-success);
+}
+
 .btn-danger-text {
   color: var(--color-danger);
 }
@@ -3556,6 +3615,10 @@ body::after {
   font-weight: 400;
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+}
+.profile-mastery-fraction {
+  color: var(--color-primary);
+  font-weight: 500;
 }
 .profile-category-row__chevron {
   color: var(--color-text-muted);

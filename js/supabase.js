@@ -1340,6 +1340,7 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
     const { error } = await supabase.from('question_history').update({
       times_seen: existing.times_seen + 1,
       times_correct: existing.times_correct + (isCorrect ? 1 : 0),
+      last_correct: isCorrect,
       last_seen_at: new Date().toISOString()
     }).eq('id', existing.id);
     if (error) console.error('[Supabase] upsertQuestionHistory update failed:', error.message);
@@ -1349,10 +1350,58 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
       question_id: questionId,
       times_seen: 1,
       times_correct: isCorrect ? 1 : 0,
+      last_correct: isCorrect,
       last_seen_at: new Date().toISOString()
     });
     if (error) console.error('[Supabase] upsertQuestionHistory insert failed:', error.message);
   }
+}
+
+/**
+ * Fetch mastery counts per category for a user.
+ * "Mastered" = last_correct is true in question_history.
+ * Returns array of { category, subcategory, mastered }.
+ */
+export async function fetchMasteryCounts(userId) {
+  const { data, error } = await supabase
+    .rpc('get_mastery_counts', { p_user_id: userId });
+  if (error) {
+    // RPC may not exist — fall back to client-side query
+    console.warn('[Supabase] fetchMasteryCounts RPC failed, using fallback:', error.message);
+    return _fetchMasteryCountsFallback(userId);
+  }
+  return data || [];
+}
+
+async function _fetchMasteryCountsFallback(userId) {
+  const { data, error } = await supabase
+    .from('question_history')
+    .select('question_id, last_correct')
+    .eq('user_id', userId)
+    .eq('last_correct', true);
+  if (error || !data) return [];
+
+  // Need to look up each question's category — fetch all question IDs
+  const qIds = data.map(d => d.question_id);
+  if (qIds.length === 0) return [];
+
+  const { data: questions } = await supabase
+    .from('questions')
+    .select('id, categories, subcategory')
+    .in('id', qIds);
+  if (!questions) return [];
+
+  // Count per category + subcategory
+  const counts = {};
+  for (const q of questions) {
+    const cats = Array.isArray(q.categories) ? q.categories : [];
+    for (const cat of cats) {
+      const key = `${cat}|${q.subcategory || ''}`;
+      if (!counts[key]) counts[key] = { category: cat, subcategory: q.subcategory || null, mastered: 0 };
+      counts[key].mastered++;
+    }
+  }
+  return Object.values(counts);
 }
 
 // ============================================
