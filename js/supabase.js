@@ -1394,15 +1394,21 @@ async function _fetchMasteryCountsFallback(userId) {
     .eq('last_correct', true);
   if (error || !data) return [];
 
-  // Need to look up each question's category — fetch all question IDs
+  // Look up each question's category — batch in chunks to avoid URL length limits
   const qIds = data.map(d => d.question_id);
   if (qIds.length === 0) return [];
 
-  const { data: questions } = await supabase
-    .from('questions')
-    .select('id, categories, subcategory')
-    .in('id', qIds);
-  if (!questions) return [];
+  const BATCH = 100;
+  const questions = [];
+  for (let i = 0; i < qIds.length; i += BATCH) {
+    const chunk = qIds.slice(i, i + BATCH);
+    const { data: batch } = await supabase
+      .from('questions')
+      .select('id, categories, subcategory')
+      .in('id', chunk);
+    if (batch) questions.push(...batch);
+  }
+  if (questions.length === 0) return [];
 
   // Count per category + subcategory
   const counts = {};

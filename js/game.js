@@ -2885,6 +2885,8 @@ async function showResultsScreen() {
         const detail = masteryEl.querySelector('.results-mastery__detail');
         detail.style.display = detail.style.display === 'none' ? '' : 'none';
       };
+      // Remove any existing mastery element (prevents duplicates on re-render)
+      document.querySelector('.results-mastery')?.remove();
       $('#results-list')?.after(masteryEl);
     }
   }
