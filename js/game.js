@@ -2421,16 +2421,25 @@ async function updateFinalWagerPlayerList() {
 }
 
 function _renderInlineDvTally() {
+  const screen = document.getElementById('final-wager-screen');
+  if (!screen) return;
   const groups = { easy: [], medium: [], hard: [] };
-  for (const [pid, diff] of Object.entries(state.difficultyVotes)) {
+  for (const [pid, diff] of Object.entries(state.difficultyVotes || {})) {
     if (groups[diff]) groups[diff].push(pid);
   }
   for (const diff of ['easy', 'medium', 'hard']) {
-    const container = document.querySelector(`[data-dv-avatars="${diff}"]`);
+    const container = screen.querySelector(`[data-dv-avatars="${diff}"]`);
     if (!container) continue;
+    if (groups[diff].length === 0) {
+      container.innerHTML = '';
+      continue;
+    }
     container.innerHTML = groups[diff].map(pid => {
       const p = state.players.find(pl => String(pl.id) === String(pid));
-      return p ? renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '18px' }) : '';
+      if (!p) return '';
+      const emoji = p.avatar_emoji || p.display_name?.[0]?.toUpperCase() || '?';
+      const bg = p.avatar_color || '#78716C';
+      return `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${bg};font-size:12px;color:#fff;">${emoji}</span>`;
     }).join('');
   }
 }
