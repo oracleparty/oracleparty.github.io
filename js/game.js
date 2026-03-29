@@ -2661,7 +2661,12 @@ async function _lockVotesAndReveal() {
       game_phase: 'final_question',
       current_question: state.totalQuestions
     });
-    if (!error) break; // Success
+    if (!error) {
+      // Don't wait for Realtime — trigger phase transition locally
+      state.currentQuestion = state.totalQuestions;
+      handlePhaseTransition('final_question');
+      break;
+    }
     console.error(`[Game] Advance attempt ${attempt + 1} failed:`, error.message);
     if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
   }
