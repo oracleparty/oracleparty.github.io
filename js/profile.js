@@ -439,8 +439,8 @@ export async function initProfilePage() {
 
   // Fetch stats + games
   const [stats, games, masteryData] = await Promise.all([
-    fetchPlayerStats(userId),
-    fetchGameHistory(userId, 5),
+    fetchPlayerStats(userId).catch(() => []),
+    fetchGameHistory(userId, 5).catch(() => []),
     fetchMasteryCounts(userId).catch(() => [])
   ]);
 

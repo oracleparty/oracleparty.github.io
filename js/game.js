@@ -666,8 +666,8 @@ function _activateHostControlsForCurrentPhase() {
         revealBtn.classList.remove('hidden');
         revealBtn.disabled = false;
         revealBtn.style.opacity = '1';
-        revealBtn.textContent = 'Reveal Question';
-        revealBtn.onclick = handleDifficultyVoteComplete;
+        revealBtn.textContent = 'Lock Votes';
+        revealBtn.onclick = () => _lockVotesAndReveal();
       }
     }
   }
@@ -1635,7 +1635,6 @@ async function showRevealScreen() {
 
 
   // Pre-set chat bar offset so content padding is correct during transition
-  document.body.style.setProperty('--chat-bar-offset', '44px');
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
@@ -2054,7 +2053,6 @@ async function showScoresScreen() {
 
 
   // Pre-set chat bar offset so content padding is correct during transition
-  document.body.style.setProperty('--chat-bar-offset', '44px');
   const currentScreen = document.querySelector('.screen.active');
   const scoresScreen = $('#scores-screen');
   if (currentScreen && currentScreen !== scoresScreen) {
@@ -2496,13 +2494,13 @@ async function openScoreEditQuestion(questionNumber) {
 }
 
 // ============================================
-// DIFFICULTY VOTE SCREEN
+// DIFFICULTY VOTE SCREEN — REBUILT FROM SCRATCH
 // ============================================
 
 function showDifficultyVoteScreen() {
-  state.difficultyVoteLocked = false;
   state.difficultyVotes = {};
   state.votedDifficulty = null;
+  state._dvProcessing = false;
 
   $('#dv-category').textContent = getCategoryLabel();
   $('#dv-status').classList.add('hidden');
@@ -2511,68 +2509,59 @@ function showDifficultyVoteScreen() {
 
   const options = document.querySelectorAll('.dv-option');
   options.forEach(btn => {
-    btn.classList.remove('dv-option--selected', 'dv-option--winner');
+    btn.classList.remove('dv-option--selected', 'dv-option--winner', 'dv-option--highlight');
     btn.disabled = false;
   });
 
-  // Host: show reveal button (hidden until ready)
+  // Host: "Lock Votes" button. Non-host: hidden.
   const revealBtn = $('#btn-dv-reveal');
   if (state.room.isHost) {
-    // Host can always click Reveal — don't gate on vote count.
-    // Disconnected players would freeze the game if we required all votes.
-    // Unvoted players default to Medium in handleDifficultyVoteComplete.
     revealBtn.classList.remove('hidden');
     revealBtn.disabled = false;
     revealBtn.style.opacity = '1';
-    revealBtn.textContent = 'Reveal Question';
-    revealBtn.onclick = handleDifficultyVoteComplete;
+    revealBtn.textContent = 'Lock Votes (15s)';
+    revealBtn.onclick = () => _lockVotesAndReveal();
   } else {
     revealBtn.classList.add('hidden');
   }
 
-  // Auto-advance timeout: if host hasn't revealed after 30s, auto-trigger
-  if (state.room.isHost) {
-    if (state._dvAutoAdvanceId) clearTimeout(state._dvAutoAdvanceId);
-    state._dvAutoAdvanceId = setTimeout(() => {
-      state._dvAutoAdvanceId = null;
-      if (state.gamePhase === 'difficulty_vote') handleDifficultyVoteComplete();
-    }, 30000);
-  }
+  // 15-second countdown timer for all players
+  let _dvCountdown = 15;
+  if (state._dvTimerId) clearInterval(state._dvTimerId);
+  state._dvTimerId = setInterval(() => {
+    _dvCountdown--;
+    if (state.room.isHost && revealBtn) {
+      revealBtn.textContent = `Lock Votes (${_dvCountdown}s)`;
+    }
+    $('#dv-status').classList.remove('hidden');
+    $('#dv-status').textContent = `${_dvCountdown}s remaining`;
+    if (_dvCountdown <= 0) {
+      clearInterval(state._dvTimerId);
+      state._dvTimerId = null;
+      _lockVotesAndReveal();
+    }
+  }, 1000);
 
-  // Set up broadcast channel for votes
-  if (state.difficultyVoteChannel) {
-    supabase.removeChannel(state.difficultyVoteChannel);
-  }
+  // Broadcast channel for votes
+  if (state.difficultyVoteChannel) supabase.removeChannel(state.difficultyVoteChannel);
   state.difficultyVoteChannel = createDifficultyVoteChannel(state.room.id);
   state.difficultyVoteChannel
     .on('broadcast', { event: 'vote' }, ({ payload }) => {
-      if (payload && payload.playerId && payload.difficulty) {
+      if (payload?.playerId && payload?.difficulty) {
         state.difficultyVotes[payload.playerId] = payload.difficulty;
-        renderDifficultyTally();
-
-        // Host: update button text with vote count
-        if (state.room.isHost) {
-          const voteCount = Object.keys(state.difficultyVotes).length;
-          if (voteCount >= state.players.length) {
-            revealBtn.textContent = 'Reveal Question';
-          } else {
-            revealBtn.textContent = `Reveal Question (${voteCount}/${state.players.length})`;
-          }
-        }
+        _renderDvTally();
       }
     })
     .subscribe();
 
-  // Vote button handlers — players CAN change their vote (not locked on first tap)
+  // Vote buttons — can change vote before lock
   options.forEach(btn => {
     btn.onclick = () => {
+      if (state._dvProcessing) return; // Locked
       options.forEach(b => b.classList.remove('dv-option--selected'));
       btn.classList.add('dv-option--selected');
-
-      // Broadcast vote (same playerId overwrites previous vote in state.difficultyVotes)
-      state.difficultyVoteChannel.send({
-        type: 'broadcast',
-        event: 'vote',
+      state.difficultyVoteChannel?.send({
+        type: 'broadcast', event: 'vote',
         payload: { playerId: state.room.playerId, difficulty: btn.dataset.difficulty }
       });
     };
@@ -2580,7 +2569,6 @@ function showDifficultyVoteScreen() {
 
   hideChatBar();
 
-  // Screen transition
   const currentScreen = document.querySelector('.screen.active');
   const voteScreen = $('#difficulty-vote-screen');
   if (currentScreen && currentScreen !== voteScreen && !_screenTransitioning) {
@@ -2589,105 +2577,100 @@ function showDifficultyVoteScreen() {
   }
 }
 
-function renderDifficultyTally() {
-  // Group voters by difficulty, show their avatars
+function _renderDvTally() {
   const groups = { easy: [], medium: [], hard: [] };
   for (const [pid, diff] of Object.entries(state.difficultyVotes)) {
     if (groups[diff]) groups[diff].push(pid);
   }
-  const total = Object.keys(state.difficultyVotes).length;
-
-  function avatarsForGroup(playerIds) {
-    return playerIds.map(pid => {
+  function avatars(pids) {
+    return pids.map(pid => {
       const p = state.players.find(pl => String(pl.id) === String(pid));
-      if (!p) return '';
-      return renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '22px' });
+      return p ? renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '22px' }) : '';
     }).join('');
   }
-
   $('#dv-tally').innerHTML = `
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--easy">Easy</span><span class="dv-tally__avatars">${avatarsForGroup(groups.easy)}</span></div>
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--medium">Medium</span><span class="dv-tally__avatars">${avatarsForGroup(groups.medium)}</span></div>
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--hard">Hard</span><span class="dv-tally__avatars">${avatarsForGroup(groups.hard)}</span></div>
-    <span class="dv-tally__total">${total}/${state.players.length} voted</span>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--easy">Easy</span><span class="dv-tally__avatars">${avatars(groups.easy)}</span></div>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--medium">Medium</span><span class="dv-tally__avatars">${avatars(groups.medium)}</span></div>
+    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--hard">Hard</span><span class="dv-tally__avatars">${avatars(groups.hard)}</span></div>
   `;
 }
 
-async function handleDifficultyVoteComplete() {
-  // Re-entrance guard — prevent multiple concurrent calls
+async function _lockVotesAndReveal() {
   if (state._dvProcessing) return;
   state._dvProcessing = true;
 
-  try {
+  // Stop countdown
+  if (state._dvTimerId) { clearInterval(state._dvTimerId); state._dvTimerId = null; }
 
-  // Disable button immediately
+  // Disable everything
   const revealBtn = $('#btn-dv-reveal');
-  if (revealBtn) { revealBtn.disabled = true; revealBtn.style.opacity = '0.5'; }
+  if (revealBtn) { revealBtn.disabled = true; revealBtn.style.opacity = '0.5'; revealBtn.textContent = 'Locking...'; }
+  document.querySelectorAll('.dv-option').forEach(b => { b.disabled = true; });
+  $('#dv-status').textContent = 'Votes locked!';
 
-  // Clear auto-advance timeout
-  if (state._dvAutoAdvanceId) { clearTimeout(state._dvAutoAdvanceId); state._dvAutoAdvanceId = null; }
+  try {
+    // Tally + weighted random
+    const tally = { easy: 0, medium: 0, hard: 0 };
+    for (const d of Object.values(state.difficultyVotes)) {
+      if (tally[d] !== undefined) tally[d]++;
+    }
+    const total = tally.easy + tally.medium + tally.hard;
+    const w = total === 0
+      ? { easy: 1, medium: 1, hard: 1 }
+      : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
+    const wt = w.easy + w.medium + w.hard;
+    const r = Math.random() * wt;
+    let winner = r < w.easy ? 'easy' : r < w.easy + w.medium ? 'medium' : 'hard';
 
-  // Tally votes
-  const tally = { easy: 0, medium: 0, hard: 0 };
-  for (const d of Object.values(state.difficultyVotes)) {
-    if (tally[d] !== undefined) tally[d]++;
-  }
+    // Brief animation: rapid highlight (0.5s)
+    const diffOptions = ['easy', 'medium', 'hard'];
+    const buttons = document.querySelectorAll('.dv-option');
+    for (let step = 0; step < 6; step++) {
+      buttons.forEach(b => b.classList.remove('dv-option--highlight'));
+      const btn = document.querySelector(`.dv-option--${diffOptions[step % 3]}`);
+      if (btn) btn.classList.add('dv-option--highlight');
+      await new Promise(resolve => setTimeout(resolve, 80));
+    }
+    buttons.forEach(b => b.classList.remove('dv-option--highlight'));
 
-  // Weighted random selection based on vote distribution
-  const total = tally.easy + tally.medium + tally.hard;
-  const weights = total === 0
-    ? { easy: 1, medium: 1, hard: 1 }
-    : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
-  const weightTotal = weights.easy + weights.medium + weights.hard;
-  const rand = Math.random() * weightTotal;
-  let winner;
-  if (rand < weights.easy) winner = 'easy';
-  else if (rand < weights.easy + weights.medium) winner = 'medium';
-  else winner = 'hard';
+    // Show winner
+    const winnerBtn = document.querySelector(`.dv-option--${winner}`);
+    if (winnerBtn) winnerBtn.classList.add('dv-option--winner');
+    const resultEl = $('#dv-result');
+    resultEl.textContent = `${winner.charAt(0).toUpperCase() + winner.slice(1)}!`;
+    resultEl.classList.remove('hidden');
 
-  state.votedDifficulty = winner;
+    state.votedDifficulty = winner;
 
-  // Show winner immediately (animation disabled for now)
-  const buttons = document.querySelectorAll('.dv-option');
-  buttons.forEach(b => b.classList.remove('dv-option--highlight', 'dv-option--winner'));
-  const winnerBtn = document.querySelector(`.dv-option--${winner}`);
-  if (winnerBtn) winnerBtn.classList.add('dv-option--winner');
+    // Fetch question matching difficulty
+    const usedIds = state.questions.map(q => q.id);
+    const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
+    if (q) state.questions[state.totalQuestions] = q;
 
-  const resultEl = $('#dv-result');
-  resultEl.textContent = `${winner.charAt(0).toUpperCase() + winner.slice(1)}!`;
-  resultEl.classList.remove('hidden');
+    // Clean up channel
+    if (state.difficultyVoteChannel) { supabase.removeChannel(state.difficultyVoteChannel); state.difficultyVoteChannel = null; }
 
-  // Fetch a question matching the voted difficulty
-  const usedIds = state.questions.map(q => q.id);
-  const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
+    // Brief pause then advance
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-  if (q) {
-    // Replace the pre-fetched final question with the voted one
-    state.questions[state.totalQuestions] = q;
-  } else {
-    // No questions found for voted difficulty — fall back to the pre-fetched question
-    // and show a note so players understand why the difficulty doesn't match their vote
-    resultEl.textContent += ' (no questions available — using random)';
-  }
-
-  // Clean up vote channel
-  if (state.difficultyVoteChannel) {
-    supabase.removeChannel(state.difficultyVoteChannel);
-    state.difficultyVoteChannel = null;
-  }
-
-  // Brief pause to show result, then advance to final question
-  await new Promise(r => setTimeout(r, 1500));
-
-  // Save the new question ID and advance
-  const questionIds = state.questions.map(qn => qn.id);
-  await saveQuestionIds(state.room.id, questionIds);
-  await updateGameState(state.room.id, {
-    game_phase: 'final_question',
-    current_question: state.totalQuestions
-  });
+    const questionIds = state.questions.map(qn => qn.id);
+    await saveQuestionIds(state.room.id, questionIds);
+    await updateGameState(state.room.id, {
+      game_phase: 'final_question',
+      current_question: state.totalQuestions
+    });
   } catch (err) {
-    console.error('[Game] handleDifficultyVoteComplete failed:', err);
+    console.error('[Game] _lockVotesAndReveal failed:', err);
+    // FAILSAFE: default to medium and advance anyway
+    try {
+      state.votedDifficulty = 'medium';
+      if (state.difficultyVoteChannel) { supabase.removeChannel(state.difficultyVoteChannel); state.difficultyVoteChannel = null; }
+      const questionIds = state.questions.map(qn => qn.id);
+      await saveQuestionIds(state.room.id, questionIds);
+      await updateGameState(state.room.id, { game_phase: 'final_question', current_question: state.totalQuestions });
+    } catch (e2) {
+      console.error('[Game] Failsafe also failed:', e2);
+    }
   } finally {
     state._dvProcessing = false;
   }
@@ -2846,7 +2829,6 @@ async function showResultsScreen() {
 
 
   // Pre-set chat bar offset so content padding is correct during transition
-  document.body.style.setProperty('--chat-bar-offset', '44px');
   const currentScreen = document.querySelector('.screen.active');
   const resultsScreen = $('#results-screen');
   if (currentScreen && currentScreen !== resultsScreen) {
@@ -3363,11 +3345,16 @@ function repositionChatBar() {
 }
 
 function showChatBar() {
-  $('#chat-bar').classList.remove('hidden');
+  const bar = $('#chat-bar');
+  bar.classList.remove('hidden');
   setHonkMuted(false);
 
-  // Set content offset so game-content padding clears the fixed bar
-  document.body.style.setProperty('--chat-bar-offset', '44px');
+  // Move bar into the active screen's game-body, between header and content
+  const activeScreen = document.querySelector('.screen.active');
+  const content = activeScreen?.querySelector('.game-content');
+  if (content && content.parentNode) {
+    content.parentNode.insertBefore(bar, content);
+  }
 
   // Restore accumulated unread badge from messages that arrived during hidden phases
   if (state.unreadCount > 0 && !state.chatOpen) {
@@ -3376,16 +3363,14 @@ function showChatBar() {
     badge.classList.remove('hidden');
   }
 
-  // Position bar below the active screen's header
+  // Position the drawer below the bar
   repositionChatBar();
   requestAnimationFrame(repositionChatBar);
-  setTimeout(repositionChatBar, 550);
 }
 
 function hideChatBar() {
   $('#chat-bar').classList.add('hidden');
   setHonkMuted(true);
-  document.body.style.setProperty('--chat-bar-offset', '0px');
   // Don't close the drawer — let players finish typing.
   // The drawer has its own close button and backdrop tap.
 }
@@ -3965,9 +3950,9 @@ function cleanup() {
     clearInterval(state._hotJoinPollId);
     state._hotJoinPollId = null;
   }
-  if (state._dvAutoAdvanceId) {
-    clearTimeout(state._dvAutoAdvanceId);
-    state._dvAutoAdvanceId = null;
+  if (state._dvTimerId) {
+    clearInterval(state._dvTimerId);
+    state._dvTimerId = null;
   }
   if (state.presenceHeartbeatId) {
     clearInterval(state.presenceHeartbeatId);

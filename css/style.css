@@ -1544,7 +1544,6 @@ body::after {
 .lobby-top {
   flex-shrink: 0;
   padding: 0 var(--space-lg);
-  padding-top: var(--chat-bar-offset, 44px);
 }
 
 .lobby-middle {
@@ -2893,20 +2892,17 @@ body::after {
 
 /* --- Chat Bar (slim bar below header) --- */
 .chat-bar {
-  position: fixed;
-  top: var(--chat-bar-top, 56px);
-  left: 0;
-  right: 0;
   height: 40px;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   padding: 0 var(--space-lg);
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-surface-light);
-  z-index: 50;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
 }
 
 .chat-bar:active {

@@ -25,6 +25,10 @@ export function transitionScreens(fromEl, toEl, duration = 500) {
       // Force reflow so the browser registers the display change
       void toEl.offsetHeight;
       toEl.classList.add('active');
+      // Scroll new screen and its content to top
+      toEl.scrollTop = 0;
+      const content = toEl.querySelector('.game-content');
+      if (content) content.scrollTop = 0;
       resolve();
     }, duration);
   });
