@@ -1960,6 +1960,12 @@ async function handleJudgmentOverride(e) {
 
   // Persist to DB — Realtime event will update other clients
   await updateAnswerJudgment(answerId, newCorrect, newScore);
+
+  // Update mastery for the affected player
+  const player = state.players.find(p => p.id === answer.player_id);
+  if (player?.user_id && answer.question_id) {
+    upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
+  }
 }
 
 async function handleNextQuestion() {
@@ -2581,6 +2587,13 @@ async function openScoreEditQuestion(questionNumber) {
     answer.score_earned = newScore;
 
     await updateAnswerJudgment(answerId, newCorrect, newScore);
+
+    // Update mastery for the affected player
+    const player = state.players.find(p => String(p.id) === String(answer.player_id));
+    if (player?.user_id && answer.question_id) {
+      upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
+    }
+
     await updateScores();
     openScoreEditQuestion(qNum);
     _lastScoresRenderedForQuestion = -1;
@@ -3098,6 +3111,13 @@ async function handleReviewQuestions() {
 
         // Persist to DB then re-render results behind the overlay
         await updateAnswerJudgment(answerId, newCorrect, newScore);
+
+        // Update mastery for the affected player
+        const player = state.players.find(p => String(p.id) === String(answer.player_id));
+        if (player?.user_id && answer.question_id) {
+          upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
+        }
+
         showResultsScreen();
       });
     });
