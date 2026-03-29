@@ -2612,82 +2612,61 @@ async function _lockVotesAndReveal() {
   if (state._dvTimerId) { clearInterval(state._dvTimerId); state._dvTimerId = null; }
 
   // Disable everything
-  const revealBtn = $('#btn-dv-reveal');
-  if (revealBtn) { revealBtn.disabled = true; revealBtn.style.opacity = '0.5'; revealBtn.textContent = 'Locking...'; }
-  document.querySelectorAll('.dv-option').forEach(b => { b.disabled = true; });
-  $('#dv-status').textContent = 'Votes locked!';
-
   try {
-    // Tally + weighted random
-    const tally = { easy: 0, medium: 0, hard: 0 };
-    for (const d of Object.values(state.difficultyVotes)) {
-      if (tally[d] !== undefined) tally[d]++;
-    }
-    const total = tally.easy + tally.medium + tally.hard;
-    const w = total === 0
-      ? { easy: 1, medium: 1, hard: 1 }
-      : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
-    const wt = w.easy + w.medium + w.hard;
-    const r = Math.random() * wt;
-    let winner = r < w.easy ? 'easy' : r < w.easy + w.medium ? 'medium' : 'hard';
+    const revealBtn = $('#btn-dv-reveal');
+    if (revealBtn) { revealBtn.disabled = true; revealBtn.style.opacity = '0.5'; }
+    document.querySelectorAll('.dv-option').forEach(b => { b.disabled = true; });
+  } catch (e) { /* UI update failed, continue anyway */ }
 
-    // Brief animation: rapid highlight (0.5s)
-    const diffOptions = ['easy', 'medium', 'hard'];
-    const buttons = document.querySelectorAll('.dv-option');
-    for (let step = 0; step < 6; step++) {
-      buttons.forEach(b => b.classList.remove('dv-option--highlight'));
-      const btn = document.querySelector(`.dv-option--${diffOptions[step % 3]}`);
-      if (btn) btn.classList.add('dv-option--highlight');
-      await new Promise(resolve => setTimeout(resolve, 80));
-    }
-    buttons.forEach(b => b.classList.remove('dv-option--highlight'));
+  // Tally + weighted random (pure logic, can't fail)
+  const tally = { easy: 0, medium: 0, hard: 0 };
+  for (const d of Object.values(state.difficultyVotes || {})) {
+    if (tally[d] !== undefined) tally[d]++;
+  }
+  const total = tally.easy + tally.medium + tally.hard;
+  const w = total === 0
+    ? { easy: 1, medium: 1, hard: 1 }
+    : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
+  const wt = w.easy + w.medium + w.hard;
+  const r = Math.random() * wt;
+  const winner = r < w.easy ? 'easy' : r < w.easy + w.medium ? 'medium' : 'hard';
+  state.votedDifficulty = winner;
 
-    // Show winner
+  // Show winner (non-critical UI update)
+  try {
+    const resultEl = $('#dv-result');
+    if (resultEl) { resultEl.textContent = `${winner.charAt(0).toUpperCase() + winner.slice(1)}!`; resultEl.classList.remove('hidden'); }
     const winnerBtn = document.querySelector(`.dv-option--${winner}`);
     if (winnerBtn) winnerBtn.classList.add('dv-option--winner');
-    const resultEl = $('#dv-result');
-    resultEl.textContent = `${winner.charAt(0).toUpperCase() + winner.slice(1)}!`;
-    resultEl.classList.remove('hidden');
+  } catch (e) { /* UI failed, continue */ }
 
-    state.votedDifficulty = winner;
-
-    // Fetch question matching difficulty
+  // Try to fetch a question matching the voted difficulty (optional — pre-fetched question is fallback)
+  try {
     const usedIds = state.questions.map(q => q.id);
     const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
     if (q) state.questions[state.totalQuestions] = q;
+  } catch (e) { console.warn('[Game] fetchQuestionByDifficulty failed, using pre-fetched question'); }
 
-    // Clean up channel
-    if (state.difficultyVoteChannel) { supabase.removeChannel(state.difficultyVoteChannel); state.difficultyVoteChannel = null; }
+  // Clean up channel
+  try { if (state.difficultyVoteChannel) { supabase.removeChannel(state.difficultyVoteChannel); state.difficultyVoteChannel = null; } } catch (e) {}
 
-    // Brief pause then advance
-    await new Promise(resolve => setTimeout(resolve, 1000));
+  // Brief pause so players see the result
+  await new Promise(resolve => setTimeout(resolve, 800));
 
-    const questionIds = state.questions.map(qn => qn.id);
-    await saveQuestionIds(state.room.id, questionIds);
-    const { error: advanceErr } = await updateGameState(state.room.id, {
+  // ADVANCE THE GAME — this is the critical part. Try up to 3 times.
+  try { await saveQuestionIds(state.room.id, state.questions.map(qn => qn.id)); } catch (e) {}
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await updateGameState(state.room.id, {
       game_phase: 'final_question',
       current_question: state.totalQuestions
     });
-
-    // If updateGameState failed (returns error but doesn't throw), retry once
-    if (advanceErr) {
-      console.error('[Game] First advance attempt failed:', advanceErr.message);
-      await new Promise(r => setTimeout(r, 1000));
-      await updateGameState(state.room.id, { game_phase: 'final_question', current_question: state.totalQuestions });
-    }
-  } catch (err) {
-    console.error('[Game] _lockVotesAndReveal failed:', err);
-    // FAILSAFE: try one more time to advance
-    try {
-      state.votedDifficulty = state.votedDifficulty || 'medium';
-      if (state.difficultyVoteChannel) { supabase.removeChannel(state.difficultyVoteChannel); state.difficultyVoteChannel = null; }
-      await updateGameState(state.room.id, { game_phase: 'final_question', current_question: state.totalQuestions });
-    } catch (e2) {
-      console.error('[Game] Failsafe also failed:', e2);
-    }
-  } finally {
-    state._dvProcessing = false;
+    if (!error) break; // Success
+    console.error(`[Game] Advance attempt ${attempt + 1} failed:`, error.message);
+    if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
   }
+
+  state._dvProcessing = false;
 }
 
 // ============================================
