@@ -990,9 +990,10 @@ async function handlePhaseTransition(phase) {
       showFinalWagerScreen();
       break;
     case 'difficulty_vote':
+      // Difficulty vote removed — treat as final_question
       state.isFinalWagerRound = true;
-      showDifficultyVoteScreen();
-      break;
+      // Fall through to final_question
+    // eslint-disable-next-line no-fallthrough
     case 'final_question':
       // Guard: skip duplicate events (same pattern as 'question' phase guard).
       // Without this, the host's question_started_at write triggers a second
@@ -2392,12 +2393,29 @@ async function updateFinalWagerPlayerList() {
 }
 
 async function handleRevealFinalQuestion() {
-  // Apply locally first — don't depend on Realtime echo
+  // Go straight to the final question — no difficulty vote screen.
+  // Use the pre-fetched question at state.questions[state.totalQuestions].
   state.isFinalWagerRound = true;
-  state.gamePhase = 'difficulty_vote';
-  showDifficultyVoteScreen();
+  state.currentQuestion = state.totalQuestions;
+  state.gamePhase = 'final_question';
+
+  // Reset per-question state
+  state.hasSubmitted = false;
+  state.onRevealScreen = false;
+  state.resultsRevealed = false;
+  state.timerExpired = false;
+  state.currentAnswers = [];
+  state.previousScores = {};
+  state.questionStartedAt = null;
+  state.currentWager = state.finalWager || 0;
+  $('#reveal-answers').innerHTML = '';
+
+  showQuestionScreen();
+
+  // Broadcast to other players
   await updateGameState(state.room.id, {
-    game_phase: 'difficulty_vote'
+    game_phase: 'final_question',
+    current_question: state.totalQuestions
   });
 }
 
