@@ -22,7 +22,8 @@ import {
   isFriend,
   searchProfiles,
   fetchTitleUnlocks,
-  fetchMasteryCounts
+  fetchMasteryCounts,
+  fetchCategories
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
@@ -386,6 +387,7 @@ export async function initProfilePage() {
   const bioEl = $('#profile-bio');
   const statsEl = $('#profile-stats');
   const categoriesEl = $('#profile-categories');
+  const masteryEl = $('#profile-mastery');
   const gamesEl = $('#profile-games');
   const favCatEl = $('#profile-fav-categories');
   const accountEl = $('#profile-account');
@@ -451,6 +453,86 @@ export async function initProfilePage() {
     const subKey = m.subcategory ? `${m.category}|${m.subcategory}` : null;
     _mastery[catKey] = (_mastery[catKey] || 0) + m.mastered;
     if (subKey) _mastery[subKey] = (_mastery[subKey] || 0) + m.mastered;
+  }
+
+  // Render mastery section
+  if (masteryEl) {
+    const totalMastered = Object.entries(_mastery)
+      .filter(([k]) => !k.includes('|')) // Only category-level keys (not subcategory)
+      .reduce((sum, [, v]) => sum + v, 0);
+
+    if (totalMastered > 0) {
+      // Fetch total question counts per category for the progress bars
+      const allCats = await fetchCategories().catch(() => []);
+      const catTotals = {};
+      for (const c of allCats) catTotals[c.name] = c.count;
+
+      const totalQuestions = allCats.reduce((s, c) => s + c.count, 0);
+      const overallPct = totalQuestions > 0 ? Math.round((totalMastered / totalQuestions) * 100) : 0;
+
+      let masteryHtml = `
+        <div class="mastery-summary">
+          <div class="mastery-summary__text">${totalMastered} / ${totalQuestions} questions mastered</div>
+          <div class="mastery-bar"><div class="mastery-bar__fill" style="width: ${overallPct}%"></div></div>
+        </div>
+      `;
+
+      // Per-category rows (only categories the player has mastered at least 1 question)
+      const catKeys = Object.entries(_mastery).filter(([k]) => !k.includes('|'));
+      if (catKeys.length > 0) {
+        masteryHtml += catKeys.map(([cat, mastered]) => {
+          const meta = CATEGORY_META[cat] || { icon: '?', label: cat };
+          const total = catTotals[cat] || 0;
+          const pct = total > 0 ? Math.round((mastered / total) * 100) : 0;
+          const hasSubs = meta.subcategories?.length > 0;
+
+          // Subcategory rows
+          let subHtml = '';
+          if (hasSubs) {
+            const subs = meta.subcategories.map(s => {
+              const subMastered = _mastery[`${cat}|${s.key}`] || 0;
+              if (subMastered === 0) return '';
+              return `<div class="mastery-row mastery-row--sub">
+                <span class="mastery-row__icon">${s.icon}</span>
+                <span class="mastery-row__name">${s.label}</span>
+                <span class="mastery-row__count">${subMastered}</span>
+              </div>`;
+            }).filter(Boolean).join('');
+            if (subs) subHtml = `<div class="mastery-sub-rows" style="display:none;">${subs}</div>`;
+          }
+
+          return `<div class="mastery-group" data-cat="${cat}">
+            <div class="mastery-row${hasSubs && subHtml ? ' mastery-row--expandable' : ''}">
+              <span class="mastery-row__icon">${meta.icon}</span>
+              <span class="mastery-row__name">${meta.label}</span>
+              <span class="mastery-row__fraction">${mastered}/${total}</span>
+              <div class="mastery-bar mastery-bar--inline"><div class="mastery-bar__fill" style="width: ${pct}%"></div></div>
+              ${hasSubs && subHtml ? '<span class="mastery-row__chevron">›</span>' : ''}
+            </div>
+            ${subHtml}
+          </div>`;
+        }).join('');
+      }
+
+      masteryEl.innerHTML = masteryHtml;
+
+      // Wire expand/collapse
+      masteryEl.querySelectorAll('.mastery-row--expandable').forEach(row => {
+        row.style.cursor = 'pointer';
+        row.onclick = () => {
+          const group = row.closest('.mastery-group');
+          const subs = group?.querySelector('.mastery-sub-rows');
+          const chevron = row.querySelector('.mastery-row__chevron');
+          if (subs) {
+            const showing = subs.style.display !== 'none';
+            subs.style.display = showing ? 'none' : '';
+            if (chevron) chevron.textContent = showing ? '›' : '⌄';
+          }
+        };
+      });
+    } else {
+      masteryEl.innerHTML = '<p class="profile-empty">Play games to start mastering questions</p>';
+    }
   }
 
   // Title — use custom title if builder is unlocked, otherwise auto-title
