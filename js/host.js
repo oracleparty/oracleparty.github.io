@@ -69,9 +69,7 @@ async function init() {
       try {
         const masteryData = await fetchMasteryCounts(authUser.user.id);
         for (const m of masteryData) {
-          if (!m.subcategory) {
-            _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
-          }
+          _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
         }
       } catch (e) { console.warn('[Host] Could not load mastery:', e); }
     }
