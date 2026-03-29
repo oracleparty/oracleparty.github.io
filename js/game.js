@@ -658,19 +658,7 @@ function _activateHostControlsForCurrentPhase() {
     }
   }
 
-  if (phase === 'difficulty_vote') {
-    // Difficulty vote: show Reveal Question button (host only)
-    if (state.room.isHost) {
-      const revealBtn = $('#btn-dv-reveal');
-      if (revealBtn) {
-        revealBtn.classList.remove('hidden');
-        revealBtn.disabled = false;
-        revealBtn.style.opacity = '1';
-        revealBtn.textContent = 'Lock Votes';
-        revealBtn.onclick = () => _lockVotesAndReveal();
-      }
-    }
-  }
+  // difficulty_vote phase removed — no host controls needed for it
 }
 
 // ============================================
@@ -3857,9 +3845,7 @@ function cleanup() {
     clearInterval(state._hotJoinPollId);
     state._hotJoinPollId = null;
   }
-  if (state._dvTimerId) {
-    clearInterval(state._dvTimerId);
-    state._dvTimerId = null;
+  if (state._dvTimerId) { clearInterval(state._dvTimerId); state._dvTimerId = null;
   }
   if (state.presenceHeartbeatId) {
     clearInterval(state.presenceHeartbeatId);
