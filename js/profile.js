@@ -630,25 +630,20 @@ export async function initProfilePage() {
               const subIcon = subMeta?.icon || '';
               const subLabel = subMeta?.label || sub.subcategory;
               const subAcc = sub.questions_answered > 0 ? Math.round((sub.correct_answers / sub.questions_answered) * 100) : 0;
-              const subMastered = _mastery[`${sub.category}|${sub.subcategory}`] || 0;
-              const subMasteryText = subMastered > 0 ? ` <small class="profile-mastery-fraction">${subMastered} mastered</small>` : '';
               return `<div class="profile-category-row profile-category-row--sub">
                 <span>${subIcon}</span>
                 <span class="profile-category-row__name">${escapeHtml(subLabel)}</span>
-                <span class="profile-category-row__accuracy">${subAcc}%${subMasteryText}</span>
+                <span class="profile-category-row__accuracy">${subAcc}%</span>
               </div>`;
             }).join('')}
           </div>`;
         }
 
-        const catMastered = _mastery[s.category] || 0;
-        const masteryText = catMastered > 0 ? ` <small class="profile-mastery-fraction">${catMastered} mastered</small>` : '';
-
         return `<div class="profile-category-group" data-category="${s.category}">
           <div class="profile-category-row${hasSubs ? ' profile-category-row--expandable' : ''}">
             <span>${meta.icon}</span>
             <span class="profile-category-row__name">${meta.label}</span>
-            <span class="profile-category-row__accuracy">${acc}%${masteryText}</span>
+            <span class="profile-category-row__accuracy">${acc}%</span>
             ${hasSubs ? '<span class="profile-category-row__chevron">›</span>' : ''}
           </div>
           ${subHtml}

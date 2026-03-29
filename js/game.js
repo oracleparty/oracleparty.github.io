@@ -2305,6 +2305,40 @@ function showFinalWagerScreen() {
     revealBtn.classList.add('hidden');
   }
 
+  // Inline difficulty vote — set up vote buttons
+  state.difficultyVotes = {};
+  const dvOptions = document.querySelectorAll('#final-wager-screen .dv-option');
+  dvOptions.forEach(btn => {
+    btn.classList.remove('dv-option--selected');
+    btn.onclick = () => {
+      dvOptions.forEach(b => b.classList.remove('dv-option--selected'));
+      btn.classList.add('dv-option--selected');
+      state.difficultyVotes[state.room.playerId] = btn.dataset.difficulty;
+      if (state.difficultyVoteChannel) {
+        state.difficultyVoteChannel.send({
+          type: 'broadcast', event: 'vote',
+          payload: { playerId: state.room.playerId, difficulty: btn.dataset.difficulty }
+        });
+      }
+    };
+  });
+
+  // Broadcast channel for difficulty votes
+  if (state.difficultyVoteChannel) supabase.removeChannel(state.difficultyVoteChannel);
+  state.difficultyVoteChannel = createDifficultyVoteChannel(state.room.id);
+  state.difficultyVoteChannel
+    .on('broadcast', { event: 'vote' }, ({ payload }) => {
+      if (payload?.playerId && payload?.difficulty) {
+        state.difficultyVotes[payload.playerId] = payload.difficulty;
+        const tallyEl = $('#dv-inline-tally');
+        if (tallyEl) {
+          const count = Object.keys(state.difficultyVotes).length;
+          tallyEl.textContent = `${count} vote${count !== 1 ? 's' : ''}`;
+        }
+      }
+    })
+    .subscribe();
+
   hideChatBar();
 
   // Transition
@@ -2393,13 +2427,37 @@ async function updateFinalWagerPlayerList() {
 }
 
 async function handleRevealFinalQuestion() {
-  // Go straight to the final question — no difficulty vote screen.
-  // Use the pre-fetched question at state.questions[state.totalQuestions].
+  // Tally inline difficulty votes and try to fetch a matching question
+  const tally = { easy: 0, medium: 0, hard: 0 };
+  for (const d of Object.values(state.difficultyVotes || {})) {
+    if (tally[d] !== undefined) tally[d]++;
+  }
+  const total = tally.easy + tally.medium + tally.hard;
+  const w = total === 0
+    ? { easy: 1, medium: 1, hard: 1 }
+    : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
+  const wt = w.easy + w.medium + w.hard;
+  const r = Math.random() * wt;
+  const winner = r < w.easy ? 'easy' : r < w.easy + w.medium ? 'medium' : 'hard';
+  state.votedDifficulty = winner;
+
+  // Try to fetch a question matching the voted difficulty (optional — pre-fetched is fallback)
+  try {
+    const usedIds = state.questions.map(q => q.id);
+    const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
+    if (q) {
+      state.questions[state.totalQuestions] = q;
+      try { await saveQuestionIds(state.room.id, state.questions.map(qn => qn.id)); } catch (e) {}
+    }
+  } catch (e) { /* Use pre-fetched question */ }
+
+  // Clean up vote channel
+  if (state.difficultyVoteChannel) { try { supabase.removeChannel(state.difficultyVoteChannel); } catch (e) {} state.difficultyVoteChannel = null; }
+
+  // Advance to final question — apply locally first
   state.isFinalWagerRound = true;
   state.currentQuestion = state.totalQuestions;
   state.gamePhase = 'final_question';
-
-  // Reset per-question state
   state.hasSubmitted = false;
   state.onRevealScreen = false;
   state.resultsRevealed = false;
@@ -2531,189 +2589,14 @@ async function openScoreEditQuestion(questionNumber) {
 }
 
 // ============================================
-// DIFFICULTY VOTE SCREEN — REBUILT FROM SCRATCH
-// ============================================
-
-function showDifficultyVoteScreen() {
-  state.difficultyVotes = {};
-  state.votedDifficulty = null;
-  state._dvProcessing = false;
-  _screenTransitioning = false; // Reset in case previous transition got stuck
-
-  $('#dv-category').textContent = getCategoryLabel();
-  $('#dv-status').classList.add('hidden');
-  $('#dv-result').classList.add('hidden');
-  $('#dv-tally').innerHTML = '';
-
-  const options = document.querySelectorAll('.dv-option');
-  options.forEach(btn => {
-    btn.classList.remove('dv-option--selected', 'dv-option--winner', 'dv-option--highlight');
-    btn.disabled = false;
-  });
-
-  // Host: "Lock Votes" button. Non-host: hidden.
-  const revealBtn = $('#btn-dv-reveal');
-  if (state.room.isHost) {
-    revealBtn.classList.remove('hidden');
-    revealBtn.disabled = false;
-    revealBtn.style.opacity = '1';
-    revealBtn.textContent = 'Lock Votes (15s)';
-    revealBtn.onclick = () => _lockVotesAndReveal();
-  } else {
-    revealBtn.classList.add('hidden');
-  }
-
-  // 15-second countdown timer for all players
-  let _dvCountdown = 15;
-  if (state._dvTimerId) clearInterval(state._dvTimerId);
-  state._dvTimerId = setInterval(() => {
-    _dvCountdown--;
-    if (state.room.isHost && revealBtn) {
-      revealBtn.textContent = `Lock Votes (${_dvCountdown}s)`;
-    }
-    $('#dv-status').classList.remove('hidden');
-    $('#dv-status').textContent = `${_dvCountdown}s remaining`;
-    if (_dvCountdown <= 0) {
-      clearInterval(state._dvTimerId);
-      state._dvTimerId = null;
-      if (state.room.isHost) _lockVotesAndReveal();
-    }
-  }, 1000);
-
-  // Broadcast channel for votes
-  if (state.difficultyVoteChannel) supabase.removeChannel(state.difficultyVoteChannel);
-  state.difficultyVoteChannel = createDifficultyVoteChannel(state.room.id);
-  state.difficultyVoteChannel
-    .on('broadcast', { event: 'vote' }, ({ payload }) => {
-      if (payload?.playerId && payload?.difficulty) {
-        state.difficultyVotes[payload.playerId] = payload.difficulty;
-        _renderDvTally();
-      }
-    })
-    .subscribe();
-
-  // Vote buttons — can change vote before lock
-  options.forEach(btn => {
-    btn.onclick = () => {
-      if (state._dvProcessing) return; // Locked
-      options.forEach(b => b.classList.remove('dv-option--selected'));
-      btn.classList.add('dv-option--selected');
-      state.difficultyVoteChannel?.send({
-        type: 'broadcast', event: 'vote',
-        payload: { playerId: state.room.playerId, difficulty: btn.dataset.difficulty }
-      });
-    };
-  });
-
-  hideChatBar();
-
-  // Nuclear failsafe: if STILL on difficulty_vote after 20s, force advance
-  setTimeout(() => {
-    if (state.gamePhase === 'difficulty_vote' && state.room.isHost && !state._dvProcessing) {
-      console.warn('[Game] Nuclear failsafe: forcing advance from difficulty_vote');
-      _lockVotesAndReveal();
-    }
-  }, 20000);
-
-  const currentScreen = document.querySelector('.screen.active');
-  const voteScreen = $('#difficulty-vote-screen');
-  if (currentScreen && currentScreen !== voteScreen && !_screenTransitioning) {
-    _screenTransitioning = true;
-    transitionScreens(currentScreen, voteScreen).finally(() => { _screenTransitioning = false; });
-  }
-}
-
-function _renderDvTally() {
-  const groups = { easy: [], medium: [], hard: [] };
-  for (const [pid, diff] of Object.entries(state.difficultyVotes)) {
-    if (groups[diff]) groups[diff].push(pid);
-  }
-  function avatars(pids) {
-    return pids.map(pid => {
-      const p = state.players.find(pl => String(pl.id) === String(pid));
-      return p ? renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji, size: '22px' }) : '';
-    }).join('');
-  }
-  $('#dv-tally').innerHTML = `
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--easy">Easy</span><span class="dv-tally__avatars">${avatars(groups.easy)}</span></div>
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--medium">Medium</span><span class="dv-tally__avatars">${avatars(groups.medium)}</span></div>
-    <div class="dv-tally__row"><span class="dv-tally__item dv-tally__item--hard">Hard</span><span class="dv-tally__avatars">${avatars(groups.hard)}</span></div>
-  `;
-}
-
-async function _lockVotesAndReveal() {
-  if (state._dvProcessing) return;
-  state._dvProcessing = true;
-
-  // Stop countdown
-  if (state._dvTimerId) { clearInterval(state._dvTimerId); state._dvTimerId = null; }
-
-  // Disable everything
-  try {
-    const revealBtn = $('#btn-dv-reveal');
-    if (revealBtn) { revealBtn.disabled = true; revealBtn.style.opacity = '0.5'; }
-    document.querySelectorAll('.dv-option').forEach(b => { b.disabled = true; });
-  } catch (e) { /* UI update failed, continue anyway */ }
-
-  // Tally + weighted random (pure logic, can't fail)
-  const tally = { easy: 0, medium: 0, hard: 0 };
-  for (const d of Object.values(state.difficultyVotes || {})) {
-    if (tally[d] !== undefined) tally[d]++;
-  }
-  const total = tally.easy + tally.medium + tally.hard;
-  const w = total === 0
-    ? { easy: 1, medium: 1, hard: 1 }
-    : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
-  const wt = w.easy + w.medium + w.hard;
-  const r = Math.random() * wt;
-  const winner = r < w.easy ? 'easy' : r < w.easy + w.medium ? 'medium' : 'hard';
-  state.votedDifficulty = winner;
-
-  // Show winner (non-critical UI update)
-  try {
-    const resultEl = $('#dv-result');
-    if (resultEl) { resultEl.textContent = `${winner.charAt(0).toUpperCase() + winner.slice(1)}!`; resultEl.classList.remove('hidden'); }
-    const winnerBtn = document.querySelector(`.dv-option--${winner}`);
-    if (winnerBtn) winnerBtn.classList.add('dv-option--winner');
-  } catch (e) { /* UI failed, continue */ }
-
-  // Try to fetch a question matching the voted difficulty (optional — pre-fetched question is fallback)
-  try {
-    const usedIds = state.questions.map(q => q.id);
-    const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
-    if (q) state.questions[state.totalQuestions] = q;
-  } catch (e) { console.warn('[Game] fetchQuestionByDifficulty failed, using pre-fetched question'); }
-
-  // Clean up channel
-  try { if (state.difficultyVoteChannel) { supabase.removeChannel(state.difficultyVoteChannel); state.difficultyVoteChannel = null; } } catch (e) {}
-
-  // Brief pause so players see the result
-  await new Promise(resolve => setTimeout(resolve, 800));
-
-  // ADVANCE THE GAME — this is the critical part. Try up to 3 times.
-  try { await saveQuestionIds(state.room.id, state.questions.map(qn => qn.id)); } catch (e) {}
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { error } = await updateGameState(state.room.id, {
-      game_phase: 'final_question',
-      current_question: state.totalQuestions
-    });
-    if (!error) {
-      // Don't wait for Realtime — trigger phase transition locally
-      state.currentQuestion = state.totalQuestions;
-      handlePhaseTransition('final_question');
-      break;
-    }
-    console.error(`[Game] Advance attempt ${attempt + 1} failed:`, error.message);
-    if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-  }
-
-  state._dvProcessing = false;
-}
+// (Difficulty vote is now inline on the final wager screen)
 
 // ============================================
 // RESULTS SCREEN
 // ============================================
+
+// (Dead difficulty vote code removed — vote is now inline on final wager screen)
+
 
 async function showResultsScreen() {
   if (state.timerId) {

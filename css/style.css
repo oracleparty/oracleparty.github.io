@@ -4266,6 +4266,32 @@ body::after {
   cursor: default;
 }
 
+/* Inline difficulty vote on final wager screen */
+.dv-inline {
+  width: 100%;
+  margin-top: var(--space-lg);
+  text-align: center;
+}
+.dv-inline__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-sm);
+}
+.dv-inline__options {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+.dv-inline__tally {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-xs);
+}
+
 .difficulty-vote__tally {
   display: flex;
   gap: var(--space-md);
