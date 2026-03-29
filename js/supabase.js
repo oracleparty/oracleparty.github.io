@@ -1241,6 +1241,19 @@ export async function fetchPlayerStats(userId) {
 }
 
 /**
+ * Fetch player_stats for multiple users in one query (batch).
+ */
+export async function fetchPlayerStatsBatch(userIds) {
+  if (!userIds || userIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('player_stats')
+    .select('*')
+    .in('user_id', userIds);
+  if (error) { console.error('[Supabase] fetchPlayerStatsBatch failed:', error.message); return []; }
+  return data || [];
+}
+
+/**
  * Fetch recent game history for a user.
  */
 export async function fetchGameHistory(userId, limit = 5) {

@@ -23,7 +23,7 @@ import {
   subscribeToRoom,
   unsubscribe,
   createPresenceChannel,
-  fetchPlayerStats
+  fetchPlayerStatsBatch
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
@@ -353,14 +353,16 @@ async function _loadPlayerTiers() {
   const cat = room.category;
   const userIds = players.map(p => p.user_id).filter(Boolean);
   if (userIds.length === 0) return;
-  for (const uid of userIds) {
-    try {
-      const stats = await fetchPlayerStats(uid);
-      const tiers = computeCategoryTiers(stats || []);
+  try {
+    const allStats = await fetchPlayerStatsBatch(userIds);
+    // Group stats by user_id, compute tiers
+    for (const uid of userIds) {
+      const userStats = allStats.filter(s => s.user_id === uid);
+      const tiers = computeCategoryTiers(userStats);
       if (tiers[cat]) _playerTiers[uid] = tiers[cat];
-    } catch (e) { /* non-critical */ }
-  }
-  renderPlayers(); // Re-render with tiers
+    }
+    renderPlayers();
+  } catch (e) { /* non-critical */ }
 }
 
 // Tier colors for lobby badges
