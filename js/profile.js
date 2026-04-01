@@ -1311,7 +1311,7 @@ async function updateTitleUniqueness(selectedWords) {
 export function attachProfileCardHandler(container, getPlayers, roomId = null) {
   container.addEventListener('click', async (e) => {
     // Don't trigger on honk/toggle button clicks
-    if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle') || e.target.closest('.transfer-host-btn')) return;
+    if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle') || e.target.closest('.transfer-host-btn') || e.target.closest('.cohost-btn')) return;
 
     const target = e.target.closest('[data-profile-user-id]');
     if (!target) return;

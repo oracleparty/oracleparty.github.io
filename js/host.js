@@ -44,7 +44,8 @@ let _isLoggedIn = false;
 let settings = {
   whoCanJoin: 'anyone',
   questionsPerGame: 10,
-  questionTimer: 30
+  questionTimer: 30,
+  autoProceed: 0
 };
 
 // --- DOM refs ---
@@ -390,7 +391,8 @@ async function handleHostGame() {
       subcategory: selectedSubcategory || null,
       whoCanJoin: settings.whoCanJoin,
       questionsPerGame: settings.questionsPerGame,
-      questionTimer: settings.questionTimer
+      questionTimer: settings.questionTimer,
+      autoProceed: settings.autoProceed
     });
 
     if (error) {
@@ -437,7 +439,8 @@ async function handleHostGame() {
       settings: {
         whoCanJoin: data.who_can_join,
         questionsPerGame: data.questions_per_game,
-        questionTimer: data.question_timer
+        questionTimer: data.question_timer,
+        autoProceed: data.auto_proceed || 0
       }
     }));
 

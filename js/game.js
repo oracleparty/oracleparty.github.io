@@ -49,7 +49,8 @@ import {
   upsertQuestionHistory,
   fetchPlayerStats,
   fetchTitleUnlocks,
-  upsertTitleUnlock
+  upsertTitleUnlock,
+  toggleMessageHeart
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { evaluateUnlocks, hasReachedApprentice } from './titles.js';
@@ -144,8 +145,15 @@ const state = {
   _gamePlayCompleted: false,
   _guestNudgeProcessed: false,
   _syncIntervalId: null,
-  disqualifiedQuestions: new Set()
+  disqualifiedQuestions: new Set(),
+  autoProceedTimerId: null,
+  autoProceedSeconds: 0
 };
+
+/** Host OR co-host — can control game flow (reveal, advance, judge) */
+function canControlGame() {
+  return state.room?.isHost || state.room?.isCohost;
+}
 
 // Stored handler for document click (flag menu dismiss) — removed in cleanup()
 let _flagMenuCloseHandler = null;
@@ -206,6 +214,7 @@ async function init() {
   state.room = JSON.parse(stored);
   state.totalQuestions = state.room.settings?.questionsPerGame || 10;
   state.timerSeconds = state.room.settings?.questionTimer || 30;
+  state.autoProceedSeconds = state.room.settings?.autoProceed || 0;
 
   // Set up back button handler IMMEDIATELY (before any async work)
   // so pressing back always goes to index.html, even during slow init
@@ -278,6 +287,13 @@ async function init() {
         }
       }
     }
+  }
+
+  // Detect co-host status from player record
+  const myPlayer = state.players.find(p => String(p.id) === String(state.room.playerId));
+  if (myPlayer?.is_cohost) {
+    state.room.isCohost = true;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
   }
 
   for (const p of state.players) {
@@ -604,12 +620,18 @@ async function handlePlayerChange(payload) {
     // if any remaining player has is_host=true. If not, promote the next player.
     const hasHost = state.players.some(p => p.is_host);
     if (!hasHost) {
-      const sorted = [...state.players].sort((a, b) => {
-        const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
-        const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
-        return ta - tb;
-      });
-      const nextHost = sorted[0];
+      const cohost = state.players.find(p => p.is_cohost);
+      let nextHost;
+      if (cohost) {
+        nextHost = cohost;
+      } else {
+        const sorted = [...state.players].sort((a, b) => {
+          const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
+          const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
+          return ta - tb;
+        });
+        nextHost = sorted[0];
+      }
 
       if (String(nextHost.id) === String(state.room.playerId)) {
         state.room.isHost = true;
@@ -629,6 +651,16 @@ async function handlePlayerChange(payload) {
     const idx = state.players.findIndex(p => String(p.id) === String(payload.new.id));
     if (idx !== -1) {
       state.players[idx] = payload.new;
+    }
+    // Detect host/co-host changes for this player
+    if (String(payload.new.id) === String(state.room.playerId)) {
+      if (payload.new.is_cohost && !state.room.isCohost) {
+        state.room.isCohost = true;
+        sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+      } else if (!payload.new.is_cohost && state.room.isCohost) {
+        state.room.isCohost = false;
+        sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+      }
     }
   } else if (event === 'INSERT' && payload.new) {
     if (!state.players.some(p => String(p.id) === String(payload.new.id))) {
@@ -1489,8 +1521,8 @@ async function handleTimerExpired() {
       .catch(err => console.error('Failed to broadcast reveal phase:', err));
   }
 
-  // If host and already on reveal, enable the appropriate button and update text
-  if (state.room.isHost && state.onRevealScreen) {
+  // If host/co-host and already on reveal, enable the appropriate button and update text
+  if (canControlGame() && state.onRevealScreen) {
     if (state.resultsRevealed) {
       enableNextQuestion();
     } else {
@@ -1648,16 +1680,16 @@ async function showRevealScreen() {
     revealTimer.style.display = 'none';
   }
 
-  // Host: show action button (Reveal Results first, then Next Question after reveal)
-  if (state.room.isHost) {
+  // Host/co-host: show action button (Reveal Results first, then Next Question after reveal)
+  if (canControlGame()) {
     const btn = $('#btn-next-question');
     btn.classList.remove('hidden');
     btn.onclick = handleRevealResults;
     updateRevealButtonText();
 
-    // Enable as soon as host has submitted — host controls the pace
-    const hostSubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
-    if (hostSubmitted) {
+    // Enable as soon as this player has submitted — they control the pace
+    const mySubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
+    if (mySubmitted) {
       btn.disabled = false;
       btn.style.opacity = '1';
     } else {
@@ -1744,7 +1776,7 @@ function renderRevealAnswers(answers) {
       const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
 
       // Toggle: host only, visible only after reveal (prevents host seeing correct/incorrect early)
-      const toggleHtml = (state.room.isHost && state.resultsRevealed)
+      const toggleHtml = (canControlGame() && state.resultsRevealed)
         ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
              <div class="answer-toggle__thumb"></div>
            </div>`
@@ -1801,8 +1833,8 @@ function renderRevealAnswers(answers) {
     if (btn) sendHonk(btn.dataset.honkTarget);
   });
 
-  // Host: attach toggle click listeners (pre- and post-reveal)
-  if (state.room.isHost) {
+  // Host/co-host: attach toggle click listeners (pre- and post-reveal)
+  if (canControlGame()) {
     newContainer.addEventListener('click', handleJudgmentOverride);
   }
 
@@ -1811,7 +1843,7 @@ function renderRevealAnswers(answers) {
 }
 
 function enableNextQuestion() {
-  if (!state.room.isHost) return;
+  if (!canControlGame()) return;
   const nextBtn = $('#btn-next-question');
   if (nextBtn) {
     nextBtn.disabled = false;
@@ -1820,8 +1852,8 @@ function enableNextQuestion() {
 }
 
 function enableRevealButton() {
-  if (!state.room.isHost || state.resultsRevealed) return;
-  // Host must have submitted their own answer (check local flag + DB cache)
+  if (!canControlGame() || state.resultsRevealed) return;
+  // Controller must have submitted their own answer (check local flag + DB cache)
   const hostSubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
   if (!hostSubmitted) return;
   const btn = $('#btn-next-question');
@@ -1836,7 +1868,7 @@ function enableRevealButton() {
  * Shows "Reveal Early" if some players are still answering, "Reveal Results" otherwise.
  */
 function updateRevealButtonText() {
-  if (!state.room.isHost || state.resultsRevealed) return;
+  if (!canControlGame() || state.resultsRevealed) return;
   const btn = $('#btn-next-question');
   if (!btn) return;
   const allSubmitted = state.currentAnswers.length >= state.players.length;
@@ -1901,7 +1933,7 @@ function doReveal() {
         wagerEl.classList.add(isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect');
       }
       // Host: inject toggle switches now that results are revealed
-      if (state.room.isHost && answer.id && !row.querySelector('.answer-toggle')) {
+      if (canControlGame() && answer.id && !row.querySelector('.answer-toggle')) {
         const toggleDiv = document.createElement('div');
         toggleDiv.className = `answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host`;
         toggleDiv.dataset.answerId = answer.id;
@@ -1912,8 +1944,8 @@ function doReveal() {
     });
   });
 
-  // Host: swap button to "Show Scores" and show Disqualify option
-  if (state.room.isHost) {
+  // Host/co-host: swap button to "Show Scores" and show Disqualify option
+  if (canControlGame()) {
     const btn = $('#btn-next-question');
     btn.textContent = 'Show Scores';
     btn.onclick = handleShowScores;
@@ -2184,7 +2216,7 @@ async function showScoresScreen() {
 
   // Host: show "Edit Scores" button to review/correct past judgments
   const editBtn = $('#btn-edit-scores');
-  if (state.room.isHost && state.currentQuestion > 0) {
+  if (canControlGame() && state.currentQuestion > 0) {
     editBtn.classList.remove('hidden');
     editBtn.onclick = showScoreEditSheet;
   } else {
@@ -2294,8 +2326,11 @@ function showFinalScoresState() {
 }
 
 function showNextButtonOnScores() {
-  if (!state.room.isHost) {
-    // Non-host: show "Waiting for host..." message
+  // Clear any previous auto-proceed timer
+  clearAutoProceed();
+
+  if (!canControlGame()) {
+    // Non-host/non-cohost: show "Waiting for host..." message
     $('#scores-waiting-host').classList.remove('hidden');
     requestAnimationFrame(repositionChatBar);
     return;
@@ -2304,16 +2339,19 @@ function showNextButtonOnScores() {
   const btn = $('#btn-scores-action');
   const isLast = state.currentQuestion >= state.totalQuestions - 1;
 
+  let actionFn;
   if (isLast && !state.isFinalWagerRound) {
     btn.textContent = 'Final Wager';
-    btn.onclick = handleFinalWager;
+    actionFn = handleFinalWager;
   } else if (state.isFinalWagerRound) {
     btn.textContent = 'Show Results';
-    btn.onclick = handleShowResults;
+    actionFn = handleShowResults;
   } else {
     btn.textContent = 'Next Question';
-    btn.onclick = handleNextQuestion;
+    actionFn = handleNextQuestion;
   }
+
+  btn.onclick = () => { clearAutoProceed(); actionFn(); };
   btn.disabled = false;
   btn.style.opacity = '1';
   btn.classList.remove('hidden');
@@ -2323,6 +2361,38 @@ function showNextButtonOnScores() {
 
   // Footer content changed — reposition chat toggle above it
   requestAnimationFrame(repositionChatBar);
+
+  // Start auto-proceed countdown if enabled
+  if (state.autoProceedSeconds > 0) {
+    startAutoProceed(state.autoProceedSeconds, actionFn);
+  }
+}
+
+function startAutoProceed(seconds, actionFn) {
+  clearAutoProceed();
+  let remaining = seconds;
+  const indicator = $('#auto-proceed-indicator');
+  if (indicator) {
+    indicator.classList.remove('hidden');
+    indicator.textContent = remaining;
+  }
+  state.autoProceedTimerId = setInterval(() => {
+    remaining--;
+    if (indicator) indicator.textContent = remaining;
+    if (remaining <= 0) {
+      clearAutoProceed();
+      actionFn();
+    }
+  }, 1000);
+}
+
+function clearAutoProceed() {
+  if (state.autoProceedTimerId) {
+    clearInterval(state.autoProceedTimerId);
+    state.autoProceedTimerId = null;
+  }
+  const indicator = $('#auto-proceed-indicator');
+  if (indicator) indicator.classList.add('hidden');
 }
 
 
@@ -2451,8 +2521,8 @@ async function lockInFinalWager() {
   $('#fw-status').classList.remove('hidden');
   document.querySelectorAll('.fw-option').forEach(b => b.classList.add('fw-option--locked'));
 
-  // Host: now show the reveal button (was hidden until wager locked)
-  if (state.room.isHost) {
+  // Host/co-host: now show the reveal button (was hidden until wager locked)
+  if (canControlGame()) {
     $('#btn-fw-reveal').classList.remove('hidden');
   }
 
@@ -3099,7 +3169,7 @@ async function handleReviewQuestions() {
 
     // Host: show ALL player answers with toggle switches for score correction
     let hostAnswersHtml = '';
-    if (state.room.isHost) {
+    if (canControlGame()) {
       const qAnswers = allAnswers.filter(a => a.question_number === i && a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__');
       if (qAnswers.length > 0) {
         const isFinalWager = i === state.totalQuestions;
@@ -3127,7 +3197,7 @@ async function handleReviewQuestions() {
       <div class="review-item__num">${label}</div>
       <div class="review-item__q">${escapeHtml(getQuestionText(q))}</div>
       <div class="review-item__a">${escapeHtml(getCorrectAnswer(q))}</div>
-      ${state.room.isHost ? hostAnswersHtml : playerAnswerHtml}
+      ${canControlGame() ? hostAnswersHtml : playerAnswerHtml}
       <div class="review-item__feedback">
         <button class="feedback-btn${existing === 'thumbs_up' ? ' feedback-btn--active' : ''}" data-type="thumbs_up" data-qid="${q.id}" aria-label="Thumbs up">👍</button>
         <button class="feedback-btn${existing === 'thumbs_down' ? ' feedback-btn--active' : ''}" data-type="thumbs_down" data-qid="${q.id}" aria-label="Thumbs down">👎</button>
@@ -3195,8 +3265,8 @@ async function handleReviewQuestions() {
     });
   });
 
-  // Host: wire toggle handlers for score correction
-  if (state.room.isHost) {
+  // Host/co-host: wire toggle handlers for score correction
+  if (canControlGame()) {
     list.querySelectorAll('.answer-toggle--host').forEach(toggle => {
       toggle.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -3352,8 +3422,8 @@ function handleAnswerChange(payload) {
       if (revealTimer) revealTimer.style.display = 'none';
     }
 
-    // Host: check if all submitted → enable reveal button and update text
-    if (state.room.isHost && !state.resultsRevealed) {
+    // Host/co-host: check if all submitted → enable reveal button and update text
+    if (canControlGame() && !state.resultsRevealed) {
       if (state.currentAnswers.length >= state.players.length) {
         enableRevealButton();
       }
@@ -3445,6 +3515,26 @@ function attachChatListeners() {
 
   // Backdrop — tapping outside the chat area closes it
   $('#chat-backdrop').addEventListener('click', closeChatDrawer);
+
+  // Heart button click handler (event delegation on message container)
+  $('#chat-drawer-messages').addEventListener('click', async (e) => {
+    const heartBtn = e.target.closest('.heart-btn');
+    if (!heartBtn) return;
+    e.stopPropagation();
+    const bubble = heartBtn.closest('.chat-bubble');
+    const msgId = bubble?.dataset.msgId;
+    if (!msgId) return;
+    // Optimistic toggle
+    const iHearted = heartBtn.classList.contains('hearted');
+    heartBtn.classList.toggle('hearted', !iHearted);
+    const countEl = bubble.querySelector('.heart-count');
+    let count = parseInt(countEl.textContent, 10) || 0;
+    count += iHearted ? -1 : 1;
+    countEl.textContent = count;
+    countEl.classList.toggle('hidden', count <= 0);
+    // Persist
+    await toggleMessageHeart(msgId, getDisplayName());
+  });
 }
 
 function toggleChatDrawer() {
@@ -3494,7 +3584,11 @@ async function loadChatMessages() {
   const container = $('#chat-drawer-messages');
   container.innerHTML = '';
   for (const msg of messages) {
-    appendGameChatMessage(msg.player_name, msg.message);
+    if (msg.player_name === 'System') {
+      addGameSystemMessage(msg.message);
+    } else {
+      appendGameChatMessage(msg.player_name, msg.message, msg.id, msg.hearts);
+    }
   }
   scrollGameChatToBottom();
 
@@ -3507,11 +3601,27 @@ async function loadChatMessages() {
 
 function handleNewMessage(payload) {
   if (!payload.new) return;
-  const { player_name, message } = payload.new;
+
+  // Handle UPDATE events (heart changes)
+  if (payload.eventType === 'UPDATE') {
+    const { id, hearts } = payload.new;
+    if (!id) return;
+    const bubble = document.querySelector(`[data-msg-id="${id}"]`);
+    if (bubble) updateHeartDisplay(bubble, hearts);
+    return;
+  }
+
+  const { player_name, message, id, hearts } = payload.new;
 
   // Dedup: skip Realtime echoes of our own optimistic appends
   if (player_name === getDisplayName() && state.chatEchoPending > 0) {
     state.chatEchoPending--;
+    // Still assign the message ID to the optimistic bubble
+    if (id) {
+      const bubbles = document.querySelectorAll('.chat-bubble:not([data-msg-id])');
+      const last = bubbles[bubbles.length - 1];
+      if (last) last.dataset.msgId = id;
+    }
     return;
   }
 
@@ -3524,7 +3634,7 @@ function handleNewMessage(payload) {
       state.disqualifiedQuestions.add(parseInt(dqMatch[1], 10) - 1); // 0-indexed
     }
   } else {
-    appendGameChatMessage(player_name, message);
+    appendGameChatMessage(player_name, message, id, hearts);
     scrollGameChatToBottom();
   }
 
@@ -3560,14 +3670,21 @@ function flashChatBar() {
   bar.classList.add('chat-bar--flash');
 }
 
-function appendGameChatMessage(name, text) {
+function appendGameChatMessage(name, text, msgId = null, hearts = []) {
   const player = state.players.find(p => p.display_name === name);
   const chatAvatar = renderAvatar({ displayName: name, avatarColor: player?.avatar_color || null, avatarEmoji: player?.avatar_emoji || null, extraClass: 'avatar--chat' });
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
+  if (msgId) bubble.dataset.msgId = msgId;
+  const heartCount = Array.isArray(hearts) ? hearts.length : 0;
+  const iHearted = Array.isArray(hearts) && hearts.includes(getDisplayName());
   bubble.innerHTML = `
     <div class="chat-bubble__header">${chatAvatar}<div class="chat-bubble__name">${escapeHtml(name)}</div></div>
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
+    <div class="chat-bubble__hearts">
+      <button class="heart-btn${iHearted ? ' hearted' : ''}" aria-label="Heart">&hearts;</button>
+      <span class="heart-count${heartCount === 0 ? ' hidden' : ''}">${heartCount}</span>
+    </div>
   `;
   $('#chat-drawer-messages').appendChild(bubble);
 }
@@ -3585,6 +3702,16 @@ function scrollGameChatToBottom() {
   container.scrollTop = container.scrollHeight;
 }
 
+function updateHeartDisplay(bubble, hearts) {
+  const arr = Array.isArray(hearts) ? hearts : [];
+  const btn = bubble.querySelector('.heart-btn');
+  const countEl = bubble.querySelector('.heart-count');
+  if (!btn || !countEl) return;
+  btn.classList.toggle('hearted', arr.includes(getDisplayName()));
+  countEl.textContent = arr.length;
+  countEl.classList.toggle('hidden', arr.length === 0);
+}
+
 async function handleSendGameChat() {
   const input = $('#chat-drawer-input');
   const text = input.value.trim();
@@ -3600,7 +3727,13 @@ async function handleSendGameChat() {
   state.chatEchoPending = (state.chatEchoPending || 0) + 1;
 
   try {
-    await sendMessage(state.room.id, name, text);
+    const { data } = await sendMessage(state.room.id, name, text);
+    // Assign real ID to the optimistic bubble so hearts work
+    if (data?.id) {
+      const bubbles = $('#chat-drawer-messages').querySelectorAll('.chat-bubble:not([data-msg-id])');
+      const last = bubbles[bubbles.length - 1];
+      if (last) last.dataset.msgId = data.id;
+    }
   } catch {
     state.chatEchoPending = Math.max(0, (state.chatEchoPending || 0) - 1);
   }
@@ -3792,13 +3925,19 @@ async function checkStalePresence() {
     }
   }
   if (state.players.length > 0 && !state.players.some(p => p.is_host)) {
-    // No host found — promote next player (same logic as handlePlayerChange)
-    const sorted = [...state.players].sort((a, b) => {
-      const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
-      const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
-      return ta - tb;
-    });
-    const nextHost = sorted[0];
+    // No host found — prefer co-host, otherwise earliest player
+    const cohost = state.players.find(p => p.is_cohost);
+    let nextHost;
+    if (cohost) {
+      nextHost = cohost;
+    } else {
+      const sorted = [...state.players].sort((a, b) => {
+        const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
+        const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
+        return ta - tb;
+      });
+      nextHost = sorted[0];
+    }
     if (String(nextHost.id) === String(state.room.playerId)) {
       state.room.isHost = true;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
@@ -4058,6 +4197,7 @@ function cleanup() {
     clearInterval(state._syncIntervalId);
     state._syncIntervalId = null;
   }
+  clearAutoProceed();
   if (_flagMenuCloseHandler) {
     document.removeEventListener('click', _flagMenuCloseHandler);
     _flagMenuCloseHandler = null;
