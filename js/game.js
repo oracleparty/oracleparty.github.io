@@ -544,6 +544,20 @@ async function applyGameState(roomData) {
   for (const a of myAnswers) {
     state.usedWagers.set(a.wager, !!a.is_correct);
   }
+
+  // Rebuild disqualified questions: detect questions where ALL answers have score_earned=0
+  state.disqualifiedQuestions = new Set();
+  const answersByQ = {};
+  for (const a of allAnswers) {
+    if (!answersByQ[a.question_number]) answersByQ[a.question_number] = [];
+    answersByQ[a.question_number].push(a);
+  }
+  for (const [qNum, answers] of Object.entries(answersByQ)) {
+    if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
+      state.disqualifiedQuestions.add(parseInt(qNum, 10));
+    }
+  }
+
   // Recover final wager value if locked in
   const fwAnswer = myAnswers.find(a => a.question_number === state.totalQuestions);
   if (fwAnswer) {
@@ -2036,6 +2050,17 @@ async function handleDisqualifyRound() {
 
   // Persist to DB (fires Realtime updates to all clients)
   await Promise.all(updates);
+
+  // Correct mastery: doReveal() already wrote mastery with the original is_correct,
+  // so we need to overwrite it for all players who have accounts
+  for (const answer of state.currentAnswers) {
+    if (answer.question_id) {
+      const player = state.players.find(p => p.id === answer.player_id);
+      if (player?.user_id) {
+        upsertQuestionHistory(player.user_id, answer.question_id, false);
+      }
+    }
+  }
 
   // Recalculate scores
   await updateScores();
@@ -3962,6 +3987,19 @@ async function syncToCurrentState() {
       state.usedWagers = new Map();
       for (const a of myAnswers) {
         state.usedWagers.set(a.wager, !!a.is_correct);
+      }
+
+      // Rebuild disqualified questions from answer state
+      state.disqualifiedQuestions = new Set();
+      const answersByQ = {};
+      for (const a of allAnswers) {
+        if (!answersByQ[a.question_number]) answersByQ[a.question_number] = [];
+        answersByQ[a.question_number].push(a);
+      }
+      for (const [qNum, answers] of Object.entries(answersByQ)) {
+        if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
+          state.disqualifiedQuestions.add(parseInt(qNum, 10));
+        }
       }
 
       // Rebuild question browser indices for missed questions

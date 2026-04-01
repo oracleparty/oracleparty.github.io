@@ -441,14 +441,13 @@ export async function initProfilePage() {
     const input = $('#edit-display-name');
     input.focus();
     input.select();
+    let _saving = false;
 
     const saveName = async () => {
+      if (_saving) return; // Prevent double-save from Enter + blur firing together
+      _saving = true;
       const newName = input.value.trim();
-      if (!newName || newName.length < 1) {
-        renderHeaderName();
-        return;
-      }
-      if (newName === currentName) {
+      if (!newName || newName.length < 1 || newName === currentName) {
         renderHeaderName();
         return;
       }
@@ -456,7 +455,14 @@ export async function initProfilePage() {
       const { error } = await updateProfile(userId, { display_name: newName });
       if (error) {
         input.disabled = false;
+        _saving = false;
+        // Show user-friendly error for duplicate name+discriminator
+        const msg = (error.code === '23505') ? 'Name taken with your #tag' : 'Could not update name';
+        input.value = msg;
         input.style.borderColor = 'var(--color-danger)';
+        input.style.color = 'var(--color-danger)';
+        input.style.fontSize = '12px';
+        setTimeout(() => { input.value = currentName; input.style.cssText = ''; _saving = false; }, 2000);
         return;
       }
       profile.display_name = newName;
@@ -474,7 +480,7 @@ export async function initProfilePage() {
     };
 
     input.onkeydown = (e) => {
-      if (e.key === 'Enter') saveName();
+      if (e.key === 'Enter') { e.preventDefault(); saveName(); }
       if (e.key === 'Escape') renderHeaderName();
     };
     input.onblur = saveName;
@@ -1123,8 +1129,11 @@ async function _runFriendSearch(query, userId, resultsEl) {
     if (autoAccepted) {
       btn.textContent = 'Friends!';
       btn.className = 'btn btn-secondary';
+    } else if (error) {
+      btn.textContent = error.message || 'Error';
+      btn.disabled = false; // Re-enable so user can retry
     } else {
-      btn.textContent = error ? (error.message || 'Error') : 'Sent';
+      btn.textContent = 'Sent';
     }
   };
 }

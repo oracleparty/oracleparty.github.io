@@ -117,11 +117,20 @@ export async function initAuth() {
             const updates = {};
             if (!profile.display_name) updates.display_name = dn;
             if (!profile.discriminator) updates.discriminator = disc;
-            const { data: repaired } = await updateProfile(session.user.id, updates);
+            const { data: repaired, error: repairErr } = await updateProfile(session.user.id, updates);
             if (repaired) {
               profile.display_name = repaired.display_name;
               profile.discriminator = repaired.discriminator;
+            } else {
+              console.warn('[Auth] Profile repair failed:', repairErr?.message);
+              // Apply local fallbacks so the UI doesn't show null
+              if (!profile.display_name) profile.display_name = dn;
+              if (!profile.discriminator) profile.discriminator = '0000';
             }
+          } else {
+            console.warn('[Auth] Could not generate discriminator for profile repair');
+            if (!profile.display_name) profile.display_name = dn;
+            if (!profile.discriminator) profile.discriminator = '0000';
           }
         }
         // Compute title — prefer custom wheel title, fall back to auto-computed

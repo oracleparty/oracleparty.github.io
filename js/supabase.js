@@ -1608,13 +1608,13 @@ export async function deleteSiteSetting(key) {
  */
 export async function sendFriendRequest(senderId, receiverId) {
   if (senderId === receiverId) {
-    return { data: null, error: { message: 'Cannot send a friend request to yourself' } };
+    return { data: null, error: { message: 'Cannot send a friend request to yourself' }, autoAccepted: false };
   }
 
   // Check if already friends
   const already = await isFriend(senderId, receiverId);
   if (already) {
-    return { data: null, error: { message: 'Already friends' } };
+    return { data: null, error: { message: 'Already friends' }, autoAccepted: false };
   }
 
   // Check for reverse pending request — auto-accept if found
@@ -1642,7 +1642,7 @@ export async function sendFriendRequest(senderId, receiverId) {
     .maybeSingle();
 
   if (existingReq) {
-    return { data: null, error: { message: 'Friend request already sent' } };
+    return { data: null, error: { message: 'Friend request already sent' }, autoAccepted: false };
   }
 
   const { data, error } = await supabase
@@ -1653,10 +1653,10 @@ export async function sendFriendRequest(senderId, receiverId) {
 
   if (error) {
     if (error.code === '23505') {
-      return { data: null, error: { message: 'Friend request already sent' } };
+      return { data: null, error: { message: 'Friend request already sent' }, autoAccepted: false };
     }
     console.error('[Supabase] sendFriendRequest failed:', error.message);
-    return { data: null, error };
+    return { data: null, error, autoAccepted: false };
   }
   return { data, error: null, autoAccepted: false };
 }
