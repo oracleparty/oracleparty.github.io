@@ -136,6 +136,8 @@ const state = {
   presenceHeartbeatId: null,
   shownQuestionIndices: [],
   wagerExplicitlySelected: false,
+  _cumulativeScoresWritten: false,
+  _wasHidden: false,
   chatEchoPending: 0,
   unreadCount: 0,
   _hotJoinPollId: null,
@@ -785,7 +787,7 @@ function _showLobbyReturnNotice() {
 
   document.getElementById('btn-return-lobby').onclick = () => {
     _isLeaving = true;
-    cleanup();
+    try { cleanup(); } catch (_) {}
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
     window.location.replace('lobby.html');
   };
@@ -861,6 +863,7 @@ async function handlePhaseTransition(phase) {
     }
     state._lastProcessedQuestion = state.currentQuestion;
     state.currentWager = null;
+    state.wagerExplicitlySelected = false;
     state.hasSubmitted = false;
     state.onRevealScreen = false;
     state.resultsRevealed = false;
@@ -873,6 +876,7 @@ async function handlePhaseTransition(phase) {
     if (state.currentQuestion === 0) {
       _lastScoresRenderedForQuestion = -1;
       state._gamePlayCompleted = false;
+      state._cumulativeScoresWritten = false;
       // Track game play start
       insertGamePlay({
         roomId: state.room.id,
@@ -1158,10 +1162,15 @@ function showQuestionScreen() {
   }
 
   // Reset wager — player must explicitly select (skip for final wager — already set)
-  if (!state.isFinalWagerRound) {
+  // ONLY reset if this is a genuinely new question (not a re-render of the same one).
+  // Without this guard, Realtime events that re-call showQuestionScreen() would wipe
+  // the player's already-selected wager, causing auto-submit to discard their choice.
+  if (!state.isFinalWagerRound && !state.wagerExplicitlySelected) {
     state.currentWager = null;
   }
-  state.wagerExplicitlySelected = false;
+  // Don't reset wagerExplicitlySelected here — it's already reset in handlePhaseTransition
+  // when a new question starts (line ~863). Resetting it here caused a race condition
+  // where the player's wager selection was wiped on re-render.
 
   // Defensive: if we're past the last regular question, we must be in the final round
   // (handles reconnects where the 'final_question' phase case may not have fired)
@@ -1284,7 +1293,7 @@ function renderWagerGrid() {
   }
 
   // Auto-select if only one wager remains (prevents getting stuck on last question)
-  const available = grid.querySelectorAll('.wager-btn:not(.wager-btn--used)');
+  const available = grid.querySelectorAll('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)');
   if (available.length === 1 && !state.wagerExplicitlySelected) {
     const onlyBtn = available[0];
     const val = parseInt(onlyBtn.dataset.value, 10);
@@ -2713,12 +2722,16 @@ async function showResultsScreen() {
   }
 
   // Room session cumulative scores (for lobby leaderboard)
-  const roomScoresKey = `oracle_party_room_scores_${state.room.id}`;
-  const cumulative = JSON.parse(sessionStorage.getItem(roomScoresKey) || '{}');
-  for (const p of state.players) {
-    cumulative[p.display_name] = (cumulative[p.display_name] || 0) + (state.scores[p.id] || 0);
+  // Guard: only write once per game to prevent score doubling on re-render
+  if (!state._cumulativeScoresWritten) {
+    state._cumulativeScoresWritten = true;
+    const roomScoresKey = `oracle_party_room_scores_${state.room.id}`;
+    const cumulative = JSON.parse(sessionStorage.getItem(roomScoresKey) || '{}');
+    for (const p of state.players) {
+      cumulative[p.display_name] = (cumulative[p.display_name] || 0) + (state.scores[p.id] || 0);
+    }
+    sessionStorage.setItem(roomScoresKey, JSON.stringify(cumulative));
   }
-  sessionStorage.setItem(roomScoresKey, JSON.stringify(cumulative));
 
   $('#results-category').textContent = getCategoryLabel();
 
@@ -2925,23 +2938,26 @@ async function showResultsScreen() {
 
 async function handlePlayAgain() {
   _isLeaving = true; // Player stays in room — prevent handleUnload from removing
-  cleanup();
+  try { cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
 
-  // BUG 2 FIX: Only the host resets the room status to 'lobby'.
+  // Only the host resets the room status to 'lobby'.
   // Non-host players just navigate directly — they don't broadcast a status change
   // that would force ALL players out of the results screen.
-  // Other players see a "Host returned to lobby" notification and can choose when to leave.
   if (state.room.isHost) {
-    // Clear old answers so scores don't carry over to the next game
-    await deleteAnswersByRoom(state.room.id);
-    await updateGameState(state.room.id, {
-      game_phase: 'lobby',
-      current_question: 0,
-      question_ids: [],
-      question_started_at: null,
-      countdown_started_at: null
-    });
-    await updateRoomStatus(state.room.id, 'lobby');
+    try {
+      // Clear old answers so scores don't carry over to the next game
+      await deleteAnswersByRoom(state.room.id);
+      await updateGameState(state.room.id, {
+        game_phase: 'lobby',
+        current_question: 0,
+        question_ids: [],
+        question_started_at: null,
+        countdown_started_at: null
+      });
+      await updateRoomStatus(state.room.id, 'lobby');
+    } catch (err) {
+      console.error('[Game] handlePlayAgain host cleanup failed:', err);
+    }
   }
 
   sessionStorage.setItem('oracle_party_returning_from_game', '1');
@@ -2950,7 +2966,7 @@ async function handlePlayAgain() {
 
 async function handleQuitGame() {
   _isLeaving = true;
-  cleanup();
+  try { cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
   if (state.players.length <= 1) {
     // Last player — delete the room
     await deleteRoom(state.room.id);
@@ -3200,6 +3216,13 @@ function handleAnswerChange(payload) {
       if (payload.new.submitted_answer !== undefined && payload.new.submitted_answer !== oldText) {
         renderRevealAnswers(state.currentAnswers);
         return;
+      }
+    }
+    // Update usedWagers if the judgment change affects the current player's wager
+    if (idx !== -1) {
+      const answer = state.currentAnswers[idx];
+      if (String(answer.player_id) === String(state.room.playerId) && answer.wager) {
+        state.usedWagers.set(answer.wager, !!answer.is_correct);
       }
     }
     // CSS-only patch for judgment changes (host override toggle)
@@ -3780,10 +3803,16 @@ function handleVisibilityChange() {
   state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
     .catch(() => {});
 
+  if (document.hidden) {
+    // Track that we went hidden — syncToCurrentState needs to know
+    state._wasHidden = true;
+    return;
+  }
+
   // When tab becomes visible again, sync to current game state.
   // Supabase Realtime does NOT replay missed messages after a disconnect,
   // so we fetch from DB to catch up if the game advanced while we were away.
-  if (!document.hidden && state.room && state.gamePhase !== 'loading') {
+  if (state.room && state.gamePhase !== 'loading') {
     syncToCurrentState();
   }
 }
@@ -3812,13 +3841,32 @@ async function syncToCurrentState() {
     const questionChanged = roomData.current_question !== undefined &&
                             roomData.current_question !== state.currentQuestion;
 
-    // Only sync on question changes. Phase-only changes on the same question
-    // are NOT safe to sync because the local state can legitimately be AHEAD
-    // of the DB (e.g., host sets gamePhase = 'answer_reveal' locally before
-    // the DB write completes, or player entered reveal screen before host
-    // broadcasts). Realtime handles phase-only updates; sync is the safety
-    // net for missed question transitions.
-    if (!questionChanged) return;
+    const wasHidden = state._wasHidden;
+    state._wasHidden = false;
+
+    // Phase-only sync when returning from hidden tab.
+    // Realtime may have missed messages while the tab was hidden, so we need
+    // to catch up on phase transitions even if the question hasn't changed.
+    if (!questionChanged) {
+      // Only sync phase if we were actually hidden (missed Realtime messages)
+      if (wasHidden && roomData.game_phase && roomData.game_phase !== state.gamePhase) {
+        // Don't sync backwards — only advance to later phases.
+        // This prevents a stale DB read from regressing local state.
+        const PHASE_ORDER = ['countdown', 'question', 'reveal', 'answer_reveal', 'scores_reveal', 'final_wager', 'final_question', 'results'];
+        const currentIdx = PHASE_ORDER.indexOf(state.gamePhase);
+        const serverIdx = PHASE_ORDER.indexOf(roomData.game_phase);
+        if (serverIdx > currentIdx || currentIdx === -1) {
+          // Sync timestamps before transitioning
+          if (roomData.question_started_at) state.questionStartedAt = roomData.question_started_at;
+          if (roomData.countdown_started_at) state.countdownStartedAt = roomData.countdown_started_at;
+          if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
+            state.isFinalWagerRound = true;
+          }
+          handlePhaseTransition(roomData.game_phase);
+        }
+      }
+      return;
+    }
 
     // Update local state to match server
     if (roomData.current_question !== undefined) {
