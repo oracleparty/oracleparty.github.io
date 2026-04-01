@@ -407,7 +407,8 @@ async function initHostGame() {
       state.isFinalWagerRound = true;
     }
 
-    // Rebuild used wagers from existing answers
+    // Rebuild used wagers from existing answers (clear first to prevent stale data)
+    state.usedWagers = new Map();
     const allAnswers = await fetchAllAnswers(state.room.id);
     const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
     for (const a of myAnswers) {
@@ -535,7 +536,8 @@ async function applyGameState(roomData) {
     state.isFinalWagerRound = true;
   }
 
-  // Rebuild used wagers from existing answers
+  // Rebuild used wagers from existing answers (clear first to prevent stale data)
+  state.usedWagers = new Map();
   const allAnswers = await fetchAllAnswers(state.room.id);
   const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
   for (const a of myAnswers) {
@@ -762,7 +764,7 @@ function _showLobbyReturnNotice() {
   const resultsScreen = document.querySelector('#results-screen');
   if (!resultsScreen || resultsScreen.style.display === 'none') {
     _isLeaving = true;
-    cleanup();
+    try { cleanup(); } catch (_) {}
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
     window.location.replace('lobby.html');
     return;
@@ -877,6 +879,7 @@ async function handlePhaseTransition(phase) {
       _lastScoresRenderedForQuestion = -1;
       state._gamePlayCompleted = false;
       state._cumulativeScoresWritten = false;
+      state.usedWagers = new Map();
       // Track game play start
       insertGamePlay({
         roomId: state.room.id,
@@ -924,7 +927,7 @@ async function handlePhaseTransition(phase) {
       // Auto-select wager if none was explicitly selected
       if (!state.wagerExplicitlySelected) {
         if (state.isFinalWagerRound) {
-          state.currentWager = 20;
+          state.currentWager = state.finalWager || 20;
         } else {
           // Assign lowest available wager
           let found = false;
@@ -953,7 +956,7 @@ async function handlePhaseTransition(phase) {
       // Auto-select wager if none was explicitly selected
       if (!state.wagerExplicitlySelected) {
         if (state.isFinalWagerRound) {
-          state.currentWager = 20;
+          state.currentWager = state.finalWager || 20;
         } else {
           // Assign lowest available wager
           let found = false;
@@ -1005,6 +1008,7 @@ async function handlePhaseTransition(phase) {
       state.isFinalWagerRound = true;
       // Reset for the final question round (same resets as 'question' phase)
       state.currentWager = state.finalWager;
+      state.wagerExplicitlySelected = true; // Final wager already locked in
       state.hasSubmitted = false;
       state.onRevealScreen = false;
       state.resultsRevealed = false;
@@ -1422,7 +1426,7 @@ async function handleTimerExpired() {
   // Auto-select wager if none was explicitly selected
   if (!state.wagerExplicitlySelected) {
     if (state.isFinalWagerRound) {
-      state.currentWager = 20;
+      state.currentWager = state.finalWager || 20;
     } else {
       let found = false;
       for (let i = 1; i <= state.totalQuestions; i++) {
@@ -2943,9 +2947,8 @@ async function handlePlayAgain() {
   // Only the host resets the room status to 'lobby'.
   // Non-host players just navigate directly — they don't broadcast a status change
   // that would force ALL players out of the results screen.
-  if (state.room.isHost) {
+  if (state.room?.isHost) {
     try {
-      // Clear old answers so scores don't carry over to the next game
       await deleteAnswersByRoom(state.room.id);
       await updateGameState(state.room.id, {
         game_phase: 'lobby',
@@ -2967,12 +2970,14 @@ async function handlePlayAgain() {
 async function handleQuitGame() {
   _isLeaving = true;
   try { cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
-  if (state.players.length <= 1) {
-    // Last player — delete the room
-    await deleteRoom(state.room.id);
-  } else {
-    // Remove self — remaining players handle host promotion
-    await removePlayer(state.room.playerId);
+  try {
+    if (state.players.length <= 1) {
+      await deleteRoom(state.room?.id);
+    } else {
+      await removePlayer(state.room?.playerId);
+    }
+  } catch (err) {
+    console.error('[Game] handleQuitGame DB cleanup failed:', err);
   }
   sessionStorage.removeItem('oracle_party_room');
   window.location.href = 'index.html';
@@ -3852,14 +3857,15 @@ async function syncToCurrentState() {
       if (wasHidden && roomData.game_phase && roomData.game_phase !== state.gamePhase) {
         // Don't sync backwards — only advance to later phases.
         // This prevents a stale DB read from regressing local state.
-        const PHASE_ORDER = ['countdown', 'question', 'reveal', 'answer_reveal', 'scores_reveal', 'final_wager', 'final_question', 'results'];
+        const PHASE_ORDER = ['countdown', 'question', 'reveal', 'answer_reveal', 'scores_reveal', 'difficulty_vote', 'final_wager', 'final_question', 'results'];
         const currentIdx = PHASE_ORDER.indexOf(state.gamePhase);
         const serverIdx = PHASE_ORDER.indexOf(roomData.game_phase);
-        if (serverIdx > currentIdx || currentIdx === -1) {
+        // If server phase isn't in our ordering (unknown phase), allow sync
+        if (serverIdx > currentIdx || currentIdx === -1 || serverIdx === -1) {
           // Sync timestamps before transitioning
           if (roomData.question_started_at) state.questionStartedAt = roomData.question_started_at;
           if (roomData.countdown_started_at) state.countdownStartedAt = roomData.countdown_started_at;
-          if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
+          if (['final_wager', 'final_question', 'difficulty_vote'].includes(roomData.game_phase)) {
             state.isFinalWagerRound = true;
           }
           handlePhaseTransition(roomData.game_phase);
