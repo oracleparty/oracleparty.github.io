@@ -636,8 +636,10 @@ async function handleTransferHost(targetPlayerId, targetDisplayName) {
   }
 }
 
+let _isCohostToggling = false;
 async function handleCohostToggle(playerId, displayName, isDemote) {
-  if (!room.isHost) return;
+  if (!room.isHost || _isCohostToggling) return;
+  _isCohostToggling = true;
   try {
     if (isDemote) {
       await demoteCohost(playerId);
@@ -659,6 +661,8 @@ async function handleCohostToggle(playerId, displayName, isDemote) {
     renderPlayers();
   } catch (err) {
     console.error('[Lobby] handleCohostToggle error:', err);
+  } finally {
+    _isCohostToggling = false;
   }
 }
 
@@ -854,11 +858,10 @@ function handleNewMessage(payload) {
   // Dedup: skip Realtime echoes of our own optimistic appends
   if (player_name === getDisplayName() && chatEchoPending > 0) {
     chatEchoPending--;
-    // Assign real ID to optimistic bubble
+    // Assign real ID to optimistic bubble (first unassigned = earliest sent)
     if (id) {
-      const bubbles = chatMessagesEl.querySelectorAll('.chat-bubble:not([data-msg-id])');
-      const last = bubbles[bubbles.length - 1];
-      if (last) last.dataset.msgId = id;
+      const first = chatMessagesEl.querySelector('.chat-bubble:not([data-msg-id])');
+      if (first) first.dataset.msgId = id;
     }
     return;
   }
@@ -939,9 +942,8 @@ async function handleSendMessage() {
   try {
     const { data } = await sendMessage(room.id, name, text);
     if (data?.id) {
-      const bubbles = chatMessagesEl.querySelectorAll('.chat-bubble:not([data-msg-id])');
-      const last = bubbles[bubbles.length - 1];
-      if (last) last.dataset.msgId = data.id;
+      const first = chatMessagesEl.querySelector('.chat-bubble:not([data-msg-id])');
+      if (first) first.dataset.msgId = data.id;
     }
   } catch (err) {
     console.error('[Lobby] sendMessage failed:', err);
@@ -1103,7 +1105,9 @@ function showLobbyCategorySheetSubs(catName) {
 function syncTogglesToSettings() {
   settingsModal.querySelectorAll('.toggle-group').forEach(group => {
     const key = group.dataset.setting;
-    const currentValue = String(room.settings[key]);
+    // Default autoProceed to 0 for rooms created before the feature existed
+    const raw = room.settings[key];
+    const currentValue = String(raw !== undefined && raw !== null ? raw : (key === 'autoProceed' ? 0 : ''));
     group.querySelectorAll('.toggle-option').forEach(opt => {
       opt.classList.toggle('active', opt.dataset.value === currentValue);
     });

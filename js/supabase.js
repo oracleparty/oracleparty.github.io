@@ -387,7 +387,7 @@ export async function sendMessage(roomId, playerName, message) {
     .from('chat_messages')
     .insert({ room_id: roomId, player_name: playerName, message })
     .select('id')
-    .single();
+    .maybeSingle();
 
   if (error) console.error('[Supabase] sendMessage failed:', error.message);
   return { data, error };

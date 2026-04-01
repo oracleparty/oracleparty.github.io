@@ -50,7 +50,8 @@ import {
   fetchPlayerStats,
   fetchTitleUnlocks,
   upsertTitleUnlock,
-  toggleMessageHeart
+  toggleMessageHeart,
+  demoteCohost
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { evaluateUnlocks, hasReachedApprentice } from './titles.js';
@@ -2362,8 +2363,8 @@ function showNextButtonOnScores() {
   // Footer content changed — reposition chat toggle above it
   requestAnimationFrame(repositionChatBar);
 
-  // Start auto-proceed countdown if enabled
-  if (state.autoProceedSeconds > 0) {
+  // Start auto-proceed countdown if enabled (host-only to prevent double-fire with co-host)
+  if (state.room.isHost && state.autoProceedSeconds > 0) {
     startAutoProceed(state.autoProceedSeconds, actionFn);
   }
 }
@@ -3616,11 +3617,10 @@ function handleNewMessage(payload) {
   // Dedup: skip Realtime echoes of our own optimistic appends
   if (player_name === getDisplayName() && state.chatEchoPending > 0) {
     state.chatEchoPending--;
-    // Still assign the message ID to the optimistic bubble
+    // Still assign the message ID to the optimistic bubble (first unassigned = earliest sent)
     if (id) {
-      const bubbles = document.querySelectorAll('.chat-bubble:not([data-msg-id])');
-      const last = bubbles[bubbles.length - 1];
-      if (last) last.dataset.msgId = id;
+      const first = $('#chat-drawer-messages')?.querySelector('.chat-bubble:not([data-msg-id])');
+      if (first) first.dataset.msgId = id;
     }
     return;
   }
@@ -3728,11 +3728,10 @@ async function handleSendGameChat() {
 
   try {
     const { data } = await sendMessage(state.room.id, name, text);
-    // Assign real ID to the optimistic bubble so hearts work
+    // Assign real ID to the optimistic bubble so hearts work (first unassigned = earliest)
     if (data?.id) {
-      const bubbles = $('#chat-drawer-messages').querySelectorAll('.chat-bubble:not([data-msg-id])');
-      const last = bubbles[bubbles.length - 1];
-      if (last) last.dataset.msgId = data.id;
+      const first = $('#chat-drawer-messages')?.querySelector('.chat-bubble:not([data-msg-id])');
+      if (first) first.dataset.msgId = data.id;
     }
   } catch {
     state.chatEchoPending = Math.max(0, (state.chatEchoPending || 0) - 1);
@@ -3939,6 +3938,13 @@ async function checkStalePresence() {
       nextHost = sorted[0];
     }
     if (String(nextHost.id) === String(state.room.playerId)) {
+      // If we were co-host, clear that flag first
+      if (state.room.isCohost) {
+        state.room.isCohost = false;
+        const localMe = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
+        if (localMe !== -1) state.players[localMe].is_cohost = false;
+        demoteCohost(state.room.playerId).catch(e => console.warn('[Game] demoteCohost on promotion failed:', e));
+      }
       state.room.isHost = true;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
       const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
