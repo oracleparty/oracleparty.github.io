@@ -49,37 +49,37 @@
         <div id="room-scores-list"></div>
       </div>
 
+      <!-- Chat Bar + Drawer (inside lobby-body for static flow) -->
+      <div id="chat-bar" class="chat-bar">
+        <span class="chat-bar__label">Chat</span>
+        <span id="chat-bar-preview" class="chat-bar__preview"></span>
+        <span id="chat-bar-badge" class="chat-bar__badge hidden">0</span>
+        <span class="chat-bar__arrow">&#9662;</span>
+      </div>
+      <div id="chat-drawer" class="chat-drawer">
+        <div id="chat-drawer-messages" class="chat-drawer__messages"></div>
+        <div id="typing-indicator" class="typing-indicator"></div>
+        <div class="chat-drawer__input">
+          <input
+            type="text"
+            id="chat-drawer-input"
+            class="input"
+            placeholder="Say something..."
+            aria-label="Chat message"
+            maxlength="200"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="btn-chat-send" class="btn btn-primary">Send</button>
+        </div>
+      </div>
+
       <!-- Footer: Action button -->
       <div class="lobby-footer">
         <button id="btn-start-game" class="btn btn-primary btn-block hidden">Start Game</button>
         <button id="btn-ready" class="btn btn-secondary btn-block hidden">Ready Up</button>
       </div>
 
-    </div>
-  </div>
-
-  <!-- Chat Bar + Drawer -->
-  <div id="chat-bar" class="chat-bar">
-    <span class="chat-bar__label">Chat</span>
-    <span id="chat-bar-preview" class="chat-bar__preview"></span>
-    <span id="chat-bar-badge" class="chat-bar__badge hidden">0</span>
-    <span class="chat-bar__arrow">&#9662;</span>
-  </div>
-  <div id="chat-drawer" class="chat-drawer">
-    <div id="chat-drawer-messages" class="chat-drawer__messages"></div>
-    <div id="typing-indicator" class="typing-indicator"></div>
-    <div class="chat-drawer__input">
-      <input
-        type="text"
-        id="chat-drawer-input"
-        class="input"
-        placeholder="Say something..."
-        aria-label="Chat message"
-        maxlength="200"
-        autocomplete="off"
-        spellcheck="false"
-      >
-      <button id="btn-chat-send" class="btn btn-primary">Send</button>
     </div>
   </div>
 

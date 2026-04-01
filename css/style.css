@@ -1444,11 +1444,32 @@ body::after {
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
 }
 .honk-btn:active {
   opacity: 1;
   transform: scale(1.3);
 }
+
+.transfer-host-btn {
+  background: none;
+  border: 1px solid var(--color-surface-light);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 0.6rem;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.transfer-host-btn:active {
+  background: var(--color-surface-light);
+}
+
 .honk-badge {
   position: absolute;
   top: -4px;
@@ -1745,7 +1766,7 @@ body::after {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  padding: calc(var(--space-md) + 44px) var(--space-lg) var(--space-md);
+  padding: var(--space-md) var(--space-lg) var(--space-md);
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -2922,18 +2943,15 @@ body::after {
 
 /* --- Chat Bar (slim bar below header) --- */
 .chat-bar {
-  position: fixed;
-  top: var(--chat-bar-top, 56px);
-  left: 0;
-  right: 0;
+  position: static;
   height: 40px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   padding: 0 var(--space-lg);
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-surface-light);
-  z-index: 50;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }

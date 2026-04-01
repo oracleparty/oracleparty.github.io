@@ -14,6 +14,7 @@ import {
   deleteRoom,
   deleteRoomBeacon,
   promoteToHost,
+  demoteHost,
   toggleReady,
   updateRoomStatus,
   updateGameState,
@@ -225,9 +226,15 @@ async function init() {
 
   // Honk click handler (event delegation)
   playerListEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('.honk-btn');
-    if (!btn) return;
-    sendHonk(btn.dataset.honkTarget);
+    const honkBtn = e.target.closest('.honk-btn');
+    if (honkBtn) {
+      sendHonk(honkBtn.dataset.honkTarget);
+      return;
+    }
+    const transferBtn = e.target.closest('.transfer-host-btn');
+    if (transferBtn) {
+      handleTransferHost(transferBtn.dataset.transferId, transferBtn.dataset.transferName);
+    }
   });
 
   // Profile card on player tap (pass roomId for instant-add)
@@ -401,6 +408,7 @@ function renderPlayers() {
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
     const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+    const transferBtn = (room.isHost && !isMe) ? `<button class="transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}">Transfer</button>` : '';
 
     return `
       <div class="player-item${isAway ? ' player-item--away' : ''}" ${profileAttr}>
@@ -413,6 +421,7 @@ function renderPlayers() {
           ${titleHtml}
         </div>
         ${honkBtn}
+        ${transferBtn}
         <span class="player-item__badges">${badges.join('')}</span>
       </div>
     `;
@@ -441,6 +450,20 @@ async function handlePlayerChange(payload) {
       const idx = players.findIndex(p => String(p.id) === String(payload.new.id));
       if (idx !== -1) {
         players[idx] = payload.new;
+
+        // Detect host transfer to/from this player
+        if (String(payload.new.id) === String(room.playerId)) {
+          if (payload.new.is_host && !room.isHost) {
+            room.isHost = true;
+            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+            activateHostUI();
+            addSystemMessage('You are now the host');
+          } else if (!payload.new.is_host && room.isHost) {
+            room.isHost = false;
+            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+            deactivateHostUI();
+          }
+        }
         renderPlayers();
       }
     } else if (event === 'DELETE' && payload.old) {
@@ -517,6 +540,40 @@ function activateHostUI() {
   btnSettings.classList.remove('hidden');
   btnReady.classList.add('hidden');
   attachSettingsListeners();
+}
+
+function deactivateHostUI() {
+  btnStartGame.classList.add('hidden');
+  btnSettings.classList.add('hidden');
+  btnReady.classList.remove('hidden');
+}
+
+async function handleTransferHost(targetPlayerId, targetDisplayName) {
+  if (!room.isHost) return;
+  try {
+    // Demote self, promote target
+    await Promise.all([
+      demoteHost(room.playerId),
+      promoteToHost(room.id, targetPlayerId, targetDisplayName)
+    ]);
+
+    // Update local state
+    const myIdx = players.findIndex(p => String(p.id) === String(room.playerId));
+    if (myIdx !== -1) players[myIdx].is_host = false;
+    const targetIdx = players.findIndex(p => String(p.id) === String(targetPlayerId));
+    if (targetIdx !== -1) players[targetIdx].is_host = true;
+
+    room.isHost = false;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+
+    deactivateHostUI();
+    renderPlayers();
+
+    sendMessage(room.id, 'System', `${getDisplayName()} transferred host to ${targetDisplayName}`);
+    addSystemMessage(`You transferred host to ${targetDisplayName}`);
+  } catch (err) {
+    console.error('[Lobby] handleTransferHost error:', err);
+  }
 }
 
 /** Attach settings modal event listeners (idempotent). */
@@ -632,17 +689,13 @@ async function ensureCurrentPlayer() {
 // --- Chat Bar + Drawer ---
 
 function repositionChatBar() {
-  const header = document.querySelector('.page-header');
-  const footer = document.querySelector('.lobby-footer');
   const bar = $('#chat-bar');
   const drawer = $('#chat-drawer');
-  if (!header) return;
+  const footer = document.querySelector('.lobby-footer');
 
-  const headerH = header.offsetHeight;
-  const barH = 40;
-  bar.style.setProperty('--chat-bar-top', `${headerH}px`);
-  drawer.style.setProperty('--chat-drawer-top', `${headerH + barH}px`);
-  document.body.style.setProperty('--chat-bar-offset', `${barH + 4}px`);
+  // Bar is static in flow — just position the drawer overlay
+  const barRect = bar.getBoundingClientRect();
+  drawer.style.setProperty('--chat-drawer-top', `${barRect.bottom}px`);
 
   if (footer) {
     const footerH = footer.offsetHeight;

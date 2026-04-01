@@ -3385,21 +3385,21 @@ function handleAnswerChange(payload) {
 function repositionChatBar() {
   const activeScreen = document.querySelector('.screen.active');
   if (!activeScreen) return;
+  const gameBody = activeScreen.querySelector('.game-body');
+  if (!gameBody) return;
   const header = activeScreen.querySelector('.game-header');
   const footer = activeScreen.querySelector('.game-footer');
   const bar = $('#chat-bar');
   const drawer = $('#chat-drawer');
 
-  const headerH = header ? header.offsetHeight : 0;
-  if (headerH === 0) return; // not laid out yet
+  // Move bar into game-body after header (static flow)
+  if (header && bar.parentNode !== gameBody) {
+    header.after(bar);
+  }
 
-  const barH = 40;
-  bar.style.setProperty('--chat-bar-top', `${headerH}px`);
-  drawer.style.setProperty('--chat-drawer-top', `${headerH + barH}px`);
-
-  // Set content offset so game-content padding clears the bar
-  document.body.style.setProperty('--chat-bar-offset', `${barH + 4}px`);
-
+  // Position drawer overlay below the bar
+  const barRect = bar.getBoundingClientRect();
+  drawer.style.setProperty('--chat-drawer-top', `${barRect.bottom}px`);
   if (footer) {
     const footerH = footer.offsetHeight;
     drawer.style.setProperty('--chat-drawer-bottom', `${footerH > 0 ? footerH : 0}px`);

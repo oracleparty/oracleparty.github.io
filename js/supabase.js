@@ -265,6 +265,14 @@ export async function promoteToHost(roomId, playerId, displayName) {
 }
 
 /**
+ * Demote a player from host status.
+ */
+export async function demoteHost(playerId) {
+  const { error } = await supabase.from('players').update({ is_host: false }).eq('id', playerId);
+  if (error) console.error('[Supabase] demoteHost failed:', error.message);
+}
+
+/**
  * Remove a player from a room.
  */
 export async function removePlayer(playerId) {
