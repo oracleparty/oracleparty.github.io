@@ -24,9 +24,10 @@ import {
   fetchTitleUnlocks,
   fetchMasteryCounts,
   fetchCategories,
-  fetchQuestionCount
+  fetchQuestionCount,
+  fetchProfileByTag
 } from './supabase.js';
-import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
+import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
@@ -427,7 +428,57 @@ export async function initProfilePage() {
     avatarEmoji: profile.avatar_emoji,
     size: '72px'
   }) + '<div class="profile-header__edit-hint">\u270F\uFE0F</div>';
-  headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
+  function renderHeaderName() {
+    headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span><span class="profile-header__name-edit">\u270F\uFE0F</span>`;
+  }
+  renderHeaderName();
+  headerName.style.cursor = 'pointer';
+
+  // Display name edit
+  headerName.onclick = () => {
+    const currentName = profile.display_name || '';
+    headerName.innerHTML = `<input type="text" id="edit-display-name" class="input profile-name-input" value="${escapeHtml(currentName)}" maxlength="20" autocomplete="off"><span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
+    const input = $('#edit-display-name');
+    input.focus();
+    input.select();
+
+    const saveName = async () => {
+      const newName = input.value.trim();
+      if (!newName || newName.length < 1) {
+        renderHeaderName();
+        return;
+      }
+      if (newName === currentName) {
+        renderHeaderName();
+        return;
+      }
+      input.disabled = true;
+      const { error } = await updateProfile(userId, { display_name: newName });
+      if (error) {
+        input.disabled = false;
+        input.style.borderColor = 'var(--color-danger)';
+        return;
+      }
+      profile.display_name = newName;
+      setDisplayName(newName);
+      // Update profile cache in localStorage
+      const cached = localStorage.getItem('oracle_party_auth_profile');
+      if (cached) {
+        try {
+          const p = JSON.parse(cached);
+          p.display_name = newName;
+          localStorage.setItem('oracle_party_auth_profile', JSON.stringify(p));
+        } catch {}
+      }
+      renderHeaderName();
+    };
+
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') saveName();
+      if (e.key === 'Escape') renderHeaderName();
+    };
+    input.onblur = saveName;
+  };
 
   // Avatar edit
   headerAvatar.onclick = async () => {
@@ -997,7 +1048,7 @@ async function loadFriendsTab(userId) {
   searchInput.oninput = () => {
     clearTimeout(_searchTimeout);
     const query = searchInput.value.trim();
-    if (query.length < 2) {
+    if (query.length < 1) {
       searchResults.innerHTML = '';
       return;
     }
@@ -1006,7 +1057,28 @@ async function loadFriendsTab(userId) {
 }
 
 async function _runFriendSearch(query, userId, resultsEl) {
-  const results = await searchProfiles(query, userId);
+  let results;
+
+  // Parse Name#discriminator format
+  const hashIdx = query.indexOf('#');
+  if (hashIdx !== -1) {
+    const namePart = query.substring(0, hashIdx).trim();
+    const discPart = query.substring(hashIdx + 1).trim();
+
+    if (discPart.length === 4 && /^\d{4}$/.test(discPart) && namePart) {
+      // Exact tag lookup: "Name#1234"
+      const { data } = await fetchProfileByTag(namePart, discPart);
+      results = data && data.user_id !== userId ? [data] : [];
+    } else if (namePart) {
+      // Partial: "Name#" or "Name#12" — search by name, optionally filter disc
+      results = await searchProfiles(namePart, userId, discPart || null);
+    } else {
+      results = [];
+    }
+  } else {
+    results = await searchProfiles(query, userId);
+  }
+
   if (results.length === 0) {
     resultsEl.innerHTML = '<p class="profile-empty" style="padding: var(--space-sm) 0;">No results found</p>';
     return;
@@ -1047,8 +1119,13 @@ async function _runFriendSearch(query, userId, resultsEl) {
     if (!btn) return;
     btn.disabled = true;
     btn.textContent = 'Sending...';
-    const { error } = await sendFriendRequest(userId, btn.dataset.sendRequest);
-    btn.textContent = error ? 'Error' : 'Sent';
+    const { error, autoAccepted } = await sendFriendRequest(userId, btn.dataset.sendRequest);
+    if (autoAccepted) {
+      btn.textContent = 'Friends!';
+      btn.className = 'btn btn-secondary';
+    } else {
+      btn.textContent = error ? (error.message || 'Error') : 'Sent';
+    }
   };
 }
 

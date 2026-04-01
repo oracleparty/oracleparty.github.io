@@ -1602,13 +1602,49 @@ export async function deleteSiteSetting(key) {
 // ============================================
 
 /**
- * Send a friend request. Returns { data, error }.
+ * Send a friend request. Returns { data, error, autoAccepted }.
+ * Auto-accepts if the receiver already sent a pending request to the sender.
  * Error code 23505 = duplicate request already exists.
  */
 export async function sendFriendRequest(senderId, receiverId) {
   if (senderId === receiverId) {
     return { data: null, error: { message: 'Cannot send a friend request to yourself' } };
   }
+
+  // Check if already friends
+  const already = await isFriend(senderId, receiverId);
+  if (already) {
+    return { data: null, error: { message: 'Already friends' } };
+  }
+
+  // Check for reverse pending request — auto-accept if found
+  const { data: reverseReq } = await supabase
+    .from('friend_requests')
+    .select('*')
+    .eq('sender_id', receiverId)
+    .eq('receiver_id', senderId)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (reverseReq) {
+    // Auto-accept: they already want to be our friend
+    const result = await acceptFriendRequest(reverseReq.id);
+    return { data: result.data, error: result.error, autoAccepted: true };
+  }
+
+  // Check for existing same-direction pending request
+  const { data: existingReq } = await supabase
+    .from('friend_requests')
+    .select('id')
+    .eq('sender_id', senderId)
+    .eq('receiver_id', receiverId)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (existingReq) {
+    return { data: null, error: { message: 'Friend request already sent' } };
+  }
+
   const { data, error } = await supabase
     .from('friend_requests')
     .insert({ sender_id: senderId, receiver_id: receiverId, status: 'pending' })
@@ -1616,10 +1652,13 @@ export async function sendFriendRequest(senderId, receiverId) {
     .single();
 
   if (error) {
+    if (error.code === '23505') {
+      return { data: null, error: { message: 'Friend request already sent' } };
+    }
     console.error('[Supabase] sendFriendRequest failed:', error.message);
     return { data: null, error };
   }
-  return { data, error: null };
+  return { data, error: null, autoAccepted: false };
 }
 
 /**
@@ -1833,15 +1872,21 @@ export async function hasFriends(userId) {
 }
 
 /**
- * Search profiles by display name (ILIKE).
+ * Search profiles by display name (ILIKE), with optional discriminator filter.
  */
-export async function searchProfiles(query, excludeUserId) {
-  const { data, error } = await supabase
+export async function searchProfiles(query, excludeUserId, discriminator = null) {
+  let q = supabase
     .from('profiles')
     .select('*')
     .ilike('display_name', `%${query}%`)
     .neq('user_id', excludeUserId)
     .limit(10);
+
+  if (discriminator) {
+    q = q.eq('discriminator', discriminator);
+  }
+
+  const { data, error } = await q;
 
   if (error) {
     console.error('[Supabase] searchProfiles failed:', error.message);

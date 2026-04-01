@@ -143,7 +143,8 @@ const state = {
   _hotJoinPollId: null,
   _gamePlayCompleted: false,
   _guestNudgeProcessed: false,
-  _syncIntervalId: null
+  _syncIntervalId: null,
+  disqualifiedQuestions: new Set()
 };
 
 // Stored handler for document click (flag menu dismiss) — removed in cleanup()
@@ -880,6 +881,7 @@ async function handlePhaseTransition(phase) {
       state._gamePlayCompleted = false;
       state._cumulativeScoresWritten = false;
       state.usedWagers = new Map();
+      state.disqualifiedQuestions = new Set();
       // Track game play start
       insertGamePlay({
         roomId: state.room.id,
@@ -1576,6 +1578,10 @@ async function showRevealScreen() {
 
   state.onRevealScreen = true;
 
+  // Reset disqualify button for this round
+  const dqBtn = $('#btn-disqualify-round');
+  if (dqBtn) { dqBtn.classList.add('hidden'); dqBtn.disabled = false; dqBtn.textContent = 'Disqualify Round'; }
+
   const q = state.questions[state.currentQuestion];
   if (!q) return;
 
@@ -1893,13 +1899,19 @@ function doReveal() {
     });
   });
 
-  // Host: swap button to "Show Scores"
+  // Host: swap button to "Show Scores" and show Disqualify option
   if (state.room.isHost) {
     const btn = $('#btn-next-question');
     btn.textContent = 'Show Scores';
     btn.onclick = handleShowScores;
     btn.disabled = false;
     btn.style.opacity = '1';
+    // Show disqualify button (only if not already disqualified)
+    const dqBtn = $('#btn-disqualify-round');
+    if (dqBtn && !state.disqualifiedQuestions.has(state.currentQuestion)) {
+      dqBtn.classList.remove('hidden');
+      dqBtn.onclick = handleDisqualifyRound;
+    }
   }
 
   // Background re-fetch to catch any answers missed by Realtime
@@ -1994,6 +2006,43 @@ async function handleJudgmentOverride(e) {
   if (player?.user_id && answer.question_id) {
     upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
   }
+}
+
+async function handleDisqualifyRound() {
+  if (!state.room?.isHost) return;
+  const qNum = state.currentQuestion;
+
+  // Mark locally
+  state.disqualifiedQuestions.add(qNum);
+
+  // Set all answers for this question to score_earned = 0
+  const updates = [];
+  for (const answer of state.currentAnswers) {
+    answer.is_correct = false;
+    answer.score_earned = 0;
+    if (answer.id) {
+      updates.push(updateAnswerJudgment(answer.id, false, 0));
+    }
+  }
+  // Re-render immediately
+  renderRevealAnswers(state.currentAnswers);
+
+  // Hide the disqualify button and show confirmation
+  const dqBtn = $('#btn-disqualify-round');
+  if (dqBtn) {
+    dqBtn.textContent = 'Round Disqualified';
+    dqBtn.disabled = true;
+  }
+
+  // Persist to DB (fires Realtime updates to all clients)
+  await Promise.all(updates);
+
+  // Recalculate scores
+  await updateScores();
+
+  // Send system chat message — non-host clients will detect this
+  await sendMessage(state.room.id, 'System',
+    `Host disqualified Q${qNum + 1} — no scores affected.`);
 }
 
 async function handleNextQuestion() {
@@ -2679,8 +2728,10 @@ async function showResultsScreen() {
       const cat = state.room.category;
       const allAnswers = await fetchAllAnswers(state.room.id);
       const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
-      const correctCount = myAnswers.filter(a => a.is_correct).length;
-      const totalAnswered = myAnswers.length;
+      // Exclude disqualified questions from stats
+      const validAnswers = myAnswers.filter(a => !state.disqualifiedQuestions.has(a.question_number));
+      const correctCount = validAnswers.filter(a => a.is_correct).length;
+      const totalAnswered = validAnswers.length;
       const sortedForPlacement = [...state.players].sort((a, b) => (state.scores[b.id] || 0) - (state.scores[a.id] || 0));
       const placement = sortedForPlacement.findIndex(p => String(p.id) === String(state.room.playerId)) + 1;
       const won = placement === 1;
@@ -3445,6 +3496,11 @@ function handleNewMessage(payload) {
   // System messages get distinct styling (no avatar, centered, accent color)
   if (player_name === 'System') {
     addGameSystemMessage(message);
+    // Detect disqualify messages from host
+    const dqMatch = message.match(/^Host disqualified Q(\d+)/);
+    if (dqMatch) {
+      state.disqualifiedQuestions.add(parseInt(dqMatch[1], 10) - 1); // 0-indexed
+    }
   } else {
     appendGameChatMessage(player_name, message);
     scrollGameChatToBottom();

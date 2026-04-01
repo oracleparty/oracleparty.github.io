@@ -3,7 +3,7 @@
 // ============================================
 
 import { $, calculateTitle } from './utils.js';
-import { supabase, createProfile, fetchProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest } from './supabase.js';
+import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle } from './titles.js';
 
@@ -109,6 +109,21 @@ export async function initAuth() {
         fetchPlayerStats(session.user.id)
       ]);
       if (profile) {
+        // Repair broken profiles: missing display_name or discriminator
+        if (!profile.display_name || !profile.discriminator) {
+          const dn = profile.display_name || getDisplayName() || session.user.user_metadata?.display_name || 'Player';
+          const disc = profile.discriminator || await generateDiscriminator(dn);
+          if (disc) {
+            const updates = {};
+            if (!profile.display_name) updates.display_name = dn;
+            if (!profile.discriminator) updates.discriminator = disc;
+            const { data: repaired } = await updateProfile(session.user.id, updates);
+            if (repaired) {
+              profile.display_name = repaired.display_name;
+              profile.discriminator = repaired.discriminator;
+            }
+          }
+        }
         // Compute title — prefer custom wheel title, fall back to auto-computed
         const titleInfo = calculateTitle(stats);
         const customTitle = buildDisplayTitle(profile);
@@ -159,6 +174,12 @@ export async function initAuth() {
  * Returns { user, profile, error }.
  */
 export async function signUp(email, password, displayName) {
+  // Validate display name
+  if (!displayName || !displayName.trim()) {
+    return { user: null, profile: null, error: { message: 'Display name is required.' } };
+  }
+  displayName = displayName.trim();
+
   const discriminator = await generateDiscriminator(displayName);
   if (!discriminator) {
     return { user: null, profile: null, error: { message: 'This name is too popular. Try a different name.' } };
@@ -302,10 +323,15 @@ export function showSignUpModal() {
         return;
       }
 
+      const displayName = getDisplayName();
+      if (!displayName || !displayName.trim()) {
+        errorEl.textContent = 'Set a display name before creating an account';
+        return;
+      }
+
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating...';
 
-      const displayName = getDisplayName();
       const result = await signUp(email, password, displayName);
 
       if (result.error) {
@@ -315,7 +341,7 @@ export function showSignUpModal() {
         return;
       }
 
-      successEl.textContent = `Account created! You are now ${result.profile.display_name}#${result.profile.discriminator}`;
+      successEl.textContent = `Account created! You are now ${result.profile?.display_name || displayName}#${result.profile?.discriminator || '????'}`;
       successEl.style.display = 'block';
       submitBtn.textContent = 'Done';
       submitBtn.disabled = false;

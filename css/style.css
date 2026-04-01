@@ -2741,6 +2741,25 @@ body::after {
   color: var(--color-danger);
 }
 
+.btn-disqualify {
+  background: none;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+  font-size: 13px;
+  padding: 8px 16px;
+  margin-top: var(--space-xs);
+  border-radius: 8px;
+  opacity: 0.8;
+}
+.btn-disqualify:active {
+  opacity: 1;
+  background: rgba(196, 75, 75, 0.1);
+}
+.btn-disqualify:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 /* Results screen entrance */
 #results-screen.active .results-winner {
   animation: fade-up 0.5s var(--ease-out) 0.05s both;
@@ -3529,6 +3548,21 @@ body::after {
 .profile-header__tag {
   color: var(--color-text-muted);
   font-weight: 400;
+}
+.profile-header__name-edit {
+  font-size: 12px;
+  margin-left: 4px;
+  opacity: 0.5;
+}
+.profile-name-input {
+  display: inline-block;
+  width: auto;
+  max-width: 160px;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: inherit;
+  padding: 2px 6px;
+  margin: -2px 0;
 }
 .profile-header__title {
   font-family: var(--font-body);
