@@ -1671,7 +1671,6 @@ async function showRevealScreen() {
   }
 
 
-  // Pre-set chat bar offset so content padding is correct during transition
   const currentScreen = document.querySelector('.screen.active');
   const revealScreen = $('#reveal-screen');
   if (currentScreen && currentScreen !== revealScreen) {
@@ -2166,7 +2165,6 @@ async function showScoresScreen() {
   }).join('');
 
 
-  // Pre-set chat bar offset so content padding is correct during transition
   const currentScreen = document.querySelector('.screen.active');
   const scoresScreen = $('#scores-screen');
   if (currentScreen && currentScreen !== scoresScreen) {
@@ -2874,7 +2872,6 @@ async function showResultsScreen() {
   }).join('');
 
 
-  // Pre-set chat bar offset so content padding is correct during transition
   const currentScreen = document.querySelector('.screen.active');
   const resultsScreen = $('#results-screen');
   if (currentScreen && currentScreen !== resultsScreen) {

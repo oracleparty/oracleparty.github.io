@@ -548,14 +548,15 @@ function deactivateHostUI() {
   btnReady.classList.remove('hidden');
 }
 
+let _isTransferring = false;
+
 async function handleTransferHost(targetPlayerId, targetDisplayName) {
-  if (!room.isHost) return;
+  if (!room.isHost || _isTransferring) return;
+  _isTransferring = true;
   try {
-    // Demote self, promote target
-    await Promise.all([
-      demoteHost(room.playerId),
-      promoteToHost(room.id, targetPlayerId, targetDisplayName)
-    ]);
+    // Demote self first, then promote target (serialized to avoid brief two-host state)
+    await demoteHost(room.playerId);
+    await promoteToHost(room.id, targetPlayerId, targetDisplayName);
 
     // Update local state
     const myIdx = players.findIndex(p => String(p.id) === String(room.playerId));
@@ -573,6 +574,8 @@ async function handleTransferHost(targetPlayerId, targetDisplayName) {
     addSystemMessage(`You transferred host to ${targetDisplayName}`);
   } catch (err) {
     console.error('[Lobby] handleTransferHost error:', err);
+  } finally {
+    _isTransferring = false;
   }
 }
 

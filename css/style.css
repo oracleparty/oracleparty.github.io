@@ -1575,7 +1575,7 @@ body::after {
 
 .lobby-top {
   flex-shrink: 0;
-  padding: 44px var(--space-lg) 0;
+  padding: 0 var(--space-lg);
 }
 
 .lobby-middle {
