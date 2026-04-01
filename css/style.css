@@ -835,6 +835,12 @@ body::after {
 .subcategory-row__label {
   flex: 1;
 }
+.subcategory-row__count {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
 .subcategory-row--all {
   font-weight: 600;
   color: var(--color-primary);
@@ -866,6 +872,11 @@ body::after {
 .category-sheet-row__chevron {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+}
+.category-sheet-row__count {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 .category-sheet-row.selected {
   color: var(--color-primary);

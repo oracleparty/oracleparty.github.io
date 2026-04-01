@@ -137,11 +137,13 @@ function drillIntoSubcategories(cat, meta) {
     <div class="subcategory-row subcategory-row--all" data-category="${cat.name}" data-subcategory="">
       <span class="subcategory-row__icon">${meta.icon}</span>
       <span class="subcategory-row__label">All ${meta.label}</span>
+      <span class="subcategory-row__count">${cat.count} Qs</span>
     </div>
     ${meta.subcategories.map(s => `
       <div class="subcategory-row" data-category="${cat.name}" data-subcategory="${s.key}">
         <span class="subcategory-row__icon">${s.icon}</span>
         <span class="subcategory-row__label">${s.label}</span>
+        <span class="subcategory-row__count" data-sub-count="${s.key}"></span>
       </div>
     `).join('')}
   `;
@@ -150,6 +152,13 @@ function drillIntoSubcategories(cat, meta) {
   subView.style.display = '';
   // Scroll to top of the screen
   document.querySelector('#category-screen')?.scrollTo(0, 0);
+
+  // Async-load subcategory question counts
+  meta.subcategories.forEach(async (s) => {
+    const count = await fetchQuestionCount(cat.name, s.key);
+    const el = options.querySelector(`[data-sub-count="${s.key}"]`);
+    if (el) el.textContent = `${count} Qs`;
+  });
 }
 
 function drillBack() {

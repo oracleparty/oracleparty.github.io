@@ -23,7 +23,8 @@ import {
   subscribeToRoom,
   unsubscribe,
   createPresenceChannel,
-  fetchPlayerStatsBatch
+  fetchPlayerStatsBatch,
+  fetchQuestionCount
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
@@ -901,9 +902,17 @@ function showLobbyCategorySheetSubs(catName) {
       <div class="category-sheet-row" data-category="${catName}" data-subcategory="${s.key}">
         <span class="category-sheet-row__icon">${s.icon}</span>
         <span class="category-sheet-row__label">${s.label}</span>
+        <span class="category-sheet-row__count" data-sub-count="${s.key}"></span>
       </div>
     `).join('')}
   `;
+
+  // Async-load subcategory question counts
+  meta.subcategories.forEach(async (s) => {
+    const count = await fetchQuestionCount(catName, s.key);
+    const el = list.querySelector(`[data-sub-count="${s.key}"]`);
+    if (el) el.textContent = `${count} Qs`;
+  });
 }
 
 function syncTogglesToSettings() {
