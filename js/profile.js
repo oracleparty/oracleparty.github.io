@@ -429,24 +429,26 @@ export async function initProfilePage() {
     size: '72px'
   }) + '<div class="profile-header__edit-hint">\u270F\uFE0F</div>';
   function renderHeaderName() {
-    headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span><span class="profile-header__name-edit">\u270F\uFE0F</span>`;
+    headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
+    const cl = document.getElementById('profile-change-name-link');
+    if (cl) cl.style.display = '';
   }
   renderHeaderName();
-  headerName.style.cursor = 'pointer';
 
-  // Show one-time hint to tap name to edit
-  if (!sessionStorage.getItem('oracle_party_name_hint_shown')) {
-    sessionStorage.setItem('oracle_party_name_hint_shown', '1');
-    const hint = document.createElement('div');
-    hint.className = 'profile-header__tap-hint';
-    hint.textContent = 'Tap name to edit';
-    headerName.parentNode.insertBefore(hint, headerName.nextSibling);
-    hint.addEventListener('animationend', () => hint.remove());
+  // "Change" link below the name — always visible
+  let changeLink = document.getElementById('profile-change-name-link');
+  if (!changeLink) {
+    changeLink = document.createElement('button');
+    changeLink.id = 'profile-change-name-link';
+    changeLink.className = 'profile-header__change-link';
+    changeLink.textContent = 'Change Name';
+    headerName.parentNode.insertBefore(changeLink, headerName.nextSibling);
   }
 
-  // Display name edit
-  headerName.onclick = () => {
+  // Display name edit — triggered by tapping name or "Change Name" link
+  const startNameEdit = () => {
     const currentName = profile.display_name || '';
+    if (changeLink) changeLink.style.display = 'none';
     headerName.innerHTML = `<input type="text" id="edit-display-name" class="input profile-name-input" value="${escapeHtml(currentName)}" maxlength="20" autocomplete="off"><span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
     const input = $('#edit-display-name');
     input.focus();
@@ -487,14 +489,18 @@ export async function initProfilePage() {
         } catch {}
       }
       renderHeaderName();
+      if (changeLink) changeLink.style.display = '';
     };
 
     input.onkeydown = (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveName(); }
-      if (e.key === 'Escape') renderHeaderName();
+      if (e.key === 'Escape') { renderHeaderName(); if (changeLink) changeLink.style.display = ''; }
     };
     input.onblur = saveName;
   };
+  headerName.style.cursor = 'pointer';
+  headerName.onclick = startNameEdit;
+  changeLink.onclick = startNameEdit;
 
   // Avatar edit
   headerAvatar.onclick = async () => {
@@ -921,6 +927,7 @@ async function loadFriendsTab(userId) {
   let pending = [];
   try {
     pending = await fetchPendingRequests(userId);
+    console.log('[Profile] Pending friend requests:', pending.length, pending);
   } catch (err) {
     console.error('[Profile] fetchPendingRequests failed:', err);
   }

@@ -3659,21 +3659,17 @@ body::after {
   color: var(--color-text-muted);
   font-weight: 400;
 }
-.profile-header__name-edit {
-  font-size: 12px;
-  margin-left: 4px;
-  opacity: 0.65;
-}
-.profile-header__tap-hint {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  margin-top: 2px;
-  text-align: center;
-  animation: profile-hint-fade 4s ease-out forwards;
-}
-@keyframes profile-hint-fade {
-  0%, 60% { opacity: 1; }
-  100% { opacity: 0; pointer-events: none; }
+.profile-header__change-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: var(--space-xs) var(--space-sm);
+  margin-top: var(--space-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .profile-name-input {
   display: inline-block;
@@ -4177,8 +4173,9 @@ body::after {
 }
 
 .request-row__actions .btn {
-  padding: var(--space-xs) var(--space-sm);
-  font-size: var(--text-xs);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+  min-height: 36px;
 }
 
 /* ============================================
