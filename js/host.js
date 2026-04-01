@@ -319,7 +319,7 @@ function attachListeners() {
       // Update settings
       const settingKey = group.dataset.setting;
       const value = option.dataset.value;
-      if (settingKey === 'questionsPerGame' || settingKey === 'questionTimer') {
+      if (settingKey === 'questionsPerGame' || settingKey === 'questionTimer' || settingKey === 'autoProceed') {
         settings[settingKey] = parseInt(value, 10);
       } else {
         settings[settingKey] = value;

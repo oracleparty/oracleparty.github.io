@@ -434,6 +434,16 @@ export async function initProfilePage() {
   renderHeaderName();
   headerName.style.cursor = 'pointer';
 
+  // Show one-time hint to tap name to edit
+  if (!sessionStorage.getItem('oracle_party_name_hint_shown')) {
+    sessionStorage.setItem('oracle_party_name_hint_shown', '1');
+    const hint = document.createElement('div');
+    hint.className = 'profile-header__tap-hint';
+    hint.textContent = 'Tap name to edit';
+    headerName.parentNode.insertBefore(hint, headerName.nextSibling);
+    hint.addEventListener('animationend', () => hint.remove());
+  }
+
   // Display name edit
   headerName.onclick = () => {
     const currentName = profile.display_name || '';
@@ -900,6 +910,7 @@ export async function initProfilePage() {
 let _searchTimeout = null;
 
 async function loadFriendsTab(userId) {
+  if (!userId) return; // Guests can't have friend requests
   const pendingListEl = $('#friends-pending-list');
   const pendingSection = $('#friends-pending');
   const friendsListEl = $('#friends-list');
@@ -907,7 +918,12 @@ async function loadFriendsTab(userId) {
   const searchResults = $('#friends-search-results');
 
   // Load pending requests
-  const pending = await fetchPendingRequests(userId);
+  let pending = [];
+  try {
+    pending = await fetchPendingRequests(userId);
+  } catch (err) {
+    console.error('[Profile] fetchPendingRequests failed:', err);
+  }
   if (pending.length > 0) {
     pendingSection.style.display = '';
     const senderIds = pending.map(r => r.sender_id);
@@ -918,7 +934,7 @@ async function loadFriendsTab(userId) {
       const p = profiles[req.sender_id] || {};
       const avatar = renderAvatar({ displayName: p.display_name || '?', avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
       const tag = p.discriminator ? `<span class="request-row__tag">#${escapeHtml(p.discriminator)}</span>` : '';
-      return `<div class="request-row" data-request-id="${req.id}">
+      return `<div class="request-row" data-request-id="${req.id}" data-profile-user-id="${req.sender_id}" data-profile-name="${escapeHtml(p.display_name || 'Unknown')}" data-profile-color="${p.avatar_color || ''}" data-profile-emoji="${p.avatar_emoji || ''}">
         ${avatar}
         <div class="request-row__info">
           <div class="request-row__name">${escapeHtml(p.display_name || 'Unknown')}${tag}</div>
@@ -930,7 +946,7 @@ async function loadFriendsTab(userId) {
       </div>`;
     }).join('');
 
-    // Wire accept/decline
+    // Wire accept/decline + profile card tap
     pendingListEl.onclick = async (e) => {
       const acceptBtn = e.target.closest('[data-accept]');
       const declineBtn = e.target.closest('[data-decline]');
@@ -939,11 +955,24 @@ async function loadFriendsTab(userId) {
         acceptBtn.textContent = '...';
         await acceptFriendRequest(parseInt(acceptBtn.dataset.accept));
         loadFriendsTab(userId); // Refresh
-      } else if (declineBtn) {
+        return;
+      }
+      if (declineBtn) {
         declineBtn.disabled = true;
         declineBtn.textContent = '...';
         await declineFriendRequest(parseInt(declineBtn.dataset.decline));
         loadFriendsTab(userId);
+        return;
+      }
+      // Profile card on row tap
+      const row = e.target.closest('[data-profile-user-id]');
+      if (row) {
+        showProfileCard({
+          userId: row.dataset.profileUserId,
+          displayName: row.dataset.profileName || 'Unknown',
+          avatarColor: row.dataset.profileColor || null,
+          avatarEmoji: row.dataset.profileEmoji || null
+        });
       }
     };
   } else {
@@ -1030,7 +1059,7 @@ async function loadFriendsTab(userId) {
         actionHtml = `<div class="friend-row__action"><button class="btn btn-primary" data-join-code="${escapeHtml(presence.roomCode)}">Join</button></div>`;
       }
 
-      return `<div class="friend-row">
+      return `<div class="friend-row" data-profile-user-id="${f.user_id}" data-profile-name="${escapeHtml(f.display_name)}" data-profile-color="${f.avatar_color || ''}" data-profile-emoji="${f.avatar_emoji || ''}">
         ${avatar}
         <div class="friend-row__info">
           <div class="friend-row__name">${escapeHtml(f.display_name)}${tag}</div>
@@ -1040,11 +1069,22 @@ async function loadFriendsTab(userId) {
       </div>`;
     }).join('');
 
-    // Join friend's lobby on button click
+    // Join friend's lobby or open profile card
     friendsListEl.onclick = (e) => {
       const joinBtn = e.target.closest('[data-join-code]');
-      if (!joinBtn) return;
-      window.location.href = `join.html?code=${joinBtn.dataset.joinCode}`;
+      if (joinBtn) {
+        window.location.href = `join.html?code=${joinBtn.dataset.joinCode}`;
+        return;
+      }
+      const row = e.target.closest('[data-profile-user-id]');
+      if (row) {
+        showProfileCard({
+          userId: row.dataset.profileUserId,
+          displayName: row.dataset.profileName || 'Unknown',
+          avatarColor: row.dataset.profileColor || null,
+          avatarEmoji: row.dataset.profileEmoji || null
+        });
+      }
     };
   } else {
     friendsListEl.innerHTML = '<p class="profile-empty">No friends yet. Search to add some!</p>';

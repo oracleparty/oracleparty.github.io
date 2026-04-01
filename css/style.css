@@ -3662,7 +3662,18 @@ body::after {
 .profile-header__name-edit {
   font-size: 12px;
   margin-left: 4px;
-  opacity: 0.5;
+  opacity: 0.65;
+}
+.profile-header__tap-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  text-align: center;
+  animation: profile-hint-fade 4s ease-out forwards;
+}
+@keyframes profile-hint-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
 }
 .profile-name-input {
   display: inline-block;
@@ -4064,6 +4075,10 @@ body::after {
   gap: var(--space-sm);
   padding: var(--space-sm) 0;
   border-bottom: 1px solid var(--color-bg-deep);
+  cursor: pointer;
+}
+.request-row[data-profile-user-id] {
+  cursor: pointer;
 }
 .friend-row:last-child {
   border-bottom: none;
