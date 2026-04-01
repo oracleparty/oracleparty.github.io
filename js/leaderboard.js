@@ -22,6 +22,12 @@ const SUBCATEGORIES = {
     { key: 'medieval', label: 'Medieval' },
     { key: 'early-modern', label: 'Early Modern' },
     { key: 'modern', label: 'Modern' },
+  ],
+  'science': [
+    { key: 'human-body', label: 'Human Body' },
+    { key: 'elements', label: 'Elements' },
+    { key: 'space', label: 'Space' },
+    { key: 'misc', label: 'Misc' },
   ]
 };
 

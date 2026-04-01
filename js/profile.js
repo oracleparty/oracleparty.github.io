@@ -55,7 +55,12 @@ const CATEGORY_META = {
     { key: 'early-modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
     { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
   ]},
-  'science':          { icon: '\u2697\uFE0F', label: 'Science' },
+  'science':          { icon: '\u2697\uFE0F', label: 'Science', subcategories: [
+    { key: 'human-body', icon: '🧬', label: 'Human Body' },
+    { key: 'elements', icon: '🧪', label: 'Elements' },
+    { key: 'space', icon: '🪐', label: 'Space' },
+    { key: 'misc', icon: '🔬', label: 'Misc' },
+  ]},
   'nature':           { icon: '\u{1F33F}', label: 'Nature' },
   'arts-literature':  { icon: '\u{1F4DC}', label: 'Arts & Lit' },
   'culture-society':  { icon: '\u{1F3DB}\uFE0F', label: 'Culture' },
