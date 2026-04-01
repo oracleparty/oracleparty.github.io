@@ -293,6 +293,8 @@ body::after {
   pointer-events: none;
   transition: opacity var(--duration-med) var(--ease-out);
   padding: var(--space-lg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-overlay.active {
@@ -306,6 +308,9 @@ body::after {
   padding: var(--space-2xl) var(--space-xl);
   width: 100%;
   max-width: 340px;
+  max-height: 85dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   text-align: center;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
   transform: translateY(12px);

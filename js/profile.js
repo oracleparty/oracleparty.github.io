@@ -435,14 +435,16 @@ export async function initProfilePage() {
   }
   renderHeaderName();
 
-  // "Change" link below the name — always visible
+  // "Change Name" link below the title — always visible, appended to profile-header
   let changeLink = document.getElementById('profile-change-name-link');
   if (!changeLink) {
     changeLink = document.createElement('button');
     changeLink.id = 'profile-change-name-link';
     changeLink.className = 'profile-header__change-link';
     changeLink.textContent = 'Change Name';
-    headerName.parentNode.insertBefore(changeLink, headerName.nextSibling);
+    // Append to end of .profile-header so it appears below avatar, name, and title
+    const profileHeader = document.querySelector('.profile-header');
+    if (profileHeader) profileHeader.appendChild(changeLink);
   }
 
   // Display name edit — triggered by tapping name or "Change Name" link
@@ -954,20 +956,42 @@ async function loadFriendsTab(userId) {
     }).join('');
 
     // Wire accept/decline + profile card tap
-    pendingListEl.onclick = async (e) => {
+    pendingListEl.addEventListener('click', async (e) => {
       const acceptBtn = e.target.closest('[data-accept]');
       const declineBtn = e.target.closest('[data-decline]');
       if (acceptBtn) {
+        e.stopPropagation();
         acceptBtn.disabled = true;
+        const origText = acceptBtn.textContent;
         acceptBtn.textContent = '...';
-        await acceptFriendRequest(parseInt(acceptBtn.dataset.accept));
-        loadFriendsTab(userId); // Refresh
+        try {
+          const { error } = await acceptFriendRequest(parseInt(acceptBtn.dataset.accept, 10));
+          if (error) {
+            console.error('[Profile] acceptFriendRequest failed:', error);
+            acceptBtn.textContent = 'Error';
+            acceptBtn.disabled = false;
+            setTimeout(() => { acceptBtn.textContent = origText; }, 2000);
+            return;
+          }
+          acceptBtn.textContent = 'Accepted!';
+          setTimeout(() => loadFriendsTab(userId), 600);
+        } catch (err) {
+          console.error('[Profile] acceptFriendRequest threw:', err);
+          acceptBtn.textContent = 'Error';
+          acceptBtn.disabled = false;
+          setTimeout(() => { acceptBtn.textContent = origText; }, 2000);
+        }
         return;
       }
       if (declineBtn) {
+        e.stopPropagation();
         declineBtn.disabled = true;
         declineBtn.textContent = '...';
-        await declineFriendRequest(parseInt(declineBtn.dataset.decline));
+        try {
+          await declineFriendRequest(parseInt(declineBtn.dataset.decline, 10));
+        } catch (err) {
+          console.error('[Profile] declineFriendRequest threw:', err);
+        }
         loadFriendsTab(userId);
         return;
       }
@@ -981,7 +1005,7 @@ async function loadFriendsTab(userId) {
           avatarEmoji: row.dataset.profileEmoji || null
         });
       }
-    };
+    });
   } else {
     pendingSection.style.display = 'none';
   }
@@ -1085,6 +1109,7 @@ async function loadFriendsTab(userId) {
       }
       const row = e.target.closest('[data-profile-user-id]');
       if (row) {
+        console.log('[Profile] Friend row tapped, userId:', row.dataset.profileUserId);
         showProfileCard({
           userId: row.dataset.profileUserId,
           displayName: row.dataset.profileName || 'Unknown',
