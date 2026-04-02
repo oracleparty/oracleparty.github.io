@@ -17,7 +17,12 @@ export const CATEGORY_META = {
     { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
   'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
-  'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature' },
+  'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature', subcategories: [
+    { key: 'literature', icon: '\uD83D\uDCDA', label: 'Literature' },
+    { key: 'visual-arts', icon: '\uD83C\uDFA8', label: 'Visual Arts' },
+    { key: 'performing-arts', icon: '\uD83C\uDFAD', label: 'Performing Arts' },
+    { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
+  ]},
   'culture-society':  { icon: '\uD83C\uDFDB\uFE0F', label: 'Culture & Society', subcategories: [
     { key: 'beliefs', icon: '\uD83D\uDE4F', label: 'Beliefs' },
     { key: 'language', icon: '\uD83D\uDCAC', label: 'Language' },
