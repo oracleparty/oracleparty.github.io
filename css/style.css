@@ -547,6 +547,20 @@ body::after {
   pointer-events: none;
 }
 
+.home__crystal {
+  font-size: 48px;
+  margin-bottom: var(--space-md);
+  position: relative;
+  z-index: 1;
+  animation: crystal-float 3s ease-in-out infinite;
+  filter: drop-shadow(0 4px 12px rgba(198, 138, 46, 0.25));
+}
+
+@keyframes crystal-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
 .home__brand {
   font-family: var(--font-display);
   font-size: var(--text-4xl);
@@ -554,7 +568,7 @@ body::after {
   color: var(--color-primary);
   text-align: center;
   letter-spacing: -0.02em;
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-xs);
   text-shadow: 0 0 40px var(--color-primary-glow);
   position: relative;
   z-index: 1;
@@ -568,7 +582,7 @@ body::after {
   color: var(--color-text-dim);
   text-align: center;
   letter-spacing: 0.02em;
-  margin-bottom: var(--space-3xl);
+  margin-bottom: var(--space-2xl);
   position: relative;
   z-index: 1;
 }
@@ -576,10 +590,10 @@ body::after {
 .home__actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-md);
   width: 100%;
-  max-width: 280px;
-  padding: 0 var(--space-lg);
+  max-width: 320px;
+  padding: 0 var(--space-xl);
   position: relative;
   z-index: 1;
 }
@@ -597,16 +611,20 @@ body::after {
 }
 
 /* Home entrance animations */
+.home.active .home__crystal {
+  animation: fade-up 0.6s var(--ease-out) 0.05s both;
+}
+
 .home.active .home__brand {
-  animation: fade-up 0.6s var(--ease-out) 0.1s both;
+  animation: fade-up 0.6s var(--ease-out) 0.12s both;
 }
 
 .home.active .home__tagline {
-  animation: fade-up 0.6s var(--ease-out) 0.18s both;
+  animation: fade-up 0.6s var(--ease-out) 0.2s both;
 }
 
 .home.active .home__actions {
-  animation: fade-up 0.6s var(--ease-out) 0.3s both;
+  animation: fade-up 0.6s var(--ease-out) 0.32s both;
 }
 
 /* --- Site Brand (consistent across all screens) --- */
