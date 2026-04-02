@@ -400,44 +400,45 @@ export async function initProfilePage() {
   const accountEl = $('#profile-account');
 
   if (!authUser) {
-    // Guest view — sealed locked sections with partial real data
+    // Guest view — clean locked state
     const guestGames = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
 
     headerAvatar.innerHTML = renderAvatar({ displayName, avatarColor: null, avatarEmoji: null, size: '72px' });
     headerName.textContent = displayName;
     headerTitle.textContent = 'Novice';
 
-    // Bio — non-editable placeholder
-    if (bioEl) bioEl.innerHTML = '<span class="profile-bio--placeholder">Your bio goes here...</span>';
+    // Hide all profile tab sections and replace with guest CTA
+    const profileTabContent = $('#profile-tab-content');
+    profileTabContent.innerHTML = `
+      <!-- Stats — partial real data -->
+      <div class="profile-section">
+        <div class="profile-section__label">Stats</div>
+        <div class="profile-stats">
+          <div class="profile-stat"><div class="profile-stat__value">${guestGames}</div><div class="profile-stat__label">Games</div></div>
+          <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Wins</div></div>
+          <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Win Rate</div></div>
+          <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Accuracy</div></div>
+          <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Strongest</div></div>
+          <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Weakest</div></div>
+        </div>
+      </div>
 
-    // Stats — show guest games played, rest locked
-    if (statsEl) {
-      statsEl.innerHTML = `
-        <div class="profile-stat"><div class="profile-stat__value">${guestGames}</div><div class="profile-stat__label">Games</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Wins</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Win Rate</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Accuracy</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Strongest</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Weakest</div></div>
-      `;
-    }
-
-    // Helper to build compact locked cards
-    const lockedCard = (icon, text) => `<div class="profile-locked-section">
-      <div class="profile-locked-section__seal">${icon}</div>
-      <div class="profile-locked-section__text">${text}</div>
-      <div class="profile-locked-section__cta">Tap to unlock \u2192</div>
-    </div>`;
-
-    if (masteryEl) masteryEl.innerHTML = lockedCard('\u{1F3AF}', 'Track your mastery across thousands of questions');
-    if (categoriesEl) categoriesEl.innerHTML = lockedCard('\u{1F4CA}', 'See your accuracy across 12 categories');
-    if (gamesEl) gamesEl.innerHTML = lockedCard('\u{1F4DC}', 'Your game history, saved and searchable');
-    if (favCatEl) favCatEl.innerHTML = lockedCard('\u2B50', 'Set your favorite category');
-
-    // Account section — CTA buttons
-    if (accountEl) accountEl.innerHTML = `
-      <button class="btn btn-primary btn-block" id="profile-create-account">Create Account</button>
-      <button class="btn btn-secondary btn-block" id="profile-sign-in" style="margin-top: var(--space-sm);">Sign In</button>
+      <!-- Single unlock CTA -->
+      <div class="profile-section" style="padding-bottom: var(--space-2xl);">
+        <div class="guest-unlock-card">
+          <div class="guest-unlock-card__icon">\uD83D\uDD13</div>
+          <h3 class="guest-unlock-card__title">Unlock Your Oracle Identity</h3>
+          <ul class="guest-unlock-card__perks">
+            <li>\uD83C\uDFAF Track mastery across ${Object.keys(CATEGORY_META).length} categories</li>
+            <li>\uD83D\uDCDC Save your game history and stats</li>
+            <li>\uD83D\uDC65 Add friends and see who\u2019s online</li>
+            <li>\uD83C\uDFC6 Compete on leaderboards</li>
+            <li>\u2728 Customize your avatar and title</li>
+          </ul>
+          <button class="btn btn-primary btn-block" id="profile-create-account">Create Account</button>
+          <button class="btn btn-secondary btn-block" id="profile-sign-in" style="margin-top: var(--space-sm);">Sign In</button>
+        </div>
+      </div>
     `;
 
     const openSignup = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
@@ -448,9 +449,6 @@ export async function initProfilePage() {
     if (signInBtn) signInBtn.onclick = async () => { const r = await showSignInModal(); if (r) window.location.reload(); };
 
     headerAvatar.onclick = openSignup;
-
-    // All locked cards → open signup
-    document.querySelectorAll('.profile-locked-section').forEach(el => { el.onclick = openSignup; });
     return;
   }
 
