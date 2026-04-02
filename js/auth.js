@@ -94,87 +94,117 @@ export function getCurrentUser() {
  * Call on every page load. Non-blocking for guests.
  */
 export async function initAuth() {
+  // Step 1: Get session — this is critical, so we fail loudly
+  let session;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      _currentUser = session.user;
-      // Try cached profile first
-      const cached = localStorage.getItem(PROFILE_CACHE_KEY);
-      if (cached) {
-        try { _currentProfile = JSON.parse(cached); } catch { /* ignore */ }
-      }
-      // Fetch fresh profile + stats in parallel
-      const [{ data: profile }, stats] = await Promise.all([
-        fetchProfile(session.user.id),
-        fetchPlayerStats(session.user.id)
-      ]);
-      if (profile) {
-        // Repair broken profiles: missing display_name or discriminator
-        if (!profile.display_name || !profile.discriminator) {
-          const dn = profile.display_name || getDisplayName() || session.user.user_metadata?.display_name || 'Player';
-          const disc = profile.discriminator || await generateDiscriminator(dn);
-          if (disc) {
-            const updates = {};
-            if (!profile.display_name) updates.display_name = dn;
-            if (!profile.discriminator) updates.discriminator = disc;
-            const { data: repaired, error: repairErr } = await updateProfile(session.user.id, updates);
-            if (repaired) {
-              profile.display_name = repaired.display_name;
-              profile.discriminator = repaired.discriminator;
-            } else {
-              console.warn('[Auth] Profile repair failed:', repairErr?.message);
-              // Apply local fallbacks so the UI doesn't show null
-              if (!profile.display_name) profile.display_name = dn;
-              if (!profile.discriminator) profile.discriminator = '0000';
-            }
+    const result = await supabase.auth.getSession();
+    session = result.data?.session;
+  } catch (err) {
+    console.warn('[Auth] getSession failed:', err);
+    return;
+  }
+
+  if (!session?.user) return;
+  _currentUser = session.user;
+
+  // Step 2: Load cached profile immediately so getCurrentUser() works even if fetch fails
+  const cached = localStorage.getItem(PROFILE_CACHE_KEY);
+  if (cached) {
+    try { _currentProfile = JSON.parse(cached); } catch { /* ignore */ }
+  }
+
+  // Step 3: Fetch fresh profile + stats (non-fatal — falls back to cache)
+  let profile = null;
+  let stats = [];
+  try {
+    const [profileResult, statsResult] = await Promise.all([
+      fetchProfile(session.user.id),
+      fetchPlayerStats(session.user.id)
+    ]);
+    profile = profileResult.data;
+    stats = statsResult || [];
+  } catch (err) {
+    console.warn('[Auth] Failed to fetch profile/stats:', err);
+  }
+
+  if (profile) {
+    // Repair broken profiles: missing display_name or discriminator
+    if (!profile.display_name || !profile.discriminator) {
+      try {
+        const dn = profile.display_name || getDisplayName() || session.user.user_metadata?.display_name || 'Player';
+        const disc = profile.discriminator || await generateDiscriminator(dn);
+        if (disc) {
+          const updates = {};
+          if (!profile.display_name) updates.display_name = dn;
+          if (!profile.discriminator) updates.discriminator = disc;
+          const { data: repaired, error: repairErr } = await updateProfile(session.user.id, updates);
+          if (repaired) {
+            profile.display_name = repaired.display_name;
+            profile.discriminator = repaired.discriminator;
           } else {
-            console.warn('[Auth] Could not generate discriminator for profile repair');
+            console.warn('[Auth] Profile repair failed:', repairErr?.message);
             if (!profile.display_name) profile.display_name = dn;
             if (!profile.discriminator) profile.discriminator = '0000';
           }
+        } else {
+          if (!profile.display_name) profile.display_name = getDisplayName() || 'Player';
+          if (!profile.discriminator) profile.discriminator = '0000';
         }
-        // Compute title — prefer custom wheel title, fall back to auto-computed
-        const titleInfo = calculateTitle(stats);
-        const customTitle = buildDisplayTitle(profile);
-        profile._cachedTitle = customTitle || titleInfo.title;
-        profile._cachedTitleTier = titleInfo.tier;
-        profile._cachedTitleCategory = titleInfo.category;
-        profile._cachedStats = stats;
-        _currentProfile = profile;
-        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
-        setDisplayName(profile.display_name);
-        // Title system: evaluate unlocks on login (catches time-based, social triggers)
-        fetchTitleUnlocks(session.user.id).then(async unlocks => {
-          const ctx = { hour: new Date().getHours() };
-          const newUnlocks = evaluateUnlocks(stats, profile, unlocks, ctx);
-          for (const u of newUnlocks) {
-            await upsertTitleUnlock(session.user.id, u.wordId, u.level);
-          }
-          if (!profile.title_builder_unlocked && hasReachedApprentice(stats)) {
-            await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', session.user.id);
-          }
-        }).catch(() => {});
-        // Init global presence (non-blocking, only if user has friends)
-        initGlobalPresence(session.user.id, profile.show_online_status !== false).catch(() => {});
-        // Subscribe to incoming friend requests for popup notifications
-        _initFriendRequestNotifications(session.user.id);
-      } else if (!_currentProfile) {
-        // Session exists but no profile — retry creation (handles partial signup)
-        const displayName = getDisplayName() || session.user.user_metadata?.display_name;
-        if (displayName) {
-          const disc = await generateDiscriminator(displayName);
-          if (disc) {
-            const { data: newProfile } = await createProfile(session.user.id, displayName, disc);
-            if (newProfile) {
-              _currentProfile = newProfile;
-              localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(newProfile));
-            }
+      } catch (err) {
+        console.warn('[Auth] Profile repair threw:', err);
+        if (!profile.display_name) profile.display_name = getDisplayName() || 'Player';
+        if (!profile.discriminator) profile.discriminator = '0000';
+      }
+    }
+
+    // Compute title (non-fatal)
+    try {
+      const titleInfo = calculateTitle(stats);
+      const customTitle = buildDisplayTitle(profile);
+      profile._cachedTitle = customTitle || titleInfo.title;
+      profile._cachedTitleTier = titleInfo.tier;
+      profile._cachedTitleCategory = titleInfo.category;
+    } catch (err) {
+      console.warn('[Auth] Title computation failed:', err);
+      profile._cachedTitle = 'Novice';
+      profile._cachedTitleTier = 'Novice';
+      profile._cachedTitleCategory = null;
+    }
+    profile._cachedStats = stats;
+    _currentProfile = profile;
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    if (profile.display_name) setDisplayName(profile.display_name);
+
+    // Non-blocking background tasks — failures are fine
+    fetchTitleUnlocks(session.user.id).then(async unlocks => {
+      const ctx = { hour: new Date().getHours() };
+      const newUnlocks = evaluateUnlocks(stats, profile, unlocks, ctx);
+      for (const u of newUnlocks) {
+        await upsertTitleUnlock(session.user.id, u.wordId, u.level);
+      }
+      if (!profile.title_builder_unlocked && hasReachedApprentice(stats)) {
+        await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', session.user.id);
+      }
+    }).catch(() => {});
+    initGlobalPresence(session.user.id, profile.show_online_status !== false).catch(() => {});
+    _initFriendRequestNotifications(session.user.id);
+  } else if (!_currentProfile) {
+    // Session exists but no profile — retry creation (handles partial signup)
+    try {
+      const displayName = getDisplayName() || session.user.user_metadata?.display_name;
+      if (displayName) {
+        const disc = await generateDiscriminator(displayName);
+        if (disc) {
+          const { data: newProfile } = await createProfile(session.user.id, displayName, disc);
+          if (newProfile) {
+            _currentProfile = newProfile;
+            localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(newProfile));
           }
         }
       }
+    } catch (err) {
+      console.warn('[Auth] Profile creation retry failed:', err);
     }
-  } catch (err) {
-    console.warn('[Auth] initAuth failed:', err);
   }
 }
 
@@ -204,6 +234,12 @@ export async function signUp(email, password, displayName) {
   if (error) {
     console.error('[Auth] signUp failed:', error.message);
     return { user: null, profile: null, error };
+  }
+
+  // If email already exists (and confirmation is enabled), Supabase returns
+  // a user with empty identities instead of an error
+  if (!data.user || (data.user.identities && data.user.identities.length === 0)) {
+    return { user: null, profile: null, error: { message: 'An account with this email already exists.' } };
   }
 
   let { data: profile, error: profileErr } = await createProfile(data.user.id, displayName, discriminator);

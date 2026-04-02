@@ -27,7 +27,7 @@ import {
   fetchQuestionCount,
   fetchProfileByTag
 } from './supabase.js';
-import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, signOut } from './auth.js';
+import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
@@ -319,7 +319,8 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
   if (addFriendBtn && addFriendBtn.dataset.guest) {
     addFriendBtn.onclick = async () => {
       sheet.classList.remove('active');
-      await showSignUpModal();
+      const r = await showSignUpModal();
+      if (r) window.location.reload();
     };
   } else if (addFriendBtn) {
     // Send friend request
@@ -408,12 +409,18 @@ export async function initProfilePage() {
     if (categoriesEl) categoriesEl.innerHTML = '';
     if (gamesEl) gamesEl.innerHTML = '';
     if (favCatEl) favCatEl.innerHTML = '';
-    if (accountEl) accountEl.innerHTML = '<button class="btn btn-primary btn-block" id="profile-create-account">Create Account</button>';
+    if (accountEl) accountEl.innerHTML = `
+      <button class="btn btn-primary btn-block" id="profile-create-account">Create Account</button>
+      <button class="btn btn-secondary btn-block" id="profile-sign-in" style="margin-top: var(--space-sm);">Sign In</button>
+    `;
 
     const createBtn = $('#profile-create-account');
-    if (createBtn) createBtn.onclick = () => showSignUpModal();
+    if (createBtn) createBtn.onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
 
-    headerAvatar.onclick = () => showSignUpModal();
+    const signInBtn = $('#profile-sign-in');
+    if (signInBtn) signInBtn.onclick = async () => { const r = await showSignInModal(); if (r) window.location.reload(); };
+
+    headerAvatar.onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
     return;
   }
 
