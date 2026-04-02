@@ -26,10 +26,12 @@ export const CATEGORY_META = {
     { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
   'pop-culture':      { icon: '\uD83C\uDFAC', label: 'Pop Culture', subcategories: [
-    { key: 'entertainment-movies', icon: '\uD83C\uDFAC', label: 'Movies' },
-    { key: 'entertainment-television', icon: '\uD83D\uDCFA', label: 'Television' },
-    { key: 'entertainment-music', icon: '\uD83C\uDFB5', label: 'Music' },
-    { key: 'entertainment-games', icon: '\uD83C\uDFAE', label: 'Games' },
+    { key: 'entertainment', icon: '\uD83C\uDFAC', label: 'Entertainment', children: [
+      { key: 'entertainment-movies', icon: '\uD83C\uDFAC', label: 'Movies' },
+      { key: 'entertainment-television', icon: '\uD83D\uDCFA', label: 'Television' },
+      { key: 'entertainment-music', icon: '\uD83C\uDFB5', label: 'Music' },
+      { key: 'entertainment-games', icon: '\uD83C\uDFAE', label: 'Games' },
+    ]},
     { key: 'celebrities', icon: '\u2B50', label: 'Celebrities' },
     { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
