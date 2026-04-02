@@ -375,10 +375,16 @@ export function showSignUpModal() {
         return;
       }
 
-      const displayName = getDisplayName();
+      let displayName = getDisplayName();
       if (!displayName || !displayName.trim()) {
-        errorEl.textContent = 'Set a display name before creating an account';
-        return;
+        // No display name set — prompt for one before continuing
+        overlay.classList.remove('active');
+        displayName = await showDisplayNameModal();
+        overlay.classList.add('active');
+        if (!displayName || !displayName.trim()) return;
+        // Update the name display in the modal
+        const nameDisplay = $('#signup-name-display');
+        if (nameDisplay) nameDisplay.innerHTML = `Playing as: <strong>${displayName}</strong>`;
       }
 
       submitBtn.disabled = true;
