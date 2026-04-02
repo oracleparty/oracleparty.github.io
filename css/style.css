@@ -286,7 +286,7 @@ body::after {
   inset: 0;
   background: var(--color-overlay);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 100;
   opacity: 0;
@@ -308,17 +308,14 @@ body::after {
   padding: var(--space-2xl) var(--space-xl);
   width: 100%;
   max-width: 340px;
+  max-height: 85vh;
   max-height: 85dvh;
+  margin: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   text-align: center;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
-  transform: translateY(12px);
-  transition: transform var(--duration-med) var(--ease-out);
-}
-
-.modal-overlay.active .modal {
-  transform: translateY(0);
 }
 
 .modal__title {
