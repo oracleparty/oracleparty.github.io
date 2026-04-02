@@ -3667,22 +3667,24 @@ body::after {
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
 }
 .profile-header__tag {
   color: var(--color-text-muted);
   font-weight: 400;
 }
-.profile-header__change-link {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  padding: var(--space-xs) var(--space-sm);
-  margin-top: var(--space-xs);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.profile-header__edit-pencil {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  margin-left: 6px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+.profile-header__name:active .profile-header__edit-pencil {
+  opacity: 1;
 }
 .profile-name-input {
   display: inline-block;

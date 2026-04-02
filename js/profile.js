@@ -463,28 +463,13 @@ export async function initProfilePage() {
     size: '72px'
   }) + '<div class="profile-header__edit-hint">\u270F\uFE0F</div>';
   function renderHeaderName() {
-    headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
-    const cl = document.getElementById('profile-change-name-link');
-    if (cl) cl.style.display = '';
+    headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span><span class="profile-header__edit-pencil">\u270E</span>`;
   }
   renderHeaderName();
 
-  // "Change Name" link below the title — always visible, appended to profile-header
-  let changeLink = document.getElementById('profile-change-name-link');
-  if (!changeLink) {
-    changeLink = document.createElement('button');
-    changeLink.id = 'profile-change-name-link';
-    changeLink.className = 'profile-header__change-link';
-    changeLink.textContent = 'Change Name';
-    // Append to end of .profile-header so it appears below avatar, name, and title
-    const profileHeader = document.querySelector('.profile-header');
-    if (profileHeader) profileHeader.appendChild(changeLink);
-  }
-
-  // Display name edit — triggered by tapping name or "Change Name" link
+  // Display name edit — triggered by tapping name
   const startNameEdit = () => {
     const currentName = profile.display_name || '';
-    if (changeLink) changeLink.style.display = 'none';
     headerName.innerHTML = `<input type="text" id="edit-display-name" class="input profile-name-input" value="${escapeHtml(currentName)}" maxlength="20" autocomplete="off"><span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
     const input = $('#edit-display-name');
     input.focus();
@@ -525,18 +510,16 @@ export async function initProfilePage() {
         } catch {}
       }
       renderHeaderName();
-      if (changeLink) changeLink.style.display = '';
     };
 
     input.onkeydown = (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveName(); }
-      if (e.key === 'Escape') { renderHeaderName(); if (changeLink) changeLink.style.display = ''; }
+      if (e.key === 'Escape') renderHeaderName();
     };
     input.onblur = saveName;
   };
   headerName.style.cursor = 'pointer';
   headerName.onclick = startNameEdit;
-  changeLink.onclick = startNameEdit;
 
   // Avatar edit
   headerAvatar.onclick = async () => {
