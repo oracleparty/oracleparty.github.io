@@ -2507,6 +2507,9 @@ function showFinalWagerScreen() {
   // Show initial tally (empty rows with labels)
   _renderInlineDvTally();
 
+  // Close chat drawer before hiding the bar — prevents the drawer from
+  // staying open and covering final wager content
+  closeChatDrawer();
   hideChatBar();
 
   // Transition
