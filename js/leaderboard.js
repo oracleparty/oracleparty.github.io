@@ -36,7 +36,7 @@ const SUBCATEGORIES = {
 // ============================================
 
 async function init() {
-  await Promise.all([ensureDisplayName(), initAuth()]);
+  await initAuth();
   initThemeToggle();
 
   // Tab switching
