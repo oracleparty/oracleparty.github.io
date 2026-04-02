@@ -244,11 +244,19 @@ export async function signUp(email, password, displayName) {
 
   let { data: profile, error: profileErr } = await createProfile(data.user.id, displayName, discriminator);
   if (profileErr?.code === '23505') {
-    // Profile already exists for this user_id — fetch it instead of failing
+    // Profile already exists for this user_id — fetch and repair it
     const { data: existingProfile } = await fetchProfile(data.user.id);
     if (existingProfile) {
       profile = existingProfile;
       profileErr = null;
+      // Repair stale/missing fields from the previous incomplete signup
+      const needsUpdate = {};
+      if (!profile.display_name || profile.display_name !== displayName) needsUpdate.display_name = displayName;
+      if (!profile.discriminator) needsUpdate.discriminator = discriminator;
+      if (Object.keys(needsUpdate).length > 0) {
+        const { data: updated } = await updateProfile(data.user.id, needsUpdate);
+        if (updated) profile = updated;
+      }
     } else {
       // Might be a discriminator collision — retry with a new one
       const retryDisc = await generateDiscriminator(displayName);
