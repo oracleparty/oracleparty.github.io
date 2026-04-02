@@ -400,91 +400,39 @@ export async function initProfilePage() {
   const accountEl = $('#profile-account');
 
   if (!authUser) {
-    // Guest view — frosted locked sections with partial real data
+    // Guest view — sealed locked sections with partial real data
     const guestGames = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
 
     headerAvatar.innerHTML = renderAvatar({ displayName, avatarColor: null, avatarEmoji: null, size: '72px' });
     headerName.textContent = displayName;
     headerTitle.textContent = 'Novice';
 
-    // Bio — locked placeholder
+    // Bio — non-editable placeholder
     if (bioEl) bioEl.innerHTML = '<span class="profile-bio--placeholder">Your bio goes here...</span>';
 
-    // Stats — show guest games played, rest as locked placeholders
+    // Stats — show guest games played, rest locked
     if (statsEl) {
       statsEl.innerHTML = `
         <div class="profile-stat"><div class="profile-stat__value">${guestGames}</div><div class="profile-stat__label">Games</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">—</div><div class="profile-stat__label">Wins</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">—</div><div class="profile-stat__label">Win Rate</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">—</div><div class="profile-stat__label">Accuracy</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">—</div><div class="profile-stat__label">Strongest</div></div>
-        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">—</div><div class="profile-stat__label">Weakest</div></div>
+        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Wins</div></div>
+        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Win Rate</div></div>
+        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Accuracy</div></div>
+        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Strongest</div></div>
+        <div class="profile-stat profile-stat--locked"><div class="profile-stat__value">\u2014</div><div class="profile-stat__label">Weakest</div></div>
       `;
     }
 
-    // Mastery — frosted
-    if (masteryEl) {
-      masteryEl.innerHTML = `<div class="profile-locked-section">
-        <div class="profile-locked-section__frost">
-          <div class="mastery-summary"><div class="mastery-summary__text">? / ? questions mastered</div>
-          <div class="mastery-bar"><div class="mastery-bar__fill" style="width: 35%"></div></div></div>
-        </div>
-        <div class="profile-locked-section__overlay">
-          <span class="profile-locked-section__icon">\uD83D\uDD12</span>
-          <span class="profile-locked-section__text">Create an account to track mastery</span>
-        </div>
-      </div>`;
-    }
+    // Helper to build compact locked cards
+    const lockedCard = (icon, text) => `<div class="profile-locked-section">
+      <div class="profile-locked-section__seal">${icon}</div>
+      <div class="profile-locked-section__text">${text}</div>
+      <div class="profile-locked-section__cta">Tap to unlock \u2192</div>
+    </div>`;
 
-    // Categories — frosted with placeholder category tiles
-    if (categoriesEl) {
-      const placeholderCats = ['history', 'science', 'nature', 'pop-culture', 'sports', 'technology'];
-      categoriesEl.innerHTML = `<div class="profile-locked-section">
-        <div class="profile-locked-section__frost">
-          ${placeholderCats.map(cat => {
-            const meta = CATEGORY_META[cat] || { icon: '?', label: cat };
-            return `<div class="profile-category-row">
-              <span>${meta.icon}</span>
-              <span class="profile-category-row__name">${meta.label}</span>
-              <span class="profile-category-row__accuracy">—%</span>
-            </div>`;
-          }).join('')}
-        </div>
-        <div class="profile-locked-section__overlay">
-          <span class="profile-locked-section__icon">\uD83D\uDD12</span>
-          <span class="profile-locked-section__text">Create an account to track categories</span>
-        </div>
-      </div>`;
-    }
-
-    // Recent games — frosted
-    if (gamesEl) {
-      gamesEl.innerHTML = `<div class="profile-locked-section">
-        <div class="profile-locked-section__frost">
-          <div class="profile-game-row"><span>\u23F3</span><span class="profile-game-row__category">History</span><span class="profile-game-row__placement">1st/4</span><span class="profile-game-row__score">86 pts</span></div>
-          <div class="profile-game-row"><span>\u2697\uFE0F</span><span class="profile-game-row__category">Science</span><span class="profile-game-row__placement">2nd/3</span><span class="profile-game-row__score">52 pts</span></div>
-        </div>
-        <div class="profile-locked-section__overlay">
-          <span class="profile-locked-section__icon">\uD83D\uDD12</span>
-          <span class="profile-locked-section__text">Create an account to save game history</span>
-        </div>
-      </div>`;
-    }
-
-    // Favorite category — frosted
-    if (favCatEl) {
-      favCatEl.innerHTML = `<div class="profile-locked-section">
-        <div class="profile-locked-section__frost">
-          ${Object.entries(CATEGORY_META).slice(0, 6).map(([, meta]) =>
-            `<button class="profile-fav-cat">${meta.icon} ${meta.label}</button>`
-          ).join('')}
-        </div>
-        <div class="profile-locked-section__overlay">
-          <span class="profile-locked-section__icon">\uD83D\uDD12</span>
-          <span class="profile-locked-section__text">Create an account to set favorites</span>
-        </div>
-      </div>`;
-    }
+    if (masteryEl) masteryEl.innerHTML = lockedCard('\u{1F3AF}', 'Track your mastery across thousands of questions');
+    if (categoriesEl) categoriesEl.innerHTML = lockedCard('\u{1F4CA}', 'See your accuracy across 12 categories');
+    if (gamesEl) gamesEl.innerHTML = lockedCard('\u{1F4DC}', 'Your game history, saved and searchable');
+    if (favCatEl) favCatEl.innerHTML = lockedCard('\u2B50', 'Set your favorite category');
 
     // Account section — CTA buttons
     if (accountEl) accountEl.innerHTML = `
@@ -492,18 +440,17 @@ export async function initProfilePage() {
       <button class="btn btn-secondary btn-block" id="profile-sign-in" style="margin-top: var(--space-sm);">Sign In</button>
     `;
 
+    const openSignup = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
     const createBtn = $('#profile-create-account');
-    if (createBtn) createBtn.onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
+    if (createBtn) createBtn.onclick = openSignup;
 
     const signInBtn = $('#profile-sign-in');
     if (signInBtn) signInBtn.onclick = async () => { const r = await showSignInModal(); if (r) window.location.reload(); };
 
-    headerAvatar.onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
+    headerAvatar.onclick = openSignup;
 
-    // Make frosted overlays tappable → open signup
-    document.querySelectorAll('.profile-locked-section__overlay').forEach(el => {
-      el.onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
-    });
+    // All locked cards → open signup
+    document.querySelectorAll('.profile-locked-section').forEach(el => { el.onclick = openSignup; });
     return;
   }
 
