@@ -280,10 +280,6 @@ body::after {
   width: 100%;
 }
 
-#avatar-picker-modal .modal > .btn {
-  flex-shrink: 0;
-}
-
 /* --- Modal / Overlay --- */
 .modal-overlay {
   position: fixed;
@@ -312,14 +308,6 @@ body::after {
   max-width: 340px;
   text-align: center;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
-}
-
-/* Modals with scrollable content (e.g. avatar picker) */
-#avatar-picker-modal .modal {
-  max-height: calc(100vh - 2 * var(--space-lg));
-  max-height: calc(100dvh - 2 * var(--space-lg));
-  display: flex;
-  flex-direction: column;
 }
 
 .modal__title {
@@ -3389,11 +3377,6 @@ body::after {
 
 .avatar-picker {
   text-align: center;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  flex: 1;
-  min-height: 0;
 }
 
 .avatar-picker__preview {

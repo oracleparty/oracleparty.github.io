@@ -78,32 +78,65 @@ const CATEGORY_META = {
 // AVATAR PICKER
 // ============================================
 
-let _pickerInjected = false;
-
 /**
- * Show the avatar picker modal.
+ * Show the avatar picker as a full-screen scrollable page.
  * Returns Promise<{ color, emoji } | null> (null if cancelled).
  */
 export function showAvatarPicker(currentColor, currentEmoji) {
   return new Promise((resolve) => {
-    if (!_pickerInjected) {
-      _injectAvatarPicker();
-      _pickerInjected = true;
-    }
+    // Remove any existing picker
+    const existing = document.getElementById('avatar-picker-page');
+    if (existing) existing.remove();
 
     let selectedColor = currentColor || AVATAR_COLORS[0];
     let selectedEmoji = currentEmoji || CURATED_EMOJIS[0];
-    let customMode = false;
 
-    const overlay = $('#avatar-picker-modal');
-    const preview = $('#avatar-picker-preview');
-    const colorsWrap = $('#avatar-picker-colors');
-    const emojisWrap = $('#avatar-picker-emojis');
-    const moreBtn = $('#avatar-picker-more');
-    const customWrap = $('#avatar-picker-custom-wrap');
-    const customInput = $('#avatar-picker-custom-input');
-    const saveBtn = $('#avatar-picker-save');
-    const cancelBtn = $('#avatar-picker-cancel');
+    // Build the full-screen page as a real DOM element
+    const page = document.createElement('div');
+    page.id = 'avatar-picker-page';
+    // Full-screen, scrollable, on top of everything — NO modal, NO overlay tricks
+    page.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--color-bg);overflow-y:scroll;-webkit-overflow-scrolling:touch;';
+
+    page.innerHTML = `
+      <div style="padding:16px 20px 40px;max-width:375px;margin:0 auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <button id="avatar-picker-back" style="background:none;border:none;font-size:24px;color:var(--color-text);cursor:pointer;padding:8px;">&larr;</button>
+          <h2 style="font-family:var(--font-heading);font-size:var(--text-xl);font-weight:700;color:var(--color-text);margin:0;">Choose Avatar</h2>
+          <div style="width:40px;"></div>
+        </div>
+        <div style="text-align:center;margin-bottom:24px;">
+          <div id="avatar-picker-preview"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="avatar-picker__label">Color</div>
+          <div id="avatar-picker-colors" class="avatar-picker__colors"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="avatar-picker__label">Emoji</div>
+          <div id="avatar-picker-emojis" class="avatar-picker__emojis"></div>
+        </div>
+        <button id="avatar-picker-more" class="avatar-picker__more">More emojis...</button>
+        <div id="avatar-picker-custom-wrap" class="avatar-picker__custom-wrap" style="display:none;">
+          <input id="avatar-picker-custom-input" class="avatar-picker__custom-input" type="text" maxlength="4" placeholder="\u{1F60A}">
+        </div>
+        <div style="margin-top:24px;">
+          <button class="btn btn-primary btn-block" id="avatar-picker-save">Save</button>
+          <button class="btn btn-secondary btn-block" id="avatar-picker-cancel" style="margin-top:8px;">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(page);
+
+    const preview = page.querySelector('#avatar-picker-preview');
+    const colorsWrap = page.querySelector('#avatar-picker-colors');
+    const emojisWrap = page.querySelector('#avatar-picker-emojis');
+    const moreBtn = page.querySelector('#avatar-picker-more');
+    const customWrap = page.querySelector('#avatar-picker-custom-wrap');
+    const customInput = page.querySelector('#avatar-picker-custom-input');
+    const saveBtn = page.querySelector('#avatar-picker-save');
+    const cancelBtn = page.querySelector('#avatar-picker-cancel');
+    const backBtn = page.querySelector('#avatar-picker-back');
 
     function updatePreview() {
       preview.innerHTML = renderAvatar({ displayName: 'X', avatarColor: selectedColor, avatarEmoji: selectedEmoji, size: '72px' });
@@ -119,17 +152,14 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       `<button class="avatar-picker__emoji${e === selectedEmoji ? ' selected' : ''}" data-emoji="${e}">${e}</button>`
     ).join('');
 
-    customWrap.style.display = 'none';
-    customInput.value = '';
     updatePreview();
-    overlay.classList.add('active');
 
     // Color selection
     colorsWrap.onclick = (e) => {
       const btn = e.target.closest('[data-color]');
       if (!btn) return;
       selectedColor = btn.dataset.color;
-      $$('.avatar-picker__color', colorsWrap).forEach(b => b.classList.toggle('selected', b.dataset.color === selectedColor));
+      colorsWrap.querySelectorAll('[data-color]').forEach(b => b.classList.toggle('selected', b.dataset.color === selectedColor));
       updatePreview();
     };
 
@@ -138,17 +168,15 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       const btn = e.target.closest('[data-emoji]');
       if (!btn) return;
       selectedEmoji = btn.dataset.emoji;
-      customMode = false;
       customWrap.style.display = 'none';
-      $$('.avatar-picker__emoji', emojisWrap).forEach(b => b.classList.toggle('selected', b.dataset.emoji === selectedEmoji));
+      emojisWrap.querySelectorAll('[data-emoji]').forEach(b => b.classList.toggle('selected', b.dataset.emoji === selectedEmoji));
       updatePreview();
     };
 
     // More emojis
     moreBtn.onclick = () => {
-      customMode = true;
       customWrap.style.display = 'flex';
-      $$('.avatar-picker__emoji', emojisWrap).forEach(b => b.classList.remove('selected'));
+      emojisWrap.querySelectorAll('[data-emoji]').forEach(b => b.classList.remove('selected'));
       customInput.value = '';
       customInput.focus();
     };
@@ -157,12 +185,10 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       const val = customInput.value.trim();
       if (val) {
         let firstChar = val;
-        // Use Intl.Segmenter for proper grapheme cluster splitting (multi-codepoint emoji)
         if (typeof Intl !== 'undefined' && Intl.Segmenter) {
           const segments = [...new Intl.Segmenter().segment(val)];
           if (segments.length > 0) firstChar = segments[0].segment;
         } else {
-          // Fallback: spread into array (handles most surrogate pairs)
           firstChar = [...val][0] || val.slice(0, 2);
         }
         selectedEmoji = firstChar;
@@ -171,42 +197,15 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       }
     };
 
-    // Save
-    saveBtn.onclick = () => {
-      overlay.classList.remove('active');
-      resolve({ color: selectedColor, emoji: selectedEmoji });
-    };
+    function close(result) {
+      page.remove();
+      resolve(result);
+    }
 
-    // Cancel
-    cancelBtn.onclick = () => {
-      overlay.classList.remove('active');
-      resolve(null);
-    };
+    saveBtn.onclick = () => close({ color: selectedColor, emoji: selectedEmoji });
+    cancelBtn.onclick = () => close(null);
+    backBtn.onclick = () => close(null);
   });
-}
-
-function _injectAvatarPicker() {
-  const html = `
-    <div id="avatar-picker-modal" class="modal-overlay" style="position:fixed;inset:0;z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:rgba(0,0,0,0.5);">
-      <div class="modal" style="max-height:none;width:100%;max-width:340px;margin:auto 0;display:block;overflow:visible;flex-shrink:0;">
-        <h2 class="modal__title">Choose Avatar</h2>
-        <div class="avatar-picker" style="overflow:visible;">
-          <div id="avatar-picker-preview" class="avatar-picker__preview"></div>
-          <div class="avatar-picker__label">Color</div>
-          <div id="avatar-picker-colors" class="avatar-picker__colors"></div>
-          <div class="avatar-picker__label">Emoji</div>
-          <div id="avatar-picker-emojis" class="avatar-picker__emojis"></div>
-          <button id="avatar-picker-more" class="avatar-picker__more">More emojis...</button>
-          <div id="avatar-picker-custom-wrap" class="avatar-picker__custom-wrap" style="display:none">
-            <input id="avatar-picker-custom-input" class="avatar-picker__custom-input" type="text" maxlength="4" placeholder="\u{1F60A}">
-          </div>
-        </div>
-        <button class="btn btn-primary btn-block" id="avatar-picker-save" style="margin-top:var(--space-lg);flex-shrink:0;">Save</button>
-        <button class="btn btn-secondary btn-block" id="avatar-picker-cancel" style="margin-top:var(--space-sm);flex-shrink:0;">Cancel</button>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', html);
 }
 
 // ============================================
