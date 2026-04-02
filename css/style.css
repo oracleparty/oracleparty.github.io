@@ -3966,16 +3966,20 @@ body::after {
 }
 
 .profile-fav-categories {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-xs);
 }
 
 .profile-fav-cat {
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-full);
+  padding: var(--space-sm) var(--space-xs);
+  border-radius: var(--radius-md);
   background: var(--color-bg-deep);
   font-size: var(--text-xs);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-heading);
   color: var(--color-text-dim);
   cursor: pointer;
