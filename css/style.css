@@ -1679,6 +1679,9 @@ body::after {
   flex-shrink: 0;
   padding: var(--space-sm) var(--space-lg);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
+  /* Must sit above the chat-drawer (z-index: 49) so the Start/Ready button is never covered */
+  position: relative;
+  z-index: 50;
 }
 
 .lobby-category {
@@ -1865,7 +1868,9 @@ body::after {
   padding: var(--space-md) var(--space-lg);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
   background: var(--color-bg);
-  z-index: 2;
+  /* Must sit above the chat-drawer (z-index: 49) */
+  position: relative;
+  z-index: 50;
 }
 
 .game-footer:empty {

@@ -787,6 +787,11 @@ function repositionChatBar() {
 
 function toggleChatDrawer() {
   chatOpen = !chatOpen;
+
+  // Recalculate drawer bounds every time it opens (footer size may have changed
+  // due to safe-area insets, button visibility, etc.)
+  if (chatOpen) repositionChatBar();
+
   $('#chat-bar').classList.toggle('open', chatOpen);
   $('#chat-drawer').classList.toggle('open', chatOpen);
 

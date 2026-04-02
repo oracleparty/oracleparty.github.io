@@ -754,16 +754,35 @@ function handleRoomChange(payload) {
     return;
   }
 
-  // If question IDs changed mid-game (e.g., difficulty vote replaced final question),
-  // re-fetch in the background but DON'T block phase transition
-  if (!state.room.isHost && question_ids && question_ids.length > 0 && state.questions.length > 0) {
-    fetchQuestionsByIds(question_ids).then(qs => {
-      if (qs.length > 0) { state.questions = qs; resolveFieldMap(qs[0]); }
-    }).catch(() => {});
-  }
+  // Detect whether question_ids actually changed (e.g., difficulty vote replaced final question)
+  const questionIdsChanged = !state.room.isHost && question_ids && question_ids.length > 0
+    && state.questions.length > 0
+    && (question_ids.length !== state.questions.length
+        || question_ids.some((id, i) => state.questions[i]?.id !== id));
 
   if (current_question !== undefined) {
     state.currentQuestion = current_question;
+  }
+
+  // For final_question phase with changed question IDs, we MUST wait for the fetch
+  // so showQuestionScreen() displays the correct (difficulty-matched) question.
+  // Same blocking pattern as the initial-load fetch above.
+  if (questionIdsChanged && (game_phase === 'final_question' || game_phase === 'difficulty_vote')) {
+    fetchQuestionsByIds(question_ids).then(qs => {
+      if (qs.length > 0) { state.questions = qs; resolveFieldMap(qs[0]); }
+      if (game_phase) handlePhaseTransition(game_phase);
+    }).catch(() => {
+      // Fetch failed — proceed with old questions as fallback
+      if (game_phase) handlePhaseTransition(game_phase);
+    });
+    return;
+  }
+
+  // For other phases, background fetch (non-blocking) is fine
+  if (questionIdsChanged) {
+    fetchQuestionsByIds(question_ids).then(qs => {
+      if (qs.length > 0) { state.questions = qs; resolveFieldMap(qs[0]); }
+    }).catch(() => {});
   }
 
   if (game_phase) handlePhaseTransition(game_phase);
@@ -1020,11 +1039,11 @@ async function handlePhaseTransition(phase) {
       // Fall through to final_question
     // eslint-disable-next-line no-fallthrough
     case 'final_question':
-      // Guard: skip duplicate events (same pattern as 'question' phase guard).
-      // Without this, the host's question_started_at write triggers a second
-      // Realtime event that re-runs this handler, nulling the timestamp and
-      // restarting the timer in a loop.
-      if (state.gamePhase === 'final_question') return;
+      // Duplicate-event guard is handled by the generic check at the top of
+      // this function (line: if (phase === state.gamePhase) return;).
+      // A previous guard here (`if (state.gamePhase === 'final_question') return`)
+      // was ALWAYS true because state.gamePhase is set to `phase` before the
+      // switch statement, causing non-host players to never see the final question.
       state.isFinalWagerRound = true;
       // Reset for the final question round (same resets as 'question' phase)
       state.currentWager = state.finalWager;
