@@ -1344,6 +1344,11 @@ function cleanup() {
   presenceReady = false;
   presenceChannel = null;
   awayTimestamps.clear();
+  // Clean up ResizeObserver
+  if (window._lobbyFooterObserver) {
+    window._lobbyFooterObserver.disconnect();
+    window._lobbyFooterObserver = null;
+  }
 }
 
 // --- Start ---

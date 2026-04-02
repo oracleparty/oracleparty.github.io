@@ -251,6 +251,8 @@ function attachListeners() {
   // Category search
   searchInput.addEventListener('input', () => {
     const query = searchInput.value.trim().toLowerCase();
+    // Reset drill-in state so Back doesn't navigate stale subcategory history
+    navStack = [];
     if (!query) {
       renderCategories(categories, categoryPlayCounts);
       return;

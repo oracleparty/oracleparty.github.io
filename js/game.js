@@ -2051,6 +2051,9 @@ async function handleDisqualifyRound() {
   if (!canControlGame()) return;
   const qNum = state.currentQuestion;
 
+  // Guard against double-click
+  if (state.disqualifiedQuestions.has(qNum)) return;
+
   // Mark locally
   state.disqualifiedQuestions.add(qNum);
 
