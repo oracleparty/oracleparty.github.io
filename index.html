@@ -165,8 +165,7 @@
     }
 
     // --- Home avatar click → profile page ---
-    $('#home-avatar').addEventListener('click', async () => {
-      await ensureDisplayName();
+    $('#home-avatar').addEventListener('click', () => {
       window.location.href = 'profile.html';
     });
 
