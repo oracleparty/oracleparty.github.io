@@ -187,10 +187,10 @@ export function showAvatarPicker(currentColor, currentEmoji) {
 
 function _injectAvatarPicker() {
   const html = `
-    <div id="avatar-picker-modal" class="modal-overlay">
-      <div class="modal">
+    <div id="avatar-picker-modal" class="modal-overlay" style="position:fixed;inset:0;z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:rgba(0,0,0,0.5);">
+      <div class="modal" style="max-height:none;width:100%;max-width:340px;margin:auto 0;display:block;overflow:visible;flex-shrink:0;">
         <h2 class="modal__title">Choose Avatar</h2>
-        <div class="avatar-picker">
+        <div class="avatar-picker" style="overflow:visible;">
           <div id="avatar-picker-preview" class="avatar-picker__preview"></div>
           <div class="avatar-picker__label">Color</div>
           <div id="avatar-picker-colors" class="avatar-picker__colors"></div>
@@ -201,8 +201,8 @@ function _injectAvatarPicker() {
             <input id="avatar-picker-custom-input" class="avatar-picker__custom-input" type="text" maxlength="4" placeholder="\u{1F60A}">
           </div>
         </div>
-        <button class="btn btn-primary btn-block" id="avatar-picker-save" style="margin-top: var(--space-lg);">Save</button>
-        <button class="btn btn-secondary btn-block" id="avatar-picker-cancel" style="margin-top: var(--space-sm);">Cancel</button>
+        <button class="btn btn-primary btn-block" id="avatar-picker-save" style="margin-top:var(--space-lg);flex-shrink:0;">Save</button>
+        <button class="btn btn-secondary btn-block" id="avatar-picker-cancel" style="margin-top:var(--space-sm);flex-shrink:0;">Cancel</button>
       </div>
     </div>
   `;
