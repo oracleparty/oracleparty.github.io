@@ -141,7 +141,7 @@
     import { initThemeToggle } from './js/theme.js';
 
     async function init() {
-      await Promise.all([ensureDisplayName(), initAuth()]);
+      await initAuth();
       await initProfilePage();
       initThemeToggle();
     }
