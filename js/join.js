@@ -6,32 +6,7 @@ import { $, $$, escapeHtml } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
-
-// Category display config (shared with host.js)
-const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History', subcategories: [
-    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
-    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
-    { key: 'early-modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
-    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
-  ]},
-  'science':          { icon: '\u2697\uFE0F', label: 'Science', subcategories: [
-    { key: 'human-body', icon: '🧬', label: 'Human Body' },
-    { key: 'elements', icon: '🧪', label: 'Elements' },
-    { key: 'space', icon: '🪐', label: 'Space' },
-    { key: 'misc', icon: '🔬', label: 'Misc' },
-  ]},
-  'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
-  'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Lit' },
-  'culture-society':  { icon: '\uD83C\uDFDB\uFE0F', label: 'Culture' },
-  'pop-culture':      { icon: '\uD83C\uDFAC', label: 'Pop Culture' },
-  'world-geography':  { icon: '\uD83D\uDDFA\uFE0F', label: 'Geography' },
-  'technology':       { icon: '\u26A1', label: 'Technology' },
-  'sports':           { icon: '\uD83C\uDFC6', label: 'Sports' },
-  'food':             { icon: '\uD83C\uDF7D\uFE0F', label: 'Food & Drink' },
-  'logic':            { icon: '\uD83E\uDDE9', label: 'Logic' },
-  'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card' }
-};
+import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
 
 // DOM refs
 const codeInput = $('#code-input');
@@ -196,11 +171,7 @@ async function loadPublicGames() {
   const fragment = document.createDocumentFragment();
   for (const room of rooms) {
     const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
-    let catLabel = meta.label;
-    if (room.subcategory && meta.subcategories) {
-      const sub = meta.subcategories.find(s => s.key === room.subcategory);
-      if (sub) catLabel += ` \u2014 ${sub.label}`;
-    }
+    const catLabel = resolveCategoryLabel(room.category, room.subcategory);
     const row = document.createElement('button');
     row.className = 'public-game-row';
     row.dataset.code = room.code;

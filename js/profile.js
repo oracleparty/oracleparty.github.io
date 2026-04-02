@@ -31,6 +31,7 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
+import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode } from './categories.js';
 
 // ============================================
 // CONSTANTS
@@ -49,30 +50,7 @@ export const CURATED_EMOJIS = [
   '\u{1F9EA}', '\u{1F3AA}', '\u{1F3F0}', '\u{1F30B}', '\u{1F409}', '\u{1F441}\uFE0F'
 ];
 
-const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History', subcategories: [
-    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
-    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
-    { key: 'early-modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
-    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
-  ]},
-  'science':          { icon: '\u2697\uFE0F', label: 'Science', subcategories: [
-    { key: 'human-body', icon: '🧬', label: 'Human Body' },
-    { key: 'elements', icon: '🧪', label: 'Elements' },
-    { key: 'space', icon: '🪐', label: 'Space' },
-    { key: 'misc', icon: '🔬', label: 'Misc' },
-  ]},
-  'nature':           { icon: '\u{1F33F}', label: 'Nature' },
-  'arts-literature':  { icon: '\u{1F4DC}', label: 'Arts & Lit' },
-  'culture-society':  { icon: '\u{1F3DB}\uFE0F', label: 'Culture' },
-  'pop-culture':      { icon: '\u{1F3AC}', label: 'Pop Culture' },
-  'world-geography':  { icon: '\u{1F5FA}\uFE0F', label: 'Geography' },
-  'technology':       { icon: '\u26A1', label: 'Technology' },
-  'sports':           { icon: '\u{1F3C6}', label: 'Sports' },
-  'food':             { icon: '\u{1F37D}\uFE0F', label: 'Food & Drink' },
-  'logic':            { icon: '\u{1F9E9}', label: 'Logic' },
-  'wild-card':        { icon: '\u{1F3B2}', label: 'Wild Card' }
-};
+// CATEGORY_META imported from categories.js
 
 // ============================================
 // AVATAR PICKER
@@ -595,20 +573,28 @@ export async function initProfilePage() {
           const pct = total > 0 ? Math.round((mastered / total) * 100) : 0;
           const hasSubs = meta.subcategories?.length > 0;
 
-          // Subcategory rows
+          // Subcategory rows (walk full tree for nested subcategories)
           let subHtml = '';
           if (hasSubs) {
-            const subs = meta.subcategories.map(s => {
-              const subKey = `${cat}|${s.key}`;
-              const subMastered = _mastery[subKey] || 0;
-              if (subMastered === 0) return '';
-              const subTotal = subTotals[subKey] || 0;
-              return `<div class="mastery-row mastery-row--sub">
-                <span class="mastery-row__icon">${s.icon}</span>
-                <span class="mastery-row__name">${s.label}</span>
-                <span class="mastery-row__fraction">${subMastered}${subTotal ? '/' + subTotal : ''}</span>
-              </div>`;
-            }).filter(Boolean).join('');
+            function collectSubRows(nodes, depth) {
+              let html = '';
+              for (const s of nodes) {
+                const subKey = `${cat}|${s.key}`;
+                const subMastered = _mastery[subKey] || 0;
+                if (subMastered > 0) {
+                  const subTotal = subTotals[subKey] || 0;
+                  const indent = depth > 0 ? ' style="padding-left:' + (12 + depth * 16) + 'px"' : '';
+                  html += `<div class="mastery-row mastery-row--sub"${indent}>
+                    <span class="mastery-row__icon">${s.icon}</span>
+                    <span class="mastery-row__name">${s.label}</span>
+                    <span class="mastery-row__fraction">${subMastered}${subTotal ? '/' + subTotal : ''}</span>
+                  </div>`;
+                }
+                if (s.children) html += collectSubRows(s.children, depth + 1);
+              }
+              return html;
+            }
+            const subs = collectSubRows(meta.subcategories, 0);
             if (subs) subHtml = `<div class="mastery-sub-rows" style="display:none;">${subs}</div>`;
           }
 
@@ -737,9 +723,9 @@ export async function initProfilePage() {
           const subs = subStats.filter(sub => sub.category === s.category);
           subHtml = `<div class="profile-subcategory-rows" style="display:none;">
             ${subs.map(sub => {
-              const subMeta = meta.subcategories?.find(sc => sc.key === sub.subcategory);
-              const subIcon = subMeta?.icon || '';
-              const subLabel = subMeta?.label || sub.subcategory;
+              const subNode = findSubcategoryNode(meta, sub.subcategory);
+              const subIcon = subNode?.icon || '';
+              const subLabel = subNode?.label || sub.subcategory;
               const subAcc = sub.questions_answered > 0 ? Math.round((sub.correct_answers / sub.questions_answered) * 100) : 0;
               return `<div class="profile-category-row profile-category-row--sub">
                 <span>${subIcon}</span>

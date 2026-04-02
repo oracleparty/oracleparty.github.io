@@ -7,32 +7,7 @@ import { $, $$, transitionScreens } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
-
-// --- Category display config ---
-const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History', subcategories: [
-    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
-    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
-    { key: 'early-modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
-    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
-  ]},
-  'science':          { icon: '\u2697\uFE0F', label: 'Science', subcategories: [
-    { key: 'human-body', icon: '🧬', label: 'Human Body' },
-    { key: 'elements', icon: '🧪', label: 'Elements' },
-    { key: 'space', icon: '🪐', label: 'Space' },
-    { key: 'misc', icon: '🔬', label: 'Misc' },
-  ]},
-  'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
-  'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature' },
-  'culture-society':  { icon: '\uD83C\uDFDB\uFE0F', label: 'Culture & Society' },
-  'pop-culture':      { icon: '\uD83C\uDFAC', label: 'Pop Culture' },
-  'world-geography':  { icon: '\uD83D\uDDFA\uFE0F', label: 'World Geography' },
-  'technology':       { icon: '\u26A1', label: 'Technology' },
-  'sports':           { icon: '\uD83C\uDFC6', label: 'Sports' },
-  'food':             { icon: '\uD83C\uDF7D\uFE0F', label: 'Food & Drink' },
-  'logic':            { icon: '\uD83E\uDDE9', label: 'Logic' },
-  'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card' }
-};
+import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
 
 // --- State ---
 let categories = [];
@@ -40,6 +15,8 @@ let categoryPlayCounts = {};
 let selectedCategory = null;
 let selectedSubcategory = null;
 let _masteryCounts = {}; // { categoryName: masteredCount }
+let navStack = [];      // Navigation stack for multi-level subcategory drill-down
+let sheetNavStack = []; // Navigation stack for category bottom sheet
 let _isLoggedIn = false;
 let settings = {
   whoCanJoin: 'anyone',
@@ -126,51 +103,79 @@ function renderCategories(cats, playCounts = {}) {
   if (catList) catList.style.display = '';
 }
 
-// --- Subcategory drill-in ---
-function drillIntoSubcategories(cat, meta) {
+// --- Multi-level subcategory drill-in (nav stack) ---
+function drillIntoLevel(catName, items, title, parentKey, icon) {
+  navStack.push({ catName, items, title, parentKey, icon });
+  renderSubcategoryLevel(catName, items, title, parentKey, icon);
+}
+
+function renderSubcategoryLevel(catName, items, title, parentKey, icon) {
   const catList = $('#category-list');
   const subView = $('#subcategory-view');
-  const title = $('#subcategory-view__title');
+  const titleEl = $('#subcategory-view__title');
   const options = $('#subcategory-view__options');
 
-  title.textContent = `${meta.icon} ${meta.label}`;
+  titleEl.textContent = `${icon || ''} ${title}`;
+
+  // "All X" row — selects parentKey (null at top level = all in category)
+  const allSubcategory = parentKey || '';
   options.innerHTML = `
-    <div class="subcategory-row subcategory-row--all" data-category="${cat.name}" data-subcategory="">
-      <span class="subcategory-row__icon">${meta.icon}</span>
-      <span class="subcategory-row__label">All ${meta.label}</span>
-      <span class="subcategory-row__count">${cat.count} Qs</span>
+    <div class="subcategory-row subcategory-row--all" data-category="${catName}" data-subcategory="${allSubcategory}">
+      <span class="subcategory-row__icon">${icon || ''}</span>
+      <span class="subcategory-row__label">All ${title}</span>
+      <span class="subcategory-row__count" ${parentKey ? `data-sub-count="${parentKey}"` : ''}></span>
     </div>
-    ${meta.subcategories.map(s => `
-      <div class="subcategory-row" data-category="${cat.name}" data-subcategory="${s.key}">
+    ${items.map(s => `
+      <div class="subcategory-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
         <span class="subcategory-row__icon">${s.icon}</span>
         <span class="subcategory-row__label">${s.label}</span>
         <span class="subcategory-row__count" data-sub-count="${s.key}"></span>
+        ${s.children ? '<span class="subcategory-row__chevron">\u203A</span>' : ''}
       </div>
     `).join('')}
   `;
 
   catList.style.display = 'none';
   subView.style.display = '';
-  // Scroll to top of the screen
   document.querySelector('#category-screen')?.scrollTo(0, 0);
 
-  // Async-load subcategory question counts
-  meta.subcategories.forEach(async (s) => {
-    const count = await fetchQuestionCount(cat.name, s.key);
+  // Async-load question counts (prefix matching handles parent counts)
+  if (parentKey) {
+    fetchQuestionCount(catName, parentKey).then(count => {
+      const el = options.querySelector(`.subcategory-row--all [data-sub-count="${parentKey}"]`);
+      if (el) el.textContent = `${count} Qs`;
+    });
+  } else {
+    // Top level "All" — use the category's total count
+    const cat = categories.find(c => c.name === catName);
+    const allEl = options.querySelector('.subcategory-row--all .subcategory-row__count');
+    if (allEl && cat?.count) allEl.textContent = `${cat.count} Qs`;
+  }
+  items.forEach(async (s) => {
+    const count = await fetchQuestionCount(catName, s.key);
     const el = options.querySelector(`[data-sub-count="${s.key}"]`);
     if (el) el.textContent = `${count} Qs`;
   });
 }
 
 function drillBack() {
-  const catList = $('#category-list');
-  const subView = $('#subcategory-view');
-  subView.style.display = 'none';
-  catList.style.display = '';
+  navStack.pop(); // Remove current level
+  if (navStack.length === 0) {
+    // Back to category grid
+    const subView = $('#subcategory-view');
+    const catList = $('#category-list');
+    subView.style.display = 'none';
+    catList.style.display = '';
+  } else {
+    // Re-render previous level
+    const prev = navStack[navStack.length - 1];
+    renderSubcategoryLevel(prev.catName, prev.items, prev.title, prev.parentKey, prev.icon);
+  }
 }
 
 // --- Category bottom sheet (for settings screen) ---
 function openCategorySheet() {
+  sheetNavStack = []; // Reset sheet navigation
   const sheet = $('#category-sheet');
   const list = $('#category-sheet-list');
 
@@ -182,32 +187,47 @@ function openCategorySheet() {
       <div class="category-sheet-row${isSelected ? ' selected' : ''}" data-category="${cat.name}">
         <span class="category-sheet-row__icon">${meta.icon}</span>
         <span class="category-sheet-row__label">${meta.label}</span>
-        ${hasSubs ? '<span class="category-sheet-row__chevron">›</span>' : ''}
+        ${hasSubs ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
     `;
   }).join('');
 
   sheet.classList.add('active');
-
-  // Dismiss on backdrop
   sheet.querySelector('.bottom-sheet__backdrop').onclick = () => sheet.classList.remove('active');
 }
 
-function showCategorySheetSubcategories(cat, meta) {
+function sheetDrillIn(catName, items, title, parentKey) {
+  sheetNavStack.push({ catName, items, title, parentKey });
+  renderSheetLevel(catName, items, title, parentKey);
+}
+
+function renderSheetLevel(catName, items, title, parentKey) {
   const list = $('#category-sheet-list');
+  const allSubcategory = parentKey || '';
   list.innerHTML = `
-    <div class="category-sheet-back" data-action="back">← ${meta.label}</div>
-    <div class="category-sheet-row subcategory-row--all" data-category="${cat.name}" data-subcategory="">
-      <span class="category-sheet-row__icon">${meta.icon}</span>
-      <span class="category-sheet-row__label">All ${meta.label}</span>
+    <div class="category-sheet-back" data-action="back">\u2190 ${title}</div>
+    <div class="category-sheet-row subcategory-row--all" data-category="${catName}" data-subcategory="${allSubcategory}">
+      <span class="category-sheet-row__icon">${CATEGORY_META[catName]?.icon || '?'}</span>
+      <span class="category-sheet-row__label">All ${title}</span>
     </div>
-    ${meta.subcategories.map(s => `
-      <div class="category-sheet-row" data-category="${cat.name}" data-subcategory="${s.key}">
+    ${items.map(s => `
+      <div class="category-sheet-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
         <span class="category-sheet-row__icon">${s.icon}</span>
         <span class="category-sheet-row__label">${s.label}</span>
+        ${s.children ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
     `).join('')}
   `;
+}
+
+function sheetDrillBack() {
+  sheetNavStack.pop();
+  if (sheetNavStack.length === 0) {
+    openCategorySheet();
+  } else {
+    const prev = sheetNavStack[sheetNavStack.length - 1];
+    renderSheetLevel(prev.catName, prev.items, prev.title, prev.parentKey);
+  }
 }
 
 // --- Attach all event listeners ---
@@ -219,7 +239,12 @@ function attachListeners() {
 
   // Back to category screen — reset drill-in state
   $('#btn-back-category').addEventListener('click', () => {
-    drillBack(); // Ensure category grid is visible, subcategory view hidden
+    // Reset nav stack and ensure category grid is visible
+    navStack = [];
+    const subView = $('#subcategory-view');
+    const catList = $('#category-list');
+    subView.style.display = 'none';
+    catList.style.display = '';
     transitionScreens(settingsScreen, categoryScreen);
   });
 
@@ -247,7 +272,8 @@ function attachListeners() {
     const meta = CATEGORY_META[catName];
 
     if (meta?.subcategories?.length) {
-      drillIntoSubcategories(cat, meta);
+      navStack = [];
+      drillIntoLevel(catName, meta.subcategories, meta.label, null, meta.icon);
       return;
     }
 
@@ -256,15 +282,29 @@ function attachListeners() {
     showSettings(cat);
   });
 
-  // Subcategory view — option tap + back arrow
+  // Subcategory view — option tap + back arrow (multi-level)
   $('#subcategory-view__options').addEventListener('click', (e) => {
     const row = e.target.closest('.subcategory-row');
     if (!row) return;
     const catName = row.dataset.category;
     const cat = categories.find(c => c.name === catName);
     if (!cat) return;
+    const meta = CATEGORY_META[catName];
+
+    // If this item has children, drill deeper
+    if (row.dataset.hasChildren === '1') {
+      const subKey = row.dataset.subcategory;
+      const node = findSubcategoryNode(meta, subKey);
+      if (node?.children) {
+        drillIntoLevel(catName, node.children, node.label, node.key, node.icon);
+        return;
+      }
+    }
+
+    // Leaf or "All" row — select and go to settings
     selectedCategory = cat;
     selectedSubcategory = row.dataset.subcategory || null;
+    navStack = [];
     showSettings(cat);
   });
   $('#subcategory-back').addEventListener('click', drillBack);
@@ -272,10 +312,10 @@ function attachListeners() {
   // Settings badge — tap to open category sheet
   $('#selected-category').addEventListener('click', openCategorySheet);
 
-  // Category sheet — row taps
+  // Category sheet — row taps (multi-level)
   $('#category-sheet-list').addEventListener('click', (e) => {
     const back = e.target.closest('[data-action="back"]');
-    if (back) { openCategorySheet(); return; } // Go back to full list
+    if (back) { sheetDrillBack(); return; }
 
     const row = e.target.closest('.category-sheet-row');
     if (!row) return;
@@ -284,24 +324,34 @@ function attachListeners() {
     if (!cat) return;
     const meta = CATEGORY_META[catName];
 
-    // If row has subcategory attribute, it's a subcategory selection
+    // If row has subcategory attribute, check if it has children to drill into
     if (row.dataset.subcategory !== undefined) {
+      if (row.dataset.hasChildren === '1') {
+        const node = findSubcategoryNode(meta, row.dataset.subcategory);
+        if (node?.children) {
+          sheetDrillIn(catName, node.children, node.label, node.key);
+          return;
+        }
+      }
+      // Leaf or "All" — select
       selectedCategory = cat;
       selectedSubcategory = row.dataset.subcategory || null;
+      sheetNavStack = [];
       $('#category-sheet').classList.remove('active');
       showSettingsUpdate();
       return;
     }
 
-    // If category has subs, drill into subcategory list
+    // Top-level category with subs — drill into subcategory list
     if (meta?.subcategories?.length) {
-      showCategorySheetSubcategories(cat, meta);
+      sheetDrillIn(catName, meta.subcategories, meta.label, null);
       return;
     }
 
     // No subs — select directly
     selectedCategory = cat;
     selectedSubcategory = null;
+    sheetNavStack = [];
     $('#category-sheet').classList.remove('active');
     showSettingsUpdate();
   });
@@ -334,16 +384,8 @@ function attachListeners() {
 // --- Show settings screen with selected category ---
 async function _updateSettingsBadge(cat) {
   if (!cat) return;
-  const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
-  let icon = meta.icon;
-  let label = meta.label;
-  if (selectedSubcategory && meta.subcategories) {
-    const sub = meta.subcategories.find(s => s.key === selectedSubcategory);
-    if (sub) {
-      icon = sub.icon;
-      label = `${meta.label} \u2014 ${sub.label}`;
-    }
-  }
+  const icon = resolveSubcategoryIcon(cat.name, selectedSubcategory);
+  const label = resolveCategoryLabel(cat.name, selectedSubcategory);
   $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
 

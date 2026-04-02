@@ -59,42 +59,13 @@ import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
-
-// Category display config
-const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History', subcategories: [
-    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
-    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
-    { key: 'early-modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
-    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
-  ]},
-  'science':          { icon: '\u2697\uFE0F', label: 'Science', subcategories: [
-    { key: 'human-body', icon: '🧬', label: 'Human Body' },
-    { key: 'elements', icon: '🧪', label: 'Elements' },
-    { key: 'space', icon: '🪐', label: 'Space' },
-    { key: 'misc', icon: '🔬', label: 'Misc' },
-  ]},
-  'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
-  'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature' },
-  'culture-society':  { icon: '\uD83C\uDFDB\uFE0F', label: 'Culture & Society' },
-  'pop-culture':      { icon: '\uD83C\uDFAC', label: 'Pop Culture' },
-  'world-geography':  { icon: '\uD83D\uDDFA\uFE0F', label: 'World Geography' },
-  'technology':       { icon: '\u26A1', label: 'Technology' },
-  'sports':           { icon: '\uD83C\uDFC6', label: 'Sports' },
-  'food':             { icon: '\uD83C\uDF7D\uFE0F', label: 'Food & Drink' },
-  'logic':            { icon: '\uD83E\uDDE9', label: 'Logic' },
-  'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card' }
-};
+import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon } from './categories.js';
 
 function getCategoryLabel() {
   if (!state.room) return '?';
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  let label = `${meta.icon} ${meta.label}`;
-  if (state.room.subcategory && meta.subcategories) {
-    const sub = meta.subcategories.find(s => s.key === state.room.subcategory);
-    if (sub) label += ` \u2014 ${sub.label}`;
-  }
-  return label;
+  const label = resolveCategoryLabel(state.room.category, state.room.subcategory);
+  return `${meta.icon} ${label}`;
 }
 
 // --- State ---

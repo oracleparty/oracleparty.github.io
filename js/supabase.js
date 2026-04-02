@@ -59,7 +59,7 @@ export async function fetchQuestionCount(category, subcategory = null) {
     .select('id', { count: 'exact', head: true })
     .contains('categories', [category])
     .eq('format', 'open');
-  if (subcategory) query = query.eq('subcategory', subcategory);
+  if (subcategory) query = query.like('subcategory', subcategory + '%');
   const { count, error } = await query;
   if (error) { console.error('[Supabase] fetchQuestionCount failed:', error.message); return 0; }
   return count || 0;
@@ -640,7 +640,7 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
     .eq('format', 'open');
 
   if (subcategory) {
-    query = query.eq('subcategory', subcategory);
+    query = query.like('subcategory', subcategory + '%');
   }
 
   const { data, error } = await query.limit(fetchCount);
@@ -824,7 +824,7 @@ export async function fetchQuestionByDifficulty(category, difficulty, excludeIds
     .eq('difficulty', difficulty);
 
   if (subcategory) {
-    query = query.eq('subcategory', subcategory);
+    query = query.like('subcategory', subcategory + '%');
   }
 
   query = query.limit(20);

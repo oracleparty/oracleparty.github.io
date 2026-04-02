@@ -14,22 +14,7 @@ import {
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
-
-// Subcategory definitions for categories that have them
-const SUBCATEGORIES = {
-  'history': [
-    { key: 'ancient', label: 'Ancient' },
-    { key: 'medieval', label: 'Medieval' },
-    { key: 'early-modern', label: 'Early Modern' },
-    { key: 'modern', label: 'Modern' },
-  ],
-  'science': [
-    { key: 'human-body', label: 'Human Body' },
-    { key: 'elements', label: 'Elements' },
-    { key: 'space', label: 'Space' },
-    { key: 'misc', label: 'Misc' },
-  ]
-};
+import { CATEGORY_META } from './categories.js';
 
 // ============================================
 // INIT
@@ -199,10 +184,20 @@ async function loadWeeklyLeaderboard() {
 function updateSubcategorySelect() {
   const category = $('#lb-category-select').value;
   const subSelect = $('#lb-subcategory-select');
-  const subs = SUBCATEGORIES[category];
-  if (subs) {
-    subSelect.innerHTML = `<option value="">All</option>` +
-      subs.map(s => `<option value="${s.key}">${s.label}</option>`).join('');
+  const meta = CATEGORY_META[category];
+  const subs = meta?.subcategories;
+  if (subs?.length) {
+    // Build hierarchical options with indentation
+    function buildOptions(items, depth) {
+      let html = '';
+      for (const item of items) {
+        const indent = '\u00A0\u00A0'.repeat(depth);
+        html += `<option value="${item.key}">${indent}${item.label}</option>`;
+        if (item.children) html += buildOptions(item.children, depth + 1);
+      }
+      return html;
+    }
+    subSelect.innerHTML = `<option value="">All</option>` + buildOptions(subs, 0);
     subSelect.style.display = '';
   } else {
     subSelect.innerHTML = '';

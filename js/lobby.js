@@ -37,37 +37,13 @@ import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
 import { computeCategoryTiers } from './titles.js';
 import { initThemeToggle } from './theme.js';
-
-// Category display config
-const CATEGORY_META = {
-  'history':          { icon: '\u23F3', label: 'History', subcategories: [
-    { key: 'ancient', icon: '\uD83C\uDFDB\uFE0F', label: 'Ancient' },
-    { key: 'medieval', icon: '\uD83D\uDEE1\uFE0F', label: 'Medieval' },
-    { key: 'early-modern', icon: '\uD83D\uDD2D', label: 'Early Modern' },
-    { key: 'modern', icon: '\uD83D\uDE80', label: 'Modern' },
-  ]},
-  'science':          { icon: '\u2697\uFE0F', label: 'Science', subcategories: [
-    { key: 'human-body', icon: '🧬', label: 'Human Body' },
-    { key: 'elements', icon: '🧪', label: 'Elements' },
-    { key: 'space', icon: '🪐', label: 'Space' },
-    { key: 'misc', icon: '🔬', label: 'Misc' },
-  ]},
-  'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
-  'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature' },
-  'culture-society':  { icon: '\uD83C\uDFDB\uFE0F', label: 'Culture & Society' },
-  'pop-culture':      { icon: '\uD83C\uDFAC', label: 'Pop Culture' },
-  'world-geography':  { icon: '\uD83D\uDDFA\uFE0F', label: 'World Geography' },
-  'technology':       { icon: '\u26A1', label: 'Technology' },
-  'sports':           { icon: '\uD83C\uDFC6', label: 'Sports' },
-  'food':             { icon: '\uD83C\uDF7D\uFE0F', label: 'Food & Drink' },
-  'logic':            { icon: '\uD83E\uDDE9', label: 'Logic' },
-  'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card' }
-};
+import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
 
 // --- State ---
 let room = null;
 let players = [];
 let isReady = false;
+let lobbySheetNavStack = [];
 let isLeaving = false;
 let channels = [];
 let presenceChannel = null;
@@ -682,20 +658,29 @@ function attachSettingsListeners() {
     }
   });
 
-  // Category bottom sheet — row taps
+  // Category bottom sheet — row taps (multi-level)
   $('#category-sheet-list').addEventListener('click', (e) => {
     const back = e.target.closest('[data-action="back"]');
-    if (back) { openLobbyCategorySheet(); return; }
+    if (back) { lobbySheetDrillBack(); return; }
 
     const row = e.target.closest('.category-sheet-row');
     if (!row) return;
     const catName = row.dataset.category;
     const meta = CATEGORY_META[catName];
 
-    // Subcategory selection — set both category and subcategory in one update
+    // If row has subcategory attribute, check for children drill-down
     if (row.dataset.subcategory !== undefined) {
+      if (row.dataset.hasChildren === '1') {
+        const node = findSubcategoryNode(meta, row.dataset.subcategory);
+        if (node?.children) {
+          lobbySheetDrillIn(catName, node.children, node.label, node.key);
+          return;
+        }
+      }
+      // Leaf or "All" — select
       room.category = catName;
       room.subcategory = row.dataset.subcategory || null;
+      lobbySheetNavStack = [];
       updateCategoryDisplay();
       renderSettingsCategories();
       sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
@@ -704,9 +689,9 @@ function attachSettingsListeners() {
       return;
     }
 
-    // Category with subs — drill in
+    // Top-level category with subs — drill in
     if (meta?.subcategories?.length) {
-      showLobbyCategorySheetSubs(catName);
+      lobbySheetDrillIn(catName, meta.subcategories, meta.label, null);
       return;
     }
 
@@ -1020,12 +1005,8 @@ async function handleStartGame() {
 // --- Settings Modal (host) ---
 function updateCategoryDisplay() {
   const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
-  let label = `${meta.icon} ${meta.label}`;
-  if (room.subcategory && meta.subcategories) {
-    const sub = meta.subcategories.find(s => s.key === room.subcategory);
-    if (sub) label += ` \u2014 ${sub.label}`;
-  }
-  lobbyCategory.textContent = label;
+  const label = resolveCategoryLabel(room.category, room.subcategory);
+  lobbyCategory.textContent = `${meta.icon} ${label}`;
 }
 
 function openSettingsModal() {
@@ -1040,11 +1021,7 @@ function closeSettingsModal() {
 
 function renderSettingsCategories() {
   const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
-  let label = meta.label;
-  if (room.subcategory && meta.subcategories) {
-    const sub = meta.subcategories.find(s => s.key === room.subcategory);
-    if (sub) label += ` \u2014 ${sub.label}`;
-  }
+  const label = resolveCategoryLabel(room.category, room.subcategory);
   settingsCategoryGrid.innerHTML = `
     <div class="category-sheet-row selected" id="settings-category-tap" style="cursor:pointer;">
       <span class="category-sheet-row__icon">${meta.icon}</span>
@@ -1055,6 +1032,7 @@ function renderSettingsCategories() {
 }
 
 function openLobbyCategorySheet() {
+  lobbySheetNavStack = [];
   const sheet = $('#category-sheet');
   const list = $('#category-sheet-list');
 
@@ -1075,31 +1053,46 @@ function openLobbyCategorySheet() {
   sheet.querySelector('.bottom-sheet__backdrop').onclick = () => sheet.classList.remove('active');
 }
 
-function showLobbyCategorySheetSubs(catName) {
-  const meta = CATEGORY_META[catName];
-  if (!meta?.subcategories) return;
+function lobbySheetDrillIn(catName, items, title, parentKey) {
+  lobbySheetNavStack.push({ catName, items, title, parentKey });
+  renderLobbySheetLevel(catName, items, title, parentKey);
+}
+
+function renderLobbySheetLevel(catName, items, title, parentKey) {
   const list = $('#category-sheet-list');
+  const allSubcategory = parentKey || '';
   list.innerHTML = `
-    <div class="category-sheet-back" data-action="back">\u2190 ${meta.label}</div>
-    <div class="category-sheet-row" data-category="${catName}" data-subcategory="">
-      <span class="category-sheet-row__icon">${meta.icon}</span>
-      <span class="category-sheet-row__label">All ${meta.label}</span>
+    <div class="category-sheet-back" data-action="back">\u2190 ${title}</div>
+    <div class="category-sheet-row" data-category="${catName}" data-subcategory="${allSubcategory}">
+      <span class="category-sheet-row__icon">${CATEGORY_META[catName]?.icon || '?'}</span>
+      <span class="category-sheet-row__label">All ${title}</span>
     </div>
-    ${meta.subcategories.map(s => `
-      <div class="category-sheet-row" data-category="${catName}" data-subcategory="${s.key}">
+    ${items.map(s => `
+      <div class="category-sheet-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
         <span class="category-sheet-row__icon">${s.icon}</span>
         <span class="category-sheet-row__label">${s.label}</span>
         <span class="category-sheet-row__count" data-sub-count="${s.key}"></span>
+        ${s.children ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
     `).join('')}
   `;
 
   // Async-load subcategory question counts
-  meta.subcategories.forEach(async (s) => {
+  items.forEach(async (s) => {
     const count = await fetchQuestionCount(catName, s.key);
     const el = list.querySelector(`[data-sub-count="${s.key}"]`);
     if (el) el.textContent = `${count} Qs`;
   });
+}
+
+function lobbySheetDrillBack() {
+  lobbySheetNavStack.pop();
+  if (lobbySheetNavStack.length === 0) {
+    openLobbyCategorySheet();
+  } else {
+    const prev = lobbySheetNavStack[lobbySheetNavStack.length - 1];
+    renderLobbySheetLevel(prev.catName, prev.items, prev.title, prev.parentKey);
+  }
 }
 
 function syncTogglesToSettings() {
