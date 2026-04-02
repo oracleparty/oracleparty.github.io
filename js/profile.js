@@ -24,9 +24,10 @@ import {
   fetchTitleUnlocks,
   fetchMasteryCounts,
   fetchCategories,
-  fetchQuestionCount
+  fetchQuestionCount,
+  fetchProfileByTag
 } from './supabase.js';
-import { getCurrentUser, getDisplayName, showSignUpModal, signOut } from './auth.js';
+import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
@@ -77,32 +78,65 @@ const CATEGORY_META = {
 // AVATAR PICKER
 // ============================================
 
-let _pickerInjected = false;
-
 /**
- * Show the avatar picker modal.
+ * Show the avatar picker as a full-screen scrollable page.
  * Returns Promise<{ color, emoji } | null> (null if cancelled).
  */
 export function showAvatarPicker(currentColor, currentEmoji) {
   return new Promise((resolve) => {
-    if (!_pickerInjected) {
-      _injectAvatarPicker();
-      _pickerInjected = true;
-    }
+    // Remove any existing picker
+    const existing = document.getElementById('avatar-picker-page');
+    if (existing) existing.remove();
 
     let selectedColor = currentColor || AVATAR_COLORS[0];
     let selectedEmoji = currentEmoji || CURATED_EMOJIS[0];
-    let customMode = false;
 
-    const overlay = $('#avatar-picker-modal');
-    const preview = $('#avatar-picker-preview');
-    const colorsWrap = $('#avatar-picker-colors');
-    const emojisWrap = $('#avatar-picker-emojis');
-    const moreBtn = $('#avatar-picker-more');
-    const customWrap = $('#avatar-picker-custom-wrap');
-    const customInput = $('#avatar-picker-custom-input');
-    const saveBtn = $('#avatar-picker-save');
-    const cancelBtn = $('#avatar-picker-cancel');
+    // Build the full-screen page as a real DOM element
+    const page = document.createElement('div');
+    page.id = 'avatar-picker-page';
+    // Full-screen, scrollable, on top of everything — NO modal, NO overlay tricks
+    page.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--color-bg);overflow-y:scroll;-webkit-overflow-scrolling:touch;';
+
+    page.innerHTML = `
+      <div style="padding:16px 20px 40px;max-width:375px;margin:0 auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <button id="avatar-picker-back" style="background:none;border:none;font-size:24px;color:var(--color-text);cursor:pointer;padding:8px;">&larr;</button>
+          <h2 style="font-family:var(--font-heading);font-size:var(--text-xl);font-weight:700;color:var(--color-text);margin:0;">Choose Avatar</h2>
+          <div style="width:40px;"></div>
+        </div>
+        <div style="text-align:center;margin-bottom:24px;">
+          <div id="avatar-picker-preview"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="avatar-picker__label">Color</div>
+          <div id="avatar-picker-colors" class="avatar-picker__colors"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="avatar-picker__label">Emoji</div>
+          <div id="avatar-picker-emojis" class="avatar-picker__emojis"></div>
+        </div>
+        <button id="avatar-picker-more" class="avatar-picker__more">More emojis...</button>
+        <div id="avatar-picker-custom-wrap" class="avatar-picker__custom-wrap" style="display:none;">
+          <input id="avatar-picker-custom-input" class="avatar-picker__custom-input" type="text" maxlength="4" placeholder="\u{1F60A}">
+        </div>
+        <div style="margin-top:24px;">
+          <button class="btn btn-primary btn-block" id="avatar-picker-save">Save</button>
+          <button class="btn btn-secondary btn-block" id="avatar-picker-cancel" style="margin-top:8px;">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(page);
+
+    const preview = page.querySelector('#avatar-picker-preview');
+    const colorsWrap = page.querySelector('#avatar-picker-colors');
+    const emojisWrap = page.querySelector('#avatar-picker-emojis');
+    const moreBtn = page.querySelector('#avatar-picker-more');
+    const customWrap = page.querySelector('#avatar-picker-custom-wrap');
+    const customInput = page.querySelector('#avatar-picker-custom-input');
+    const saveBtn = page.querySelector('#avatar-picker-save');
+    const cancelBtn = page.querySelector('#avatar-picker-cancel');
+    const backBtn = page.querySelector('#avatar-picker-back');
 
     function updatePreview() {
       preview.innerHTML = renderAvatar({ displayName: 'X', avatarColor: selectedColor, avatarEmoji: selectedEmoji, size: '72px' });
@@ -118,17 +152,14 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       `<button class="avatar-picker__emoji${e === selectedEmoji ? ' selected' : ''}" data-emoji="${e}">${e}</button>`
     ).join('');
 
-    customWrap.style.display = 'none';
-    customInput.value = '';
     updatePreview();
-    overlay.classList.add('active');
 
     // Color selection
     colorsWrap.onclick = (e) => {
       const btn = e.target.closest('[data-color]');
       if (!btn) return;
       selectedColor = btn.dataset.color;
-      $$('.avatar-picker__color', colorsWrap).forEach(b => b.classList.toggle('selected', b.dataset.color === selectedColor));
+      colorsWrap.querySelectorAll('[data-color]').forEach(b => b.classList.toggle('selected', b.dataset.color === selectedColor));
       updatePreview();
     };
 
@@ -137,17 +168,15 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       const btn = e.target.closest('[data-emoji]');
       if (!btn) return;
       selectedEmoji = btn.dataset.emoji;
-      customMode = false;
       customWrap.style.display = 'none';
-      $$('.avatar-picker__emoji', emojisWrap).forEach(b => b.classList.toggle('selected', b.dataset.emoji === selectedEmoji));
+      emojisWrap.querySelectorAll('[data-emoji]').forEach(b => b.classList.toggle('selected', b.dataset.emoji === selectedEmoji));
       updatePreview();
     };
 
     // More emojis
     moreBtn.onclick = () => {
-      customMode = true;
       customWrap.style.display = 'flex';
-      $$('.avatar-picker__emoji', emojisWrap).forEach(b => b.classList.remove('selected'));
+      emojisWrap.querySelectorAll('[data-emoji]').forEach(b => b.classList.remove('selected'));
       customInput.value = '';
       customInput.focus();
     };
@@ -156,12 +185,10 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       const val = customInput.value.trim();
       if (val) {
         let firstChar = val;
-        // Use Intl.Segmenter for proper grapheme cluster splitting (multi-codepoint emoji)
         if (typeof Intl !== 'undefined' && Intl.Segmenter) {
           const segments = [...new Intl.Segmenter().segment(val)];
           if (segments.length > 0) firstChar = segments[0].segment;
         } else {
-          // Fallback: spread into array (handles most surrogate pairs)
           firstChar = [...val][0] || val.slice(0, 2);
         }
         selectedEmoji = firstChar;
@@ -170,42 +197,15 @@ export function showAvatarPicker(currentColor, currentEmoji) {
       }
     };
 
-    // Save
-    saveBtn.onclick = () => {
-      overlay.classList.remove('active');
-      resolve({ color: selectedColor, emoji: selectedEmoji });
-    };
+    function close(result) {
+      page.remove();
+      resolve(result);
+    }
 
-    // Cancel
-    cancelBtn.onclick = () => {
-      overlay.classList.remove('active');
-      resolve(null);
-    };
+    saveBtn.onclick = () => close({ color: selectedColor, emoji: selectedEmoji });
+    cancelBtn.onclick = () => close(null);
+    backBtn.onclick = () => close(null);
   });
-}
-
-function _injectAvatarPicker() {
-  const html = `
-    <div id="avatar-picker-modal" class="modal-overlay">
-      <div class="modal">
-        <h2 class="modal__title">Choose Avatar</h2>
-        <div class="avatar-picker">
-          <div id="avatar-picker-preview" class="avatar-picker__preview"></div>
-          <div class="avatar-picker__label">Color</div>
-          <div id="avatar-picker-colors" class="avatar-picker__colors"></div>
-          <div class="avatar-picker__label">Emoji</div>
-          <div id="avatar-picker-emojis" class="avatar-picker__emojis"></div>
-          <button id="avatar-picker-more" class="avatar-picker__more">More emojis...</button>
-          <div id="avatar-picker-custom-wrap" class="avatar-picker__custom-wrap" style="display:none">
-            <input id="avatar-picker-custom-input" class="avatar-picker__custom-input" type="text" maxlength="4" placeholder="\u{1F60A}">
-          </div>
-        </div>
-        <button class="btn btn-primary btn-block" id="avatar-picker-save" style="margin-top: var(--space-lg);">Save</button>
-        <button class="btn btn-secondary btn-block" id="avatar-picker-cancel" style="margin-top: var(--space-sm);">Cancel</button>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', html);
 }
 
 // ============================================
@@ -427,7 +427,81 @@ export async function initProfilePage() {
     avatarEmoji: profile.avatar_emoji,
     size: '72px'
   }) + '<div class="profile-header__edit-hint">\u270F\uFE0F</div>';
-  headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
+  function renderHeaderName() {
+    headerName.innerHTML = `${escapeHtml(profile.display_name)}<span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
+    const cl = document.getElementById('profile-change-name-link');
+    if (cl) cl.style.display = '';
+  }
+  renderHeaderName();
+
+  // "Change Name" link below the title — always visible, appended to profile-header
+  let changeLink = document.getElementById('profile-change-name-link');
+  if (!changeLink) {
+    changeLink = document.createElement('button');
+    changeLink.id = 'profile-change-name-link';
+    changeLink.className = 'profile-header__change-link';
+    changeLink.textContent = 'Change Name';
+    // Append to end of .profile-header so it appears below avatar, name, and title
+    const profileHeader = document.querySelector('.profile-header');
+    if (profileHeader) profileHeader.appendChild(changeLink);
+  }
+
+  // Display name edit — triggered by tapping name or "Change Name" link
+  const startNameEdit = () => {
+    const currentName = profile.display_name || '';
+    if (changeLink) changeLink.style.display = 'none';
+    headerName.innerHTML = `<input type="text" id="edit-display-name" class="input profile-name-input" value="${escapeHtml(currentName)}" maxlength="20" autocomplete="off"><span class="profile-header__tag">#${escapeHtml(profile.discriminator)}</span>`;
+    const input = $('#edit-display-name');
+    input.focus();
+    input.select();
+    let _saving = false;
+
+    const saveName = async () => {
+      if (_saving) return; // Prevent double-save from Enter + blur firing together
+      _saving = true;
+      const newName = input.value.trim();
+      if (!newName || newName.length < 1 || newName === currentName) {
+        renderHeaderName();
+        return;
+      }
+      input.disabled = true;
+      const { error } = await updateProfile(userId, { display_name: newName });
+      if (error) {
+        input.disabled = false;
+        _saving = false;
+        // Show user-friendly error for duplicate name+discriminator
+        const msg = (error.code === '23505') ? 'Name taken with your #tag' : 'Could not update name';
+        input.value = msg;
+        input.style.borderColor = 'var(--color-danger)';
+        input.style.color = 'var(--color-danger)';
+        input.style.fontSize = '12px';
+        setTimeout(() => { input.value = currentName; input.style.cssText = ''; _saving = false; }, 2000);
+        return;
+      }
+      profile.display_name = newName;
+      setDisplayName(newName);
+      // Update profile cache in localStorage
+      const cached = localStorage.getItem('oracle_party_auth_profile');
+      if (cached) {
+        try {
+          const p = JSON.parse(cached);
+          p.display_name = newName;
+          localStorage.setItem('oracle_party_auth_profile', JSON.stringify(p));
+        } catch {}
+      }
+      renderHeaderName();
+      if (changeLink) changeLink.style.display = '';
+    };
+
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveName(); }
+      if (e.key === 'Escape') { renderHeaderName(); if (changeLink) changeLink.style.display = ''; }
+    };
+    input.onblur = saveName;
+  };
+  headerName.style.cursor = 'pointer';
+  headerName.onclick = startNameEdit;
+  changeLink.onclick = startNameEdit;
 
   // Avatar edit
   headerAvatar.onclick = async () => {
@@ -843,6 +917,7 @@ export async function initProfilePage() {
 let _searchTimeout = null;
 
 async function loadFriendsTab(userId) {
+  if (!userId) return; // Guests can't have friend requests
   const pendingListEl = $('#friends-pending-list');
   const pendingSection = $('#friends-pending');
   const friendsListEl = $('#friends-list');
@@ -850,7 +925,13 @@ async function loadFriendsTab(userId) {
   const searchResults = $('#friends-search-results');
 
   // Load pending requests
-  const pending = await fetchPendingRequests(userId);
+  let pending = [];
+  try {
+    pending = await fetchPendingRequests(userId);
+    console.log('[Profile] Pending friend requests:', pending.length, pending);
+  } catch (err) {
+    console.error('[Profile] fetchPendingRequests failed:', err);
+  }
   if (pending.length > 0) {
     pendingSection.style.display = '';
     const senderIds = pending.map(r => r.sender_id);
@@ -861,7 +942,7 @@ async function loadFriendsTab(userId) {
       const p = profiles[req.sender_id] || {};
       const avatar = renderAvatar({ displayName: p.display_name || '?', avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
       const tag = p.discriminator ? `<span class="request-row__tag">#${escapeHtml(p.discriminator)}</span>` : '';
-      return `<div class="request-row" data-request-id="${req.id}">
+      return `<div class="request-row" data-request-id="${req.id}" data-profile-user-id="${req.sender_id}" data-profile-name="${escapeHtml(p.display_name || 'Unknown')}" data-profile-color="${p.avatar_color || ''}" data-profile-emoji="${p.avatar_emoji || ''}">
         ${avatar}
         <div class="request-row__info">
           <div class="request-row__name">${escapeHtml(p.display_name || 'Unknown')}${tag}</div>
@@ -873,22 +954,57 @@ async function loadFriendsTab(userId) {
       </div>`;
     }).join('');
 
-    // Wire accept/decline
-    pendingListEl.onclick = async (e) => {
+    // Wire accept/decline + profile card tap
+    pendingListEl.addEventListener('click', async (e) => {
       const acceptBtn = e.target.closest('[data-accept]');
       const declineBtn = e.target.closest('[data-decline]');
       if (acceptBtn) {
+        e.stopPropagation();
         acceptBtn.disabled = true;
+        const origText = acceptBtn.textContent;
         acceptBtn.textContent = '...';
-        await acceptFriendRequest(parseInt(acceptBtn.dataset.accept));
-        loadFriendsTab(userId); // Refresh
-      } else if (declineBtn) {
+        try {
+          const { error } = await acceptFriendRequest(parseInt(acceptBtn.dataset.accept, 10));
+          if (error) {
+            console.error('[Profile] acceptFriendRequest failed:', error);
+            acceptBtn.textContent = 'Error';
+            acceptBtn.disabled = false;
+            setTimeout(() => { acceptBtn.textContent = origText; }, 2000);
+            return;
+          }
+          acceptBtn.textContent = 'Accepted!';
+          setTimeout(() => loadFriendsTab(userId), 600);
+        } catch (err) {
+          console.error('[Profile] acceptFriendRequest threw:', err);
+          acceptBtn.textContent = 'Error';
+          acceptBtn.disabled = false;
+          setTimeout(() => { acceptBtn.textContent = origText; }, 2000);
+        }
+        return;
+      }
+      if (declineBtn) {
+        e.stopPropagation();
         declineBtn.disabled = true;
         declineBtn.textContent = '...';
-        await declineFriendRequest(parseInt(declineBtn.dataset.decline));
+        try {
+          await declineFriendRequest(parseInt(declineBtn.dataset.decline, 10));
+        } catch (err) {
+          console.error('[Profile] declineFriendRequest threw:', err);
+        }
         loadFriendsTab(userId);
+        return;
       }
-    };
+      // Profile card on row tap
+      const row = e.target.closest('[data-profile-user-id]');
+      if (row) {
+        showProfileCard({
+          userId: row.dataset.profileUserId,
+          displayName: row.dataset.profileName || 'Unknown',
+          avatarColor: row.dataset.profileColor || null,
+          avatarEmoji: row.dataset.profileEmoji || null
+        });
+      }
+    });
   } else {
     pendingSection.style.display = 'none';
   }
@@ -973,7 +1089,7 @@ async function loadFriendsTab(userId) {
         actionHtml = `<div class="friend-row__action"><button class="btn btn-primary" data-join-code="${escapeHtml(presence.roomCode)}">Join</button></div>`;
       }
 
-      return `<div class="friend-row">
+      return `<div class="friend-row" data-profile-user-id="${f.user_id}" data-profile-name="${escapeHtml(f.display_name)}" data-profile-color="${f.avatar_color || ''}" data-profile-emoji="${f.avatar_emoji || ''}">
         ${avatar}
         <div class="friend-row__info">
           <div class="friend-row__name">${escapeHtml(f.display_name)}${tag}</div>
@@ -983,11 +1099,23 @@ async function loadFriendsTab(userId) {
       </div>`;
     }).join('');
 
-    // Join friend's lobby on button click
+    // Join friend's lobby or open profile card
     friendsListEl.onclick = (e) => {
       const joinBtn = e.target.closest('[data-join-code]');
-      if (!joinBtn) return;
-      window.location.href = `join.html?code=${joinBtn.dataset.joinCode}`;
+      if (joinBtn) {
+        window.location.href = `join.html?code=${joinBtn.dataset.joinCode}`;
+        return;
+      }
+      const row = e.target.closest('[data-profile-user-id]');
+      if (row) {
+        console.log('[Profile] Friend row tapped, userId:', row.dataset.profileUserId);
+        showProfileCard({
+          userId: row.dataset.profileUserId,
+          displayName: row.dataset.profileName || 'Unknown',
+          avatarColor: row.dataset.profileColor || null,
+          avatarEmoji: row.dataset.profileEmoji || null
+        });
+      }
     };
   } else {
     friendsListEl.innerHTML = '<p class="profile-empty">No friends yet. Search to add some!</p>';
@@ -997,7 +1125,7 @@ async function loadFriendsTab(userId) {
   searchInput.oninput = () => {
     clearTimeout(_searchTimeout);
     const query = searchInput.value.trim();
-    if (query.length < 2) {
+    if (query.length < 1) {
       searchResults.innerHTML = '';
       return;
     }
@@ -1006,7 +1134,28 @@ async function loadFriendsTab(userId) {
 }
 
 async function _runFriendSearch(query, userId, resultsEl) {
-  const results = await searchProfiles(query, userId);
+  let results;
+
+  // Parse Name#discriminator format
+  const hashIdx = query.indexOf('#');
+  if (hashIdx !== -1) {
+    const namePart = query.substring(0, hashIdx).trim();
+    const discPart = query.substring(hashIdx + 1).trim();
+
+    if (discPart.length === 4 && /^\d{4}$/.test(discPart) && namePart) {
+      // Exact tag lookup: "Name#1234"
+      const { data } = await fetchProfileByTag(namePart, discPart);
+      results = data && data.user_id !== userId ? [data] : [];
+    } else if (namePart) {
+      // Partial: "Name#" or "Name#12" — search by name, optionally filter disc
+      results = await searchProfiles(namePart, userId, discPart || null);
+    } else {
+      results = [];
+    }
+  } else {
+    results = await searchProfiles(query, userId);
+  }
+
   if (results.length === 0) {
     resultsEl.innerHTML = '<p class="profile-empty" style="padding: var(--space-sm) 0;">No results found</p>';
     return;
@@ -1047,8 +1196,16 @@ async function _runFriendSearch(query, userId, resultsEl) {
     if (!btn) return;
     btn.disabled = true;
     btn.textContent = 'Sending...';
-    const { error } = await sendFriendRequest(userId, btn.dataset.sendRequest);
-    btn.textContent = error ? 'Error' : 'Sent';
+    const { error, autoAccepted } = await sendFriendRequest(userId, btn.dataset.sendRequest);
+    if (autoAccepted) {
+      btn.textContent = 'Friends!';
+      btn.className = 'btn btn-secondary';
+    } else if (error) {
+      btn.textContent = error.message || 'Error';
+      btn.disabled = false; // Re-enable so user can retry
+    } else {
+      btn.textContent = 'Sent';
+    }
   };
 }
 
@@ -1225,7 +1382,7 @@ async function updateTitleUniqueness(selectedWords) {
 export function attachProfileCardHandler(container, getPlayers, roomId = null) {
   container.addEventListener('click', async (e) => {
     // Don't trigger on honk/toggle button clicks
-    if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle')) return;
+    if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle') || e.target.closest('.transfer-host-btn') || e.target.closest('.cohost-btn')) return;
 
     const target = e.target.closest('[data-profile-user-id]');
     if (!target) return;

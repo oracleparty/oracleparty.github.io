@@ -14,6 +14,9 @@ import {
   deleteRoom,
   deleteRoomBeacon,
   promoteToHost,
+  demoteHost,
+  promoteToCohost,
+  demoteCohost,
   toggleReady,
   updateRoomStatus,
   updateGameState,
@@ -24,7 +27,8 @@ import {
   unsubscribe,
   createPresenceChannel,
   fetchPlayerStatsBatch,
-  fetchQuestionCount
+  fetchQuestionCount,
+  toggleMessageHeart
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
@@ -225,9 +229,20 @@ async function init() {
 
   // Honk click handler (event delegation)
   playerListEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('.honk-btn');
-    if (!btn) return;
-    sendHonk(btn.dataset.honkTarget);
+    const honkBtn = e.target.closest('.honk-btn');
+    if (honkBtn) {
+      sendHonk(honkBtn.dataset.honkTarget);
+      return;
+    }
+    const transferBtn = e.target.closest('.transfer-host-btn');
+    if (transferBtn) {
+      handleTransferHost(transferBtn.dataset.transferId, transferBtn.dataset.transferName);
+      return;
+    }
+    const cohostBtn = e.target.closest('.cohost-btn');
+    if (cohostBtn) {
+      handleCohostToggle(cohostBtn.dataset.cohostId, cohostBtn.dataset.cohostName, cohostBtn.classList.contains('cohost-btn--demote'));
+    }
   });
 
   // Profile card on player tap (pass roomId for instant-add)
@@ -305,6 +320,26 @@ function attachListeners() {
   });
   chatInput.addEventListener('input', notifyTyping);
 
+  // Heart button click handler (event delegation)
+  chatMessagesEl.addEventListener('click', async (e) => {
+    const heartBtn = e.target.closest('.heart-btn');
+    if (!heartBtn) return;
+    e.stopPropagation();
+    const bubble = heartBtn.closest('.chat-bubble');
+    const msgId = bubble?.dataset.msgId;
+    if (!msgId) return;
+    // Optimistic toggle
+    const iHearted = heartBtn.classList.contains('hearted');
+    heartBtn.classList.toggle('hearted', !iHearted);
+    const countEl = bubble.querySelector('.heart-count');
+    let count = parseInt(countEl.textContent, 10) || 0;
+    count += iHearted ? -1 : 1;
+    countEl.textContent = count;
+    countEl.classList.toggle('hidden', count <= 0);
+    // Persist
+    await toggleMessageHeart(msgId, getDisplayName());
+  });
+
   // Ready toggle (non-host)
   btnReady.addEventListener('click', handleToggleReady);
 
@@ -380,6 +415,7 @@ function renderPlayers() {
   playerListEl.innerHTML = players.map(p => {
     const badges = [];
     if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
+    if (p.is_cohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
     // Tier badge for the selected category
     const tier = _playerTiers[p.user_id];
     if (tier) {
@@ -388,7 +424,7 @@ function renderPlayers() {
     }
     if (p.is_ready) {
       badges.push('<span class="badge badge--ready">Ready</span>');
-    } else if (!p.is_host) {
+    } else if (!p.is_host && !p.is_cohost) {
       badges.push('<span class="badge badge--not-ready">Not Ready</span>');
     }
     const isMe = String(p.id) === String(room.playerId);
@@ -401,6 +437,15 @@ function renderPlayers() {
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
     const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+    const transferBtn = (room.isHost && !isMe && !p.is_host) ? `<button class="transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}">Transfer</button>` : '';
+    let cohostBtn = '';
+    if (room.isHost && !isMe && !p.is_host) {
+      if (p.is_cohost) {
+        cohostBtn = `<button class="cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Demote</button>`;
+      } else {
+        cohostBtn = `<button class="cohost-btn" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Co-Host</button>`;
+      }
+    }
 
     return `
       <div class="player-item${isAway ? ' player-item--away' : ''}" ${profileAttr}>
@@ -413,6 +458,8 @@ function renderPlayers() {
           ${titleHtml}
         </div>
         ${honkBtn}
+        ${cohostBtn}
+        ${transferBtn}
         <span class="player-item__badges">${badges.join('')}</span>
       </div>
     `;
@@ -441,6 +488,30 @@ async function handlePlayerChange(payload) {
       const idx = players.findIndex(p => String(p.id) === String(payload.new.id));
       if (idx !== -1) {
         players[idx] = payload.new;
+
+        // Detect host/cohost changes for this player
+        if (String(payload.new.id) === String(room.playerId)) {
+          if (payload.new.is_host && !room.isHost) {
+            room.isHost = true;
+            room.isCohost = false;
+            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+            activateHostUI();
+            addSystemMessage('You are now the host');
+          } else if (!payload.new.is_host && room.isHost) {
+            room.isHost = false;
+            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+            deactivateHostUI();
+          }
+          // Co-host status changes
+          if (payload.new.is_cohost && !room.isCohost) {
+            room.isCohost = true;
+            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+            addSystemMessage('You are now co-host');
+          } else if (!payload.new.is_cohost && room.isCohost) {
+            room.isCohost = false;
+            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+          }
+        }
         renderPlayers();
       }
     } else if (event === 'DELETE' && payload.old) {
@@ -480,27 +551,36 @@ async function handlePlayerChange(payload) {
 
 /**
  * Handle host promotion when the current host leaves.
- * The player with the lowest joined_at self-promotes (deterministic across all clients).
+ * Co-host gets priority, otherwise the player with the lowest joined_at self-promotes.
  */
 async function handleHostPromotion() {
   if (players.length === 0) return;
 
-  // Sort by joined_at — first player is the new host
-  const sorted = [...players].sort((a, b) => {
-    const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
-    const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
-    return ta - tb;
-  });
-  const nextHost = sorted[0];
+  // Prefer co-host, otherwise earliest player
+  const cohost = players.find(p => p.is_cohost);
+  let nextHost;
+  if (cohost) {
+    nextHost = cohost;
+  } else {
+    const sorted = [...players].sort((a, b) => {
+      const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
+      const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
+      return ta - tb;
+    });
+    nextHost = sorted[0];
+  }
 
   // Am I the one being promoted?
   if (String(nextHost.id) === String(room.playerId)) {
     room.isHost = true;
+    room.isCohost = false;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
     // Update local player state immediately so badge renders
     const localIdx = players.findIndex(p => String(p.id) === String(room.playerId));
-    if (localIdx !== -1) players[localIdx].is_host = true;
+    if (localIdx !== -1) { players[localIdx].is_host = true; players[localIdx].is_cohost = false; }
     await promoteToHost(room.id, room.playerId, getDisplayName());
+    // Clear co-host flag if we were co-host
+    if (nextHost.is_cohost) await demoteCohost(room.playerId);
     activateHostUI();
     renderPlayers();
     // Notify all players about the host transfer
@@ -517,6 +597,73 @@ function activateHostUI() {
   btnSettings.classList.remove('hidden');
   btnReady.classList.add('hidden');
   attachSettingsListeners();
+}
+
+function deactivateHostUI() {
+  btnStartGame.classList.add('hidden');
+  btnSettings.classList.add('hidden');
+  btnReady.classList.remove('hidden');
+}
+
+let _isTransferring = false;
+
+async function handleTransferHost(targetPlayerId, targetDisplayName) {
+  if (!room.isHost || _isTransferring) return;
+  _isTransferring = true;
+  try {
+    // Demote self first, then promote target (serialized to avoid brief two-host state)
+    await demoteHost(room.playerId);
+    await promoteToHost(room.id, targetPlayerId, targetDisplayName);
+
+    // Update local state
+    const myIdx = players.findIndex(p => String(p.id) === String(room.playerId));
+    if (myIdx !== -1) players[myIdx].is_host = false;
+    const targetIdx = players.findIndex(p => String(p.id) === String(targetPlayerId));
+    if (targetIdx !== -1) players[targetIdx].is_host = true;
+
+    room.isHost = false;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+
+    deactivateHostUI();
+    renderPlayers();
+
+    sendMessage(room.id, 'System', `${getDisplayName()} transferred host to ${targetDisplayName}`);
+    addSystemMessage(`You transferred host to ${targetDisplayName}`);
+  } catch (err) {
+    console.error('[Lobby] handleTransferHost error:', err);
+  } finally {
+    _isTransferring = false;
+  }
+}
+
+let _isCohostToggling = false;
+async function handleCohostToggle(playerId, displayName, isDemote) {
+  if (!room.isHost || _isCohostToggling) return;
+  _isCohostToggling = true;
+  try {
+    if (isDemote) {
+      await demoteCohost(playerId);
+      const idx = players.findIndex(p => String(p.id) === String(playerId));
+      if (idx !== -1) players[idx].is_cohost = false;
+      sendMessage(room.id, 'System', `${displayName} is no longer co-host`);
+    } else {
+      // Demote any existing co-host first (only one co-host at a time)
+      const existingCohost = players.find(p => p.is_cohost);
+      if (existingCohost) {
+        await demoteCohost(existingCohost.id);
+        existingCohost.is_cohost = false;
+      }
+      await promoteToCohost(playerId);
+      const idx = players.findIndex(p => String(p.id) === String(playerId));
+      if (idx !== -1) players[idx].is_cohost = true;
+      sendMessage(room.id, 'System', `${displayName} is now co-host`);
+    }
+    renderPlayers();
+  } catch (err) {
+    console.error('[Lobby] handleCohostToggle error:', err);
+  } finally {
+    _isCohostToggling = false;
+  }
 }
 
 /** Attach settings modal event listeners (idempotent). */
@@ -576,7 +723,7 @@ function attachSettingsListeners() {
       option.classList.add('active');
       const key = group.dataset.setting;
       let value = option.dataset.value;
-      if (key === 'questionsPerGame' || key === 'questionTimer') {
+      if (key === 'questionsPerGame' || key === 'questionTimer' || key === 'autoProceed') {
         value = parseInt(value, 10);
       }
       handleSettingChange(key, value);
@@ -632,17 +779,13 @@ async function ensureCurrentPlayer() {
 // --- Chat Bar + Drawer ---
 
 function repositionChatBar() {
-  const header = document.querySelector('.page-header');
-  const footer = document.querySelector('.lobby-footer');
   const bar = $('#chat-bar');
   const drawer = $('#chat-drawer');
-  if (!header) return;
+  const footer = document.querySelector('.lobby-footer');
 
-  const headerH = header.offsetHeight;
-  const barH = 40;
-  bar.style.setProperty('--chat-bar-top', `${headerH}px`);
-  drawer.style.setProperty('--chat-drawer-top', `${headerH + barH}px`);
-  document.body.style.setProperty('--chat-bar-offset', `${barH + 4}px`);
+  // Bar is static in flow — just position the drawer overlay
+  const barRect = bar.getBoundingClientRect();
+  drawer.style.setProperty('--chat-drawer-top', `${barRect.bottom}px`);
 
   if (footer) {
     const footerH = footer.offsetHeight;
@@ -683,7 +826,11 @@ async function loadMessages() {
   const messages = await fetchMessages(room.id);
   chatMessagesEl.innerHTML = '';
   for (const msg of messages) {
-    appendChatMessage(msg.player_name, msg.message);
+    if (msg.player_name === 'System') {
+      addSystemMessage(msg.message);
+    } else {
+      appendChatMessage(msg.player_name, msg.message, msg.id, msg.hearts);
+    }
   }
   scrollChatToBottom();
 
@@ -696,15 +843,34 @@ async function loadMessages() {
 
 function handleNewMessage(payload) {
   if (!payload.new) return;
-  const { player_name, message } = payload.new;
+
+  // Handle UPDATE events (heart changes)
+  if (payload.eventType === 'UPDATE') {
+    const { id, hearts } = payload.new;
+    if (!id) return;
+    const bubble = chatMessagesEl.querySelector(`[data-msg-id="${id}"]`);
+    if (bubble) updateHeartDisplay(bubble, hearts);
+    return;
+  }
+
+  const { player_name, message, id, hearts } = payload.new;
 
   // Dedup: skip Realtime echoes of our own optimistic appends
   if (player_name === getDisplayName() && chatEchoPending > 0) {
     chatEchoPending--;
+    // Assign real ID to optimistic bubble (first unassigned = earliest sent)
+    if (id) {
+      const first = chatMessagesEl.querySelector('.chat-bubble:not([data-msg-id])');
+      if (first) first.dataset.msgId = id;
+    }
     return;
   }
 
-  appendChatMessage(player_name, message);
+  if (player_name === 'System') {
+    addSystemMessage(message);
+  } else {
+    appendChatMessage(player_name, message, id, hearts);
+  }
   scrollChatToBottom();
   updateChatBarPreview(player_name, message);
 
@@ -718,15 +884,22 @@ function handleNewMessage(payload) {
   }
 }
 
-function appendChatMessage(name, text) {
+function appendChatMessage(name, text, msgId = null, hearts = []) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
+  if (msgId) bubble.dataset.msgId = msgId;
   // Look up player for real avatar data (authenticated users get color+emoji)
   const player = players.find(p => p.display_name === name);
   const chatAvatar = renderAvatar({ displayName: name, avatarColor: player?.avatar_color || null, avatarEmoji: player?.avatar_emoji || null, extraClass: 'avatar--chat' });
+  const heartCount = Array.isArray(hearts) ? hearts.length : 0;
+  const iHearted = Array.isArray(hearts) && hearts.includes(getDisplayName());
   bubble.innerHTML = `
     <div class="chat-bubble__header">${chatAvatar}<div class="chat-bubble__name">${escapeHtml(name)}</div></div>
     <div class="chat-bubble__text">${escapeHtml(text)}</div>
+    <div class="chat-bubble__hearts">
+      <button class="heart-btn${iHearted ? ' hearted' : ''}" aria-label="Heart">&hearts;</button>
+      <span class="heart-count${heartCount === 0 ? ' hidden' : ''}">${heartCount}</span>
+    </div>
   `;
   chatMessagesEl.appendChild(bubble);
 }
@@ -745,6 +918,16 @@ function scrollChatToBottom() {
   chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
 }
 
+function updateHeartDisplay(bubble, hearts) {
+  const arr = Array.isArray(hearts) ? hearts : [];
+  const btn = bubble.querySelector('.heart-btn');
+  const countEl = bubble.querySelector('.heart-count');
+  if (!btn || !countEl) return;
+  btn.classList.toggle('hearted', arr.includes(getDisplayName()));
+  countEl.textContent = arr.length;
+  countEl.classList.toggle('hidden', arr.length === 0);
+}
+
 async function handleSendMessage() {
   const text = chatInput.value.trim();
   if (!text) return;
@@ -757,7 +940,11 @@ async function handleSendMessage() {
   updateChatBarPreview(name, text);
   chatEchoPending++;
   try {
-    await sendMessage(room.id, name, text);
+    const { data } = await sendMessage(room.id, name, text);
+    if (data?.id) {
+      const first = chatMessagesEl.querySelector('.chat-bubble:not([data-msg-id])');
+      if (first) first.dataset.msgId = data.id;
+    }
   } catch (err) {
     console.error('[Lobby] sendMessage failed:', err);
     chatEchoPending = Math.max(0, chatEchoPending - 1);
@@ -918,7 +1105,9 @@ function showLobbyCategorySheetSubs(catName) {
 function syncTogglesToSettings() {
   settingsModal.querySelectorAll('.toggle-group').forEach(group => {
     const key = group.dataset.setting;
-    const currentValue = String(room.settings[key]);
+    // Default autoProceed to 0 for rooms created before the feature existed
+    const raw = room.settings[key];
+    const currentValue = String(raw !== undefined && raw !== null ? raw : (key === 'autoProceed' ? 0 : ''));
     group.querySelectorAll('.toggle-option').forEach(opt => {
       opt.classList.toggle('active', opt.dataset.value === currentValue);
     });
@@ -931,7 +1120,8 @@ async function handleSettingChange(key, value) {
     subcategory: 'subcategory',
     whoCanJoin: 'who_can_join',
     questionsPerGame: 'questions_per_game',
-    questionTimer: 'question_timer'
+    questionTimer: 'question_timer',
+    autoProceed: 'auto_proceed'
   };
   const column = columnMap[key];
   if (!column) return;
@@ -1011,6 +1201,11 @@ function handleRoomChange(payload) {
     if (newRoom.question_timer && newRoom.question_timer !== room.settings.questionTimer) {
       room.settings.questionTimer = newRoom.question_timer;
       addSystemMessage(`Host changed timer to ${room.settings.questionTimer}s`);
+      changed = true;
+    }
+
+    if (newRoom.auto_proceed !== undefined && newRoom.auto_proceed !== room.settings.autoProceed) {
+      room.settings.autoProceed = newRoom.auto_proceed;
       changed = true;
     }
 

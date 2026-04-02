@@ -79,7 +79,7 @@ export function generateRoomCode() {
  * Create a new room in Supabase.
  * Retries once on code collision.
  */
-export async function createRoom({ hostName, category, subcategory, whoCanJoin, questionsPerGame, questionTimer }) {
+export async function createRoom({ hostName, category, subcategory, whoCanJoin, questionsPerGame, questionTimer, autoProceed }) {
   const roomPayload = {
     code: generateRoomCode(),
     host_name: hostName,
@@ -92,6 +92,7 @@ export async function createRoom({ hostName, category, subcategory, whoCanJoin, 
   // Only include subcategory if set — omit entirely if null so the INSERT
   // works even when the subcategory column hasn't been added to the DB yet
   if (subcategory) roomPayload.subcategory = subcategory;
+  if (autoProceed) roomPayload.auto_proceed = autoProceed;
 
   const { data, error } = await supabase
     .from('rooms')
@@ -265,6 +266,30 @@ export async function promoteToHost(roomId, playerId, displayName) {
 }
 
 /**
+ * Demote a player from host status.
+ */
+export async function demoteHost(playerId) {
+  const { error } = await supabase.from('players').update({ is_host: false }).eq('id', playerId);
+  if (error) console.error('[Supabase] demoteHost failed:', error.message);
+}
+
+/**
+ * Promote a player to co-host.
+ */
+export async function promoteToCohost(playerId) {
+  const { error } = await supabase.from('players').update({ is_cohost: true }).eq('id', playerId);
+  if (error) console.error('[Supabase] promoteToCohost failed:', error.message);
+}
+
+/**
+ * Demote a player from co-host status.
+ */
+export async function demoteCohost(playerId) {
+  const { error } = await supabase.from('players').update({ is_cohost: false }).eq('id', playerId);
+  if (error) console.error('[Supabase] demoteCohost failed:', error.message);
+}
+
+/**
  * Remove a player from a room.
  */
 export async function removePlayer(playerId) {
@@ -358,12 +383,44 @@ export async function toggleReady(playerId, isReady) {
  * Send a chat message.
  */
 export async function sendMessage(roomId, playerName, message) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('chat_messages')
-    .insert({ room_id: roomId, player_name: playerName, message });
+    .insert({ room_id: roomId, player_name: playerName, message })
+    .select('id')
+    .maybeSingle();
 
   if (error) console.error('[Supabase] sendMessage failed:', error.message);
-  return { error };
+  return { data, error };
+}
+
+/**
+ * Toggle a heart on a chat message. Adds or removes the player name from the hearts JSONB array.
+ */
+export async function toggleMessageHeart(messageId, playerName) {
+  // Read current hearts
+  const { data: msg, error: fetchErr } = await supabase
+    .from('chat_messages')
+    .select('hearts')
+    .eq('id', messageId)
+    .single();
+
+  if (fetchErr) { console.error('[Supabase] toggleMessageHeart fetch failed:', fetchErr.message); return null; }
+
+  const hearts = Array.isArray(msg?.hearts) ? msg.hearts : [];
+  const idx = hearts.indexOf(playerName);
+  if (idx >= 0) {
+    hearts.splice(idx, 1);
+  } else {
+    hearts.push(playerName);
+  }
+
+  const { error: updateErr } = await supabase
+    .from('chat_messages')
+    .update({ hearts })
+    .eq('id', messageId);
+
+  if (updateErr) console.error('[Supabase] toggleMessageHeart update failed:', updateErr.message);
+  return hearts;
 }
 
 /**
@@ -464,7 +521,7 @@ export function subscribeToPlayers(roomId, callback) {
 export function subscribeToMessages(roomId, callback) {
   return supabase.channel(`room-${roomId}-messages`)
     .on('postgres_changes', {
-      event: 'INSERT',
+      event: '*',
       schema: 'public',
       table: 'chat_messages',
       filter: `room_id=eq.${roomId}`
@@ -1602,13 +1659,49 @@ export async function deleteSiteSetting(key) {
 // ============================================
 
 /**
- * Send a friend request. Returns { data, error }.
+ * Send a friend request. Returns { data, error, autoAccepted }.
+ * Auto-accepts if the receiver already sent a pending request to the sender.
  * Error code 23505 = duplicate request already exists.
  */
 export async function sendFriendRequest(senderId, receiverId) {
   if (senderId === receiverId) {
-    return { data: null, error: { message: 'Cannot send a friend request to yourself' } };
+    return { data: null, error: { message: 'Cannot send a friend request to yourself' }, autoAccepted: false };
   }
+
+  // Check if already friends
+  const already = await isFriend(senderId, receiverId);
+  if (already) {
+    return { data: null, error: { message: 'Already friends' }, autoAccepted: false };
+  }
+
+  // Check for reverse pending request — auto-accept if found
+  const { data: reverseReq } = await supabase
+    .from('friend_requests')
+    .select('*')
+    .eq('sender_id', receiverId)
+    .eq('receiver_id', senderId)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (reverseReq) {
+    // Auto-accept: they already want to be our friend
+    const result = await acceptFriendRequest(reverseReq.id);
+    return { data: result.data, error: result.error, autoAccepted: true };
+  }
+
+  // Check for existing same-direction pending request
+  const { data: existingReq } = await supabase
+    .from('friend_requests')
+    .select('id')
+    .eq('sender_id', senderId)
+    .eq('receiver_id', receiverId)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (existingReq) {
+    return { data: null, error: { message: 'Friend request already sent' }, autoAccepted: false };
+  }
+
   const { data, error } = await supabase
     .from('friend_requests')
     .insert({ sender_id: senderId, receiver_id: receiverId, status: 'pending' })
@@ -1616,10 +1709,13 @@ export async function sendFriendRequest(senderId, receiverId) {
     .single();
 
   if (error) {
+    if (error.code === '23505') {
+      return { data: null, error: { message: 'Friend request already sent' }, autoAccepted: false };
+    }
     console.error('[Supabase] sendFriendRequest failed:', error.message);
-    return { data: null, error };
+    return { data: null, error, autoAccepted: false };
   }
-  return { data, error: null };
+  return { data, error: null, autoAccepted: false };
 }
 
 /**
@@ -1833,15 +1929,21 @@ export async function hasFriends(userId) {
 }
 
 /**
- * Search profiles by display name (ILIKE).
+ * Search profiles by display name (ILIKE), with optional discriminator filter.
  */
-export async function searchProfiles(query, excludeUserId) {
-  const { data, error } = await supabase
+export async function searchProfiles(query, excludeUserId, discriminator = null) {
+  let q = supabase
     .from('profiles')
     .select('*')
     .ilike('display_name', `%${query}%`)
     .neq('user_id', excludeUserId)
     .limit(10);
+
+  if (discriminator) {
+    q = q.eq('discriminator', discriminator);
+  }
+
+  const { data, error } = await q;
 
   if (error) {
     console.error('[Supabase] searchProfiles failed:', error.message);

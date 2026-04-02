@@ -155,7 +155,8 @@ async function joinRoom(code) {
       settings: {
         whoCanJoin: room.who_can_join,
         questionsPerGame: room.questions_per_game,
-        questionTimer: room.question_timer
+        questionTimer: room.question_timer,
+        autoProceed: room.auto_proceed || 0
       }
     }));
 

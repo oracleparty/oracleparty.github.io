@@ -179,7 +179,7 @@ async function loadFlaggedQueue() {
           <span class="admin-flag-row__reasons">${escapeText(reasons)}</span>
         </div>
         <div class="admin-flag-row__actions">
-          <button class="btn btn-secondary" data-dismiss="${qId}">Dismiss</button>
+          <button class="btn btn-secondary" data-dismiss="${qId}">Unflag</button>
           <button class="btn btn-secondary btn-danger-text" data-remove="${qId}">Remove Q</button>
         </div>
       </div>
