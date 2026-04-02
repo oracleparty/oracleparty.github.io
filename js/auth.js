@@ -407,14 +407,9 @@ export function showSignUpModal() {
         return;
       }
 
-      successEl.textContent = `Account created! You are now ${result.profile?.display_name || displayName}#${result.profile?.discriminator || '????'}`;
-      successEl.style.display = 'block';
-      submitBtn.textContent = 'Done';
-      submitBtn.disabled = false;
-      submitBtn.onclick = () => {
-        overlay.classList.remove('active');
-        resolve({ user: result.user, profile: result.profile });
-      };
+      // Success — close modal immediately and proceed
+      overlay.classList.remove('active');
+      resolve({ user: result.user, profile: result.profile });
     };
   });
 }
