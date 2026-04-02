@@ -233,6 +233,13 @@ async function init() {
   // Position chat bar below header
   repositionChatBar();
 
+  // Watch for footer resize to keep chat drawer bounds correct
+  const lobbyFooter = document.querySelector('.lobby-footer');
+  if (lobbyFooter && !window._lobbyFooterObserver) {
+    window._lobbyFooterObserver = new ResizeObserver(() => repositionChatBar());
+    window._lobbyFooterObserver.observe(lobbyFooter);
+  }
+
   // Room session leaderboard (cumulative scores across games in this room)
   const roomScoresKey = `oracle_party_room_scores_${room.id}`;
   const roomScores = JSON.parse(sessionStorage.getItem(roomScoresKey) || '{}');

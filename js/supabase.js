@@ -1294,7 +1294,7 @@ export async function fetchProfileByTag(displayName, discriminator) {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .eq('display_name', displayName)
+    .ilike('display_name', displayName)
     .eq('discriminator', discriminator)
     .maybeSingle();
 

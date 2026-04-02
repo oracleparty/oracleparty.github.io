@@ -1945,6 +1945,9 @@ function doReveal() {
 }
 
 async function handleRevealResults() {
+  // Cancel any running auto-proceed timer (host may return to judging from scores)
+  clearAutoProceed();
+
   // Set gamePhase BEFORE broadcasting so the Realtime echo is rejected
   // by the `if (phase === state.gamePhase) return` guard in handlePhaseTransition.
   // This prevents doReveal() from running twice on the host.
@@ -2026,11 +2029,18 @@ async function handleJudgmentOverride(e) {
 }
 
 async function handleDisqualifyRound() {
-  if (!state.room?.isHost) return;
+  if (!canControlGame()) return;
   const qNum = state.currentQuestion;
 
   // Mark locally
   state.disqualifiedQuestions.add(qNum);
+
+  // Refund wagers — remove from usedWagers so players can reuse them
+  for (const answer of state.currentAnswers) {
+    if (answer.wager && answer.player_id === state.room.playerId) {
+      state.usedWagers.delete(answer.wager);
+    }
+  }
 
   // Set all answers for this question to score_earned = 0
   const updates = [];
@@ -3462,6 +3472,16 @@ function showChatBar() {
   repositionChatBar();
   requestAnimationFrame(repositionChatBar);
   setTimeout(repositionChatBar, 550);
+
+  // Watch for footer resize (content changes during reveals, scores, judging)
+  if (!state._footerResizeObserver) {
+    state._footerResizeObserver = new ResizeObserver(() => repositionChatBar());
+    const activeScreen = document.querySelector('.screen.active');
+    const footer = activeScreen?.querySelector('.game-footer');
+    if (footer) state._footerResizeObserver.observe(footer);
+    const header = activeScreen?.querySelector('.game-header');
+    if (header) state._footerResizeObserver.observe(header);
+  }
 }
 
 function hideChatBar() {
@@ -3602,7 +3622,11 @@ function handleNewMessage(payload) {
     // Detect disqualify messages from host
     const dqMatch = message.match(/^Host disqualified Q(\d+)/);
     if (dqMatch) {
-      state.disqualifiedQuestions.add(parseInt(dqMatch[1], 10) - 1); // 0-indexed
+      const dqQNum = parseInt(dqMatch[1], 10) - 1; // 0-indexed
+      state.disqualifiedQuestions.add(dqQNum);
+      // Refund this player's wager for the disqualified round
+      const myAnswer = state.currentAnswers.find(a => a.player_id === state.room.playerId);
+      if (myAnswer?.wager) state.usedWagers.delete(myAnswer.wager);
     }
   } else {
     appendGameChatMessage(player_name, message, id, hearts);
@@ -4146,6 +4170,10 @@ async function syncToCurrentState() {
 function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
+  if (state._footerResizeObserver) {
+    state._footerResizeObserver.disconnect();
+    state._footerResizeObserver = null;
+  }
   destroyHonkSystem();
   destroyTypingIndicator();
   if (state.timerId) {

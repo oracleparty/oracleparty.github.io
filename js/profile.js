@@ -1185,7 +1185,7 @@ async function _runFriendSearch(query, userId, resultsEl) {
       actionHtml = `<button class="btn btn-primary" data-send-request="${p.user_id}">Add Friend</button>`;
     }
 
-    return `<div class="search-result-row">
+    return `<div class="search-result-row" data-profile-user-id="${p.user_id}" data-profile-name="${escapeHtml(p.display_name)}" data-profile-color="${p.avatar_color || ''}" data-profile-emoji="${p.avatar_emoji || ''}">
       ${avatar}
       <div class="search-result-row__info">
         <div class="search-result-row__name">${escapeHtml(p.display_name)}${tag}</div>
@@ -1194,10 +1194,24 @@ async function _runFriendSearch(query, userId, resultsEl) {
     </div>`;
   }))).join('');
 
-  // Wire send request buttons
+  // Wire send request buttons + profile card taps
   resultsEl.onclick = async (e) => {
     const btn = e.target.closest('[data-send-request]');
-    if (!btn) return;
+    if (btn) {
+      e.stopPropagation();
+    } else {
+      // Profile card tap (anywhere on row except buttons)
+      const row = e.target.closest('[data-profile-user-id]');
+      if (row) {
+        showProfileCard({
+          userId: row.dataset.profileUserId,
+          displayName: row.dataset.profileName || 'Unknown',
+          avatarColor: row.dataset.profileColor,
+          avatarEmoji: row.dataset.profileEmoji
+        });
+      }
+      return;
+    }
     btn.disabled = true;
     btn.textContent = 'Sending...';
     const { error, autoAccepted } = await sendFriendRequest(userId, btn.dataset.sendRequest);
