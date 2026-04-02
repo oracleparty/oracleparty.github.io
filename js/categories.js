@@ -23,12 +23,14 @@ export const CATEGORY_META = {
     { key: 'language', icon: '\uD83D\uDCAC', label: 'Language' },
     { key: 'traditions', icon: '\uD83C\uDFAD', label: 'Traditions' },
     { key: 'institutions', icon: '\uD83C\uDFE6', label: 'Institutions' },
+    { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
   'pop-culture':      { icon: '\uD83C\uDFAC', label: 'Pop Culture', subcategories: [
     { key: 'movies', icon: '\uD83C\uDFAC', label: 'Movies' },
     { key: 'television', icon: '\uD83D\uDCFA', label: 'Television' },
     { key: 'music', icon: '\uD83C\uDFB5', label: 'Music' },
     { key: 'lifestyle', icon: '\uD83D\uDC85', label: 'Lifestyle' },
+    { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
   'world-geography':  { icon: '\uD83D\uDDFA\uFE0F', label: 'World Geography', subcategories: [
     { key: 'human', icon: '\uD83C\uDFD9\uFE0F', label: 'Human', children: [
@@ -48,12 +50,14 @@ export const CATEGORY_META = {
     { key: 'individual-sports', icon: '\uD83C\uDFCB\uFE0F', label: 'Individual Sports' },
     { key: 'athletics-events', icon: '\uD83C\uDFC5', label: 'Athletics & Events' },
     { key: 'racing', icon: '\uD83C\uDFCE\uFE0F', label: 'Racing' },
+    { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
   'food':             { icon: '\uD83C\uDF7D\uFE0F', label: 'Food & Drink', subcategories: [
     { key: 'cuisines', icon: '\uD83C\uDF5C', label: 'Cuisines' },
     { key: 'ingredients', icon: '\uD83E\uDDC5', label: 'Ingredients' },
     { key: 'beverages', icon: '\uD83E\uDD64', label: 'Beverages' },
     { key: 'brands-restaurants', icon: '\uD83C\uDF54', label: 'Brands & Restaurants' },
+    { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
   'logic':            { icon: '\uD83E\uDDE9', label: 'Logic' },
   'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card' }
