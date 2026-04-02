@@ -304,10 +304,11 @@ export async function signIn(email, password) {
  * Sign out. Clears auth state but preserves display name (reverts to guest).
  */
 export async function signOut() {
-  await supabase.auth.signOut();
+  try { await supabase.auth.signOut(); } catch (e) { console.warn('[Auth] signOut error:', e); }
   _currentUser = null;
   _currentProfile = null;
   localStorage.removeItem(PROFILE_CACHE_KEY);
+  localStorage.removeItem(STORAGE_KEY);
 }
 
 /**
