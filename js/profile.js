@@ -426,8 +426,8 @@ export async function initProfilePage() {
       <!-- Single unlock CTA -->
       <div class="profile-section" style="padding-bottom: var(--space-2xl);">
         <div class="guest-unlock-card">
-          <div class="guest-unlock-card__icon">\uD83D\uDD13</div>
-          <h3 class="guest-unlock-card__title">Unlock Your Oracle Identity</h3>
+          <div class="guest-unlock-card__icon">\uD83D\uDD2E</div>
+          <h3 class="guest-unlock-card__title">Consult the Oracle</h3>
           <ul class="guest-unlock-card__perks">
             <li>\uD83C\uDFAF Track mastery across ${Object.keys(CATEGORY_META).length} categories</li>
             <li>\uD83D\uDCDC Save your game history and stats</li>
