@@ -14,6 +14,12 @@ export const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
  */
 export function transitionScreens(fromEl, toEl, duration = 500) {
   return new Promise((resolve) => {
+    // Dismiss any floating overlays (bottom sheets, review panel) that could
+    // remain stuck above the next screen due to fixed/absolute positioning
+    for (const el of document.querySelectorAll('.bottom-sheet.active, .review-overlay.active')) {
+      el.classList.remove('active');
+    }
+
     fromEl.classList.add('fade-out');
     fromEl.classList.remove('active');
 
