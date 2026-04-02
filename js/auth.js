@@ -243,11 +243,18 @@ export async function signUp(email, password, displayName) {
   }
 
   let { data: profile, error: profileErr } = await createProfile(data.user.id, displayName, discriminator);
-  // Retry once on unique constraint violation (private profile had same discriminator)
   if (profileErr?.code === '23505') {
-    const retryDisc = await generateDiscriminator(displayName);
-    if (retryDisc) {
-      ({ data: profile, error: profileErr } = await createProfile(data.user.id, displayName, retryDisc));
+    // Profile already exists for this user_id — fetch it instead of failing
+    const { data: existingProfile } = await fetchProfile(data.user.id);
+    if (existingProfile) {
+      profile = existingProfile;
+      profileErr = null;
+    } else {
+      // Might be a discriminator collision — retry with a new one
+      const retryDisc = await generateDiscriminator(displayName);
+      if (retryDisc) {
+        ({ data: profile, error: profileErr } = await createProfile(data.user.id, displayName, retryDisc));
+      }
     }
   }
   if (profileErr) {
