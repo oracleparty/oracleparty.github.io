@@ -779,6 +779,125 @@ function _shuffle(arr) {
 }
 
 /**
+ * Fetch all open-format questions regardless of category (for "All Questions" wild-card mode).
+ */
+export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserIds = []) {
+  const fetchCount = Math.min(500, Math.max((limit + excludeIds.length) * 5, 100));
+  const { data, error } = await supabase
+    .from('questions')
+    .select('*')
+    .eq('format', 'open')
+    .limit(fetchCount);
+
+  if (error) {
+    console.error('[Supabase] fetchAllOpenQuestions failed:', error.message);
+    return [];
+  }
+
+  const excludeSet = new Set(excludeIds);
+  const available = excludeSet.size > 0 ? data.filter(q => !excludeSet.has(q.id)) : [...data];
+
+  if (available.length === 0) {
+    console.warn('[Supabase] All questions excluded, falling back to unfiltered pool');
+    return _shuffle(data).slice(0, limit);
+  }
+
+  if (playerUserIds.length === 0) {
+    return _shuffle(available).slice(0, limit);
+  }
+
+  // Smart selection (same logic as fetchQuestionsByCategory)
+  const history = await fetchQuestionHistoryForUsers(playerUserIds);
+  const histMap = {};
+  for (const h of history) {
+    if (!histMap[h.question_id]) histMap[h.question_id] = { seenBy: new Set(), correctBy: new Set(), wrongBy: new Set(), lastSeen: 0 };
+    const e = histMap[h.question_id];
+    e.seenBy.add(h.user_id);
+    if (h.times_correct > 0) e.correctBy.add(h.user_id); else e.wrongBy.add(h.user_id);
+    e.lastSeen = Math.max(e.lastSeen, new Date(h.last_seen_at).getTime());
+  }
+
+  const loggedInCount = playerUserIds.length;
+  const fresh = [], redemption = [], seenMixed = [], mastered = [];
+  for (const q of available) {
+    const h = histMap[q.id];
+    if (!h || h.seenBy.size === 0) fresh.push(q);
+    else if (h.seenBy.size >= loggedInCount && h.correctBy.size >= loggedInCount) mastered.push(q);
+    else if (h.wrongBy.size > 0) redemption.push(q);
+    else seenMixed.push(q);
+  }
+
+  seenMixed.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
+  mastered.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
+  _shuffle(fresh);
+  _shuffle(redemption);
+
+  const selected = [];
+  const selectedIds = new Set();
+  let freshIdx = 0, redemptionIdx = 0, seenIdx = 0, masteredIdx = 0;
+  for (let i = 0; i < limit; i++) {
+    const redemptionChance = 1 - Math.pow(0.95, loggedInCount);
+    if (redemptionIdx < redemption.length && Math.random() < redemptionChance) {
+      selected.push(redemption[redemptionIdx]); selectedIds.add(redemption[redemptionIdx].id); redemptionIdx++; continue;
+    }
+    if (freshIdx < fresh.length) { selected.push(fresh[freshIdx]); selectedIds.add(fresh[freshIdx].id); freshIdx++; continue; }
+    if (seenIdx < seenMixed.length) { selected.push(seenMixed[seenIdx]); selectedIds.add(seenMixed[seenIdx].id); seenIdx++; continue; }
+    if (masteredIdx < mastered.length) { selected.push(mastered[masteredIdx]); selectedIds.add(mastered[masteredIdx].id); masteredIdx++; continue; }
+    const unused = data.filter(q => !selectedIds.has(q.id));
+    if (unused.length > 0) { const q = unused[Math.floor(Math.random() * unused.length)]; selected.push(q); selectedIds.add(q.id); }
+  }
+  return selected;
+}
+
+/**
+ * Fetch questions that are EXCLUSIVELY in wild-card (no other categories).
+ * These are the ~19 weird, uncategorizable questions.
+ */
+export async function fetchExclusiveWildCardQuestions(limit, excludeIds = []) {
+  // categories = '{"wild-card"}' means ONLY wild-card, no other categories
+  const { data, error } = await supabase
+    .from('questions')
+    .select('*')
+    .eq('format', 'open')
+    .eq('categories', '{wild-card}')
+    .limit(200);
+
+  if (error) {
+    console.error('[Supabase] fetchExclusiveWildCardQuestions failed:', error.message);
+    return [];
+  }
+
+  const excludeSet = new Set(excludeIds);
+  const available = excludeSet.size > 0 ? data.filter(q => !excludeSet.has(q.id)) : [...data];
+  return _shuffle(available.length > 0 ? available : data).slice(0, limit);
+}
+
+/**
+ * Fetch question count for "All Questions" wild-card mode (all open-format questions).
+ */
+export async function fetchAllOpenQuestionCount() {
+  const { count, error } = await supabase
+    .from('questions')
+    .select('id', { count: 'exact', head: true })
+    .eq('format', 'open');
+  if (error) { console.error('[Supabase] fetchAllOpenQuestionCount failed:', error.message); return 0; }
+  return count || 0;
+}
+
+/**
+ * Fetch question count for "True Wild Card" mode (exclusively wild-card questions).
+ */
+export async function fetchExclusiveWildCardCount() {
+  const { count, error } = await supabase
+    .from('questions')
+    .select('id', { count: 'exact', head: true })
+    .eq('format', 'open')
+    .eq('categories', '{wild-card}');
+  if (error) { console.error('[Supabase] fetchExclusiveWildCardCount failed:', error.message); return 0; }
+  return count || 0;
+}
+
+/**
  * Fetch question history for multiple users.
  * Returns array of { user_id, question_id, times_seen, times_correct, last_seen_at }.
  */

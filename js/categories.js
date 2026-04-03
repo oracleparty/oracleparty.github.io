@@ -16,7 +16,11 @@ export const CATEGORY_META = {
     { key: 'space', icon: '\uD83E\uDE90', label: 'Space' },
     { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
-  'nature':           { icon: '\uD83C\uDF3F', label: 'Nature' },
+  'nature':           { icon: '\uD83C\uDF3F', label: 'Nature', subcategories: [
+    { key: 'animals', icon: '\uD83D\uDC3E', label: 'Animals' },
+    { key: 'plants', icon: '\uD83C\uDF31', label: 'Plants' },
+    { key: 'environment', icon: '\uD83C\uDF0D', label: 'Environment' },
+  ]},
   'arts-literature':  { icon: '\uD83D\uDCDC', label: 'Arts & Literature', subcategories: [
     { key: 'literature', icon: '\uD83D\uDCDA', label: 'Literature' },
     { key: 'visual-arts', icon: '\uD83C\uDFA8', label: 'Visual Arts' },
@@ -52,7 +56,10 @@ export const CATEGORY_META = {
     ]},
     { key: 'natural', icon: '\uD83C\uDFD4\uFE0F', label: 'Natural' },
   ]},
-  'technology':       { icon: '\u26A1', label: 'Technology' },
+  'technology':       { icon: '\u26A1', label: 'Technology', subcategories: [
+    { key: 'computing', icon: '\uD83D\uDCBB', label: 'Computing' },
+    { key: 'inventions', icon: '\uD83D\uDCA1', label: 'Inventions' },
+  ]},
   'sports':           { icon: '\uD83C\uDFC6', label: 'Sports', subcategories: [
     { key: 'team-sports', icon: '\u26BD', label: 'Team Sports' },
     { key: 'individual-sports', icon: '\uD83C\uDFCB\uFE0F', label: 'Individual Sports' },
@@ -65,10 +72,17 @@ export const CATEGORY_META = {
     { key: 'ingredients', icon: '\uD83E\uDDC5', label: 'Ingredients' },
     { key: 'beverages', icon: '\uD83E\uDD64', label: 'Beverages' },
     { key: 'brands-restaurants', icon: '\uD83C\uDF54', label: 'Brands & Restaurants' },
+    { key: 'language', icon: '\uD83D\uDDE3\uFE0F', label: 'Language' },
     { key: 'misc', icon: '\uD83D\uDD2C', label: 'Misc' },
   ]},
-  'logic':            { icon: '\uD83E\uDDE9', label: 'Logic' },
-  'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card' }
+  'logic':            { icon: '\uD83E\uDDE9', label: 'Logic', subcategories: [
+    { key: 'math', icon: '\u2795', label: 'Math' },
+    { key: 'puzzles-strategy', icon: '\u265F\uFE0F', label: 'Puzzles & Strategy' },
+  ]},
+  'wild-card':        { icon: '\uD83C\uDFB2', label: 'Wild Card', wildCardOptions: [
+    { key: '__all_questions__', icon: '\uD83C\uDF0E', label: 'All Questions', hint: 'Every open-format question in the database' },
+    { key: '__true_wild_card__', icon: '\uD83C\uDFB2', label: 'True Wild Card', hint: 'Only the weird, uncategorizable ones' },
+  ]}
 };
 
 /**
@@ -101,6 +115,12 @@ export function resolveCategoryLabel(category, subcategoryKey) {
   if (!meta) return category;
   if (!subcategoryKey) return meta.label;
 
+  // Wild-card special options
+  if (meta.wildCardOptions) {
+    const opt = meta.wildCardOptions.find(o => o.key === subcategoryKey);
+    if (opt) return `${meta.label} \u2014 ${opt.label}`;
+  }
+
   function search(nodes, path) {
     for (const node of nodes) {
       if (node.key === subcategoryKey) return [...path, node.label];
@@ -123,6 +143,11 @@ export function resolveSubcategoryIcon(category, subcategoryKey) {
   const meta = CATEGORY_META[category];
   if (!meta) return '?';
   if (!subcategoryKey) return meta.icon;
+  // Wild-card special options
+  if (meta.wildCardOptions) {
+    const opt = meta.wildCardOptions.find(o => o.key === subcategoryKey);
+    if (opt) return opt.icon;
+  }
   const node = findSubcategoryNode(meta, subcategoryKey);
   return node ? node.icon : meta.icon;
 }

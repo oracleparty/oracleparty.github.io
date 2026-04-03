@@ -51,7 +51,9 @@ import {
   fetchTitleUnlocks,
   upsertTitleUnlock,
   toggleMessageHeart,
-  demoteCohost
+  demoteCohost,
+  fetchAllOpenQuestions,
+  fetchExclusiveWildCardQuestions
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { evaluateUnlocks, hasReachedApprentice } from './titles.js';
@@ -433,7 +435,15 @@ async function initHostGame() {
   const playerUserIds = state.players.map(p => p.user_id).filter(Boolean);
 
   // Fetch totalQuestions + 1 (extra for final wager round) with smart selection
-  const questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, state.room.subcategory || null);
+  const subcategory = state.room.subcategory || null;
+  let questions;
+  if (subcategory === '__all_questions__') {
+    questions = await fetchAllOpenQuestions(state.totalQuestions + 1, excludeIds, playerUserIds);
+  } else if (subcategory === '__true_wild_card__') {
+    questions = await fetchExclusiveWildCardQuestions(state.totalQuestions + 1, excludeIds);
+  } else {
+    questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, subcategory);
+  }
 
   if (questions.length === 0) {
     $('#game-loading .game-loading__text').textContent = 'No questions found for this category.';

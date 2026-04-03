@@ -858,6 +858,13 @@ body::after {
   font-weight: 600;
   color: var(--color-primary);
 }
+.subcategory-row__hint {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+  padding: 0 var(--space-md) var(--space-sm) calc(1.5rem + var(--space-md) + var(--space-md));
+  font-family: var(--font-body);
+}
 
 /* --- Category Sheet Rows (bottom sheet drill-down) --- */
 .category-sheet-row {

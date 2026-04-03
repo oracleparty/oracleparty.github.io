@@ -28,7 +28,9 @@ import {
   createPresenceChannel,
   fetchPlayerStatsBatch,
   fetchQuestionCount,
-  toggleMessageHeart
+  toggleMessageHeart,
+  fetchAllOpenQuestionCount,
+  fetchExclusiveWildCardCount
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
@@ -702,6 +704,12 @@ function attachSettingsListeners() {
       return;
     }
 
+    // Wild-card special options — drill in
+    if (meta?.wildCardOptions?.length) {
+      renderLobbySheetWildCardOptions(catName, meta);
+      return;
+    }
+
     // Category without subs — select directly
     handleSettingChange('category', catName);
     renderSettingsCategories();
@@ -1050,13 +1058,13 @@ function openLobbyCategorySheet() {
 
   const allCats = Object.entries(CATEGORY_META);
   list.innerHTML = allCats.map(([name, meta]) => {
-    const hasSubs = meta.subcategories?.length > 0;
+    const hasDrill = meta.subcategories?.length > 0 || meta.wildCardOptions?.length > 0;
     const isSelected = name === room.category;
     return `
       <div class="category-sheet-row${isSelected ? ' selected' : ''}" data-category="${name}">
         <span class="category-sheet-row__icon">${meta.icon}</span>
         <span class="category-sheet-row__label">${meta.label}</span>
-        ${hasSubs ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
+        ${hasDrill ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
     `;
   }).join('');
@@ -1095,6 +1103,20 @@ function renderLobbySheetLevel(catName, items, title, parentKey) {
     const el = list.querySelector(`[data-sub-count="${s.key}"]`);
     if (el) el.textContent = `${count} Qs`;
   });
+}
+
+function renderLobbySheetWildCardOptions(catName, meta) {
+  const list = $('#category-sheet-list');
+  lobbySheetNavStack.push({ catName, items: null, title: meta.label, parentKey: null, isWildCard: true });
+  list.innerHTML = `
+    <div class="category-sheet-back" data-action="back">\u2190 ${meta.label}</div>
+    ${meta.wildCardOptions.map(opt => `
+      <div class="category-sheet-row" data-category="${catName}" data-subcategory="${opt.key}">
+        <span class="category-sheet-row__icon">${opt.icon}</span>
+        <span class="category-sheet-row__label">${opt.label}</span>
+      </div>
+    `).join('')}
+  `;
 }
 
 function lobbySheetDrillBack() {

@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens } from './utils.js';
-import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
@@ -173,6 +173,40 @@ function drillBack() {
   }
 }
 
+// --- Wild-card special options (browse view) ---
+function renderWildCardOptions(catName, cat, meta) {
+  const catList = $('#category-list');
+  const subView = $('#subcategory-view');
+  const titleEl = $('#subcategory-view__title');
+  const options = $('#subcategory-view__options');
+
+  navStack.push({ catName, items: null, title: meta.label, parentKey: null, icon: meta.icon, isWildCard: true });
+  titleEl.textContent = `${meta.icon} ${meta.label}`;
+
+  options.innerHTML = meta.wildCardOptions.map(opt => `
+    <div class="subcategory-row" data-category="${catName}" data-subcategory="${opt.key}">
+      <span class="subcategory-row__icon">${opt.icon}</span>
+      <span class="subcategory-row__label">${opt.label}</span>
+      <span class="subcategory-row__count" data-wc-count="${opt.key}"></span>
+    </div>
+    <p class="subcategory-row__hint">${opt.hint}</p>
+  `).join('');
+
+  catList.style.display = 'none';
+  subView.style.display = '';
+  document.querySelector('#category-screen')?.scrollTo(0, 0);
+
+  // Async-load counts
+  fetchAllOpenQuestionCount().then(count => {
+    const el = options.querySelector('[data-wc-count="__all_questions__"]');
+    if (el) el.textContent = `${count} Qs`;
+  });
+  fetchExclusiveWildCardCount().then(count => {
+    const el = options.querySelector('[data-wc-count="__true_wild_card__"]');
+    if (el) el.textContent = `${count} Qs`;
+  });
+}
+
 // --- Category bottom sheet (for settings screen) ---
 function openCategorySheet() {
   sheetNavStack = []; // Reset sheet navigation
@@ -181,13 +215,13 @@ function openCategorySheet() {
 
   list.innerHTML = categories.map(cat => {
     const meta = CATEGORY_META[cat.name] || { icon: '?', label: cat.name };
-    const hasSubs = meta.subcategories?.length > 0;
+    const hasDrill = meta.subcategories?.length > 0 || meta.wildCardOptions?.length > 0;
     const isSelected = selectedCategory?.name === cat.name;
     return `
       <div class="category-sheet-row${isSelected ? ' selected' : ''}" data-category="${cat.name}">
         <span class="category-sheet-row__icon">${meta.icon}</span>
         <span class="category-sheet-row__label">${meta.label}</span>
-        ${hasSubs ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
+        ${hasDrill ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
     `;
   }).join('');
@@ -228,6 +262,20 @@ function sheetDrillBack() {
     const prev = sheetNavStack[sheetNavStack.length - 1];
     renderSheetLevel(prev.catName, prev.items, prev.title, prev.parentKey);
   }
+}
+
+function renderSheetWildCardOptions(catName, meta) {
+  const list = $('#category-sheet-list');
+  sheetNavStack.push({ catName, items: null, title: meta.label, parentKey: null, isWildCard: true });
+  list.innerHTML = `
+    <div class="category-sheet-back" data-action="back">\u2190 ${meta.label}</div>
+    ${meta.wildCardOptions.map(opt => `
+      <div class="category-sheet-row" data-category="${catName}" data-subcategory="${opt.key}">
+        <span class="category-sheet-row__icon">${opt.icon}</span>
+        <span class="category-sheet-row__label">${opt.label}</span>
+      </div>
+    `).join('')}
+  `;
 }
 
 // --- Attach all event listeners ---
@@ -276,6 +324,13 @@ function attachListeners() {
     if (meta?.subcategories?.length) {
       navStack = [];
       drillIntoLevel(catName, meta.subcategories, meta.label, null, meta.icon);
+      return;
+    }
+
+    // Wild-card special options
+    if (meta?.wildCardOptions?.length) {
+      navStack = [];
+      renderWildCardOptions(catName, cat, meta);
       return;
     }
 
@@ -347,6 +402,12 @@ function attachListeners() {
     // Top-level category with subs — drill into subcategory list
     if (meta?.subcategories?.length) {
       sheetDrillIn(catName, meta.subcategories, meta.label, null);
+      return;
+    }
+
+    // Wild-card special options in sheet
+    if (meta?.wildCardOptions?.length) {
+      renderSheetWildCardOptions(catName, meta);
       return;
     }
 
