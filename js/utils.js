@@ -188,6 +188,15 @@ export function showToast(message, type = 'info', duration = 3000) {
 // Page Transitions
 // ============================================
 
+// Restore visibility when returning via bfcache (browser back button).
+// Without this, pages stay invisible after navigateWithFade sets opacity to 0.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) {
+    document.body.classList.remove('page-fade-out');
+    document.body.style.opacity = '1';
+  }
+});
+
 /**
  * Navigate to a URL with a fade-out transition.
  * @param {string} url - Destination URL
