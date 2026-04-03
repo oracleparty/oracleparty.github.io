@@ -1686,9 +1686,6 @@ body::after {
   flex-shrink: 0;
   padding: var(--space-sm) var(--space-lg);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
-  /* Must sit above the chat-drawer (z-index: 49) so the Start/Ready button is never covered */
-  position: relative;
-  z-index: 50;
 }
 
 .lobby-category {
@@ -1875,9 +1872,6 @@ body::after {
   padding: var(--space-md) var(--space-lg);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
   background: var(--color-bg);
-  /* Must sit above the chat-drawer (z-index: 49) */
-  position: relative;
-  z-index: 50;
 }
 
 .game-footer:empty {
@@ -2548,14 +2542,10 @@ body::after {
 
 /* --- Host Settings Gear (floating, host only) --- */
 .host-settings-gear {
-  position: fixed;
-  top: 10px;
-  right: var(--space-md);
-  z-index: 51;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: none;
   border: 1px solid var(--color-surface-light);
   color: var(--color-primary);
   display: flex;
@@ -2564,7 +2554,8 @@ body::after {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: opacity 0.2s, transform 0.15s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+  padding: 0;
 }
 .host-settings-gear:active {
   transform: scale(0.92);
@@ -3194,28 +3185,21 @@ body::after {
   animation: chat-bar-flash 0.8s ease;
 }
 
-/* --- Chat Drawer (expanded overlay below bar) --- */
+/* --- Chat Drawer (inline, expands within game-body) --- */
 .chat-drawer {
-  position: fixed;
-  top: var(--chat-drawer-top, 96px);
-  left: 0;
-  right: 0;
-  bottom: var(--chat-drawer-bottom, 80px);
+  flex-shrink: 0;
+  max-height: 0;
+  overflow: hidden;
   background: var(--color-bg-deep);
   border-bottom: 1px solid var(--color-surface-light);
-  z-index: 49;
   display: flex;
   flex-direction: column;
-  opacity: 0;
-  transform: translateY(-8px);
-  pointer-events: none;
-  transition: opacity 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+  position: relative;
+  transition: max-height 0.25s var(--ease-out);
 }
 
 .chat-drawer.open {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
+  max-height: 40vh;
 }
 
 .chat-drawer__close {
@@ -3230,7 +3214,7 @@ body::after {
   font-size: var(--text-lg);
   color: var(--color-text-dim);
   cursor: pointer;
-  z-index: 9999;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3240,16 +3224,9 @@ body::after {
   transform: scale(0.9);
 }
 
-/* Backdrop behind chat drawer — tapping it closes the chat */
+/* Backdrop behind chat drawer (legacy — no longer used) */
 .chat-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 48;
-  background: transparent;
   display: none;
-}
-.chat-backdrop.active {
-  display: block;
 }
 
 .chat-drawer__messages {

@@ -779,18 +779,8 @@ async function ensureCurrentPlayer() {
 // --- Chat Bar + Drawer ---
 
 function repositionChatBar() {
-  const bar = $('#chat-bar');
-  const drawer = $('#chat-drawer');
-  const footer = document.querySelector('.lobby-footer');
-
-  // Bar is static in flow — just position the drawer overlay
-  const barRect = bar.getBoundingClientRect();
-  drawer.style.setProperty('--chat-drawer-top', `${barRect.bottom}px`);
-
-  if (footer) {
-    const footerH = footer.offsetHeight;
-    drawer.style.setProperty('--chat-drawer-bottom', `${footerH > 0 ? footerH : 0}px`);
-  }
+  // Chat drawer is now inline flex — no positioning needed.
+  // Kept as a no-op for call-site compatibility.
 }
 
 function toggleChatDrawer() {

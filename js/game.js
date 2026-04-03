@@ -3489,8 +3489,8 @@ function handleAnswerChange(payload) {
 // ============================================
 
 /**
- * Position the chat bar just below the active screen's header,
- * and the chat drawer between the bar and the footer.
+ * Move the chat bar + drawer into the active screen's game-body
+ * so they participate in the normal flex layout (no fixed overlay).
  */
 function repositionChatBar() {
   const activeScreen = document.querySelector('.screen.active');
@@ -3498,23 +3498,13 @@ function repositionChatBar() {
   const gameBody = activeScreen.querySelector('.game-body');
   if (!gameBody) return;
   const header = activeScreen.querySelector('.game-header');
-  const footer = activeScreen.querySelector('.game-footer');
   const bar = $('#chat-bar');
   const drawer = $('#chat-drawer');
 
-  // Move bar into game-body after header (static flow)
+  // Move bar + drawer into game-body after header (inline flex flow)
   if (header && bar.parentNode !== gameBody) {
     header.after(bar);
-  }
-
-  // Position drawer overlay below the bar
-  const barRect = bar.getBoundingClientRect();
-  drawer.style.setProperty('--chat-drawer-top', `${barRect.bottom}px`);
-  if (footer) {
-    const footerH = footer.offsetHeight;
-    drawer.style.setProperty('--chat-drawer-bottom', `${footerH > 0 ? footerH : 0}px`);
-  } else {
-    drawer.style.setProperty('--chat-drawer-bottom', '0px');
+    bar.after(drawer);
   }
 }
 
@@ -3529,27 +3519,15 @@ function showChatBar() {
     badge.classList.remove('hidden');
   }
 
-  // Position bar below the active screen's header, position drawer below bar
   repositionChatBar();
+  // Reposition after screen transition completes (DOM may not be ready yet)
   requestAnimationFrame(repositionChatBar);
-  setTimeout(repositionChatBar, 550);
-
-  // Watch for footer resize (content changes during reveals, scores, judging)
-  if (!state._footerResizeObserver) {
-    state._footerResizeObserver = new ResizeObserver(() => repositionChatBar());
-    const activeScreen = document.querySelector('.screen.active');
-    const footer = activeScreen?.querySelector('.game-footer');
-    if (footer) state._footerResizeObserver.observe(footer);
-    const header = activeScreen?.querySelector('.game-header');
-    if (header) state._footerResizeObserver.observe(header);
-  }
 }
 
 function hideChatBar() {
+  closeChatDrawer();
   $('#chat-bar').classList.add('hidden');
   setHonkMuted(true);
-  // Don't close the drawer — let players finish typing.
-  // The drawer has its own close button and backdrop tap.
 }
 
 function attachChatListeners() {
@@ -3560,14 +3538,11 @@ function attachChatListeners() {
   });
   $('#chat-drawer-input').addEventListener('input', notifyTyping);
 
-  // Close button inside the drawer — always visible, z-index: 9999
+  // Close button inside the drawer
   $('#chat-drawer-close').addEventListener('click', (e) => {
     e.stopPropagation();
     closeChatDrawer();
   });
-
-  // Backdrop — tapping outside the chat area closes it
-  $('#chat-backdrop').addEventListener('click', closeChatDrawer);
 
   // Heart button click handler (event delegation on message container)
   $('#chat-drawer-messages').addEventListener('click', async (e) => {
@@ -3597,9 +3572,8 @@ function toggleChatDrawer() {
     state.chatOpen = true;
     $('#chat-bar').classList.add('open');
     $('#chat-drawer').classList.add('open');
-    $('#chat-backdrop').classList.add('active');
     scrollGameChatToBottom();
-    setTimeout(() => $('#chat-drawer-input').focus(), 220);
+    setTimeout(() => $('#chat-drawer-input').focus(), 300);
     state.unreadCount = 0;
     const badge = $('#chat-bar-badge');
     badge.textContent = '0';
@@ -3629,7 +3603,6 @@ function closeChatDrawer() {
   state.chatOpen = false;
   $('#chat-bar').classList.remove('open');
   $('#chat-drawer').classList.remove('open');
-  $('#chat-backdrop').classList.remove('active');
 }
 
 async function loadChatMessages() {
@@ -4231,14 +4204,16 @@ async function syncToCurrentState() {
 let _hostSettingsConfirmTimer = null;
 
 function initHostSettingsPanel() {
-  const gearBtn = $('#btn-host-settings');
   const sheet = $('#host-settings-sheet');
   const backdrop = $('#host-settings-backdrop');
   const returnBtn = $('#btn-return-to-lobby');
 
-  if (!gearBtn || !sheet) return;
+  if (!sheet) return;
 
-  gearBtn.onclick = () => openHostSettingsSheet();
+  // Attach click handler to all gear buttons (one per screen header)
+  document.querySelectorAll('.host-settings-gear').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); openHostSettingsSheet(); };
+  });
   backdrop.onclick = () => closeHostSettingsSheet();
 
   // Toggle handlers for in-game settings
@@ -4381,13 +4356,11 @@ async function executeReturnToLobby() {
 
 function showHostSettingsGear() {
   if (!state.room?.isHost) return;
-  const btn = $('#btn-host-settings');
-  if (btn) btn.classList.remove('hidden');
+  document.querySelectorAll('.host-settings-gear').forEach(btn => btn.classList.remove('hidden'));
 }
 
 function hideHostSettingsGear() {
-  const btn = $('#btn-host-settings');
-  if (btn) btn.classList.add('hidden');
+  document.querySelectorAll('.host-settings-gear').forEach(btn => btn.classList.add('hidden'));
 }
 
 // ============================================
@@ -4397,10 +4370,7 @@ function hideHostSettingsGear() {
 function cleanup() {
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
-  if (state._footerResizeObserver) {
-    state._footerResizeObserver.disconnect();
-    state._footerResizeObserver = null;
-  }
+  // (ResizeObserver removed — chat is now inline flex, no positioning needed)
   destroyHonkSystem();
   destroyTypingIndicator();
   if (state.timerId) {
