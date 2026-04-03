@@ -279,7 +279,7 @@ function attachListeners() {
   btnCopyCode.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(room.code);
-      const hint = btnCopyCode.querySelector('.lobby-room__code-hint');
+      const hint = btnCopyCode.querySelector('.lobby-room__card-hint');
       if (hint) hint.textContent = 'copied!';
       btnCopyCode.classList.add('copied');
       setTimeout(() => {

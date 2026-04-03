@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403k">
+  <link rel="stylesheet" href="css/style.css?v=20260403m">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body>
@@ -26,15 +26,13 @@
         <button id="btn-leave" class="leave-btn">Leave</button>
       </div>
 
-      <!-- Room identity: code is the hero -->
+      <!-- Room identity card -->
       <div class="lobby-room">
-        <p class="lobby-room__category">
-          <span id="lobby-category-icon" class="lobby-room__cat-icon"></span>
-          <span id="lobby-category"></span>
-        </p>
-        <button id="btn-copy-code" class="lobby-room__code" aria-label="Copy room code">
-          <span id="lobby-code" class="lobby-room__code-text"></span>
-          <span class="lobby-room__code-hint">tap to copy</span>
+        <button id="btn-copy-code" class="lobby-room__card" aria-label="Copy room code">
+          <span id="lobby-category-icon" class="lobby-room__card-icon"></span>
+          <span id="lobby-category" class="lobby-room__card-label"></span>
+          <span id="lobby-code" class="lobby-room__card-code"></span>
+          <span class="lobby-room__card-hint">tap to copy</span>
         </button>
       </div>
 

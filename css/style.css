@@ -1713,76 +1713,85 @@ body::after {
   padding: 2px var(--space-sm);
 }
 
-/* ---- Room identity ---- */
+/* ---- Room identity card ---- */
 .lobby-room {
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  justify-content: center;
   padding: 0 var(--space-lg) var(--space-sm);
 }
 
-.lobby-room__category {
+.lobby-room__card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  width: 100%;
+  max-width: 280px;
+  padding: var(--space-sm) var(--space-lg);
+  background: linear-gradient(
+    160deg,
+    rgba(198, 138, 46, 0.08) 0%,
+    var(--color-surface) 50%,
+    rgba(198, 138, 46, 0.04) 100%
+  );
+  border: 1.5px solid rgba(198, 138, 46, 0.2);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 12px rgba(198, 138, 46, 0.06);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.lobby-room__card:active {
+  border-color: rgba(198, 138, 46, 0.4);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(198, 138, 46, 0.1);
+}
+
+.lobby-room__card-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.lobby-room__card-label {
   font-family: var(--font-heading);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 500;
   color: var(--color-text-dim);
-  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
-.lobby-room__cat-icon {
-  font-size: var(--text-base);
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.lobby-room__code {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--space-xs) var(--space-md);
-  border-radius: var(--radius-md);
-  -webkit-tap-highlight-color: transparent;
-  transition: background var(--duration-fast) var(--ease-out);
-}
-
-.lobby-room__code:active {
-  background: var(--color-primary-glow);
-}
-
-.lobby-room__code-text {
+.lobby-room__card-code {
   font-family: var(--font-display);
-  font-size: var(--text-4xl);
+  font-size: var(--text-3xl);
   font-weight: 800;
   color: var(--color-primary);
   letter-spacing: 0.3em;
   text-indent: 0.3em;
-  text-shadow: 0 0 30px var(--color-primary-glow);
+  text-shadow: 0 0 24px var(--color-primary-glow);
   line-height: 1;
 }
 
-.lobby-room__code-hint {
+.lobby-room__card-hint {
   font-family: var(--font-heading);
   font-size: 0.5rem;
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  opacity: 0.7;
+  opacity: 0.6;
   transition: color var(--duration-fast), opacity var(--duration-fast);
 }
 
-.lobby-room__code.copied .lobby-room__code-hint {
+.lobby-room__card.copied .lobby-room__card-hint {
   color: var(--color-success);
   opacity: 1;
 }
