@@ -56,9 +56,10 @@ function setCachedCategories(data) {
 async function init() {
   document.body.style.opacity = '1';
 
-  // 1) Instant render from cache (no skeletons on return visits)
+  // 1) Instant render from cache OR show skeletons
   const cached = getCachedCategories();
-  if (cached && cached.length) {
+  const hadCache = cached && cached.length > 0;
+  if (hadCache) {
     categories = cached;
     renderCategories(categories, categoryPlayCounts);
   } else {
@@ -72,7 +73,7 @@ async function init() {
     console.error('[Host] Auth error:', err);
   }
 
-  // 3) Fetch categories + play counts + mastery all in parallel, single render at end
+  // 3) Fetch categories + play counts + mastery all in parallel
   const authUser = getCurrentUser();
   if (authUser?.user?.id) _isLoggedIn = true;
 
@@ -94,12 +95,18 @@ async function init() {
     setCachedCategories(freshCategories);
   }
 
-  // 5) Single re-render with all data (or show error)
-  if (categories.length) {
-    renderCategories(categories, categoryPlayCounts);
+  // 5) Render or patch
+  if (!hadCache) {
+    // First visit — replace skeletons with full render
+    if (categories.length) {
+      renderCategories(categories, categoryPlayCounts);
+    } else {
+      categoryGrid.innerHTML = '<div class="empty-state"><p class="empty-state__text">Failed to load categories</p><p class="empty-state__subtext">Check your connection and refresh</p></div>';
+      showToast('Failed to load categories', 'error');
+    }
   } else {
-    categoryGrid.innerHTML = '<div class="empty-state"><p class="empty-state__text">Failed to load categories</p><p class="empty-state__subtext">Check your connection and refresh</p></div>';
-    showToast('Failed to load categories', 'error');
+    // Return visit — cards already visible from cache. Patch in-place to avoid blink.
+    patchCategoryCards(categoryPlayCounts);
   }
 
   // Always attach listeners even if data fetch fails
@@ -153,6 +160,43 @@ function renderCategories(cats, playCounts = {}) {
   if (subView) subView.style.display = 'none';
   const catList = $('#category-list');
   if (catList) catList.style.display = '';
+}
+
+/**
+ * Patch existing category cards in-place (no DOM rebuild, no blink).
+ * Updates play counts, mastery rings, and tier glow on cards already in the grid.
+ */
+function patchCategoryCards(playCounts = {}) {
+  const cards = $$('.category-card', categoryGrid);
+  for (const card of cards) {
+    const catName = card.dataset.category;
+    if (!catName) continue;
+    // Update play count text
+    const playsEl = card.querySelector('.category-card__plays');
+    if (playsEl) playsEl.textContent = `${(playCounts[catName] || 0).toLocaleString()} plays`;
+    // Update mastery ring
+    if (_isLoggedIn) {
+      const cat = categories.find(c => c.name === catName);
+      const total = cat?.count || 1;
+      const mastered = _masteryCounts[catName] || 0;
+      const pct = Math.round((mastered / total) * 100);
+      let ring = card.querySelector('.category-card__ring');
+      if (!ring) {
+        // Add ring if it didn't exist in the cached render
+        const wrap = card.querySelector('.category-card__icon-wrap');
+        if (wrap) {
+          ring = document.createElement('div');
+          ring.className = 'category-card__ring';
+          wrap.insertBefore(ring, wrap.firstChild);
+        }
+      }
+      if (ring) ring.style.setProperty('--mastery-pct', pct);
+      // Update tier glow
+      const tier = pct >= 100 ? 'complete' : pct >= 75 ? 'high' : '';
+      if (tier) card.dataset.masteryTier = tier;
+      else delete card.dataset.masteryTier;
+    }
+  }
 }
 
 // --- Multi-level subcategory drill-in (nav stack) ---
