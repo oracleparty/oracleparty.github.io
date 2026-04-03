@@ -85,16 +85,27 @@ function renderCategories(cats, playCounts = {}) {
         </div>
       </div>
     ` : '';
+    // Wild-card card shows a placeholder count — replaced with total DB count async
+    const countId = cat.name === 'wild-card' ? 'id="wc-card-count"' : '';
+    const displayCount = cat.count;
     return `
       <div class="category-card" data-category="${cat.name}">
         <div class="category-card__icon">${meta.icon}</div>
         <div class="category-card__name">${meta.label}</div>
-        <div class="category-card__count">${cat.count} questions</div>
+        <div class="category-card__count" ${countId}>${displayCount} questions</div>
         <div class="category-card__plays">${plays.toLocaleString()} plays</div>
         ${masteryHtml}
       </div>
     `;
   }).join('');
+
+  // Replace wild-card card count with total open question count
+  const wcCountEl = document.getElementById('wc-card-count');
+  if (wcCountEl) {
+    fetchAllOpenQuestionCount().then(total => {
+      wcCountEl.textContent = `${total} questions`;
+    });
+  }
 
   // Collapse subcategory view when categories re-render (e.g. search)
   const subView = $('#subcategory-view');
