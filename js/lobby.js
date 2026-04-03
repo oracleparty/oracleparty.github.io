@@ -962,7 +962,9 @@ async function handleStartGame() {
 function updateCategoryDisplay() {
   const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
   const label = resolveCategoryLabel(room.category, room.subcategory);
-  lobbyCategory.textContent = `${meta.icon} ${label}`;
+  const iconEl = $('#lobby-category-icon');
+  if (iconEl) iconEl.textContent = meta.icon;
+  lobbyCategory.textContent = label;
 }
 
 function openSettingsModal() {
