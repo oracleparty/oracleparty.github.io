@@ -271,6 +271,50 @@
   </div>
 
   <!-- ==============================
+       Host Settings Gear + Bottom Sheet (Host Only)
+       ============================== -->
+  <button id="btn-host-settings" class="host-settings-gear hidden" aria-label="Game settings">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+
+  <div id="host-settings-sheet" class="bottom-sheet">
+    <div id="host-settings-backdrop" class="bottom-sheet__backdrop"></div>
+    <div class="bottom-sheet__panel">
+      <div class="bottom-sheet__handle"></div>
+      <div class="bottom-sheet__title">Game Settings</div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Auto-Proceed</div>
+        <div class="toggle-group" data-game-setting="autoProceed">
+          <button class="toggle-option" data-value="0">Off</button>
+          <button class="toggle-option" data-value="8">Slow</button>
+          <button class="toggle-option" data-value="4">Fast</button>
+        </div>
+        <p class="settings-group__hint">Auto-advances between rounds after answers are revealed.</p>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group__label">Question Timer</div>
+        <div class="toggle-group" data-game-setting="questionTimer">
+          <button class="toggle-option" data-value="15">15s</button>
+          <button class="toggle-option" data-value="30">30s</button>
+          <button class="toggle-option" data-value="45">45s</button>
+          <button class="toggle-option" data-value="60">60s</button>
+        </div>
+        <p class="settings-group__hint">Applies starting from the next question.</p>
+      </div>
+
+      <div class="host-settings-divider"></div>
+
+      <button id="btn-return-to-lobby" class="btn btn-block btn-return-lobby">Return to Lobby</button>
+      <p class="settings-group__hint" style="text-align:center;">Ends the game and brings all players back.</p>
+    </div>
+  </div>
+
+  <!-- ==============================
        Score Edit Bottom Sheet (Host Only)
        ============================== -->
   <div id="score-edit-sheet" class="bottom-sheet">

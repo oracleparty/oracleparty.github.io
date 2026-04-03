@@ -2538,6 +2538,58 @@ body::after {
 }
 
 /* --- Question Browser Icon --- */
+
+/* --- Host Settings Gear (floating, host only) --- */
+.host-settings-gear {
+  position: fixed;
+  top: 10px;
+  right: var(--space-md);
+  z-index: 51;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-light);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.2s, transform 0.15s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.host-settings-gear:active {
+  transform: scale(0.92);
+}
+.host-settings-gear.hidden {
+  display: none;
+}
+
+/* --- Host Settings Bottom Sheet extras --- */
+.host-settings-divider {
+  height: 1px;
+  background: var(--color-surface-light);
+  margin: var(--space-md) 0;
+}
+.btn-return-lobby {
+  background: transparent;
+  border: 1.5px solid var(--color-danger);
+  color: var(--color-danger);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-return-lobby:active,
+.btn-return-lobby--confirm {
+  background: var(--color-danger);
+  color: #fff;
+}
+
 /* --- Bottom Sheet --- */
 .bottom-sheet {
   position: fixed;

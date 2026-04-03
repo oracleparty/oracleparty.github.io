@@ -375,6 +375,7 @@ async function init() {
 
   if (state.room.isHost) {
     await initHostGame();
+    initHostSettingsPanel();
   } else {
     await initPlayerGame();
   }
@@ -687,6 +688,10 @@ function _activateHostControlsForCurrentPhase() {
   }
 
   // difficulty_vote phase removed — no host controls needed for it
+
+  // Show host settings gear + init panel for new host
+  initHostSettingsPanel();
+  showHostSettingsGear();
 }
 
 // ============================================
@@ -704,11 +709,21 @@ function handleRoomChange(payload) {
   }
 
   if (!payload.new) return;
-  const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status, category, subcategory } = payload.new;
+  const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status, category, subcategory, question_timer, auto_proceed } = payload.new;
 
   // Sync category/subcategory if changed (host changed settings)
   if (category && state.room) state.room.category = category;
   if (subcategory !== undefined && state.room) state.room.subcategory = subcategory;
+
+  // Sync timer/auto-proceed if host changed mid-game
+  if (question_timer !== undefined && state.room?.settings) {
+    state.timerSeconds = Number(question_timer) || 30;
+    state.room.settings.questionTimer = state.timerSeconds;
+  }
+  if (auto_proceed !== undefined && state.room?.settings) {
+    state.autoProceedSeconds = Number(auto_proceed) || 0;
+    state.room.settings.autoProceed = state.autoProceedSeconds;
+  }
 
   // BUG 2 FIX: When room status changes to 'lobby', DON'T auto-navigate all players.
   // Instead show an in-page notification so players can choose when to return.
@@ -1077,6 +1092,7 @@ async function handlePhaseTransition(phase) {
 function showCountdownScreen() {
   _countdownActive = true;
   _deferredPhase = null;
+  hideHostSettingsGear();
 
   const currentScreen = document.querySelector('.screen.active');
   const countdownScreen = $('#countdown-screen');
@@ -1272,6 +1288,8 @@ function showQuestionScreen() {
     void questionScreen.offsetHeight;
     questionScreen.classList.add('active');
   }
+
+  showHostSettingsGear();
 
   if (isReconnect) {
     // Reconnect: skip sync buffer, resume timer from server timestamp
@@ -1701,6 +1719,8 @@ async function showRevealScreen() {
   } else {
     showChatBar();
   }
+
+  showHostSettingsGear();
 
   // If results were already revealed (reconnect), show them immediately
   if (state.resultsRevealed) {
@@ -2209,6 +2229,8 @@ async function showScoresScreen() {
     showChatBar();
   }
 
+  showHostSettingsGear();
+
   // Auto-animate scores for everyone (including host) — no manual trigger
   const btn = $('#btn-scores-action');
   btn.classList.add('hidden');
@@ -2519,6 +2541,8 @@ function showFinalWagerScreen() {
     _screenTransitioning = true;
     transitionScreens(currentScreen, fwScreen).finally(() => { _screenTransitioning = false; });
   }
+
+  showHostSettingsGear();
 }
 
 async function lockInFinalWager() {
@@ -2956,6 +2980,8 @@ async function showResultsScreen() {
   } else {
     showChatBar();
   }
+
+  showHostSettingsGear();
 
   // Button handlers
   $('#btn-play-again').onclick = handlePlayAgain;
@@ -4189,6 +4215,172 @@ async function syncToCurrentState() {
 }
 
 // ============================================
+// HOST SETTINGS PANEL (in-game gear icon)
+// ============================================
+
+let _hostSettingsConfirmTimer = null;
+
+function initHostSettingsPanel() {
+  const gearBtn = $('#btn-host-settings');
+  const sheet = $('#host-settings-sheet');
+  const backdrop = $('#host-settings-backdrop');
+  const returnBtn = $('#btn-return-to-lobby');
+
+  if (!gearBtn || !sheet) return;
+
+  gearBtn.onclick = () => openHostSettingsSheet();
+  backdrop.onclick = () => closeHostSettingsSheet();
+
+  // Toggle handlers for in-game settings
+  sheet.querySelectorAll('.toggle-group[data-game-setting]').forEach(group => {
+    group.querySelectorAll('.toggle-option').forEach(opt => {
+      opt.onclick = () => {
+        const key = group.dataset.gameSetting;
+        const value = opt.dataset.value;
+        // Update active state visually
+        group.querySelectorAll('.toggle-option').forEach(o => o.classList.toggle('active', o === opt));
+        handleGameSettingChange(key, value);
+      };
+    });
+  });
+
+  // Return to Lobby — double-tap confirmation
+  returnBtn.onclick = () => handleReturnToLobby();
+}
+
+function openHostSettingsSheet() {
+  const sheet = $('#host-settings-sheet');
+  if (!sheet) return;
+
+  // Sync toggle states from current settings
+  syncHostSettingsToggles();
+
+  sheet.classList.add('active');
+}
+
+function closeHostSettingsSheet() {
+  const sheet = $('#host-settings-sheet');
+  if (sheet) sheet.classList.remove('active');
+
+  // Reset return-to-lobby confirmation
+  resetReturnConfirm();
+}
+
+function syncHostSettingsToggles() {
+  const sheet = $('#host-settings-sheet');
+  if (!sheet) return;
+
+  sheet.querySelectorAll('.toggle-group[data-game-setting]').forEach(group => {
+    const key = group.dataset.gameSetting;
+    let currentValue;
+    if (key === 'autoProceed') {
+      currentValue = String(state.autoProceedSeconds || 0);
+    } else if (key === 'questionTimer') {
+      currentValue = String(state.timerSeconds || 30);
+    }
+    group.querySelectorAll('.toggle-option').forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.value === currentValue);
+    });
+  });
+}
+
+async function handleGameSettingChange(key, value) {
+  const numVal = Number(value);
+  const columnMap = {
+    autoProceed: 'auto_proceed',
+    questionTimer: 'question_timer'
+  };
+
+  // Update local state
+  if (key === 'autoProceed') {
+    state.autoProceedSeconds = numVal;
+  } else if (key === 'questionTimer') {
+    state.timerSeconds = numVal;
+  }
+
+  // Update room settings
+  if (state.room?.settings) {
+    state.room.settings[key] = numVal;
+  }
+
+  // Persist to sessionStorage
+  sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+
+  // Push to Supabase (triggers Realtime for other players)
+  const column = columnMap[key];
+  if (column) {
+    await updateGameState(state.room.id, { [column]: numVal });
+  }
+}
+
+function handleReturnToLobby() {
+  const btn = $('#btn-return-to-lobby');
+  if (!btn) return;
+
+  if (_hostSettingsConfirmTimer) {
+    // Second tap — confirmed
+    clearTimeout(_hostSettingsConfirmTimer);
+    _hostSettingsConfirmTimer = null;
+    executeReturnToLobby();
+  } else {
+    // First tap — show confirmation
+    btn.textContent = 'Tap again to confirm';
+    btn.classList.add('btn-return-lobby--confirm');
+    _hostSettingsConfirmTimer = setTimeout(() => {
+      resetReturnConfirm();
+    }, 3000);
+  }
+}
+
+function resetReturnConfirm() {
+  const btn = $('#btn-return-to-lobby');
+  if (btn) {
+    btn.textContent = 'Return to Lobby';
+    btn.classList.remove('btn-return-lobby--confirm');
+  }
+  if (_hostSettingsConfirmTimer) {
+    clearTimeout(_hostSettingsConfirmTimer);
+    _hostSettingsConfirmTimer = null;
+  }
+}
+
+async function executeReturnToLobby() {
+  closeHostSettingsSheet();
+  hideHostSettingsGear();
+
+  _isLeaving = true;
+  try { cleanup(); } catch (_) {}
+
+  try {
+    await deleteAnswersByRoom(state.room.id);
+    await updateGameState(state.room.id, {
+      game_phase: 'lobby',
+      current_question: 0,
+      question_ids: [],
+      question_started_at: null,
+      countdown_started_at: null
+    });
+    await updateRoomStatus(state.room.id, 'lobby');
+  } catch (err) {
+    console.error('[Game] executeReturnToLobby cleanup failed:', err);
+  }
+
+  sessionStorage.setItem('oracle_party_returning_from_game', '1');
+  window.location.replace('lobby.html');
+}
+
+function showHostSettingsGear() {
+  if (!state.room?.isHost) return;
+  const btn = $('#btn-host-settings');
+  if (btn) btn.classList.remove('hidden');
+}
+
+function hideHostSettingsGear() {
+  const btn = $('#btn-host-settings');
+  if (btn) btn.classList.add('hidden');
+}
+
+// ============================================
 // CLEANUP (shared teardown for all exit paths)
 // ============================================
 
@@ -4228,6 +4420,8 @@ function cleanup() {
     state._syncIntervalId = null;
   }
   clearAutoProceed();
+  hideHostSettingsGear();
+  resetReturnConfirm();
   if (_flagMenuCloseHandler) {
     document.removeEventListener('click', _flagMenuCloseHandler);
     _flagMenuCloseHandler = null;
