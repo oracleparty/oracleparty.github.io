@@ -72,34 +72,32 @@ async function init() {
     console.error('[Host] Auth error:', err);
   }
 
-  // 3) Fetch categories + play counts + mastery in parallel
+  // 3) Fetch categories + play counts + mastery all in parallel, single render at end
   const authUser = getCurrentUser();
   if (authUser?.user?.id) _isLoggedIn = true;
 
-  const [freshCategories] = await Promise.all([
+  const [freshCategories, playCounts, masteryData] = await Promise.all([
     fetchCategories().catch(err => { console.error('[Host] fetchCategories:', err); return null; }),
-    // Play counts — non-critical, update UI when ready
-    fetchCategoryPlayCounts()
-      .then(counts => { categoryPlayCounts = counts; if (categories.length) renderCategories(categories, categoryPlayCounts); })
-      .catch(e => console.warn('[Host] Could not load play counts:', e)),
-    // Mastery — non-critical, update UI when ready
+    fetchCategoryPlayCounts().catch(e => { console.warn('[Host] Could not load play counts:', e); return {}; }),
     _isLoggedIn
-      ? fetchMasteryCounts(authUser.user.id)
-          .then(masteryData => {
-            for (const m of masteryData) _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
-            if (categories.length) renderCategories(categories, categoryPlayCounts);
-          })
-          .catch(e => console.warn('[Host] Could not load mastery:', e))
-      : Promise.resolve()
+      ? fetchMasteryCounts(authUser.user.id).catch(e => { console.warn('[Host] Could not load mastery:', e); return []; })
+      : Promise.resolve([])
   ]);
 
-  // 4) If fresh categories arrived, update cache + re-render
+  // 4) Apply results
+  if (playCounts && typeof playCounts === 'object') categoryPlayCounts = playCounts;
+  if (masteryData && masteryData.length) {
+    for (const m of masteryData) _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
+  }
   if (freshCategories && freshCategories.length) {
     categories = freshCategories;
     setCachedCategories(freshCategories);
+  }
+
+  // 5) Single re-render with all data (or show error)
+  if (categories.length) {
     renderCategories(categories, categoryPlayCounts);
-  } else if (!categories.length) {
-    // No cache and fetch failed
+  } else {
     categoryGrid.innerHTML = '<div class="empty-state"><p class="empty-state__text">Failed to load categories</p><p class="empty-state__subtext">Check your connection and refresh</p></div>';
     showToast('Failed to load categories', 'error');
   }
