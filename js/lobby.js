@@ -57,8 +57,8 @@ let presenceHeartbeatId = null;
 // --- DOM refs ---
 const lobbyCategory = $('#lobby-category');
 const lobbyCode = $('#lobby-code');
+const hostListEl = $('#host-list');
 const playerListEl = $('#player-list');
-const playerCountEl = $('#player-count');
 const chatMessagesEl = $('#chat-drawer-messages');
 const chatInput = $('#chat-drawer-input');
 const btnSend = $('#btn-chat-send');
@@ -388,61 +388,69 @@ async function _loadPlayerTiers() {
 // Tier colors for lobby badges
 const TIER_COLORS = { Novice: '#999', Apprentice: '#4ADE80', Scholar: '#60A5FA', Master: '#A78BFA', Oracle: '#C68A2E' };
 
-function renderPlayers() {
-  playerCountEl.textContent = `(${players.length})`;
-
-  playerListEl.innerHTML = players.map(p => {
-    const badges = [];
+function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
+  const badges = [];
+  if (showRoleBadge) {
     if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
     if (p.is_cohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
-    // Tier badge for the selected category
-    const tier = _playerTiers[p.user_id];
-    if (tier) {
-      const color = TIER_COLORS[tier] || '#999';
-      badges.push(`<span class="badge badge--tier" style="color:${color};">${tier}</span>`);
-    }
-    if (p.is_ready) {
-      badges.push('<span class="badge badge--ready">Ready</span>');
-    } else if (!p.is_host && !p.is_cohost) {
-      badges.push('<span class="badge badge--not-ready">Not Ready</span>');
-    }
-    const isMe = String(p.id) === String(room.playerId);
-    const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (You)' : '');
+  }
+  const tier = _playerTiers[p.user_id];
+  if (tier) {
+    const color = TIER_COLORS[tier] || '#999';
+    badges.push(`<span class="badge badge--tier" style="color:${color};">${tier}</span>`);
+  }
+  if (p.is_ready) {
+    badges.push('<span class="badge badge--ready">Ready</span>');
+  } else if (!p.is_host && !p.is_cohost) {
+    badges.push('<span class="badge badge--not-ready">Not Ready</span>');
+  }
+  const isMe = String(p.id) === String(room.playerId);
+  const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (You)' : '');
 
-    const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
-    const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
-    const isAway = awayTimestamps.has(String(p.id));
-    const honks = getHonkCount(p.id);
-    const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
-    const transferBtn = (room.isHost && !isMe && !p.is_host) ? `<button class="transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}">Transfer</button>` : '';
-    let cohostBtn = '';
-    if (room.isHost && !isMe && !p.is_host) {
-      if (p.is_cohost) {
-        cohostBtn = `<button class="cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Demote</button>`;
-      } else {
-        cohostBtn = `<button class="cohost-btn" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Co-Host</button>`;
-      }
+  const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
+  const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
+  const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
+  const isAway = awayTimestamps.has(String(p.id));
+  const honks = getHonkCount(p.id);
+  const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
+  const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+  const transferBtn = (room.isHost && !isMe && !p.is_host) ? `<button class="transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}">Transfer</button>` : '';
+  let cohostBtn = '';
+  if (room.isHost && !isMe && !p.is_host) {
+    if (p.is_cohost) {
+      cohostBtn = `<button class="cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Demote</button>`;
+    } else {
+      cohostBtn = `<button class="cohost-btn" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Co-Host</button>`;
     }
+  }
 
-    return `
-      <div class="player-item${isAway ? ' player-item--away' : ''}" ${profileAttr}>
-        <div class="avatar-wrap">
-          ${avatarHtml}
-          ${honkBadge}
-        </div>
-        <div class="name-stack">
-          <span class="player-item__name">${nameDisplay}</span>
-          ${titleHtml}
-        </div>
-        ${honkBtn}
-        ${cohostBtn}
-        ${transferBtn}
-        <span class="player-item__badges">${badges.join('')}</span>
+  return `
+    <div class="player-item${isAway ? ' player-item--away' : ''}" ${profileAttr}>
+      <div class="avatar-wrap">
+        ${avatarHtml}
+        ${honkBadge}
       </div>
-    `;
-  }).join('');
+      <div class="name-stack">
+        <span class="player-item__name">${nameDisplay}</span>
+        ${titleHtml}
+      </div>
+      ${honkBtn}
+      ${cohostBtn}
+      ${transferBtn}
+      <span class="player-item__badges">${badges.join('')}</span>
+    </div>
+  `;
+}
+
+function renderPlayers() {
+  const hosts = players.filter(p => p.is_host || p.is_cohost);
+  const others = players.filter(p => !p.is_host && !p.is_cohost);
+
+  // Render host/cohost section
+  hostListEl.innerHTML = hosts.map(p => _renderPlayerItem(p, { showRoleBadge: true })).join('');
+
+  // Render regular players
+  playerListEl.innerHTML = others.map(p => _renderPlayerItem(p)).join('');
 
   // Update start game button state (host needs 2+ players)
   if (room.isHost) {

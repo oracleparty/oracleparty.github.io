@@ -1851,6 +1851,15 @@ body::after {
 }
 
 /* ---- Players section ---- */
+.lobby-hosts {
+  padding: var(--space-xs) 0;
+  border-top: 1px solid var(--color-surface-light);
+}
+
+.lobby-hosts .player-item {
+  padding: 6px var(--space-sm);
+}
+
 .lobby-players {
   padding: var(--space-xs) 0;
   border-top: 1px solid var(--color-surface-light);
@@ -1875,7 +1884,7 @@ body::after {
 }
 
 .lobby-chat__messages {
-  min-height: 60px;
+  min-height: 32px;
 }
 
 .lobby-chat__messages:empty::after {
@@ -1884,7 +1893,7 @@ body::after {
   text-align: center;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  padding: var(--space-lg) 0;
+  padding: var(--space-sm) 0;
   opacity: 0.5;
 }
 
