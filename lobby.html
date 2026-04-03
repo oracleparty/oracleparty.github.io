@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403q">
+  <link rel="stylesheet" href="css/style.css?v=20260403r">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body>
@@ -55,23 +55,23 @@
           </div>
         </div>
 
-        <!-- Chat messages -->
+        <!-- Chat messages + input together -->
         <div class="lobby-chat">
           <div class="section-title">Chat</div>
           <div id="chat-drawer-messages" class="lobby-chat__messages"></div>
           <div id="typing-indicator" class="typing-indicator"></div>
+          <div class="lobby-chat__input">
+            <input type="text" id="chat-drawer-input" class="input"
+              placeholder="Say something..." aria-label="Chat message"
+              maxlength="200" autocomplete="off" spellcheck="false">
+            <button id="btn-chat-send" class="btn btn-primary">Send</button>
+          </div>
         </div>
 
       </div>
 
-      <!-- Pinned footer: chat input + action button -->
+      <!-- Pinned footer: just action button -->
       <div class="lobby-footer">
-        <div class="lobby-footer__input">
-          <input type="text" id="chat-drawer-input" class="input"
-            placeholder="Say something..." aria-label="Chat message"
-            maxlength="200" autocomplete="off" spellcheck="false">
-          <button id="btn-chat-send" class="btn btn-primary">Send</button>
-        </div>
         <button id="btn-start-game" class="btn btn-primary btn-block hidden">Start Game</button>
         <button id="btn-ready" class="btn btn-secondary btn-block hidden">Ready Up</button>
       </div>
