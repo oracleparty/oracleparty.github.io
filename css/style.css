@@ -1856,6 +1856,10 @@ body::after {
   border-top: 1px solid var(--color-surface-light);
 }
 
+.lobby-hosts .section-title {
+  margin-bottom: 2px;
+}
+
 .lobby-hosts .player-item {
   padding: 6px var(--space-sm);
 }
