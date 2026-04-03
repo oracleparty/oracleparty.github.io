@@ -1708,6 +1708,11 @@ body::after {
   border-color: var(--color-surface-light);
 }
 
+.lobby-bar .settings-trigger-btn {
+  font-size: 0.6rem;
+  padding: 2px var(--space-sm);
+}
+
 /* ---- Room identity ---- */
 .lobby-room {
   flex-shrink: 0;
@@ -1720,36 +1725,21 @@ body::after {
 .lobby-room__category {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  max-width: 100%;
-}
-
-.lobby-category {
+  gap: 4px;
   font-family: var(--font-heading);
   font-size: 0.7rem;
   font-weight: 500;
   color: var(--color-text-dim);
-  margin-bottom: 0;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
 }
 
-.lobby-room__code-row {
-  position: relative;
-  display: flex;
-  justify-content: center;
-}
-
-.lobby-room__code-icon {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-55%);
-  font-size: 2rem;
+.lobby-room__cat-icon {
+  font-size: var(--text-base);
   line-height: 1;
-  opacity: 0.8;
+  flex-shrink: 0;
 }
 
 .lobby-room__code {

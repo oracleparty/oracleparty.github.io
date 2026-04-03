@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403j">
+  <link rel="stylesheet" href="css/style.css?v=20260403k">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body>
@@ -20,24 +20,22 @@
       <!-- Utility bar -->
       <div class="lobby-bar">
         <span class="lobby-bar__brand">Oracle Party</span>
-        <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
         <span class="lobby-bar__spacer"></span>
+        <button id="btn-settings" class="settings-trigger-btn hidden">Settings</button>
+        <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
         <button id="btn-leave" class="leave-btn">Leave</button>
       </div>
 
       <!-- Room identity: code is the hero -->
       <div class="lobby-room">
-        <div class="lobby-room__category">
-          <p id="lobby-category" class="lobby-category"></p>
-          <button id="btn-settings" class="settings-trigger-btn hidden">Settings</button>
-        </div>
-        <div class="lobby-room__code-row">
-          <span id="lobby-category-icon" class="lobby-room__code-icon"></span>
-          <button id="btn-copy-code" class="lobby-room__code" aria-label="Copy room code">
-            <span id="lobby-code" class="lobby-room__code-text"></span>
-            <span class="lobby-room__code-hint">tap to copy</span>
-          </button>
-        </div>
+        <p class="lobby-room__category">
+          <span id="lobby-category-icon" class="lobby-room__cat-icon"></span>
+          <span id="lobby-category"></span>
+        </p>
+        <button id="btn-copy-code" class="lobby-room__code" aria-label="Copy room code">
+          <span id="lobby-code" class="lobby-room__code-text"></span>
+          <span class="lobby-room__code-hint">tap to copy</span>
+        </button>
       </div>
 
       <!-- Players -->
