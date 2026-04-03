@@ -8,9 +8,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403a">
+  <link rel="stylesheet" href="css/style.css?v=20260403v">
 </head>
-<body>
+<body style="opacity:0">
 
   <!-- ===== SPLASH SCREEN ===== -->
   <div id="splash" class="screen active" style="display: flex;">
@@ -63,7 +63,7 @@
 
   <!-- ===== SCRIPTS ===== -->
   <script type="module">
-    import { $, transitionScreens, delay, renderAvatar } from './js/utils.js';
+    import { $, transitionScreens, delay, renderAvatar, navigateWithFade } from './js/utils.js';
     import { testConnection, fetchPendingRequests, cleanupOrphanedRooms } from './js/supabase.js';
     import { ensureDisplayName, initAuth, getCurrentUser, getDisplayName, showSignInModal, showSignUpModal } from './js/auth.js';
     import { updatePresence } from './js/presence.js';
@@ -71,6 +71,7 @@
 
     // --- Init: Splash → Home ---
     async function init() {
+      document.body.style.opacity = '1';
       const splash = $('#splash');
       const home = $('#home');
 
@@ -167,7 +168,7 @@
 
     // --- Home avatar click → profile page ---
     $('#home-avatar').addEventListener('click', () => {
-      window.location.href = 'profile.html';
+      navigateWithFade('profile.html');
     });
 
     // --- Sign in link (guests only) ---
@@ -179,18 +180,18 @@
 
     // --- Leaderboards ---
     $('#btn-leaderboard').addEventListener('click', () => {
-      window.location.href = 'leaderboard.html';
+      navigateWithFade('leaderboard.html');
     });
 
     // --- Navigation with display name check ---
     $('#btn-host').addEventListener('click', async () => {
       await ensureDisplayName();
-      window.location.href = 'host.html';
+      navigateWithFade('host.html');
     });
 
     $('#btn-join').addEventListener('click', async () => {
       await ensureDisplayName();
-      window.location.href = 'join.html';
+      navigateWithFade('join.html');
     });
 
     // --- Show toast from URL params (e.g., host_left) ---

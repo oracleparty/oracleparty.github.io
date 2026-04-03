@@ -2,7 +2,7 @@
 // Oracle Party — Join Game Flow
 // ============================================
 
-import { $, $$, escapeHtml } from './utils.js';
+import { $, $$, escapeHtml, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
@@ -19,6 +19,7 @@ let refreshInterval = null;
 
 // --- Init ---
 async function init() {
+  document.body.style.opacity = '1';
   try {
     await Promise.all([ensureDisplayName(), initAuth()]);
   } catch (err) {
@@ -26,6 +27,9 @@ async function init() {
   }
   attachListeners();
   initThemeToggle();
+  // Show skeleton rows while loading public games
+  publicGamesEl.innerHTML = Array(3).fill('<div class="skeleton skeleton-row"></div>').join('');
+  if (publicGamesEmpty) publicGamesEmpty.classList.add('hidden');
   loadPublicGames().catch(e => console.warn('[Join] loadPublicGames failed:', e));
 
   // Auto-join from URL param (e.g. join.html?code=ABCD from friends list)
@@ -49,7 +53,7 @@ async function init() {
 function attachListeners() {
   $('#btn-back-home').addEventListener('click', () => {
     clearInterval(refreshInterval);
-    window.location.href = 'index.html';
+    navigateWithFade('index.html');
   });
 
   // Only allow letters in code input
@@ -96,6 +100,7 @@ async function joinRoom(code) {
 
     if (error || !room) {
       joinError.textContent = 'Room not found';
+      showToast('Room not found — check the code', 'error');
       resetJoinButton();
       return;
     }
@@ -113,6 +118,7 @@ async function joinRoom(code) {
 
     if (playerErr || !player) {
       joinError.textContent = 'Failed to join room. Try again.';
+      showToast('Failed to join room', 'error');
       console.error('[Join] addPlayer failed:', playerErr);
       resetJoinButton();
       return;
@@ -137,7 +143,7 @@ async function joinRoom(code) {
 
     clearInterval(refreshInterval);
     // If the game is already in progress, go straight to game.html (hot join)
-    window.location.href = room.status === 'playing' ? 'game.html' : 'lobby.html';
+    navigateWithFade(room.status === 'playing' ? 'game.html' : 'lobby.html');
   } catch (err) {
     console.error('[Join] Unexpected error:', err);
     joinError.textContent = `Error: ${err.message}`;
@@ -155,15 +161,17 @@ async function loadPublicGames() {
   await cleanupOrphanedRooms();
   const rooms = await fetchPublicRooms();
 
+  // Clear skeleton loaders
+  $$('.skeleton', publicGamesEl).forEach(el => el.remove());
+
   if (rooms.length === 0) {
-    publicGamesEmpty.textContent = 'No public games right now';
-    publicGamesEmpty.style.display = '';
+    publicGamesEmpty.classList.remove('hidden');
     // Remove any existing rows
     $$('.public-game-row', publicGamesEl).forEach(el => el.remove());
     return;
   }
 
-  publicGamesEmpty.style.display = 'none';
+  publicGamesEmpty.classList.add('hidden');
 
   // Remove old rows
   $$('.public-game-row', publicGamesEl).forEach(el => el.remove());

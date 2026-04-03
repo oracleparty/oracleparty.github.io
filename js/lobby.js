@@ -3,7 +3,7 @@
 // Persistent hub with Realtime chat, players, game start
 // ============================================
 
-import { $, escapeHtml, renderAvatar } from './utils.js';
+import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -81,6 +81,7 @@ let chatEchoPending = 0;
 
 // --- Init ---
 async function init() {
+  document.body.style.opacity = '1';
   await Promise.all([ensureDisplayName(), initAuth()]);
 
   // Load room from sessionStorage
@@ -125,17 +126,17 @@ async function init() {
   // the host may still be resetting the room. Poll with retries before bouncing.
   if (currentRoom.status === 'playing') {
     if (sessionStorage.getItem('oracle_party_returning_from_game')) {
-      // Host is likely still running deleteAnswersByRoom + updateGameState + updateRoomStatus.
-      // Poll up to 5 times (1s each) waiting for status to change from 'playing'.
+      // Host is likely still running cleanup (now parallelized with Promise.all).
+      // Poll up to 3 times (1s each) as a safety net.
       let settled = false;
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 3; i++) {
         await new Promise(r => setTimeout(r, 1000));
         const { data: recheck } = await fetchRoom(room.id);
         if (!recheck) { sessionStorage.removeItem('oracle_party_room'); window.location.href = 'index.html'; return; }
         if (recheck.status !== 'playing') { settled = true; break; }
       }
       if (!settled) {
-        // Still playing after 5s — this is a real in-progress game, not a race
+        // Still playing after 3s — this is a real in-progress game, not a race
         window.location.replace('game.html');
         return;
       }
@@ -277,11 +278,18 @@ async function init() {
 function attachListeners() {
   // Copy code
   btnCopyCode.addEventListener('click', async () => {
+    const joinUrl = `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, '')}join.html?code=${room.code}`;
     try {
-      await navigator.clipboard.writeText(room.code);
+      // Try native share first on mobile
+      if (navigator.share) {
+        await navigator.share({ title: 'Join my Oracle Party game!', text: `Join with code ${room.code}`, url: joinUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(joinUrl);
       const hint = btnCopyCode.querySelector('.lobby-room__card-hint');
-      if (hint) hint.textContent = 'copied!';
+      if (hint) hint.textContent = 'link copied!';
       btnCopyCode.classList.add('copied');
+      showToast('Join link copied!', 'success');
       setTimeout(() => {
         if (hint) hint.textContent = 'tap to copy';
         btnCopyCode.classList.remove('copied');
@@ -449,8 +457,12 @@ function renderPlayers() {
   // Render host/cohost section
   hostListEl.innerHTML = hosts.map(p => _renderPlayerItem(p, { showRoleBadge: true })).join('');
 
-  // Render regular players
-  playerListEl.innerHTML = others.map(p => _renderPlayerItem(p)).join('');
+  // Render regular players (or waiting message if only host)
+  if (others.length === 0) {
+    playerListEl.innerHTML = '<div class="empty-state" style="padding:var(--space-sm) 0"><p class="empty-state__subtext">Waiting for players to join...</p></div>';
+  } else {
+    playerListEl.innerHTML = others.map(p => _renderPlayerItem(p)).join('');
+  }
 
   // Update start game button state (host needs 2+ players)
   if (room.isHost) {
@@ -1178,7 +1190,7 @@ function handleRoomChange(payload) {
   if (newRoom.status === 'playing') {
     isLeaving = true;
     cleanup();
-    window.location.replace('game.html');
+    navigateWithFadeReplace('game.html');
     return;
   }
 
@@ -1285,7 +1297,7 @@ async function handleLeave() {
   }
   sessionStorage.removeItem('oracle_party_room');
   // Non-host goes to join page (find another game), host goes home
-  window.location.href = room.isHost ? 'index.html' : 'join.html';
+  navigateWithFade(room.isHost ? 'index.html' : 'join.html');
 }
 
 function handleBackButton() {
@@ -1297,7 +1309,7 @@ function handleBackButton() {
     removePlayerBeacon(room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
-  window.location.href = room.isHost ? 'index.html' : 'join.html';
+  navigateWithFade(room.isHost ? 'index.html' : 'join.html');
 }
 
 function handleUnload() {

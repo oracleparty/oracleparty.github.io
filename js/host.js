@@ -3,7 +3,7 @@
 // Category selection, settings, room creation
 // ============================================
 
-import { $, $$, transitionScreens } from './utils.js';
+import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
@@ -35,6 +35,9 @@ const hostError = $('#host-error');
 
 // --- Init ---
 async function init() {
+  document.body.style.opacity = '1';
+  // Show skeleton cards while data loads
+  categoryGrid.innerHTML = Array(6).fill('<div class="skeleton skeleton-card"></div>').join('');
   try {
     await Promise.all([ensureDisplayName(), initAuth()]);
     categories = await fetchCategories();
@@ -304,7 +307,7 @@ function renderSheetWildCardOptions(catName, meta) {
 function attachListeners() {
   // Back to home
   $('#btn-back-home').addEventListener('click', () => {
-    window.location.href = 'index.html';
+    navigateWithFade('index.html');
   });
 
   // Back to category screen — reset drill-in state
@@ -533,6 +536,7 @@ async function handleHostGame() {
     if (error) {
       const msg = error.message || 'Unknown error';
       hostError.textContent = `Failed to create room: ${msg}`;
+      showToast('Failed to create room', 'error');
       console.error('[Host] Room creation error:', error);
       resetHostButton();
       return;
@@ -579,7 +583,7 @@ async function handleHostGame() {
       }
     }));
 
-    window.location.href = 'lobby.html';
+    navigateWithFade('lobby.html');
   } catch (err) {
     console.error('[Host] Unexpected error in handleHostGame:', err);
     hostError.textContent = `Unexpected error: ${err.message}`;

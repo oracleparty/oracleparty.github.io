@@ -3,7 +3,7 @@
 // Gameplay loop: question (with wager) → submit → reveal (live) → repeat
 // ============================================
 
-import { $, transitionScreens, escapeHtml, fuzzyMatch, renderAvatar } from './utils.js';
+import { $, transitionScreens, escapeHtml, fuzzyMatch, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -178,6 +178,7 @@ function getFunFact(q) { return q[FIELD_MAP.fun_fact] || ''; }
 // ============================================
 
 async function init() {
+  document.body.style.opacity = '1';
   // Load room data synchronously so back button works even during init
   const stored = sessionStorage.getItem('oracle_party_room');
   if (!stored) {
@@ -829,7 +830,7 @@ function _showLobbyReturnNotice() {
     _isLeaving = true;
     try { cleanup(); } catch (_) {}
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
-    window.location.replace('lobby.html');
+    navigateWithFadeReplace('lobby.html');
     return;
   }
 
@@ -854,7 +855,7 @@ function _showLobbyReturnNotice() {
     _isLeaving = true;
     try { cleanup(); } catch (_) {}
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
-    window.location.replace('lobby.html');
+    navigateWithFadeReplace('lobby.html');
   };
 }
 
@@ -872,7 +873,7 @@ function _showNewGameNotice() {
     _isLeaving = true;
     cleanup();
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
-    window.location.replace('lobby.html');
+    navigateWithFadeReplace('lobby.html');
     return;
   }
 
@@ -892,7 +893,7 @@ function _showNewGameNotice() {
     _isLeaving = true;
     cleanup();
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
-    window.location.replace('lobby.html');
+    navigateWithFadeReplace('lobby.html');
   };
 }
 
@@ -3135,22 +3136,25 @@ async function handlePlayAgain() {
   // that would force ALL players out of the results screen.
   if (state.room?.isHost) {
     try {
-      await deleteAnswersByRoom(state.room.id);
-      await updateGameState(state.room.id, {
-        game_phase: 'lobby',
-        current_question: 0,
-        question_ids: [],
-        question_started_at: null,
-        countdown_started_at: null
-      });
-      await updateRoomStatus(state.room.id, 'lobby');
+      await Promise.all([
+        deleteAnswersByRoom(state.room.id),
+        updateGameState(state.room.id, {
+          game_phase: 'lobby',
+          current_question: 0,
+          question_ids: [],
+          question_started_at: null,
+          countdown_started_at: null
+        }),
+        updateRoomStatus(state.room.id, 'lobby')
+      ]);
     } catch (err) {
       console.error('[Game] handlePlayAgain host cleanup failed:', err);
+      showToast('Error resetting room — retrying...', 'error');
     }
   }
 
   sessionStorage.setItem('oracle_party_returning_from_game', '1');
-  window.location.replace('lobby.html');
+  navigateWithFadeReplace('lobby.html');
 }
 
 async function handleQuitGame() {
@@ -3166,7 +3170,7 @@ async function handleQuitGame() {
     console.error('[Game] handleQuitGame DB cleanup failed:', err);
   }
   sessionStorage.removeItem('oracle_party_room');
-  window.location.href = 'index.html';
+  navigateWithFade('index.html');
 }
 
 async function handleReviewQuestions() {
@@ -4093,7 +4097,7 @@ async function syncToCurrentState() {
     if (roomData.status === 'lobby') {
       _isLeaving = true;
       cleanup();
-      window.location.replace('lobby.html');
+      navigateWithFadeReplace('lobby.html');
       return;
     }
 
@@ -4353,7 +4357,7 @@ async function executeReturnToLobby() {
   }
 
   sessionStorage.setItem('oracle_party_returning_from_game', '1');
-  window.location.replace('lobby.html');
+  navigateWithFadeReplace('lobby.html');
 }
 
 function showHostSettingsGear() {

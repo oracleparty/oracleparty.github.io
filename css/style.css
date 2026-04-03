@@ -1111,6 +1111,21 @@ body::after {
   opacity: 0.7;
   pointer-events: none;
 }
+.btn.is-loading::after {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: var(--space-xs);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
 
 /* --- Host/Settings Screen Animations --- */
 .screen.active .page-header {
@@ -1313,6 +1328,21 @@ body::after {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   padding: var(--space-xl) 0;
+}
+.empty-state__icon {
+  font-size: 2rem;
+  margin-bottom: var(--space-sm);
+  opacity: 0.6;
+}
+.empty-state__text {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-text-dim);
+  margin-bottom: 2px;
+}
+.empty-state__subtext {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 /* --- Room Code Display --- */
@@ -5204,5 +5234,85 @@ body::after {
   font-family: var(--font-heading);
   font-weight: 600;
   color: var(--color-primary);
+}
+
+/* ============================================
+   Toast Notifications
+   ============================================ */
+.toast-container {
+  position: fixed;
+  top: max(var(--space-md), env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  pointer-events: none;
+  width: max-content;
+  max-width: 90vw;
+}
+.toast {
+  pointer-events: auto;
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 10px var(--space-lg);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-light);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  animation: toast-in 0.3s var(--ease-out) forwards;
+}
+.toast--success { border-left: 3px solid #22c55e; }
+.toast--error   { border-left: 3px solid #ef4444; }
+.toast--info    { border-left: 3px solid var(--color-primary); }
+.toast--out {
+  animation: toast-out 0.25s var(--ease-out) forwards;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-8px); }
+}
+
+/* ============================================
+   Page Fade Transitions
+   ============================================ */
+body {
+  transition: opacity 0.2s ease;
+}
+body.page-fade-out {
+  opacity: 0 !important;
+}
+
+/* ============================================
+   Skeleton Loaders
+   ============================================ */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-light) 25%,
+    var(--color-bg) 50%,
+    var(--color-surface-light) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+@keyframes skeleton-pulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton-card {
+  height: 88px;
+}
+.skeleton-row {
+  height: 56px;
+  margin-bottom: var(--space-xs);
 }
 
