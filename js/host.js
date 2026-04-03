@@ -33,38 +33,77 @@ const searchInput = $('#category-search');
 const btnHostGame = $('#btn-host-game');
 const hostError = $('#host-error');
 
+// --- Category cache (localStorage) ---
+const CACHE_KEY = 'op_categories';
+const CACHE_TTL = 1000 * 60 * 30; // 30 min — categories rarely change
+
+function getCachedCategories() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL) return null;
+    return data;
+  } catch { return null; }
+}
+
+function setCachedCategories(data) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); }
+  catch { /* quota exceeded — ignore */ }
+}
+
 // --- Init ---
 async function init() {
   document.body.style.opacity = '1';
-  // Show skeleton cards while data loads
-  categoryGrid.innerHTML = Array(6).fill('<div class="skeleton skeleton-card"></div>').join('');
+
+  // 1) Instant render from cache (no skeletons on return visits)
+  const cached = getCachedCategories();
+  if (cached && cached.length) {
+    categories = cached;
+    renderCategories(categories, categoryPlayCounts);
+  } else {
+    categoryGrid.innerHTML = Array(6).fill('<div class="skeleton skeleton-card"></div>').join('');
+  }
+
+  // 2) Auth (required before fetching user-specific data)
   try {
     await Promise.all([ensureDisplayName(), initAuth()]);
-    categories = await fetchCategories();
-    // Play counts are non-critical — don't let failure break category loading
-    try {
-      categoryPlayCounts = await fetchCategoryPlayCounts();
-    } catch (e) {
-      console.warn('[Host] Could not load play counts:', e);
-      categoryPlayCounts = {};
-    }
-    // Load mastery for logged-in users (non-critical)
-    const authUser = getCurrentUser();
-    if (authUser?.user?.id) {
-      _isLoggedIn = true;
-      try {
-        const masteryData = await fetchMasteryCounts(authUser.user.id);
-        for (const m of masteryData) {
-          _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
-        }
-      } catch (e) { console.warn('[Host] Could not load mastery:', e); }
-    }
-    renderCategories(categories, categoryPlayCounts);
   } catch (err) {
-    console.error('[Host] Init error:', err);
+    console.error('[Host] Auth error:', err);
+  }
+
+  // 3) Fetch categories + play counts + mastery in parallel
+  const authUser = getCurrentUser();
+  if (authUser?.user?.id) _isLoggedIn = true;
+
+  const [freshCategories] = await Promise.all([
+    fetchCategories().catch(err => { console.error('[Host] fetchCategories:', err); return null; }),
+    // Play counts — non-critical, update UI when ready
+    fetchCategoryPlayCounts()
+      .then(counts => { categoryPlayCounts = counts; if (categories.length) renderCategories(categories, categoryPlayCounts); })
+      .catch(e => console.warn('[Host] Could not load play counts:', e)),
+    // Mastery — non-critical, update UI when ready
+    _isLoggedIn
+      ? fetchMasteryCounts(authUser.user.id)
+          .then(masteryData => {
+            for (const m of masteryData) _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
+            if (categories.length) renderCategories(categories, categoryPlayCounts);
+          })
+          .catch(e => console.warn('[Host] Could not load mastery:', e))
+      : Promise.resolve()
+  ]);
+
+  // 4) If fresh categories arrived, update cache + re-render
+  if (freshCategories && freshCategories.length) {
+    categories = freshCategories;
+    setCachedCategories(freshCategories);
+    renderCategories(categories, categoryPlayCounts);
+  } else if (!categories.length) {
+    // No cache and fetch failed
     categoryGrid.innerHTML = '<div class="empty-state"><p class="empty-state__text">Failed to load categories</p><p class="empty-state__subtext">Check your connection and refresh</p></div>';
     showToast('Failed to load categories', 'error');
   }
+
   // Always attach listeners even if data fetch fails
   attachListeners();
   initThemeToggle();
