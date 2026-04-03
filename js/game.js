@@ -44,7 +44,6 @@ import {
   deleteAnswersByRoom,
   reassignPlayerAnswers,
   appendUsedQuestionIds,
-  upsertPlayerStats,
   insertGameHistoryEntry,
   upsertQuestionHistory,
   fetchPlayerStats,
@@ -2854,9 +2853,9 @@ async function showResultsScreen() {
     // Archive chat messages before room might be deleted
     await archiveChatMessages(state.room.id);
 
-    // BUG 4 FIX: Write to player_stats and game_history for authenticated users.
-    // These tables were never written to — only game_plays was tracked. Profile page
-    // reads from player_stats and game_history, so they were always empty.
+    // Write game_history and evaluate title unlocks for authenticated users.
+    // player_stats is now a computed view — no manual writes needed.
+    // Stats are derived automatically from question_history + game_history.
     const authUser = getCurrentUser();
     if (authUser) {
       const uid = authUser.user.id;
@@ -2869,26 +2868,17 @@ async function showResultsScreen() {
       const totalAnswered = validAnswers.length;
       const sortedForPlacement = [...state.players].sort((a, b) => (state.scores[b.id] || 0) - (state.scores[a.id] || 0));
       const placement = sortedForPlacement.findIndex(p => String(p.id) === String(state.room.playerId)) + 1;
-      const won = placement === 1;
-      // Fire-and-forget — don't block results rendering
-      // Write overall category stats (subcategory=null)
-      upsertPlayerStats(uid, cat, totalAnswered, correctCount, won, null);
-      // Also write subcategory-specific stats if a subcategory was selected
       const sub = state.room.subcategory || null;
-      if (sub) {
-        upsertPlayerStats(uid, cat, totalAnswered, correctCount, won, sub);
-      }
+      // Fire-and-forget — don't block results rendering
       insertGameHistoryEntry({
         userId: uid, roomId: state.room.id, category: cat,
         subcategory: sub,
         score: state.scores[state.room.playerId] || 0,
         placement, totalPlayers: state.players.length
       });
-      // Per-question mastery is now written in real-time during doReveal().
-      // No need to write again here — upsertQuestionHistory would double-count times_seen.
+      // Per-question mastery is written in real-time during doReveal().
 
-      // Title system: evaluate unlocks after stats are written
-      // Re-fetch stats (they were just upserted) and check all word conditions
+      // Title system: evaluate unlocks from computed stats
       fetchPlayerStats(uid).then(async freshStats => {
         const unlocks = await fetchTitleUnlocks(uid);
         const context = {

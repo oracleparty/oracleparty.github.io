@@ -1466,11 +1466,12 @@ export async function updateProfile(userId, fields) {
 }
 
 /**
- * Fetch all player_stats rows for a user (per-category stats).
+ * Fetch all player stats for a user (per-category stats).
+ * Reads from computed view (derived from question_history + game_history).
  */
 export async function fetchPlayerStats(userId) {
   const { data, error } = await supabase
-    .from('player_stats')
+    .from('player_stats_computed')
     .select('*')
     .eq('user_id', userId);
 
@@ -1482,12 +1483,13 @@ export async function fetchPlayerStats(userId) {
 }
 
 /**
- * Fetch player_stats for multiple users in one query (batch).
+ * Fetch player stats for multiple users in one query (batch).
+ * Reads from computed view (derived from question_history + game_history).
  */
 export async function fetchPlayerStatsBatch(userIds) {
   if (!userIds || userIds.length === 0) return [];
   const { data, error } = await supabase
-    .from('player_stats')
+    .from('player_stats_computed')
     .select('*')
     .in('user_id', userIds);
   if (error) { console.error('[Supabase] fetchPlayerStatsBatch failed:', error.message); return []; }
@@ -1513,48 +1515,10 @@ export async function fetchGameHistory(userId, limit = 5) {
 }
 
 // ============================================
-// PLAYER STATS & GAME HISTORY (write)
+// GAME HISTORY (write)
 // ============================================
-
-/**
- * Upsert player_stats for a user+category after a game completes.
- * Increments aggregate stats (questions_answered, correct_answers, games_played, wins).
- */
-export async function upsertPlayerStats(userId, category, questionsAnswered, correctAnswers, won, subcategory = null) {
-  let query = supabase
-    .from('player_stats')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('category', category);
-  if (subcategory) {
-    query = query.eq('subcategory', subcategory);
-  } else {
-    query = query.is('subcategory', null);
-  }
-  const { data: existing } = await query.maybeSingle();
-
-  if (existing) {
-    const { error } = await supabase.from('player_stats').update({
-      questions_answered: existing.questions_answered + questionsAnswered,
-      correct_answers: existing.correct_answers + correctAnswers,
-      games_played: existing.games_played + 1,
-      wins: existing.wins + (won ? 1 : 0)
-    }).eq('id', existing.id);
-    if (error) console.error('[Supabase] upsertPlayerStats update failed:', error.message);
-  } else {
-    const row = {
-      user_id: userId,
-      category,
-      questions_answered: questionsAnswered,
-      correct_answers: correctAnswers,
-      games_played: 1,
-      wins: won ? 1 : 0
-    };
-    if (subcategory) row.subcategory = subcategory;
-    const { error } = await supabase.from('player_stats').insert(row);
-    if (error) console.error('[Supabase] upsertPlayerStats insert failed:', error.message);
-  }
-}
+// player_stats is now a computed view — no writes needed.
+// Stats are derived automatically from question_history + game_history.
 
 /**
  * Insert a game_history entry when a game completes.
@@ -1718,12 +1682,12 @@ export async function upsertTitleUnlock(userId, wordId, level) {
 // ============================================
 
 /**
- * Fetch all player_stats rows (cross-user) for leaderboard aggregation.
- * RLS allows public read. Client-side groups by user_id.
+ * Fetch all player stats (cross-user) for leaderboard aggregation.
+ * Reads from computed view. Client-side groups by user_id.
  */
 export async function fetchAllPlayerStatsForLeaderboard() {
   const { data, error } = await supabase
-    .from('player_stats')
+    .from('player_stats_computed')
     .select('user_id, category, questions_answered, correct_answers, games_played, wins');
   if (error) { console.error('[Supabase] fetchAllPlayerStatsForLeaderboard failed:', error.message); return []; }
   return data || [];
@@ -1735,7 +1699,7 @@ export async function fetchAllPlayerStatsForLeaderboard() {
  */
 export async function fetchCategoryLeaderboard(category, subcategory = null) {
   let query = supabase
-    .from('player_stats')
+    .from('player_stats_computed')
     .select('user_id, questions_answered, correct_answers, games_played, wins, subcategory')
     .eq('category', category)
     .gte('questions_answered', 20);
@@ -2111,10 +2075,9 @@ export function subscribeToFriendRequests(userId, callback) {
 }
 
 export async function fetchCategoryPlayCounts() {
-  // Use player_stats.games_played (persists even if rooms/players are deleted)
-  // instead of game_plays (which cascades with room deletion).
+  // Computed view derives games_played from game_history (persists even if rooms are deleted).
   const { data, error } = await supabase
-    .from('player_stats')
+    .from('player_stats_computed')
     .select('category, games_played')
     .is('subcategory', null); // Only category-level rows
 
