@@ -966,11 +966,23 @@ async function handleStartGame() {
 
 // --- Settings Modal (host) ---
 function updateCategoryDisplay() {
-  const label = resolveCategoryLabel(room.category, room.subcategory);
+  const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
   const icon = resolveSubcategoryIcon(room.category, room.subcategory);
   const iconEl = $('#lobby-category-icon');
   if (iconEl) iconEl.textContent = icon;
-  lobbyCategory.textContent = label;
+
+  // Show short label: just subcategory leaf name, or category name if no sub
+  let shortLabel = meta.label;
+  if (room.subcategory) {
+    if (meta.wildCardOptions) {
+      const opt = meta.wildCardOptions.find(o => o.key === room.subcategory);
+      if (opt) shortLabel = opt.label;
+    } else {
+      const node = findSubcategoryNode(meta, room.subcategory);
+      if (node) shortLabel = node.label;
+    }
+  }
+  lobbyCategory.textContent = shortLabel;
 }
 
 function openSettingsModal() {

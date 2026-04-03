@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403n">
+  <link rel="stylesheet" href="css/style.css?v=20260403p">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body>
@@ -21,7 +21,6 @@
       <div class="lobby-bar">
         <span class="lobby-bar__brand">Oracle Party</span>
         <span class="lobby-bar__spacer"></span>
-        <button id="btn-settings" class="settings-trigger-btn hidden">Settings</button>
         <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
         <button id="btn-leave" class="leave-btn">Leave</button>
       </div>
@@ -32,6 +31,9 @@
         <!-- Room identity card -->
         <div class="lobby-room">
           <div class="lobby-room__card">
+            <button id="btn-settings" class="lobby-room__settings hidden" aria-label="Settings">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
             <div id="btn-category-tap" class="lobby-room__card-top">
               <span id="lobby-category-icon" class="lobby-room__card-icon"></span>
               <span id="lobby-category" class="lobby-room__card-label"></span>
