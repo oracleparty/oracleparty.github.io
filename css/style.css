@@ -1717,12 +1717,6 @@ body::after {
   padding: 0 var(--space-lg) var(--space-sm);
 }
 
-.lobby-room__cat-icon {
-  font-size: var(--text-lg);
-  line-height: 1;
-  flex-shrink: 0;
-}
-
 .lobby-room__category {
   display: flex;
   align-items: center;
@@ -1744,9 +1738,8 @@ body::after {
 
 .lobby-room__code {
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: var(--space-sm);
   background: none;
   border: none;
   cursor: pointer;
@@ -1758,6 +1751,20 @@ body::after {
 
 .lobby-room__code:active {
   background: var(--color-primary-glow);
+}
+
+.lobby-room__code-icon {
+  font-size: 2rem;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.lobby-room__code-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
 }
 
 .lobby-room__code-text {
