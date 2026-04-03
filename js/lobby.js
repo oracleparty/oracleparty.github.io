@@ -853,8 +853,7 @@ function addSystemMessage(text) {
 }
 
 function scrollChatToBottom() {
-  // Chat is inline in lobby-middle — scroll the parent container to the bottom
-  const scrollParent = chatMessagesEl.closest('.lobby-middle');
+  const scrollParent = chatMessagesEl.closest('.lobby-chat__scroll');
   if (scrollParent) {
     scrollParent.scrollTop = scrollParent.scrollHeight;
   }

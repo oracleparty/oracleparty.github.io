@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403b">
+  <link rel="stylesheet" href="css/style.css?v=20260403c">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body>
@@ -17,55 +17,53 @@
   <div id="lobby-screen" class="screen active" style="display: flex;">
     <div class="lobby-body">
 
-      <!-- Header -->
-      <div class="site-brand">Oracle Party</div>
-      <header class="page-header">
-        <h1 class="page-header__title">Lobby</h1>
-        <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
-        <button id="btn-leave" class="leave-btn">Leave</button>
-      </header>
-
-      <!-- Top: Code + Category -->
-      <div class="lobby-top">
-        <div class="lobby-category-row">
+      <!-- Compact Header: brand + title + leave -->
+      <div class="lobby-header">
+        <div class="lobby-header__top">
+          <div class="lobby-header__brand">Oracle Party</div>
+          <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
+          <button id="btn-leave" class="leave-btn">Leave</button>
+        </div>
+        <div class="lobby-header__meta">
           <p id="lobby-category" class="lobby-category"></p>
           <button id="btn-settings" class="settings-trigger-btn hidden">Settings</button>
         </div>
-        <div class="room-code-display">
-          <span id="lobby-code" class="room-code-display__code"></span>
+        <div class="lobby-header__code">
+          <span id="lobby-code" class="lobby-code"></span>
           <button id="btn-copy-code" class="copy-btn">Copy</button>
         </div>
       </div>
 
-      <!-- Middle: Players + Chat (all scrollable together) -->
-      <div class="lobby-middle">
+      <!-- Players: compact, scrolls only if many players -->
+      <div class="lobby-players">
         <div class="section-title">Players <span id="player-count"></span></div>
         <div id="player-list" class="player-list"></div>
-
         <!-- Room Session Scores (shown after returning from a game) -->
         <div id="room-scores" class="room-scores" style="display:none;">
           <div class="section-title">Room Scores</div>
           <div id="room-scores-list"></div>
         </div>
+      </div>
 
-        <!-- Inline Chat -->
-        <div class="lobby-chat">
-          <div class="section-title">Chat</div>
+      <!-- Chat: fills remaining space -->
+      <div class="lobby-chat">
+        <div class="section-title">Chat</div>
+        <div class="lobby-chat__scroll">
           <div id="chat-drawer-messages" class="lobby-chat__messages"></div>
           <div id="typing-indicator" class="typing-indicator"></div>
-          <div class="lobby-chat__input">
-            <input
-              type="text"
-              id="chat-drawer-input"
-              class="input"
-              placeholder="Say something..."
-              aria-label="Chat message"
-              maxlength="200"
-              autocomplete="off"
-              spellcheck="false"
-            >
-            <button id="btn-chat-send" class="btn btn-primary">Send</button>
-          </div>
+        </div>
+        <div class="lobby-chat__input">
+          <input
+            type="text"
+            id="chat-drawer-input"
+            class="input"
+            placeholder="Say something..."
+            aria-label="Chat message"
+            maxlength="200"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="btn-chat-send" class="btn btn-primary">Send</button>
         </div>
       </div>
 
