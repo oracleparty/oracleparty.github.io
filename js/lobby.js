@@ -291,8 +291,8 @@ function attachListeners() {
     }
   });
 
-  // Chat bar + drawer
-  $('#chat-bar').addEventListener('click', toggleChatDrawer);
+  // Chat send
+
   btnSend.addEventListener('click', handleSendMessage);
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendMessage();
@@ -770,46 +770,11 @@ async function ensureCurrentPlayer() {
   }
 }
 
-// --- Chat Bar + Drawer ---
+// --- Inline Chat (always visible, no drawer toggle) ---
 
-function repositionChatBar() {
-  // Chat drawer is now inline flex — no positioning needed.
-  // Kept as a no-op for call-site compatibility.
-}
-
-function toggleChatDrawer() {
-  chatOpen = !chatOpen;
-
-  // Recalculate drawer bounds every time it opens (footer size may have changed
-  // due to safe-area insets, button visibility, etc.)
-  if (chatOpen) repositionChatBar();
-
-  $('#chat-bar').classList.toggle('open', chatOpen);
-  $('#chat-drawer').classList.toggle('open', chatOpen);
-
-  if (chatOpen) {
-    scrollChatToBottom();
-    setTimeout(() => chatInput.focus(), 220);
-    unreadCount = 0;
-    const badge = $('#chat-bar-badge');
-    badge.textContent = '0';
-    badge.classList.add('hidden');
-  }
-}
-
-function updateChatBarPreview(name, text) {
-  const preview = $('#chat-bar-preview');
-  if (!preview) return;
-  const truncated = text.length > 35 ? text.slice(0, 35) + '\u2026' : text;
-  preview.innerHTML = `<span class="chat-bar__preview-name">${escapeHtml(name)}:</span> ${escapeHtml(truncated)}`;
-}
-
-function flashChatBar() {
-  const bar = $('#chat-bar');
-  bar.classList.remove('chat-bar--flash');
-  void bar.offsetHeight;
-  bar.classList.add('chat-bar--flash');
-}
+function repositionChatBar() { /* no-op — chat is inline */ }
+function updateChatBarPreview() { /* no-op — no bar in lobby */ }
+function flashChatBar() { /* no-op — no bar in lobby */ }
 
 async function loadMessages() {
   const messages = await fetchMessages(room.id);
@@ -822,12 +787,6 @@ async function loadMessages() {
     }
   }
   scrollChatToBottom();
-
-  // Show latest message in bar preview
-  if (messages.length > 0) {
-    const last = messages[messages.length - 1];
-    updateChatBarPreview(last.player_name, last.message);
-  }
 }
 
 function handleNewMessage(payload) {
@@ -861,16 +820,6 @@ function handleNewMessage(payload) {
     appendChatMessage(player_name, message, id, hearts);
   }
   scrollChatToBottom();
-  updateChatBarPreview(player_name, message);
-
-  // Badge + flash when drawer is closed
-  if (!chatOpen) {
-    unreadCount++;
-    const badge = $('#chat-bar-badge');
-    badge.textContent = unreadCount;
-    badge.classList.remove('hidden');
-    flashChatBar();
-  }
 }
 
 function appendChatMessage(name, text, msgId = null, hearts = []) {
@@ -904,7 +853,11 @@ function addSystemMessage(text) {
 }
 
 function scrollChatToBottom() {
-  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  // Chat is inline in lobby-middle — scroll the parent container to the bottom
+  const scrollParent = chatMessagesEl.closest('.lobby-middle');
+  if (scrollParent) {
+    scrollParent.scrollTop = scrollParent.scrollHeight;
+  }
 }
 
 function updateHeartDisplay(bubble, hearts) {

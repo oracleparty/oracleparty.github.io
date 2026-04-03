@@ -1686,37 +1686,48 @@ body::after {
 
 .lobby-footer {
   flex-shrink: 0;
+  padding: var(--space-sm) var(--space-lg);
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
+}
+
+/* --- Lobby Inline Chat --- */
+.lobby-chat {
+  margin-top: var(--space-md);
+}
+
+.lobby-chat__messages {
+  min-height: 60px;
+  max-height: none;
+  overflow: visible;
+  padding: var(--space-sm) 0;
+}
+
+.lobby-chat__input {
   display: flex;
-  flex-direction: column;
-  padding: 0;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
 }
 
-/* Chat bar inside lobby footer — full width */
-.lobby-footer > .chat-bar {
-  border-top: 1px solid var(--color-surface-light);
-  border-bottom: none;
+.lobby-chat__input .input {
+  flex: 1;
+  font-size: var(--text-sm);
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-light);
 }
 
-/* Chat drawer inside lobby footer — bounded height */
-.lobby-footer > .chat-drawer {
-  border-bottom: 1px solid var(--color-surface-light);
+.lobby-chat__input .input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
-.lobby-footer > .chat-drawer.open {
-  max-height: 28vh;
-}
-
-/* Action buttons inside lobby footer */
-.lobby-footer > .btn-block {
-  margin: var(--space-sm) var(--space-lg);
-}
-
-.lobby-footer > .btn-block + .btn-block {
-  margin-top: 0;
-}
-
-.lobby-footer > .btn-block:last-child {
-  margin-bottom: max(var(--space-md), env(safe-area-inset-bottom));
+.lobby-chat__input .btn {
+  flex-shrink: 0;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-full);
 }
 
 .lobby-category {
