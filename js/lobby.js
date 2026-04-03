@@ -1114,9 +1114,20 @@ function renderLobbySheetWildCardOptions(catName, meta) {
       <div class="category-sheet-row" data-category="${catName}" data-subcategory="${opt.key}">
         <span class="category-sheet-row__icon">${opt.icon}</span>
         <span class="category-sheet-row__label">${opt.label}</span>
+        <span class="category-sheet-row__count" data-wc-count="${opt.key}"></span>
       </div>
     `).join('')}
   `;
+
+  // Async-load counts
+  fetchAllOpenQuestionCount().then(count => {
+    const el = list.querySelector('[data-wc-count="__all_questions__"]');
+    if (el) el.textContent = `${count} Qs`;
+  });
+  fetchExclusiveWildCardCount().then(count => {
+    const el = list.querySelector('[data-wc-count="__true_wild_card__"]');
+    if (el) el.textContent = `${count} Qs`;
+  });
 }
 
 function lobbySheetDrillBack() {

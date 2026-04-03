@@ -854,12 +854,13 @@ export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserId
  * These are the ~19 weird, uncategorizable questions.
  */
 export async function fetchExclusiveWildCardQuestions(limit, excludeIds = []) {
-  // categories = '{"wild-card"}' means ONLY wild-card, no other categories
+  // Fetch questions that contain wild-card, then filter client-side
+  // to only those where wild-card is the ONLY category (array length 1)
   const { data, error } = await supabase
     .from('questions')
     .select('*')
     .eq('format', 'open')
-    .eq('categories', '{wild-card}')
+    .contains('categories', ['wild-card'])
     .limit(200);
 
   if (error) {
@@ -867,9 +868,12 @@ export async function fetchExclusiveWildCardQuestions(limit, excludeIds = []) {
     return [];
   }
 
+  // Keep only questions exclusively in wild-card (no other categories)
+  const exclusive = data.filter(q => Array.isArray(q.categories) && q.categories.length === 1);
+
   const excludeSet = new Set(excludeIds);
-  const available = excludeSet.size > 0 ? data.filter(q => !excludeSet.has(q.id)) : [...data];
-  return _shuffle(available.length > 0 ? available : data).slice(0, limit);
+  const available = excludeSet.size > 0 ? exclusive.filter(q => !excludeSet.has(q.id)) : [...exclusive];
+  return _shuffle(available.length > 0 ? available : exclusive).slice(0, limit);
 }
 
 /**
@@ -888,13 +892,14 @@ export async function fetchAllOpenQuestionCount() {
  * Fetch question count for "True Wild Card" mode (exclusively wild-card questions).
  */
 export async function fetchExclusiveWildCardCount() {
-  const { count, error } = await supabase
+  // Can't filter by array length server-side — fetch all wild-card questions and count client-side
+  const { data, error } = await supabase
     .from('questions')
-    .select('id', { count: 'exact', head: true })
+    .select('id, categories')
     .eq('format', 'open')
-    .eq('categories', '{wild-card}');
+    .contains('categories', ['wild-card']);
   if (error) { console.error('[Supabase] fetchExclusiveWildCardCount failed:', error.message); return 0; }
-  return count || 0;
+  return (data || []).filter(q => Array.isArray(q.categories) && q.categories.length === 1).length;
 }
 
 /**
@@ -935,23 +940,41 @@ export async function appendUsedQuestionIds(roomId, newIds) {
  * Excludes any questionIds already used in this game.
  */
 export async function fetchQuestionByDifficulty(category, difficulty, excludeIds = [], subcategory = null) {
-  let query = supabase
-    .from('questions')
-    .select('*')
-    .contains('categories', [category])
-    .eq('format', 'open')
-    .eq('difficulty', difficulty);
+  let query;
 
-  if (subcategory) {
-    query = query.like('subcategory', subcategory + '%');
+  if (subcategory === '__all_questions__') {
+    // All Questions wild-card: any category, just match difficulty
+    query = supabase.from('questions').select('*')
+      .eq('format', 'open')
+      .eq('difficulty', difficulty);
+  } else if (subcategory === '__true_wild_card__') {
+    // True Wild Card: only wild-card-exclusive questions
+    query = supabase.from('questions').select('*')
+      .eq('format', 'open')
+      .contains('categories', ['wild-card'])
+      .eq('difficulty', difficulty);
+  } else {
+    query = supabase.from('questions').select('*')
+      .contains('categories', [category])
+      .eq('format', 'open')
+      .eq('difficulty', difficulty);
+    if (subcategory) {
+      query = query.like('subcategory', subcategory + '%');
+    }
   }
 
   query = query.limit(20);
 
-  const { data, error } = await query;
+  let { data, error } = await query;
   if (error || !data || data.length === 0) {
     console.warn('[Supabase] fetchQuestionByDifficulty: no questions found for', difficulty);
     return null;
+  }
+
+  // True Wild Card: filter client-side to exclusively wild-card
+  if (subcategory === '__true_wild_card__') {
+    data = data.filter(q => Array.isArray(q.categories) && q.categories.length === 1);
+    if (data.length === 0) return null;
   }
 
   // Filter out already-used questions

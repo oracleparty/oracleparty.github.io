@@ -273,9 +273,20 @@ function renderSheetWildCardOptions(catName, meta) {
       <div class="category-sheet-row" data-category="${catName}" data-subcategory="${opt.key}">
         <span class="category-sheet-row__icon">${opt.icon}</span>
         <span class="category-sheet-row__label">${opt.label}</span>
+        <span class="category-sheet-row__count" data-wc-count="${opt.key}"></span>
       </div>
     `).join('')}
   `;
+
+  // Async-load counts
+  fetchAllOpenQuestionCount().then(count => {
+    const el = list.querySelector('[data-wc-count="__all_questions__"]');
+    if (el) el.textContent = `${count} Qs`;
+  });
+  fetchExclusiveWildCardCount().then(count => {
+    const el = list.querySelector('[data-wc-count="__true_wild_card__"]');
+    if (el) el.textContent = `${count} Qs`;
+  });
 }
 
 // --- Attach all event listeners ---
@@ -454,8 +465,16 @@ async function _updateSettingsBadge(cat) {
 
   // Show subcategory count if selected, otherwise parent count
   const countEl = $('.selected-category__count');
-  if (selectedSubcategory) {
-    countEl.textContent = ''; // Clear while loading
+  if (selectedSubcategory === '__all_questions__') {
+    countEl.textContent = '';
+    const allCount = await fetchAllOpenQuestionCount();
+    countEl.textContent = `${allCount} questions`;
+  } else if (selectedSubcategory === '__true_wild_card__') {
+    countEl.textContent = '';
+    const wcCount = await fetchExclusiveWildCardCount();
+    countEl.textContent = `${wcCount} questions`;
+  } else if (selectedSubcategory) {
+    countEl.textContent = '';
     const subCount = await fetchQuestionCount(cat.name, selectedSubcategory);
     countEl.textContent = `${subCount} questions`;
   } else {
