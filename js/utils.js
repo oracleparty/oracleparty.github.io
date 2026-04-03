@@ -209,7 +209,7 @@ export function navigateWithFade(url) {
   if (_isNavigating) return;
   _isNavigating = true;
   document.body.classList.add('page-fade-out');
-  setTimeout(() => { window.location.href = url; }, 200);
+  setTimeout(() => { window.location.href = url; }, 260);
 }
 
 /**
@@ -220,7 +220,7 @@ export function navigateWithFadeReplace(url) {
   if (_isNavigating) return;
   _isNavigating = true;
   document.body.classList.add('page-fade-out');
-  setTimeout(() => { window.location.replace(url); }, 200);
+  setTimeout(() => { window.location.replace(url); }, 260);
 }
 
 // ============================================
