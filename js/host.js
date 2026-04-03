@@ -62,6 +62,8 @@ async function init() {
     renderCategories(categories, categoryPlayCounts);
   } catch (err) {
     console.error('[Host] Init error:', err);
+    categoryGrid.innerHTML = '<div class="empty-state"><p class="empty-state__text">Failed to load categories</p><p class="empty-state__subtext">Check your connection and refresh</p></div>';
+    showToast('Failed to load categories', 'error');
   }
   // Always attach listeners even if data fetch fails
   attachListeners();
@@ -544,6 +546,7 @@ async function handleHostGame() {
 
     if (!data) {
       hostError.textContent = 'Room was not created. Check Supabase RLS policies on the rooms table.';
+      showToast('Failed to create room', 'error');
       console.error('[Host] createRoom returned null data with no error — likely an RLS policy issue.');
       resetHostButton();
       return;

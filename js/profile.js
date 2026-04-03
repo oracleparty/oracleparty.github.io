@@ -3,7 +3,7 @@
 // Avatar picker, profile page logic, bottom sheet profile card
 // ============================================
 
-import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES } from './utils.js';
+import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade } from './utils.js';
 import {
   supabase,
   fetchProfile,
@@ -868,7 +868,7 @@ export async function initProfilePage() {
     if (signOutBtn) {
       signOutBtn.onclick = async () => {
         await signOut();
-        window.location.href = 'index.html';
+        navigateWithFade('index.html');
       };
     }
   }
@@ -1107,7 +1107,7 @@ async function loadFriendsTab(userId) {
     friendsListEl.onclick = (e) => {
       const joinBtn = e.target.closest('[data-join-code]');
       if (joinBtn) {
-        window.location.href = `join.html?code=${joinBtn.dataset.joinCode}`;
+        navigateWithFade(`join.html?code=${joinBtn.dataset.joinCode}`);
         return;
       }
       const row = e.target.closest('[data-profile-user-id]');

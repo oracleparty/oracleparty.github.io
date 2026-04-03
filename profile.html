@@ -8,9 +8,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Oracle Party — Profile</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403a">
+  <link rel="stylesheet" href="css/style.css?v=20260403v">
 </head>
-<body>
+<body style="opacity:0">
 
   <div class="screen screen--scrollable active" style="display: flex; flex-direction: column;">
 
@@ -139,15 +139,17 @@
     import { ensureDisplayName, initAuth } from './js/auth.js';
     import { initProfilePage } from './js/profile.js';
     import { initThemeToggle } from './js/theme.js';
+    import { navigateWithFade } from './js/utils.js';
 
     async function init() {
+      document.body.style.opacity = '1';
       await initAuth();
       await initProfilePage();
       initThemeToggle();
     }
 
     document.getElementById('btn-back').addEventListener('click', () => {
-      window.location.href = 'index.html';
+      navigateWithFade('index.html');
     });
 
     // Trap browser back button

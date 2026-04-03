@@ -12,6 +12,7 @@ import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 // ============================================
 
 async function init() {
+  document.body.style.opacity = '1';
   await Promise.all([ensureDisplayName(), initAuth()]);
 
   const user = getCurrentUser();

@@ -3,7 +3,7 @@
 // Global, Weekly, Per-Category, Friends
 // ============================================
 
-import { $, $$, escapeHtml, renderAvatar } from './utils.js';
+import { $, $$, escapeHtml, renderAvatar, navigateWithFade } from './utils.js';
 import {
   fetchAllPlayerStatsForLeaderboard,
   fetchCategoryLeaderboard,
@@ -21,6 +21,7 @@ import { CATEGORY_META } from './categories.js';
 // ============================================
 
 async function init() {
+  document.body.style.opacity = '1';
   await initAuth();
   initThemeToggle();
 
@@ -50,7 +51,7 @@ async function init() {
   updateSubcategorySelect();
 
   // Back button
-  $('#btn-back').addEventListener('click', () => { window.location.href = 'index.html'; });
+  $('#btn-back').addEventListener('click', () => { navigateWithFade('index.html'); });
   history.pushState({ page: 'leaderboard' }, '');
   window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
 

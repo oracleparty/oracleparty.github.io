@@ -30,7 +30,11 @@ async function init() {
   // Show skeleton rows while loading public games
   publicGamesEl.innerHTML = Array(3).fill('<div class="skeleton skeleton-row"></div>').join('');
   if (publicGamesEmpty) publicGamesEmpty.classList.add('hidden');
-  loadPublicGames().catch(e => console.warn('[Join] loadPublicGames failed:', e));
+  loadPublicGames().catch(e => {
+    console.warn('[Join] loadPublicGames failed:', e);
+    $$('.skeleton', publicGamesEl).forEach(el => el.remove());
+    if (publicGamesEmpty) publicGamesEmpty.classList.remove('hidden');
+  });
 
   // Auto-join from URL param (e.g. join.html?code=ABCD from friends list)
   const urlCode = new URLSearchParams(window.location.search).get('code');

@@ -179,8 +179,8 @@ export function showToast(message, type = 'info', duration = 3000) {
   toast.textContent = message;
   container.appendChild(toast);
   setTimeout(() => {
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
     toast.classList.add('toast--out');
-    toast.addEventListener('animationend', () => toast.remove());
   }, duration);
 }
 
@@ -192,16 +192,22 @@ export function showToast(message, type = 'info', duration = 3000) {
 // Without this, pages stay invisible after navigateWithFade sets opacity to 0.
 window.addEventListener('pageshow', (e) => {
   if (e.persisted) {
+    _isNavigating = false;
     document.body.classList.remove('page-fade-out');
     document.body.style.opacity = '1';
   }
 });
 
+let _isNavigating = false;
+
 /**
  * Navigate to a URL with a fade-out transition.
+ * Guards against double-clicks triggering multiple navigations.
  * @param {string} url - Destination URL
  */
 export function navigateWithFade(url) {
+  if (_isNavigating) return;
+  _isNavigating = true;
   document.body.classList.add('page-fade-out');
   setTimeout(() => { window.location.href = url; }, 200);
 }
@@ -211,6 +217,8 @@ export function navigateWithFade(url) {
  * @param {string} url - Destination URL
  */
 export function navigateWithFadeReplace(url) {
+  if (_isNavigating) return;
+  _isNavigating = true;
   document.body.classList.add('page-fade-out');
   setTimeout(() => { window.location.replace(url); }, 200);
 }
