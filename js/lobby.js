@@ -997,11 +997,22 @@ function closeSettingsModal() {
 
 function renderSettingsCategories() {
   const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
-  const label = resolveCategoryLabel(room.category, room.subcategory);
+  const icon = resolveSubcategoryIcon(room.category, room.subcategory);
+  // Short label: just the leaf subcategory name
+  let shortLabel = meta.label;
+  if (room.subcategory) {
+    if (meta.wildCardOptions) {
+      const opt = meta.wildCardOptions.find(o => o.key === room.subcategory);
+      if (opt) shortLabel = opt.label;
+    } else {
+      const node = findSubcategoryNode(meta, room.subcategory);
+      if (node) shortLabel = node.label;
+    }
+  }
   settingsCategoryGrid.innerHTML = `
     <div class="category-sheet-row selected" id="settings-category-tap" style="cursor:pointer;">
-      <span class="category-sheet-row__icon">${meta.icon}</span>
-      <span class="category-sheet-row__label">${label}</span>
+      <span class="category-sheet-row__icon">${icon}</span>
+      <span class="category-sheet-row__label">${shortLabel}</span>
       <span class="category-sheet-row__chevron">\u203A</span>
     </div>
   `;

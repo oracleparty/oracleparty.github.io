@@ -1859,7 +1859,7 @@ body::after {
 
 /* ---- Chat section ---- */
 .lobby-chat {
-  padding: var(--space-xs) 0 var(--space-md);
+  padding: var(--space-xs) 0 var(--space-lg);
   border-top: 1px solid var(--color-surface-light);
 }
 
@@ -1868,7 +1868,17 @@ body::after {
 }
 
 .lobby-chat__messages {
-  min-height: 40px;
+  min-height: 60px;
+}
+
+.lobby-chat__messages:empty::after {
+  content: 'No messages yet — say hello!';
+  display: block;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  padding: var(--space-lg) 0;
+  opacity: 0.5;
 }
 
 /* ---- Footer: pinned at bottom ---- */
