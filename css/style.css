@@ -702,6 +702,7 @@ body::after {
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-md);
   width: 100%;
+  align-items: start;
 }
 
 .category-card {
