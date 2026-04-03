@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403d">
+  <link rel="stylesheet" href="css/style.css?v=20260403e">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body>
@@ -17,35 +17,36 @@
   <div id="lobby-screen" class="screen active" style="display: flex;">
     <div class="lobby-body">
 
-      <!-- Compact Header: brand + title + leave -->
-      <div class="lobby-header">
-        <div class="lobby-header__top">
-          <div class="lobby-header__brand">Oracle Party</div>
-          <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
-          <button id="btn-leave" class="leave-btn">Leave</button>
-        </div>
-        <div class="lobby-header__meta">
+      <!-- Utility bar -->
+      <div class="lobby-bar">
+        <span class="lobby-bar__brand">Oracle Party</span>
+        <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
+        <button id="btn-leave" class="leave-btn">Leave</button>
+      </div>
+
+      <!-- Room identity: code is the hero -->
+      <div class="lobby-room">
+        <div class="lobby-room__category">
           <p id="lobby-category" class="lobby-category"></p>
           <button id="btn-settings" class="settings-trigger-btn hidden">Settings</button>
         </div>
-        <div class="lobby-header__code">
-          <span id="lobby-code" class="lobby-code"></span>
-          <button id="btn-copy-code" class="copy-btn">Copy</button>
-        </div>
+        <button id="btn-copy-code" class="lobby-room__code" aria-label="Copy room code">
+          <span id="lobby-code" class="lobby-room__code-text"></span>
+          <span class="lobby-room__code-hint">tap to copy</span>
+        </button>
       </div>
 
-      <!-- Players: compact, scrolls only if many players -->
+      <!-- Players -->
       <div class="lobby-players">
         <div class="section-title">Players <span id="player-count"></span></div>
         <div id="player-list" class="player-list"></div>
-        <!-- Room Session Scores (shown after returning from a game) -->
         <div id="room-scores" class="room-scores" style="display:none;">
           <div class="section-title">Room Scores</div>
           <div id="room-scores-list"></div>
         </div>
       </div>
 
-      <!-- Chat: fills remaining space -->
+      <!-- Chat -->
       <div class="lobby-chat">
         <div class="section-title">Chat</div>
         <div class="lobby-chat__scroll">
@@ -53,21 +54,14 @@
           <div id="typing-indicator" class="typing-indicator"></div>
         </div>
         <div class="lobby-chat__input">
-          <input
-            type="text"
-            id="chat-drawer-input"
-            class="input"
-            placeholder="Say something..."
-            aria-label="Chat message"
-            maxlength="200"
-            autocomplete="off"
-            spellcheck="false"
-          >
+          <input type="text" id="chat-drawer-input" class="input"
+            placeholder="Say something..." aria-label="Chat message"
+            maxlength="200" autocomplete="off" spellcheck="false">
           <button id="btn-chat-send" class="btn btn-primary">Send</button>
         </div>
       </div>
 
-      <!-- Footer: Action buttons only -->
+      <!-- Footer -->
       <div class="lobby-footer">
         <button id="btn-start-game" class="btn btn-primary btn-block hidden">Start Game</button>
         <button id="btn-ready" class="btn btn-secondary btn-block hidden">Ready Up</button>

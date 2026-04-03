@@ -279,15 +279,15 @@ function attachListeners() {
   btnCopyCode.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(room.code);
-      btnCopyCode.textContent = 'Copied!';
+      const hint = btnCopyCode.querySelector('.lobby-room__code-hint');
+      if (hint) hint.textContent = 'copied!';
       btnCopyCode.classList.add('copied');
       setTimeout(() => {
-        btnCopyCode.textContent = 'Copy';
+        if (hint) hint.textContent = 'tap to copy';
         btnCopyCode.classList.remove('copied');
       }, 1500);
     } catch {
-      // Fallback: select text
-      btnCopyCode.textContent = room.code;
+      // Fallback: no-op, code is visible
     }
   });
 
