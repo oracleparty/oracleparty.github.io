@@ -375,9 +375,9 @@ async function init() {
   // Track presence as "in game"
   updatePresence({ activity: 'game', roomId: state.room.id, category: state.room.category });
 
-  if (state.room.isHost) {
+  if (state.room.isHost || state.room.isCohost) {
     await initHostGame();
-    initHostSettingsPanel();
+    if (state.room.isHost) initHostSettingsPanel();
   } else {
     await initPlayerGame();
   }
@@ -1509,8 +1509,8 @@ async function handleTimerExpired() {
     await doSubmitAnswer(currentAnswer, { autoSubmit: true });
   }
 
-  // Host: auto-submit blank for any players who didn't answer, then broadcast reveal.
-  if (state.room.isHost) {
+  // Host/cohost: auto-submit blank for any players who didn't answer, then broadcast reveal.
+  if (canControlGame()) {
     // Re-fetch answers to ensure we have the host's just-submitted answer
     // (state.currentAnswers may be stale — Realtime INSERT may not have arrived yet)
     const freshAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
@@ -2493,8 +2493,8 @@ function showFinalWagerScreen() {
     status.classList.add('hidden');
   }
 
-  // Host: show reveal button ONLY after they've locked in their own wager
-  if (state.room.isHost) {
+  // Host/cohost: show reveal button ONLY after they've locked in their own wager
+  if (canControlGame()) {
     revealBtn.onclick = handleRevealFinalQuestion;
     if (state.finalWagerLocked) {
       revealBtn.classList.remove('hidden');

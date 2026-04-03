@@ -122,16 +122,20 @@ async function init() {
   }
 
   // If game is already in progress, redirect — BUT if returning from Play Again,
-  // the host may still be resetting the room. Wait briefly and re-check.
+  // the host may still be resetting the room. Poll with retries before bouncing.
   if (currentRoom.status === 'playing') {
     if (sessionStorage.getItem('oracle_party_returning_from_game')) {
       // Host is likely still running deleteAnswersByRoom + updateGameState + updateRoomStatus.
-      // Wait 2 seconds and re-check before bouncing back to game.
-      await new Promise(r => setTimeout(r, 2000));
-      const { data: recheck } = await fetchRoom(room.id);
-      if (!recheck) { sessionStorage.removeItem('oracle_party_room'); window.location.href = 'index.html'; return; }
-      if (recheck.status === 'playing') {
-        // Still playing after 2s — this is a real in-progress game, not a race
+      // Poll up to 5 times (1s each) waiting for status to change from 'playing'.
+      let settled = false;
+      for (let i = 0; i < 5; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const { data: recheck } = await fetchRoom(room.id);
+        if (!recheck) { sessionStorage.removeItem('oracle_party_room'); window.location.href = 'index.html'; return; }
+        if (recheck.status !== 'playing') { settled = true; break; }
+      }
+      if (!settled) {
+        // Still playing after 5s — this is a real in-progress game, not a race
         window.location.replace('game.html');
         return;
       }
@@ -231,16 +235,6 @@ async function init() {
 
   // Typing indicator
   initTypingIndicator(room.id, room.playerId, getDisplayName(), updateTypingUI);
-
-  // Position chat bar below header
-  repositionChatBar();
-
-  // Watch for footer resize to keep chat drawer bounds correct
-  const lobbyFooter = document.querySelector('.lobby-footer');
-  if (lobbyFooter && !window._lobbyFooterObserver) {
-    window._lobbyFooterObserver = new ResizeObserver(() => repositionChatBar());
-    window._lobbyFooterObserver.observe(lobbyFooter);
-  }
 
   // Room session leaderboard (cumulative scores across games in this room)
   const roomScoresKey = `oracle_party_room_scores_${room.id}`;
@@ -1367,11 +1361,6 @@ function cleanup() {
   presenceReady = false;
   presenceChannel = null;
   awayTimestamps.clear();
-  // Clean up ResizeObserver
-  if (window._lobbyFooterObserver) {
-    window._lobbyFooterObserver.disconnect();
-    window._lobbyFooterObserver = null;
-  }
 }
 
 // --- Start ---

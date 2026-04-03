@@ -1680,6 +1680,8 @@ body::after {
   padding: 0 var(--space-lg);
   gap: var(--space-sm);
   overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .lobby-footer {
