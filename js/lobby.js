@@ -651,6 +651,12 @@ function attachSettingsListeners() {
   attachSettingsListeners._done = true;
 
   btnSettings.addEventListener('click', openSettingsModal);
+  const categoryTap = $('#btn-category-tap');
+  if (categoryTap) {
+    categoryTap.addEventListener('click', () => {
+      if (room.isHost) openSettingsModal();
+    });
+  }
   btnCloseSettings.addEventListener('click', closeSettingsModal);
   settingsModal.addEventListener('click', (e) => {
     if (e.target === settingsModal) closeSettingsModal();
@@ -853,7 +859,7 @@ function addSystemMessage(text) {
 }
 
 function scrollChatToBottom() {
-  const scrollParent = chatMessagesEl.closest('.lobby-chat__scroll');
+  const scrollParent = chatMessagesEl.closest('.lobby-scroll');
   if (scrollParent) {
     scrollParent.scrollTop = scrollParent.scrollHeight;
   }
