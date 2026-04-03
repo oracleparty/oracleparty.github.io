@@ -1686,8 +1686,27 @@ body::after {
 
 .lobby-footer {
   flex-shrink: 0;
-  padding: var(--space-sm) var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
+}
+
+/* Chat bar inside lobby footer — full-bleed edges */
+.lobby-footer .chat-bar {
+  margin: 0 calc(-1 * var(--space-lg));
+  padding: 0 var(--space-lg);
+  border-top: 1px solid var(--color-surface-light);
+}
+
+/* Chat drawer inside lobby footer — full-bleed edges */
+.lobby-footer .chat-drawer {
+  margin: 0 calc(-1 * var(--space-lg));
+}
+
+.lobby-footer .chat-drawer.open {
+  max-height: 30vh;
 }
 
 .lobby-category {
