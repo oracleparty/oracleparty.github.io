@@ -1564,7 +1564,7 @@ body::after {
 }
 
 .chat-bubble {
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-xs);
 }
 
 .chat-bubble__header {
@@ -1581,7 +1581,14 @@ body::after {
   margin-bottom: 1px;
 }
 
+.chat-bubble__body {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
 .chat-bubble__text {
+  flex: 1;
   font-size: var(--text-sm);
   color: var(--color-text);
   line-height: 1.4;
@@ -1604,7 +1611,7 @@ body::after {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .heart-btn {

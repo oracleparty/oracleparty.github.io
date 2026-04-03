@@ -847,10 +847,12 @@ function appendChatMessage(name, text, msgId = null, hearts = []) {
   const iHearted = Array.isArray(hearts) && hearts.includes(getDisplayName());
   bubble.innerHTML = `
     <div class="chat-bubble__header">${chatAvatar}<div class="chat-bubble__name">${escapeHtml(name)}</div></div>
-    <div class="chat-bubble__text">${escapeHtml(text)}</div>
-    <div class="chat-bubble__hearts">
-      <button class="heart-btn${iHearted ? ' hearted' : ''}" aria-label="Heart">&hearts;</button>
-      <span class="heart-count${heartCount === 0 ? ' hidden' : ''}">${heartCount}</span>
+    <div class="chat-bubble__body">
+      <div class="chat-bubble__text">${escapeHtml(text)}</div>
+      <div class="chat-bubble__hearts">
+        <button class="heart-btn${iHearted ? ' hearted' : ''}" aria-label="Heart">&hearts;</button>
+        <span class="heart-count${heartCount === 0 ? ' hidden' : ''}">${heartCount}</span>
+      </div>
     </div>
   `;
   chatMessagesEl.appendChild(bubble);
