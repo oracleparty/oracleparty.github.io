@@ -794,26 +794,65 @@ body::after {
   opacity: 0.6;
   margin-top: 1px;
 }
-.category-card__mastery {
-  margin-top: var(--space-xs);
+/* --- Mastery Ring (around category icon) --- */
+.category-card__icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--space-sm);
 }
-.category-card__mastery-text {
-  font-size: 0.6rem;
-  color: var(--color-primary);
-  font-weight: 600;
+
+/* The ring track (visible for logged-in users with data-mastery) */
+.category-card__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  /* Empty ring — faint track */
+  background: conic-gradient(
+    var(--color-primary) calc(var(--mastery-pct, 0) * 3.6deg),
+    rgba(255, 255, 255, 0.06) calc(var(--mastery-pct, 0) * 3.6deg)
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #fff calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #fff calc(100% - 2.5px));
+  pointer-events: none;
 }
-.category-card__mastery-bar {
-  height: 3px;
-  background: var(--color-surface-light);
-  border-radius: 2px;
-  margin-top: 3px;
-  overflow: hidden;
+
+/* Override icon margin since the wrap handles it now */
+.category-card__icon-wrap .category-card__icon {
+  margin-bottom: 0;
+  position: relative;
+  z-index: 1;
 }
-.category-card__mastery-fill {
-  height: 100%;
-  background: var(--color-primary);
-  border-radius: 2px;
-  transition: width 0.5s var(--ease-out);
+
+/* --- Mastery Border Glow (75%+ tier) --- */
+.category-card[data-mastery-tier="high"] {
+  border-color: rgba(198, 138, 46, 0.25);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.03),
+    0 0 12px rgba(198, 138, 46, 0.08);
+}
+
+/* --- Mastery Border Glow (100% — mastered) --- */
+.category-card[data-mastery-tier="complete"] {
+  border-color: rgba(198, 138, 46, 0.4);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.03),
+    0 0 16px rgba(198, 138, 46, 0.12),
+    0 0 32px rgba(198, 138, 46, 0.06);
+}
+
+.category-card[data-mastery-tier="complete"] .category-card__ring {
+  animation: mastery-pulse 3s ease-in-out infinite;
+}
+
+@keyframes mastery-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 /* --- Subcategory Drill-in View --- */

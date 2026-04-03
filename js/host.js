@@ -82,24 +82,23 @@ function renderCategories(cats, playCounts = {}) {
     const mastered = _masteryCounts[cat.name] || 0;
     const total = cat.count || 1;
     const pct = Math.round((mastered / total) * 100);
-    const masteryHtml = _isLoggedIn && mastered > 0 ? `
-      <div class="category-card__mastery">
-        <span class="category-card__mastery-text">${mastered}/${total} mastered</span>
-        <div class="category-card__mastery-bar">
-          <div class="category-card__mastery-fill" style="width: ${pct}%"></div>
-        </div>
-      </div>
-    ` : '';
+    // Mastery tier for card border glow
+    const tier = pct >= 100 ? 'complete' : pct >= 75 ? 'high' : '';
+    const tierAttr = tier ? ` data-mastery-tier="${tier}"` : '';
+    // Ring markup — only for logged-in users
+    const ringHtml = _isLoggedIn ? `<div class="category-card__ring" style="--mastery-pct: ${pct}"></div>` : '';
     // Wild-card card shows a placeholder count — replaced with total DB count async
     const countId = cat.name === 'wild-card' ? 'id="wc-card-count"' : '';
     const displayCount = cat.count;
     return `
-      <div class="category-card" data-category="${cat.name}">
-        <div class="category-card__icon">${meta.icon}</div>
+      <div class="category-card" data-category="${cat.name}"${tierAttr}>
+        <div class="category-card__icon-wrap">
+          ${ringHtml}
+          <div class="category-card__icon">${meta.icon}</div>
+        </div>
         <div class="category-card__name">${meta.label}</div>
         <div class="category-card__count" ${countId}>${displayCount} questions</div>
         <div class="category-card__plays">${plays.toLocaleString()} plays</div>
-        ${masteryHtml}
       </div>
     `;
   }).join('');
