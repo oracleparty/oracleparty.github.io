@@ -909,7 +909,7 @@ function revealQuestionAndStartTimer() {
   $('.timer').style.visibility = '';
 
   startTimer();
-  $('#answer-input').focus();
+  $('#answer-input').focus({ preventScroll: true });
 }
 
 async function handlePhaseTransition(phase) {
@@ -1305,7 +1305,7 @@ function showQuestionScreen() {
   if (isReconnect) {
     // Reconnect: skip sync buffer, resume timer from server timestamp
     startTimer();
-    $('#answer-input').focus();
+    $('#answer-input').focus({ preventScroll: true });
   } else {
     // Normal flow: 1-second sync buffer before revealing question
     setTimeout(async () => {
@@ -1327,7 +1327,7 @@ function showQuestionScreen() {
       startTimer();
 
       // Focus the answer input for quick typing
-      $('#answer-input').focus();
+      $('#answer-input').focus({ preventScroll: true });
     }, 1000);
   }
 
@@ -3577,7 +3577,7 @@ function toggleChatDrawer() {
     $('#chat-bar').classList.add('open');
     $('#chat-drawer').classList.add('open');
     scrollGameChatToBottom();
-    setTimeout(() => $('#chat-drawer-input').focus(), 300);
+    setTimeout(() => $('#chat-drawer-input').focus({ preventScroll: true }), 300);
     state.unreadCount = 0;
     const badge = $('#chat-bar-badge');
     badge.textContent = '0';

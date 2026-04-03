@@ -111,6 +111,10 @@ async function init() {
     loadMessages()
   ]);
 
+  // loadMessages scrolls chat to bottom — reset page to top so user sees room card first
+  const scrollArea = document.querySelector('.lobby-scroll');
+  if (scrollArea) scrollArea.scrollTop = 0;
+
   // Ensure current player exists (may have been removed by a stale beacon on refresh)
   await ensureCurrentPlayer();
 
