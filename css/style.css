@@ -700,6 +700,7 @@ body::after {
 .category-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
   gap: var(--space-md);
   width: 100%;
 }
@@ -780,10 +781,6 @@ body::after {
   color: var(--color-text);
   letter-spacing: -0.01em;
   margin-bottom: 2px;
-  min-height: 2.4em; /* Reserve space for 2-line names so all cards are uniform */
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .category-card__count {
