@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-store">
   <title>Lobby — Oracle Party</title>
   <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403i">
+  <link rel="stylesheet" href="css/style.css?v=20260403j">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body>
@@ -31,13 +31,13 @@
           <p id="lobby-category" class="lobby-category"></p>
           <button id="btn-settings" class="settings-trigger-btn hidden">Settings</button>
         </div>
-        <button id="btn-copy-code" class="lobby-room__code" aria-label="Copy room code">
+        <div class="lobby-room__code-row">
           <span id="lobby-category-icon" class="lobby-room__code-icon"></span>
-          <span class="lobby-room__code-main">
+          <button id="btn-copy-code" class="lobby-room__code" aria-label="Copy room code">
             <span id="lobby-code" class="lobby-room__code-text"></span>
             <span class="lobby-room__code-hint">tap to copy</span>
-          </span>
-        </button>
+          </button>
+        </div>
       </div>
 
       <!-- Players -->

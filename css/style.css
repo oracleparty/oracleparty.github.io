@@ -1736,10 +1736,27 @@ body::after {
   min-width: 0;
 }
 
+.lobby-room__code-row {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.lobby-room__code-icon {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-55%);
+  font-size: 2rem;
+  line-height: 1;
+  opacity: 0.8;
+}
+
 .lobby-room__code {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 1px;
   background: none;
   border: none;
   cursor: pointer;
@@ -1751,20 +1768,6 @@ body::after {
 
 .lobby-room__code:active {
   background: var(--color-primary-glow);
-}
-
-.lobby-room__code-icon {
-  font-size: 2rem;
-  line-height: 1;
-  flex-shrink: 0;
-  opacity: 0.85;
-}
-
-.lobby-room__code-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
 }
 
 .lobby-room__code-text {

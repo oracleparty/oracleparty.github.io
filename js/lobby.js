@@ -960,10 +960,10 @@ async function handleStartGame() {
 
 // --- Settings Modal (host) ---
 function updateCategoryDisplay() {
-  const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
   const label = resolveCategoryLabel(room.category, room.subcategory);
+  const icon = resolveSubcategoryIcon(room.category, room.subcategory);
   const iconEl = $('#lobby-category-icon');
-  if (iconEl) iconEl.textContent = meta.icon;
+  if (iconEl) iconEl.textContent = icon;
   lobbyCategory.textContent = label;
 }
 
