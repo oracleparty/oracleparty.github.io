@@ -498,65 +498,18 @@ body::after {
 .splash__eye {
   position: relative;
   z-index: 2;
-  width: 80px;
-  height: 48px;
-  margin-top: var(--space-xl);
-  overflow: hidden;
+  margin-top: var(--space-lg);
+  font-size: 36px;
+  color: var(--color-primary);
+  text-shadow: 0 0 20px rgba(150, 105, 31, 0.6), 0 0 50px rgba(150, 105, 31, 0.25);
   opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.5s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(0.3);
+  transition: opacity 0.6s ease-out, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .splash__eye--open {
   opacity: 1;
-  transform: translateY(0);
-}
-
-.splash__eye-iris {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 44px;
-  color: var(--color-primary);
-  text-shadow: 0 0 24px rgba(150, 105, 31, 0.7), 0 0 60px rgba(150, 105, 31, 0.3);
-  transform: scale(0.2);
-  opacity: 0;
-  transition: transform 1s cubic-bezier(0.16, 1, 0.3, 1) 0.15s, opacity 0.5s ease-out 0.15s;
-}
-
-.splash__eye--open .splash__eye-iris {
   transform: scale(1);
-  opacity: 1;
-}
-
-.splash__eye-lid {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 50%;
-  background: var(--color-bg);
-  z-index: 1;
-  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.splash__eye-lid--top {
-  top: 0;
-  transform-origin: top center;
-}
-
-.splash__eye-lid--bottom {
-  bottom: 0;
-  transform-origin: bottom center;
-}
-
-.splash__eye--open .splash__eye-lid--top {
-  transform: scaleY(0);
-}
-
-.splash__eye--open .splash__eye-lid--bottom {
-  transform: scaleY(0);
 }
 
 /* Title — cinematic reveal with letter-spacing + blur */
