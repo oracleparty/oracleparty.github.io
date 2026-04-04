@@ -31,7 +31,10 @@ async function init() {
     loadDashboardStats(),
     loadAnnouncement(),
     loadFeatureFlags(),
-    loadFlaggedQueue()
+    loadFlaggedQueue(),
+    loadRecentGames(),
+    loadChatArchive(),
+    loadErrorLogs()
   ]);
 
   attachListeners();
@@ -209,6 +212,207 @@ async function loadFlaggedQueue() {
 }
 
 // ============================================
+// RECENT GAMES
+// ============================================
+
+let _gamesOffset = 0;
+
+async function loadRecentGames() {
+  _gamesOffset = 0;
+  const games = await fetchRecentGames(0);
+  renderGames(games);
+}
+
+async function fetchRecentGames(offset) {
+  const { data, error } = await supabase
+    .from('game_plays')
+    .select('*')
+    .order('started_at', { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1);
+  if (error) { logger.error('Admin', 'fetchRecentGames failed', error); return []; }
+  return data || [];
+}
+
+function renderGames(games) {
+  const container = $('#recent-games');
+  container.innerHTML = '';
+  appendGames(games);
+  $('#btn-load-more-games').style.display = games.length >= PAGE_SIZE ? '' : 'none';
+}
+
+function appendGames(games) {
+  const container = $('#recent-games');
+  if (games.length === 0 && container.children.length === 0) {
+    container.innerHTML = '<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No games recorded.</p>';
+    return;
+  }
+  for (const g of games) {
+    const started = g.started_at ? new Date(g.started_at).toLocaleString() : '?';
+    const duration = g.started_at && g.completed_at
+      ? Math.round((new Date(g.completed_at) - new Date(g.started_at)) / 60000) + ' min'
+      : g.completed ? 'done' : 'in progress';
+    const status = g.completed ? 'completed' : 'active';
+    const score = g.final_score != null ? `${g.final_score} pts` : '—';
+    const progress = `${g.questions_answered || 0}/${g.total_questions || '?'}`;
+    const row = document.createElement('div');
+    row.className = 'admin-q-row';
+    row.innerHTML = `
+      <div class="admin-q-row__summary">
+        <div class="admin-q-row__text">${escapeText(g.player_name || '?')} — ${escapeText(g.category || '?')}</div>
+        <div class="admin-q-row__meta">
+          <span>${progress} Qs</span>
+          <span>${score}</span>
+          <span>${duration}</span>
+          <span class="admin-game-status--${status}">${status}</span>
+          <span>${started}</span>
+        </div>
+      </div>
+    `;
+    container.appendChild(row);
+  }
+}
+
+// ============================================
+// CHAT ARCHIVE
+// ============================================
+
+let _chatOffset = 0;
+
+async function loadChatArchive() {
+  _chatOffset = 0;
+  const chats = await fetchChatArchive(0);
+  renderChatArchive(chats);
+}
+
+async function fetchChatArchive(offset) {
+  const { data, error } = await supabase
+    .from('chat_archive')
+    .select('*')
+    .order('archived_at', { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1);
+  if (error) { logger.error('Admin', 'fetchChatArchive failed', error); return []; }
+  return data || [];
+}
+
+function renderChatArchive(chats) {
+  const container = $('#chat-archive');
+  container.innerHTML = '';
+  appendChatArchive(chats);
+  $('#btn-load-more-chats').style.display = chats.length >= PAGE_SIZE ? '' : 'none';
+}
+
+function appendChatArchive(chats) {
+  const container = $('#chat-archive');
+  if (chats.length === 0 && container.children.length === 0) {
+    container.innerHTML = '<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No archived chats.</p>';
+    return;
+  }
+  for (const c of chats) {
+    const date = c.archived_at ? new Date(c.archived_at).toLocaleString() : '?';
+    const messages = Array.isArray(c.messages) ? c.messages : [];
+    const row = document.createElement('div');
+    row.className = 'admin-q-row';
+    const metaParts = [];
+    if (c.host_name) metaParts.push(escapeText(c.host_name));
+    if (c.player_count) metaParts.push(`${c.player_count} players`);
+    metaParts.push(`${messages.length} msgs`);
+    metaParts.push(date);
+    row.innerHTML = `
+      <div class="admin-q-row__summary admin-chat-summary">
+        <div class="admin-q-row__text">${escapeText(c.room_code || '?')} — ${escapeText(c.category || '?')}</div>
+        <div class="admin-q-row__meta">${metaParts.map(p => `<span>${p}</span>`).join('')}</div>
+      </div>
+      <div class="admin-q-row__edit admin-chat-messages" style="display:none;">
+        ${messages.length === 0
+          ? '<p style="color:var(--color-text-muted); font-size:var(--text-xs);">No messages.</p>'
+          : messages.map(m => `<div class="admin-chat-msg">
+              <span class="admin-chat-msg__name">${escapeText(m.player_name || m.sender_name || m.name || '?')}</span>
+              <span class="admin-chat-msg__text">${escapeText(m.message || m.content || m.text || '')}</span>
+              <span class="admin-chat-msg__time">${m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : ''}</span>
+            </div>`).join('')}
+      </div>
+    `;
+    // Toggle messages on click
+    row.querySelector('.admin-chat-summary').onclick = () => {
+      const msgs = row.querySelector('.admin-chat-messages');
+      msgs.style.display = msgs.style.display === 'none' ? '' : 'none';
+    };
+    container.appendChild(row);
+  }
+}
+
+// ============================================
+// ERROR LOGS
+// ============================================
+
+let _errorOffset = 0;
+
+async function loadErrorLogs() {
+  _errorOffset = 0;
+  const logs = await fetchErrorLogs(0);
+  renderErrorLogs(logs);
+}
+
+async function fetchErrorLogs(offset) {
+  let query = supabase
+    .from('error_logs')
+    .select('*')
+    .order('timestamp', { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1);
+
+  const severity = $('#error-severity')?.value;
+  if (severity) query = query.eq('type', severity);
+
+  const { data, error } = await query;
+  if (error) { logger.error('Admin', 'fetchErrorLogs failed', error); return []; }
+  return data || [];
+}
+
+function renderErrorLogs(logs) {
+  const container = $('#error-logs');
+  container.innerHTML = '';
+  appendErrorLogs(logs);
+  $('#btn-load-more-errors').style.display = logs.length >= PAGE_SIZE ? '' : 'none';
+}
+
+function appendErrorLogs(logs) {
+  const container = $('#error-logs');
+  if (logs.length === 0 && container.children.length === 0) {
+    container.innerHTML = '<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No error logs.</p>';
+    return;
+  }
+  for (const log of logs) {
+    const time = log.timestamp ? new Date(log.timestamp).toLocaleString() : '?';
+    const msg = log.message || '';
+    const truncated = msg.length > 100 ? msg.slice(0, 100) + '\u2026' : msg;
+    const row = document.createElement('div');
+    row.className = 'admin-q-row';
+    row.innerHTML = `
+      <div class="admin-q-row__summary">
+        <div class="admin-q-row__text">${escapeText(truncated)}</div>
+        <div class="admin-q-row__meta">
+          <span class="admin-error-badge admin-error-badge--${escapeText(log.type || 'error')}">${escapeText(log.type || 'error')}</span>
+          <span>${time}</span>
+          <span>${escapeText(log.source || '')}</span>
+          ${log.lineno ? `<span>L${log.lineno}${log.colno ? ':' + log.colno : ''}</span>` : ''}
+        </div>
+      </div>
+      <div class="admin-q-row__edit" style="display:none;">
+        <pre class="admin-error-detail">${escapeText(msg)}</pre>
+        ${log.stack ? `<pre class="admin-error-detail admin-error-stack">${escapeText(log.stack)}</pre>` : ''}
+        ${log.url ? `<p class="admin-error-ua">Page: ${escapeText(log.url)}</p>` : ''}
+        ${log.user_agent ? `<p class="admin-error-ua">UA: ${escapeText(log.user_agent)}</p>` : ''}
+      </div>
+    `;
+    row.querySelector('.admin-q-row__summary').onclick = () => {
+      const detail = row.querySelector('.admin-q-row__edit');
+      detail.style.display = detail.style.display === 'none' ? '' : 'none';
+    };
+    container.appendChild(row);
+  }
+}
+
+// ============================================
 // QUESTION MANAGEMENT
 // ============================================
 
@@ -371,6 +575,36 @@ function attachListeners() {
   $('#btn-search-questions').onclick = loadQuestions;
   $('#q-search').onkeydown = (e) => { if (e.key === 'Enter') loadQuestions(); };
   $('#btn-load-more').onclick = loadMoreQuestions;
+
+  // Recent games
+  $('#btn-load-more-games').onclick = async () => {
+    _gamesOffset += PAGE_SIZE;
+    const games = await fetchRecentGames(_gamesOffset);
+    appendGames(games);
+    $('#btn-load-more-games').style.display = games.length >= PAGE_SIZE ? '' : 'none';
+  };
+
+  // Chat archive
+  $('#btn-load-more-chats').onclick = async () => {
+    _chatOffset += PAGE_SIZE;
+    const chats = await fetchChatArchive(_chatOffset);
+    appendChatArchive(chats);
+    $('#btn-load-more-chats').style.display = chats.length >= PAGE_SIZE ? '' : 'none';
+  };
+
+  // Error logs
+  $('#error-severity').onchange = loadErrorLogs;
+  $('#btn-load-more-errors').onclick = async () => {
+    _errorOffset += PAGE_SIZE;
+    const logs = await fetchErrorLogs(_errorOffset);
+    appendErrorLogs(logs);
+    $('#btn-load-more-errors').style.display = logs.length >= PAGE_SIZE ? '' : 'none';
+  };
+  $('#btn-clear-old-errors').onclick = async () => {
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase.from('error_logs').delete().lt('timestamp', cutoff);
+    loadErrorLogs();
+  };
 }
 
 // ============================================

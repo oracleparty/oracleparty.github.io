@@ -1485,6 +1485,17 @@ body::after {
   color: #818CF8;
 }
 
+[data-theme="dark"] .review-item__player-answer--correct,
+[data-theme="oled"] .review-item__player-answer--correct {
+  color: #4ADE80;
+  background: rgba(39, 174, 96, 0.15);
+}
+[data-theme="dark"] .review-item__player-answer--incorrect,
+[data-theme="oled"] .review-item__player-answer--incorrect {
+  color: #F87171;
+  background: rgba(231, 76, 60, 0.15);
+}
+
 .badge--ready {
   background: rgba(46, 122, 66, 0.1);
   color: #267035;
@@ -2215,6 +2226,10 @@ body::after {
   -webkit-overflow-scrolling: touch;
 }
 
+.game-content--centered {
+  justify-content: center;
+}
+
 .game-footer {
   flex-shrink: 0;
   padding: var(--space-md) var(--space-lg);
@@ -2847,12 +2862,14 @@ body::after {
 
 .score-anim-row__name {
   font-family: var(--font-heading);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .score-anim-row__delta {
@@ -3361,12 +3378,18 @@ body::after {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: var(--space-sm) 0;
+  padding: var(--space-md) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
 }
 
 .review-item {
-  padding: var(--space-sm) var(--space-lg);
-  border-bottom: 1px solid var(--color-surface-light);
+  padding: var(--space-md) var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--color-surface-light);
 }
 .review-item--flagged {
   border-left: 3px solid var(--color-danger);
@@ -3405,16 +3428,22 @@ body::after {
 .review-item__player-answer {
   font-size: var(--text-sm);
   margin-bottom: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
 }
 .review-item__player-answer--correct {
-  color: var(--color-success);
+  color: #267035;
+  background: rgba(39, 174, 96, 0.1);
 }
 .review-item__player-answer--incorrect {
-  color: var(--color-danger);
+  color: #c0392b;
+  background: rgba(231, 76, 60, 0.1);
 }
 .review-item__player-answer::before {
   content: 'You: ';
   color: var(--color-text-muted);
+  font-weight: 400;
 }
 
 .review-item__feedback {
@@ -3537,16 +3566,18 @@ body::after {
   flex-shrink: 0;
   max-height: 0;
   overflow: hidden;
-  background: var(--color-bg-deep);
+  background: var(--color-surface);
   border-bottom: 1px solid var(--color-surface-light);
   display: flex;
   flex-direction: column;
   position: relative;
+  z-index: 50;
   transition: max-height 0.25s var(--ease-out);
 }
 
 .chat-drawer.open {
   max-height: 40vh;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.1);
 }
 
 .chat-drawer__close {
@@ -5153,6 +5184,68 @@ body::after {
   padding: var(--space-xs) var(--space-sm);
   font-size: var(--text-xs);
 }
+
+/* --- Admin: Chat Archive Messages --- */
+.admin-chat-msg {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+  font-size: var(--text-xs);
+  border-bottom: 1px solid var(--color-bg-deep);
+}
+.admin-chat-msg__name {
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.admin-chat-msg__text {
+  flex: 1;
+  color: var(--color-text-dim);
+  word-break: break-word;
+}
+.admin-chat-msg__time {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+/* --- Admin: Error Logs --- */
+.admin-error-badge {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.admin-error-badge--error { background: rgba(231,76,60,0.12); color: var(--color-danger); }
+.admin-error-badge--warn { background: rgba(243,156,18,0.12); color: #D4890A; }
+.admin-error-badge--info { background: rgba(52,152,219,0.12); color: #3498DB; }
+
+.admin-error-detail {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  background: var(--color-bg-deep);
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+.admin-error-stack {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+.admin-error-ua {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin: var(--space-xs) 0 0;
+}
+
+/* --- Admin: Game Status --- */
+.admin-game-status--completed { color: var(--color-success); }
+.admin-game-status--active { color: var(--color-primary); font-weight: 600; }
 
 /* ============================================
    LEADERBOARDS

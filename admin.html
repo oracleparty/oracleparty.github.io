@@ -59,6 +59,35 @@
         <div id="flagged-queue"></div>
       </div>
 
+      <!-- ===== RECENT GAMES ===== -->
+      <div class="admin-section">
+        <h2 class="admin-section__title">Recent Games</h2>
+        <div id="recent-games"></div>
+        <button id="btn-load-more-games" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+      </div>
+
+      <!-- ===== CHAT ARCHIVE ===== -->
+      <div class="admin-section">
+        <h2 class="admin-section__title">Chat Archive</h2>
+        <div id="chat-archive"></div>
+        <button id="btn-load-more-chats" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+      </div>
+
+      <!-- ===== ERROR LOGS ===== -->
+      <div class="admin-section">
+        <h2 class="admin-section__title">Error Logs</h2>
+        <div style="display:flex; gap:var(--space-sm); margin-bottom:var(--space-sm);">
+          <select id="error-severity" class="input" style="flex:1;">
+            <option value="">All Types</option>
+            <option value="onerror">onerror</option>
+            <option value="unhandledrejection">unhandledrejection</option>
+          </select>
+          <button id="btn-clear-old-errors" class="btn btn-secondary">Clear 7d+</button>
+        </div>
+        <div id="error-logs"></div>
+        <button id="btn-load-more-errors" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+      </div>
+
       <!-- ===== QUESTION MANAGEMENT ===== -->
       <div class="admin-section">
         <h2 class="admin-section__title">Question Management</h2>

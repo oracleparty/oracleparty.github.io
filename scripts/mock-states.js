@@ -580,7 +580,7 @@ export const STATES = {
       document.getElementById('question-progress').textContent = 'Question 3 of 10';
       document.getElementById('question-text').textContent = 'What ancient wonder was located in the city of Babylon?';
       const sheet = document.getElementById('host-settings-sheet');
-      if (sheet) sheet.classList.add('open');
+      if (sheet) sheet.classList.add('active');
       const ap = document.querySelector('[data-game-setting="autoProceed"] [data-value="0"]');
       if (ap) ap.classList.add('active');
       const qt = document.querySelector('[data-game-setting="questionTimer"] [data-value="30"]');
