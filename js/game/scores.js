@@ -36,6 +36,7 @@ import { getDisplayName, getCurrentUser, showSignUpModal } from '../auth.js';
 import { evaluateUnlocks, hasReachedApprentice } from '../titles.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
+import { computeScoresFromAnswers, tallyDifficultyVotes } from './scoring-helpers.js';
 import {
   state, canControlGame, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
@@ -560,10 +561,7 @@ function _renderInlineDvTally() {
 
 export async function handleRevealFinalQuestion() {
   // Tally inline difficulty votes and try to fetch a matching question
-  const tally = { easy: 0, medium: 0, hard: 0 };
-  for (const d of Object.values(state.difficultyVotes || {})) {
-    if (tally[d] !== undefined) tally[d]++;
-  }
+  const tally = tallyDifficultyVotes(state.difficultyVotes);
   const total = tally.easy + tally.medium + tally.hard;
   const w = total === 0
     ? { easy: 1, medium: 1, hard: 1 }
@@ -1263,11 +1261,5 @@ async function handleReviewQuestions() {
 
 export async function updateScores() {
   const allAnswers = await fetchAllAnswers(state.room.id);
-  state.scores = {};
-  for (const p of state.players) {
-    state.scores[p.id] = 0;
-  }
-  for (const a of allAnswers) {
-    state.scores[a.player_id] = (state.scores[a.player_id] || 0) + (a.score_earned || 0);
-  }
+  state.scores = computeScoresFromAnswers(allAnswers, state.players);
 }

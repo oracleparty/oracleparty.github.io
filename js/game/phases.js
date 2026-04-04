@@ -4,6 +4,9 @@
 // ============================================
 
 import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../utils.js';
+import { findNextAvailableWager } from './scoring-helpers.js';
+import { getCountdownElapsed } from './timer-helpers.js';
+import { determineNextHost } from './host-promotion.js';
 import { logger } from '../logger.js';
 import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS } from '../constants.js';
 import {
@@ -69,21 +72,8 @@ export async function handlePlayerChange(payload) {
     // BUG 2 FIX: Don't rely on payload.old.is_host — Supabase default REPLICA
     // IDENTITY only sends the primary key in OLD for DELETE events. Instead check
     // if any remaining player has is_host=true. If not, promote the next player.
-    const hasHost = state.players.some(p => p.is_host);
-    if (!hasHost) {
-      const cohost = state.players.find(p => p.is_cohost);
-      let nextHost;
-      if (cohost) {
-        nextHost = cohost;
-      } else {
-        const sorted = [...state.players].sort((a, b) => {
-          const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
-          const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
-          return ta - tb;
-        });
-        nextHost = sorted[0];
-      }
-
+    const nextHost = determineNextHost(state.players);
+    if (nextHost) {
       if (String(nextHost.id) === String(state.room.playerId)) {
         state.room.isHost = true;
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
@@ -461,12 +451,7 @@ export async function handlePhaseTransition(phase) {
         if (state.isFinalWagerRound) {
           state.currentWager = state.finalWager || 20;
         } else {
-          // Assign lowest available wager
-          let found = false;
-          for (let i = 1; i <= state.totalQuestions; i++) {
-            if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
-          }
-          if (!found) state.currentWager = 1;
+          state.currentWager = findNextAvailableWager(state.usedWagers, state.totalQuestions);
         }
       }
       if (!state.hasSubmitted) {
@@ -490,12 +475,7 @@ export async function handlePhaseTransition(phase) {
         if (state.isFinalWagerRound) {
           state.currentWager = state.finalWager || 20;
         } else {
-          // Assign lowest available wager
-          let found = false;
-          for (let i = 1; i <= state.totalQuestions; i++) {
-            if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
-          }
-          if (!found) state.currentWager = 1;
+          state.currentWager = findNextAvailableWager(state.usedWagers, state.totalQuestions);
         }
       }
       state.resultsRevealed = true;
@@ -589,10 +569,7 @@ export function showCountdownScreen() {
   let lastShownStep = -1;
 
   function getElapsedMs() {
-    if (!state.countdownStartedAt) return 0;
-    const startMs = new Date(state.countdownStartedAt).getTime();
-    const nowServerMs = Date.now() + state.serverTimeOffset;
-    return nowServerMs - startMs;
+    return getCountdownElapsed(state.countdownStartedAt, state.serverTimeOffset);
   }
 
   function finishCountdown() {
@@ -813,21 +790,9 @@ export async function checkStalePresence() {
       state.players = freshPlayers;
     }
   }
-  if (state.players.length > 0 && !state.players.some(p => p.is_host)) {
-    // No host found — prefer co-host, otherwise earliest player
-    const cohost = state.players.find(p => p.is_cohost);
-    let nextHost;
-    if (cohost) {
-      nextHost = cohost;
-    } else {
-      const sorted = [...state.players].sort((a, b) => {
-        const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
-        const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
-        return ta - tb;
-      });
-      nextHost = sorted[0];
-    }
-    if (String(nextHost.id) === String(state.room.playerId)) {
+  const staleNextHost = determineNextHost(state.players);
+  if (staleNextHost) {
+    if (String(staleNextHost.id) === String(state.room.playerId)) {
       // If we were co-host, clear that flag first
       if (state.room.isCohost) {
         state.room.isCohost = false;
