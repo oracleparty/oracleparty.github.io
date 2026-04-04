@@ -90,7 +90,8 @@ describe('computeCategoryTiers', () => {
 // ============================================
 describe('evaluateUnlocks', () => {
   it('returns empty array when no conditions are met', () => {
-    const changes = evaluateUnlocks([], {}, []);
+    // Pass hour: 12 to ensure nightOwl hidden unlock doesn't trigger
+    const changes = evaluateUnlocks([], {}, [], { hour: 12 });
     expect(changes).toEqual([]);
   });
 

@@ -3,9 +3,9 @@
 // Gameplay loop: question (with wager) → submit → reveal (live) → repeat
 // ============================================
 
-import { $, transitionScreens, escapeHtml, fuzzyMatch, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
+import { $, transitionScreens, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import { logger } from './logger.js';
-import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, TIMER_GRACE_MS, WAGER_AUTO_SKIP_MS, REVEAL_ANSWER_DELAY_MS, SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, FEEDBACK_FADE_MS, RESULTS_ACTION_DELAY_MS, AUTO_PROCEED_TICK_MS, LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, STALE_TIMEOUT_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from './constants.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS, LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, STALE_TIMEOUT_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from './constants.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -35,11 +35,8 @@ import {
   deleteRoomBeacon,
   promoteToHost,
   subscribeToPlayers,
-  upsertQuestionFeedback,
-  deleteQuestionFeedback,
   fetchQuestionFeedback,
   insertGamePlay,
-  incrementQuestionsAnswered,
   completeGamePlay,
   archiveChatMessages,
   deleteAnswersByRoom,
@@ -56,14 +53,22 @@ import {
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { evaluateUnlocks, hasReachedApprentice } from './titles.js';
-import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
+import { initHonkSystem, destroyHonkSystem } from './honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from './typing.js';
-import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
 import { resolveSubcategoryIcon } from './categories.js';
 import {
   state, canControlGame, getCategoryLabel,
   resolveFieldMap, getQuestionText, getCorrectAnswer, getAlternates, getDifficulty, getFunFact,
+  _flagMenuCloseHandler, setFlagMenuCloseHandler,
+  _isLeaving, setIsLeaving,
+  _lastScoresRenderedForQuestion, setLastScoresRendered,
+  _countdownActive, setCountdownActive,
+  _deferredPhase, setDeferredPhase,
+  _screenTransitioning, setScreenTransitioning,
+  _qbFeedback, setQbFeedback,
+  _staleCheckCount, setStaleCheckCount,
+  _syncInFlight, setSyncInFlight,
 } from './game/state.js';
 import {
   repositionChatBar, showChatBar, hideChatBar, closeChatDrawer,
@@ -75,22 +80,16 @@ import {
   initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear,
   resetReturnConfirm, registerCleanup as registerHostCleanup,
 } from './game/host.js';
-
-// Stored handler for document click (flag menu dismiss) — removed in cleanup()
-let _flagMenuCloseHandler = null;
-
-// Guard: prevent duplicate scores screen rendering
-let _lastScoresRenderedForQuestion = -1;
-
-// Guard: prevent double player removal on unload after explicit leave/quit
-let _isLeaving = false;
-
-// Guard: countdown active — defer phase transitions until complete
-let _countdownActive = false;
-let _deferredPhase = null;
-
-// Guard: prevent overlapping screen transitions (causes flash/blink)
-let _screenTransitioning = false;
+import {
+  showQuestionScreen, doSubmitAnswer, startTimer,
+  registerShowRevealScreen, registerRevealHelpers,
+} from './game/question.js';
+import {
+  showRevealScreen, renderRevealAnswers, enableRevealButton,
+  enableNextQuestion, updateRevealButtonText, handleJudgmentOverride,
+  doReveal, updateHonkBadges, handleNextQuestion, initFeedbackListeners,
+  registerScoresRef as registerRevealScoresRef,
+} from './game/reveal.js';
 
 // ============================================
 // INIT
@@ -631,7 +630,7 @@ function _activateHostControlsForCurrentPhase() {
 function handleRoomChange(payload) {
   // Room deleted (last player left) — kick to home
   if (payload.eventType === 'DELETE') {
-    _isLeaving = true; // Room already gone — prevent handleUnload beacon
+    setIsLeaving(true); // Room already gone — prevent handleUnload beacon
     cleanup();
     sessionStorage.removeItem('oracle_party_room');
     window.location.href = 'index.html';
@@ -746,7 +745,7 @@ function _showLobbyReturnNotice() {
   // just auto-navigate instead of showing a notice on an invisible screen.
   const resultsScreen = document.querySelector('#results-screen');
   if (!resultsScreen || resultsScreen.style.display === 'none') {
-    _isLeaving = true;
+    setIsLeaving(true);
     try { cleanup(); } catch (_) {}
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
     navigateWithFadeReplace('lobby.html');
@@ -771,7 +770,7 @@ function _showLobbyReturnNotice() {
   }
 
   document.getElementById('btn-return-lobby').onclick = () => {
-    _isLeaving = true;
+    setIsLeaving(true);
     try { cleanup(); } catch (_) {}
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
     navigateWithFadeReplace('lobby.html');
@@ -789,7 +788,7 @@ function _showNewGameNotice() {
   const resultsScreen = document.querySelector('#results-screen');
   if (!resultsScreen || resultsScreen.style.display === 'none') {
     // Not on results — auto-navigate to join the new game
-    _isLeaving = true;
+    setIsLeaving(true);
     cleanup();
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
     navigateWithFadeReplace('lobby.html');
@@ -809,7 +808,7 @@ function _showNewGameNotice() {
   if (resultsContent) resultsContent.appendChild(notice);
 
   document.getElementById('btn-join-new-game').onclick = () => {
-    _isLeaving = true;
+    setIsLeaving(true);
     cleanup();
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
     navigateWithFadeReplace('lobby.html');
@@ -836,7 +835,7 @@ async function handlePhaseTransition(phase) {
 
   // During countdown, defer other phase transitions until countdown completes
   if (_countdownActive && phase !== 'countdown') {
-    _deferredPhase = phase;
+    setDeferredPhase(phase);
     return;
   }
 
@@ -859,7 +858,7 @@ async function handlePhaseTransition(phase) {
     $('#reveal-answers').innerHTML = '';
     // Reset scores guard on first question (new game / play again)
     if (state.currentQuestion === 0) {
-      _lastScoresRenderedForQuestion = -1;
+      setLastScoresRendered(-1);
       state._gamePlayCompleted = false;
       state._cumulativeScoresWritten = false;
       state.usedWagers = new Map();
@@ -1020,8 +1019,8 @@ async function handlePhaseTransition(phase) {
 // ============================================
 
 function showCountdownScreen() {
-  _countdownActive = true;
-  _deferredPhase = null;
+  setCountdownActive(true);
+  setDeferredPhase(null);
   hideHostSettingsGear();
 
   const currentScreen = document.querySelector('.screen.active');
@@ -1048,7 +1047,7 @@ function showCountdownScreen() {
   }
 
   function finishCountdown() {
-    _countdownActive = false;
+    setCountdownActive(false);
 
     // Host advances to first question
     if (state.room.isHost) {
@@ -1059,7 +1058,7 @@ function showCountdownScreen() {
     } else if (_deferredPhase) {
       // Non-host: process any phase transition that arrived during countdown
       const deferred = _deferredPhase;
-      _deferredPhase = null;
+      setDeferredPhase(null);
       handlePhaseTransition(deferred);
     }
   }
@@ -1116,963 +1115,6 @@ function showCountdownScreen() {
   tick();
 }
 
-// ============================================
-// QUESTION SCREEN (with inline wager)
-// ============================================
-
-function showQuestionScreen() {
-  let q = state.questions[state.currentQuestion];
-  if (!q) {
-    // Question missing — try to use the last available question as fallback
-    logger.warn('Game', 'Question ' + state.currentQuestion + ' missing, using fallback');
-    q = state.questions[state.questions.length - 1];
-    if (!q) return; // Truly no questions at all
-  }
-
-  $('#question-category').textContent = getCategoryLabel();
-
-  $('#question-text').textContent = getQuestionText(q);
-
-  $('#answer-form').classList.remove('answer-input--submitted');
-  $('#answer-input').value = '';
-  $('#answer-input').disabled = false;
-  $('#btn-submit-answer').disabled = true;
-  $('#submit-status').classList.add('hidden');
-  $('#wager-error').textContent = '';
-
-  state.hasSubmitted = false;
-  state.onRevealScreen = false;
-  state.resultsRevealed = false;
-  state.timerExpired = false;
-  // Cancel any stale grace-period timeout from the previous question's timer
-  if (state._timerGraceId) {
-    clearTimeout(state._timerGraceId);
-    state._timerGraceId = null;
-  }
-
-  // Reset wager — player must explicitly select (skip for final wager — already set)
-  // ONLY reset if this is a genuinely new question (not a re-render of the same one).
-  // Without this guard, Realtime events that re-call showQuestionScreen() would wipe
-  // the player's already-selected wager, causing auto-submit to discard their choice.
-  if (!state.isFinalWagerRound && !state.wagerExplicitlySelected) {
-    state.currentWager = null;
-  }
-  // Don't reset wagerExplicitlySelected here — it's already reset in handlePhaseTransition
-  // when a new question starts (line ~863). Resetting it here caused a race condition
-  // where the player's wager selection was wiped on re-render.
-
-  // Defensive: if we're past the last regular question, we must be in the final round
-  // (handles reconnects where the 'final_question' phase case may not have fired)
-  if (state.currentQuestion >= state.totalQuestions) {
-    state.isFinalWagerRound = true;
-  }
-
-  if (state.isFinalWagerRound) {
-    $('#question-progress').textContent = 'Final Question';
-    // Use the wager already locked in on the final wager screen
-    state.currentWager = state.finalWager || 0;
-    $('#wager-grid').style.display = 'none';
-    $('.wager-label').style.display = 'none';
-    $('#wager-error').style.display = 'none';
-  } else {
-    $('#question-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
-    $('#wager-grid').style.display = '';
-    $('.wager-label').style.display = '';
-    $('#wager-error').style.display = '';
-    renderWagerGrid(); // Must run AFTER state resets — auto-selects last remaining wager
-  }
-  // BUG 1 FIX: ALWAYS close chat when a new question starts.
-  // The previous "keep drawer open while typing" feature caused the drawer
-  // to get permanently stuck — the chat bar was hidden (removing the only
-  // toggle), and the notice's close button auto-removed after 4 seconds,
-  // leaving NO way to close the drawer. Game was completely blocked.
-  hideChatBar();
-
-  // If chat drawer is still open, notify the player in-chat that a new question started
-  if (state.chatOpen) {
-    const qNum = state.isFinalWagerRound ? 'Final' : `Q${state.currentQuestion + 1}`;
-    _appendLocalChatNotice(`\u23F1 ${qNum} started — timer is running!`);
-  }
-
-  // Determine if we should skip the sync buffer (reconnect with existing timer)
-  const isReconnect = !!state.questionStartedAt;
-
-  if (!isReconnect) {
-    // Hide interactive elements during sync buffer
-    $('.question-card').style.visibility = 'hidden';
-    $('#wager-grid').style.visibility = 'hidden';
-    $('#answer-form').style.visibility = 'hidden';
-    $('#wager-error').style.visibility = 'hidden';
-    $('.timer').style.visibility = 'hidden';
-  }
-
-  const currentScreen = document.querySelector('.screen.active');
-  const questionScreen = $('#question-screen');
-  if (currentScreen && currentScreen !== questionScreen && !_screenTransitioning) {
-    _screenTransitioning = true;
-    transitionScreens(currentScreen, questionScreen).finally(() => {
-      _screenTransitioning = false;
-    });
-  } else if (!currentScreen || currentScreen === questionScreen) {
-    questionScreen.style.display = '';
-    void questionScreen.offsetHeight;
-    questionScreen.classList.add('active');
-  }
-
-  showHostSettingsGear();
-
-  if (isReconnect) {
-    // Reconnect: skip sync buffer, resume timer from server timestamp
-    startTimer();
-    $('#answer-input').focus({ preventScroll: true });
-  } else {
-    // Normal flow: 1-second sync buffer before revealing question
-    setTimeout(async () => {
-      // Host: write the server-authoritative timer start timestamp
-      if (state.room.isHost) {
-        const startedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
-        state.questionStartedAt = startedAt;
-        await updateGameState(state.room.id, { question_started_at: startedAt });
-      }
-
-      // Reveal everything
-      $('.question-card').style.visibility = '';
-      $('#wager-grid').style.visibility = '';
-      $('#answer-form').style.visibility = '';
-      $('#wager-error').style.visibility = '';
-      $('.timer').style.visibility = '';
-
-      // Start timer from server timestamp
-      startTimer();
-
-      // Focus the answer input for quick typing
-      $('#answer-input').focus({ preventScroll: true });
-    }, WAGER_AUTO_SKIP_MS);
-  }
-
-  $('#btn-submit-answer').onclick = handleSubmitAnswer;
-  $('#answer-input').oninput = () => {
-    const hasText = $('#answer-input').value.length > 0;
-    const wagerOk = state.isFinalWagerRound || state.wagerExplicitlySelected;
-    $('#btn-submit-answer').disabled = !(hasText && wagerOk);
-  };
-  $('#answer-input').onkeydown = (e) => {
-    if (e.key === 'Enter' && !state.hasSubmitted) {
-      handleSubmitAnswer();
-    }
-  };
-}
-
-function renderWagerGrid() {
-  const grid = $('#wager-grid');
-  grid.innerHTML = '';
-
-  for (let i = 1; i <= state.totalQuestions; i++) {
-    const btn = document.createElement('button');
-    btn.className = 'wager-btn';
-    btn.textContent = i;
-    btn.dataset.value = i;
-
-    if (state.usedWagers.has(i)) {
-      const wasCorrect = state.usedWagers.get(i);
-      btn.classList.add(wasCorrect ? 'wager-btn--correct' : 'wager-btn--incorrect');
-    } else {
-      btn.addEventListener('click', () => selectWager(i, btn));
-    }
-
-    grid.appendChild(btn);
-  }
-
-  // Auto-select if only one wager remains (prevents getting stuck on last question)
-  const available = grid.querySelectorAll('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)');
-  if (available.length === 1 && !state.wagerExplicitlySelected) {
-    const onlyBtn = available[0];
-    const val = parseInt(onlyBtn.dataset.value, 10);
-    onlyBtn.classList.add('wager-btn--selected');
-    state.currentWager = val;
-    state.wagerExplicitlySelected = true;
-  } else if (available.length === 0) {
-    // Defensive: all exhausted — assign fallback so player can still submit
-    state.currentWager = state.currentQuestion + 1;
-    state.wagerExplicitlySelected = true;
-    logger.warn('Game', 'All wagers exhausted, fallback to ' + state.currentWager);
-  }
-}
-
-function selectWager(value, btnEl) {
-  const prev = $('#wager-grid .wager-btn--selected');
-  if (prev) prev.classList.remove('wager-btn--selected');
-
-  btnEl.classList.add('wager-btn--selected');
-  state.currentWager = value;
-  state.wagerExplicitlySelected = true;
-  $('#wager-error').textContent = '';
-
-  // Enable submit button if answer text is present
-  const hasText = $('#answer-input').value.length > 0;
-  if (hasText) $('#btn-submit-answer').disabled = false;
-}
-
-// ============================================
-// TIMER (purely server-timestamp-based)
-// ============================================
-
-/**
- * Calculate remaining seconds from the server-authoritative timestamp.
- * timeLeft = questionTimer - (now - question_started_at)
- * Returns fractional seconds for precise bar rendering.
- */
-function getServerTimeLeft() {
-  if (!state.questionStartedAt) return state.timerSeconds;
-  const startMs = new Date(state.questionStartedAt).getTime();
-  const nowServerMs = Date.now() + state.serverTimeOffset;
-  const elapsedMs = nowServerMs - startMs;
-  return Math.max(0, state.timerSeconds - elapsedMs / 1000);
-}
-
-/**
- * Start the timer display loop. Every tick recalculates from the server
- * timestamp — no client-side countdown state. Refreshing, disconnecting,
- * or reconnecting changes nothing; the timer keeps counting from
- * question_started_at stored in Supabase.
- */
-/** Update both question-screen and reveal-screen timer displays */
-function updateTimerDisplay(timeLeft) {
-  const secs = Math.max(0, Math.ceil(timeLeft));
-  const pct = `${Math.max(0, (timeLeft / state.timerSeconds) * 100)}%`;
-  const warn = secs <= 5;
-
-  // Question screen timer
-  const timerEl = $('#timer-text');
-  const timerBar = $('#timer-bar');
-  if (timerEl) timerEl.textContent = secs;
-  if (timerBar) {
-    timerBar.style.width = pct;
-    const wrapper = timerBar.closest('.timer');
-    if (wrapper) wrapper.classList.toggle('timer--warning', warn);
-  }
-
-  // Reveal screen timer (mirrors question timer while waiting for others)
-  const revealEl = $('#reveal-timer-text');
-  const revealBar = $('#reveal-timer-bar');
-  if (revealEl) revealEl.textContent = secs;
-  if (revealBar) {
-    revealBar.style.width = pct;
-    const wrapper = revealBar.closest('.timer');
-    if (wrapper) wrapper.classList.toggle('timer--warning', warn);
-  }
-}
-
-function startTimer() {
-  if (state.timerId) {
-    clearInterval(state.timerId);
-    state.timerId = null;
-  }
-  if (state._timerGraceId) {
-    clearTimeout(state._timerGraceId);
-    state._timerGraceId = null;
-  }
-
-  // Immediate first render
-  const initial = getServerTimeLeft();
-  if (initial <= 0) {
-    updateTimerDisplay(0);
-    state.timerExpired = true;
-    // Grace period: give in-flight submissions time to land before auto-submitting
-    state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, TIMER_GRACE_MS);
-    return;
-  }
-
-  updateTimerDisplay(initial);
-
-  // Tick every 250ms for smooth bar + accurate expiry
-  state.timerId = setInterval(() => {
-    const timeLeft = getServerTimeLeft();
-    updateTimerDisplay(timeLeft);
-
-    if (timeLeft <= 0) {
-      clearInterval(state.timerId);
-      state.timerId = null;
-      state.timerExpired = true;
-      // Grace period: give in-flight submissions time to land before auto-submitting
-      state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, TIMER_GRACE_MS);
-    }
-  }, 250);
-}
-
-async function handleTimerExpired() {
-  // Guard: timer callback can fire after cleanup if already queued
-  if (!state.room || state.gamePhase === 'loading') return;
-
-  state.timerExpired = true;
-
-  // Hide the reveal screen timer (round is over)
-  const revealTimer = $('#reveal-timer');
-  if (revealTimer) revealTimer.style.display = 'none';
-
-  // Auto-select wager if none was explicitly selected
-  if (!state.wagerExplicitlySelected) {
-    if (state.isFinalWagerRound) {
-      state.currentWager = state.finalWager || 20;
-    } else {
-      let found = false;
-      for (let i = 1; i <= state.totalQuestions; i++) {
-        if (!state.usedWagers.has(i)) { state.currentWager = i; found = true; break; }
-      }
-      if (!found) state.currentWager = 1;
-    }
-  }
-
-  // Auto-submit with whatever is currently typed
-  if (!state.hasSubmitted) {
-    const currentAnswer = ($('#answer-input')?.value || '').trim();
-    await doSubmitAnswer(currentAnswer, { autoSubmit: true });
-  }
-
-  // Host/cohost: auto-submit blank for any players who didn't answer, then broadcast reveal.
-  if (canControlGame()) {
-    // Re-fetch answers to ensure we have the host's just-submitted answer
-    // (state.currentAnswers may be stale — Realtime INSERT may not have arrived yet)
-    const freshAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-    state.currentAnswers = freshAnswers;
-    const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
-    const q = state.questions[state.currentQuestion];
-    if (q) {
-      const autoSubmits = [];
-      for (const p of state.players) {
-        if (!submittedIds.has(String(p.id))) {
-          autoSubmits.push(submitAnswer({
-            roomId: state.room.id,
-            playerId: p.id,
-            questionNumber: state.currentQuestion,
-            questionId: q.id,
-            wager: 1,
-            submittedAnswer: '',
-            isCorrect: false,
-            scoreEarned: 0
-          }));
-        }
-      }
-      if (autoSubmits.length) await Promise.allSettled(autoSubmits);
-    }
-    // Broadcast reveal phase so all clients transition
-    updateGameState(state.room.id, { game_phase: 'reveal' })
-      .catch(err => logger.error('Game', 'Failed to broadcast reveal phase', err));
-  }
-
-  // If host/co-host and already on reveal, enable the appropriate button and update text
-  if (canControlGame() && state.onRevealScreen) {
-    if (state.resultsRevealed) {
-      enableNextQuestion();
-    } else {
-      enableRevealButton();
-      updateRevealButtonText();
-    }
-  }
-}
-
-// ============================================
-// ANSWER SUBMISSION
-// ============================================
-
-async function handleSubmitAnswer() {
-  if (state.hasSubmitted) return;
-  const raw = $('#answer-input').value;
-  if (raw.length === 0) {
-    // Only block if completely empty (nothing typed at all)
-    const input = $('#answer-input');
-    input.classList.remove('input--flash');
-    void input.offsetHeight;
-    input.classList.add('input--flash');
-    return;
-  }
-  // Block submission if player hasn't explicitly selected a wager
-  if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
-    const grid = $('#wager-grid');
-    grid.classList.remove('wager-grid--highlight');
-    void grid.offsetHeight;
-    grid.classList.add('wager-grid--highlight');
-    $('#wager-error').textContent = 'Select a wager first';
-    return;
-  }
-  // Trim for storage — spaces-only becomes '' which shows "No answer" on reveal
-  await doSubmitAnswer(raw.trim());
-}
-
-async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
-  if (state.hasSubmitted) return;
-  state.hasSubmitted = true;
-
-  // Disable question UI (in case transition is slow)
-  $('#answer-input').disabled = true;
-  $('#btn-submit-answer').disabled = true;
-
-  const q = state.questions[state.currentQuestion];
-  if (!q) return;
-  const correctAnswer = getCorrectAnswer(q);
-  const alternates = getAlternates(q);
-  const isCorrect = answer ? fuzzyMatch(answer, correctAnswer, alternates) : false;
-  let wager;
-  if (state.isFinalWagerRound) {
-    wager = state.finalWager || 0;
-  } else if (state.currentWager) {
-    wager = state.currentWager;
-  } else {
-    // Fallback: find lowest available wager
-    wager = null;
-    for (let i = 1; i <= state.totalQuestions; i++) {
-      if (!state.usedWagers.has(i)) { wager = i; break; }
-    }
-    if (wager === null) {
-      wager = 1;
-      logger.warn('Game', 'doSubmitAnswer: all wagers used, fallback to ' + wager);
-    }
-  }
-  const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
-
-  await submitAnswer({
-    roomId: state.room.id,
-    playerId: state.room.playerId,
-    questionNumber: state.currentQuestion,
-    questionId: q.id,
-    wager,
-    submittedAnswer: answer,
-    isCorrect,
-    scoreEarned
-  });
-
-  // Mark wager as used AFTER DB write succeeds (prevents stale state if submit fails)
-  state.usedWagers.set(wager, isCorrect);
-
-  // Track question answered (fire-and-forget, skip final wager round)
-  if (!state.isFinalWagerRound) {
-    incrementQuestionsAnswered(state.room.id, state.room.playerId);
-  }
-
-  // Immediately transition to reveal screen
-  showRevealScreen();
-}
-
-// ============================================
-// REVEAL SCREEN
-// ============================================
-
-async function showRevealScreen() {
-  // Don't clear the timer — it's still running for other players
-  // (it gets cleared in handleTimerExpired)
-
-  state.onRevealScreen = true;
-
-  // Reset disqualify button for this round
-  const dqBtn = $('#btn-disqualify-round');
-  if (dqBtn) { dqBtn.classList.add('hidden'); dqBtn.disabled = false; dqBtn.textContent = 'Disqualify Round'; }
-
-  const q = state.questions[state.currentQuestion];
-  if (!q) return;
-
-  $('#reveal-category').textContent = getCategoryLabel();
-  $('#reveal-progress').textContent = state.isFinalWagerRound
-    ? 'Final Question'
-    : `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
-  $('#reveal-question-text').textContent = getQuestionText(q);
-
-  // Populate correct answer text (for later reveal), but hide the container
-  $('#reveal-answer').textContent = getCorrectAnswer(q);
-  $('#reveal-difficulty').style.display = 'none';
-  $('#reveal-fun-fact').style.display = 'none';
-  $('.reveal__correct').style.display = 'none';
-
-  // Reset feedback UI
-  resetFeedbackUI();
-
-  // Fetch existing answers (some players may not have submitted yet) and cache them
-  const currentQ = state.currentQuestion;
-  state.currentAnswers = await fetchAnswersForQuestion(state.room.id, currentQ);
-  // Skip render if doReveal() will be called immediately (it re-renders with colors)
-  if (!state.resultsRevealed) {
-    renderRevealAnswers(state.currentAnswers);
-  }
-
-  // BUG 3 FIX: Safety re-fetch after 1.5s to catch answers submitted concurrently.
-  // When multiple players auto-submit at the same time (e.g. timer expired), the initial
-  // fetch may run before other players' submits complete. Realtime INSERT events should
-  // catch them, but can be delayed or lost. This re-fetch is a safety net.
-  if (!state.resultsRevealed && state.currentAnswers.length < state.players.length) {
-    setTimeout(async () => {
-      // Guard: skip if question changed, screen changed, or results already revealed
-      // (if host revealed during the 1.5s window, re-rendering would apply colors
-      // directly without animation and could show stale is_correct values)
-      if (!state.onRevealScreen || state.currentQuestion !== currentQ || state.resultsRevealed) return;
-      const fresh = await fetchAnswersForQuestion(state.room.id, currentQ);
-      if (fresh.length > state.currentAnswers.length) {
-        state.currentAnswers = fresh;
-        renderRevealAnswers(fresh);
-      }
-    }, REVEAL_ANSWER_DELAY_MS);
-  }
-
-  // Show countdown timer on reveal screen if the round isn't over yet
-  const revealTimer = $('#reveal-timer');
-  if (!state.timerExpired && state.currentAnswers.length < state.players.length) {
-    revealTimer.style.display = '';
-  } else {
-    revealTimer.style.display = 'none';
-  }
-
-  // Host/co-host: show action button (Reveal Results first, then Next Question after reveal)
-  if (canControlGame()) {
-    const btn = $('#btn-next-question');
-    btn.classList.remove('hidden');
-    btn.onclick = handleRevealResults;
-    updateRevealButtonText();
-
-    // Enable as soon as this player has submitted — they control the pace
-    const mySubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
-    if (mySubmitted) {
-      btn.disabled = false;
-      btn.style.opacity = '1';
-    } else {
-      btn.disabled = true;
-      btn.style.opacity = '0.5';
-    }
-    $('#reveal-waiting-host').classList.add('hidden');
-  } else {
-    // Non-host: show "Waiting for host..." message
-    $('#reveal-waiting-host').classList.remove('hidden');
-  }
-
-
-  const currentScreen = document.querySelector('.screen.active');
-  const revealScreen = $('#reveal-screen');
-  if (currentScreen && currentScreen !== revealScreen) {
-    transitionScreens(currentScreen, revealScreen).then(showChatBar);
-  } else {
-    showChatBar();
-  }
-
-  showHostSettingsGear();
-
-  // If results were already revealed (reconnect), show them immediately
-  if (state.resultsRevealed) {
-    doReveal();
-  }
-}
-
-function updateHonkBadges() {
-  document.querySelectorAll('.honk-badge[data-honk-player]').forEach(badge => {
-    const pid = badge.dataset.honkPlayer;
-    const count = getHonkCount(pid);
-    if (count > 0) {
-      badge.textContent = count;
-      badge.style.display = '';
-    } else {
-      badge.style.display = 'none';
-    }
-  });
-}
-
-function honkAvatarHtml(player) {
-  const honks = getHonkCount(player.id);
-  const badge = `<span class="honk-badge" data-honk-player="${player.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-  const avatarHtml = renderAvatar({ displayName: player.display_name, avatarColor: player.avatar_color, avatarEmoji: player.avatar_emoji });
-  return `<div class="avatar-wrap">
-    ${avatarHtml}
-    ${badge}
-  </div>`;
-}
-
-function honkBtnHtml(player) {
-  const isMe = String(player.id) === String(state.room.playerId);
-  return isMe ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Quack">&#x1F986;</button>`;
-}
-
-function renderRevealAnswers(answers) {
-  const container = $('#reveal-answers');
-
-  // Remove old click listener to avoid duplicates
-  const newContainer = container.cloneNode(false);
-  container.parentNode.replaceChild(newContainer, container);
-
-  for (const player of state.players) {
-    const answer = answers.find(a => a.player_id === player.id);
-    const row = document.createElement('div');
-    row.className = 'answer-row' + (state.awayTimestamps.has(String(player.id)) ? ' answer-row--away' : '');
-    row.dataset.playerId = player.id;
-    if (player.user_id) row.dataset.profileUserId = player.user_id;
-
-    const titleHtml = player.title ? `<span class="player-title">${escapeHtml(player.title)}</span>` : '';
-
-    if (answer) {
-      row.dataset.answerId = answer.id;
-      const rawText = (answer.submitted_answer || '').trim();
-      const submittedText = rawText === '__WAGER_LOCKED__' ? '' : rawText;
-      const isEmpty = !submittedText;
-      const isCorrect = answer.is_correct || false;
-      const wager = answer.wager || 0;
-
-      // Answer text color: only colored post-reveal (doReveal animates this)
-      const colorClass = state.resultsRevealed
-        ? (isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect')
-        : '';
-      const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
-
-      // Toggle: host only, visible only after reveal (prevents host seeing correct/incorrect early)
-      const toggleHtml = (canControlGame() && state.resultsRevealed)
-        ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
-             <div class="answer-toggle__thumb"></div>
-           </div>`
-        : '';
-
-      // Wager badge: colored after reveal, neutral before
-      const wagerColorClass = state.resultsRevealed
-        ? (isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect')
-        : '';
-
-      const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
-
-      row.innerHTML = `
-        <div class="answer-row__top">
-          ${honkAvatarHtml(player)}
-          <div class="name-stack">
-            <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
-            ${titleHtml}
-          </div>
-          ${honkBtnHtml(player)}
-          <span class="answer-row__wager ${wagerColorClass}">${wager}</span>
-          ${toggleHtml}
-        </div>
-        <div class="answer-row__bottom">
-          <span class="answer-row__answer ${colorClass}${emptyClass}">
-            ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
-          </span>
-        </div>
-      `;
-    } else {
-      // Player hasn't submitted yet — show waiting state
-      const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
-      row.innerHTML = `
-        <div class="answer-row__top">
-          ${honkAvatarHtml(player)}
-          <div class="name-stack">
-            <span class="answer-row__name">${escapeHtml(player.display_name)}${hostBadge}</span>
-            ${titleHtml}
-          </div>
-          ${honkBtnHtml(player)}
-        </div>
-        <div class="answer-row__bottom">
-          <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
-        </div>
-      `;
-    }
-
-    newContainer.appendChild(row);
-  }
-
-  // Honk click handler on cloned container
-  newContainer.addEventListener('click', (e) => {
-    const btn = e.target.closest('.honk-btn');
-    if (btn) sendHonk(btn.dataset.honkTarget);
-  });
-
-  // Host/co-host: attach toggle click listeners (pre- and post-reveal)
-  if (canControlGame()) {
-    newContainer.addEventListener('click', handleJudgmentOverride);
-  }
-
-  // Profile card on player tap
-  attachProfileCardHandler(newContainer, () => state.players, state.room.id);
-}
-
-function enableNextQuestion() {
-  if (!canControlGame()) return;
-  const nextBtn = $('#btn-next-question');
-  if (nextBtn) {
-    nextBtn.disabled = false;
-    nextBtn.style.opacity = '1';
-  }
-}
-
-function enableRevealButton() {
-  if (!canControlGame() || state.resultsRevealed) return;
-  // Controller must have submitted their own answer (check local flag + DB cache)
-  const hostSubmitted = state.hasSubmitted || state.currentAnswers.some(a => String(a.player_id) === String(state.room.playerId));
-  if (!hostSubmitted) return;
-  const btn = $('#btn-next-question');
-  if (btn) {
-    btn.disabled = false;
-    btn.style.opacity = '1';
-  }
-}
-
-/**
- * Update reveal button text based on whether all players have submitted.
- * Shows "Reveal Early" if some players are still answering, "Reveal Results" otherwise.
- */
-function updateRevealButtonText() {
-  if (!canControlGame() || state.resultsRevealed) return;
-  const btn = $('#btn-next-question');
-  if (!btn) return;
-  const allSubmitted = state.currentAnswers.length >= state.players.length;
-  btn.textContent = (!state.timerExpired && !allSubmitted) ? 'Reveal Early' : 'Reveal Results';
-}
-
-function doReveal() {
-  // Snapshot scores before this round (for animation on scores screen)
-  state.previousScores = { ...state.scores };
-
-  // Hide the reveal timer — the round is over once results are shown
-  const revealTimer = $('#reveal-timer');
-  if (revealTimer) revealTimer.style.display = 'none';
-
-  // Show correct answer and difficulty
-  $('.reveal__correct').style.display = '';
-
-  // Show fun fact if the question has one
-  const funFact = getFunFact(state.questions[state.currentQuestion]);
-  const funFactEl = $('#reveal-fun-fact');
-  if (funFact) {
-    funFactEl.textContent = funFact;
-    funFactEl.style.display = '';
-  } else {
-    funFactEl.style.display = 'none';
-  }
-
-  // Show feedback icons and start fade timer
-  showFeedbackUI();
-
-  // Render immediately with cached answers (Realtime keeps these up-to-date).
-  // Late answers from auto-submitted players will arrive via Realtime INSERT
-  // and trigger re-renders in handleAnswerChange — no blocking fetch needed.
-  renderRevealAnswers(state.currentAnswers);
-
-  // Now mark revealed — subsequent renders will apply colors immediately
-  state.resultsRevealed = true;
-
-  // Write per-question mastery in real-time (fire-and-forget).
-  // This way mastery is recorded even if the game crashes before results.
-  const authUser = getCurrentUser();
-  if (authUser) {
-    const uid = authUser.user.id;
-    const myAnswer = state.currentAnswers.find(a => String(a.player_id) === String(state.room.playerId));
-    if (myAnswer?.question_id) {
-      upsertQuestionHistory(uid, myAnswer.question_id, !!myAnswer.is_correct);
-    }
-  }
-
-  // Animate: add color classes on next frame so CSS transition fires
-  requestAnimationFrame(() => {
-    document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
-      const answer = state.currentAnswers.find(a => String(a.player_id) === String(row.dataset.playerId));
-      if (!answer) return;
-      const isCorrect = answer.is_correct || false;
-      const el = row.querySelector('.answer-row__answer');
-      if (el) {
-        el.classList.add(isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect');
-      }
-      const wagerEl = row.querySelector('.answer-row__wager');
-      if (wagerEl) {
-        wagerEl.classList.add(isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect');
-      }
-      // Host: inject toggle switches now that results are revealed
-      if (canControlGame() && answer.id && !row.querySelector('.answer-toggle')) {
-        const toggleDiv = document.createElement('div');
-        toggleDiv.className = `answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host`;
-        toggleDiv.dataset.answerId = answer.id;
-        toggleDiv.innerHTML = '<div class="answer-toggle__thumb"></div>';
-        const topRow = row.querySelector('.answer-row__top') || row;
-        topRow.appendChild(toggleDiv);
-      }
-    });
-  });
-
-  // Host/co-host: swap button to "Show Scores" and show Disqualify option
-  if (canControlGame()) {
-    const btn = $('#btn-next-question');
-    btn.textContent = 'Show Scores';
-    btn.onclick = handleShowScores;
-    btn.disabled = false;
-    btn.style.opacity = '1';
-    // Show disqualify button (only if not already disqualified)
-    const dqBtn = $('#btn-disqualify-round');
-    if (dqBtn && !state.disqualifiedQuestions.has(state.currentQuestion)) {
-      dqBtn.classList.remove('hidden');
-      dqBtn.onclick = handleDisqualifyRound;
-    }
-  }
-
-  // Background re-fetch to catch any answers missed by Realtime
-  const revealQNum = state.currentQuestion;
-  fetchAnswersForQuestion(state.room.id, revealQNum).then(answers => {
-    if (state.currentQuestion !== revealQNum) return; // question changed, discard stale fetch
-    const cachedIds = state.currentAnswers.map(a => String(a.id)).sort().join(',');
-    const fetchedIds = answers.map(a => String(a.id)).sort().join(',');
-    if (fetchedIds !== cachedIds) {
-      state.currentAnswers = answers;
-      renderRevealAnswers(state.currentAnswers);
-    }
-  });
-}
-
-async function handleRevealResults() {
-  // Cancel any running auto-proceed timer (host may return to judging from scores)
-  clearAutoProceed();
-
-  // Set gamePhase BEFORE broadcasting so the Realtime echo is rejected
-  // by the `if (phase === state.gamePhase) return` guard in handlePhaseTransition.
-  // This prevents doReveal() from running twice on the host.
-  state.gamePhase = 'answer_reveal';
-
-  // Stop the timer — round is over
-  if (state.timerId) {
-    clearInterval(state.timerId);
-    state.timerId = null;
-  }
-  state.timerExpired = true;
-
-  // BUG 3 FIX: Submit blank answers for ALL players who haven't answered,
-  // INCLUDING the host. Previously the host was unconditionally added to
-  // submittedIds, meaning if the host didn't manually submit, their answer
-  // row was missing from the DB and other players saw "No answer".
-  const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
-  const q = state.questions[state.currentQuestion];
-  if (q) {
-    const autoSubmits = [];
-    for (const p of state.players) {
-      if (!submittedIds.has(String(p.id))) {
-        autoSubmits.push(submitAnswer({
-          roomId: state.room.id,
-          playerId: p.id,
-          questionNumber: state.currentQuestion,
-          questionId: q.id,
-          wager: 1,
-          submittedAnswer: '',
-          isCorrect: false,
-          scoreEarned: 0
-        }));
-      }
-    }
-    if (autoSubmits.length) await Promise.allSettled(autoSubmits);
-  }
-
-  // Re-fetch all answers (including just-submitted auto-answers) before revealing.
-  // Realtime INSERT callbacks may not have arrived yet, causing "Waiting..." flicker.
-  try {
-    state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
-  } catch (err) {
-    logger.warn('Game', 'Pre-reveal fetch failed, using cached answers', err);
-  }
-
-  // Broadcast phase change so non-hosts transition to reveal
-  updateGameState(state.room.id, { game_phase: 'answer_reveal' })
-    .catch(err => logger.error('Game', 'Failed to broadcast answer_reveal phase', err));
-  doReveal();
-}
-
-async function handleJudgmentOverride(e) {
-  const toggle = e.target.closest('.answer-toggle--host');
-  if (!toggle) return;
-
-  const answerId = toggle.dataset.answerId;
-  if (!answerId) return;
-
-  // Use cached answers — no DB fetch
-  const answer = state.currentAnswers.find(a => String(a.id) === String(answerId));
-  if (!answer) return;
-
-  const newCorrect = !answer.is_correct;
-  const newScore = newCorrect ? answer.wager : (state.isFinalWagerRound ? -answer.wager : 0);
-
-  // Update local cache immediately for instant host feedback
-  answer.is_correct = newCorrect;
-  answer.score_earned = newScore;
-  renderRevealAnswers(state.currentAnswers);
-
-  // Persist to DB — Realtime event will update other clients
-  await updateAnswerJudgment(answerId, newCorrect, newScore);
-
-  // Update mastery for the affected player
-  const player = state.players.find(p => p.id === answer.player_id);
-  if (player?.user_id && answer.question_id) {
-    upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
-  }
-}
-
-async function handleDisqualifyRound() {
-  if (!canControlGame()) return;
-  const qNum = state.currentQuestion;
-
-  // Guard against double-click
-  if (state.disqualifiedQuestions.has(qNum)) return;
-
-  // Mark locally
-  state.disqualifiedQuestions.add(qNum);
-
-  // Refund wagers — remove from usedWagers so players can reuse them
-  for (const answer of state.currentAnswers) {
-    if (answer.wager && answer.player_id === state.room.playerId) {
-      state.usedWagers.delete(answer.wager);
-    }
-  }
-
-  // Set all answers for this question to score_earned = 0
-  const updates = [];
-  for (const answer of state.currentAnswers) {
-    answer.is_correct = false;
-    answer.score_earned = 0;
-    if (answer.id) {
-      updates.push(updateAnswerJudgment(answer.id, false, 0));
-    }
-  }
-  // Re-render immediately
-  renderRevealAnswers(state.currentAnswers);
-
-  // Hide the disqualify button and show confirmation
-  const dqBtn = $('#btn-disqualify-round');
-  if (dqBtn) {
-    dqBtn.textContent = 'Round Disqualified';
-    dqBtn.disabled = true;
-  }
-
-  // Persist to DB (fires Realtime updates to all clients)
-  await Promise.all(updates);
-
-  // Correct mastery: doReveal() already wrote mastery with the original is_correct,
-  // so we need to overwrite it for all players who have accounts
-  for (const answer of state.currentAnswers) {
-    if (answer.question_id) {
-      const player = state.players.find(p => p.id === answer.player_id);
-      if (player?.user_id) {
-        upsertQuestionHistory(player.user_id, answer.question_id, false);
-      }
-    }
-  }
-
-  // Recalculate scores
-  await updateScores();
-
-  // Send system chat message — non-host clients will detect this
-  await sendMessage(state.room.id, 'System',
-    `Host disqualified Q${qNum + 1} — no scores affected.`);
-}
-
-async function handleNextQuestion() {
-  const isLastQuestion = state.currentQuestion >= state.totalQuestions - 1;
-
-  if (isLastQuestion) {
-    // Apply locally first — don't depend on Realtime echo
-    state.gamePhase = 'results';
-    showResultsScreen();
-    await updateGameState(state.room.id, { game_phase: 'results' });
-  } else {
-    // Apply locally first
-    state.currentQuestion = state.currentQuestion + 1;
-    handlePhaseTransition('question');
-    await updateGameState(state.room.id, {
-      game_phase: 'question',
-      current_question: state.currentQuestion
-    });
-  }
-}
 
 // ============================================
 // SCORES SCREEN (animated reveal)
@@ -2090,7 +1132,7 @@ async function handleShowScores() {
 async function showScoresScreen() {
   // Guard: prevent rendering the same question's scores twice
   if (state.currentQuestion === _lastScoresRenderedForQuestion) return;
-  _lastScoresRenderedForQuestion = state.currentQuestion;
+  setLastScoresRendered(state.currentQuestion);
 
   state.onRevealScreen = false;
 
@@ -2468,8 +1510,8 @@ function showFinalWagerScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const fwScreen = $('#final-wager-screen');
   if (currentScreen && currentScreen !== fwScreen && !_screenTransitioning) {
-    _screenTransitioning = true;
-    transitionScreens(currentScreen, fwScreen).finally(() => { _screenTransitioning = false; });
+    setScreenTransitioning(true);
+    transitionScreens(currentScreen, fwScreen).finally(() => { setScreenTransitioning(false); });
   }
 
   showHostSettingsGear();
@@ -2733,7 +1775,7 @@ async function openScoreEditQuestion(questionNumber) {
 
     await updateScores();
     openScoreEditQuestion(qNum);
-    _lastScoresRenderedForQuestion = -1;
+    setLastScoresRendered(-1);
     showScoresScreen();
 
     const sign = newScore >= 0 ? '+' : '';
@@ -3038,7 +2080,7 @@ async function showResultsScreen() {
 }
 
 async function handlePlayAgain() {
-  _isLeaving = true; // Player stays in room — prevent handleUnload from removing
+  setIsLeaving(true); // Player stays in room — prevent handleUnload from removing
   try { cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
 
   // Only the host resets the room status to 'lobby'.
@@ -3068,7 +2110,7 @@ async function handlePlayAgain() {
 }
 
 async function handleQuitGame() {
-  _isLeaving = true;
+  setIsLeaving(true);
   try { cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
   try {
     if (state.players.length <= 1) {
@@ -3398,143 +2440,12 @@ function handleAnswerChange(payload) {
   });
 }
 
-// ============================================
-// QUESTION FEEDBACK
-// ============================================
-
-function resetFeedbackUI() {
-  if (state.feedbackFadeTimer) {
-    clearTimeout(state.feedbackFadeTimer);
-    state.feedbackFadeTimer = null;
-  }
-  const container = $('#reveal-feedback');
-  container.style.display = 'none';
-  container.classList.remove('reveal__feedback--faded');
-  container.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('feedback-btn--active'));
-  container.querySelector('.feedback-flag-menu').style.display = 'none';
-  const confirmEl = container.querySelector('.feedback-flag-confirm');
-  if (confirmEl) { confirmEl.classList.remove('show'); confirmEl.textContent = ''; }
-}
-
-function showFeedbackUI() {
-  const container = $('#reveal-feedback');
-  container.style.display = '';
-  container.classList.remove('reveal__feedback--faded');
-  state.feedbackFadeTimer = setTimeout(() => {
-    container.classList.add('reveal__feedback--faded');
-  }, RESULTS_ACTION_DELAY_MS);
-}
-
-function startFeedbackFadeTimer() {
-  if (state.feedbackFadeTimer) clearTimeout(state.feedbackFadeTimer);
-  const container = $('#reveal-feedback');
-  container.classList.remove('reveal__feedback--faded');
-  state.feedbackFadeTimer = setTimeout(() => {
-    container.classList.add('reveal__feedback--faded');
-  }, RESULTS_ACTION_DELAY_MS);
-}
-
-function initFeedbackListeners() {
-  // Tap question text to bring feedback icons back to full opacity
-  $('#reveal-question-text').addEventListener('click', () => {
-    const container = $('#reveal-feedback');
-    if (container.style.display !== 'none') {
-      startFeedbackFadeTimer();
-    }
-  });
-
-  // Thumbs up / down
-  document.querySelectorAll('.feedback-btn[data-type="thumbs_up"], .feedback-btn[data-type="thumbs_down"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const type = btn.dataset.type;
-      const otherType = type === 'thumbs_up' ? 'thumbs_down' : 'thumbs_up';
-      const otherBtn = document.querySelector(`.feedback-btn[data-type="${otherType}"]`);
-
-      // Toggle: if already active, deactivate; otherwise activate and deactivate other
-      const wasActive = btn.classList.contains('feedback-btn--active');
-      if (otherBtn) otherBtn.classList.remove('feedback-btn--active');
-
-      const q = state.questions[state.currentQuestion];
-      if (wasActive) {
-        btn.classList.remove('feedback-btn--active');
-        if (q) {
-          _qbFeedback[q.id] = null;
-          deleteQuestionFeedback({ questionId: q.id, roomId: state.room.id, playerName: getDisplayName() });
-        }
-      } else {
-        btn.classList.add('feedback-btn--active');
-        if (q) {
-          _qbFeedback[q.id] = type;
-          upsertQuestionFeedback({
-            questionId: q.id,
-            roomId: state.room.id,
-            playerName: getDisplayName(),
-            feedbackType: type,
-            flagReason: null
-          });
-        }
-      }
-
-      startFeedbackFadeTimer();
-    });
-  });
-
-  // Flag button — toggle dropdown
-  const flagBtn = document.querySelector('.feedback-btn[data-type="flag"]');
-  const flagMenu = document.querySelector('.feedback-flag-menu');
-
-  flagBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isVisible = flagMenu.style.display !== 'none';
-    flagMenu.style.display = isVisible ? 'none' : '';
-    startFeedbackFadeTimer();
-  });
-
-  // Flag menu options
-  flagMenu.querySelectorAll('button[data-reason]').forEach(option => {
-    option.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const reason = option.dataset.reason;
-      flagBtn.classList.add('feedback-btn--active');
-      flagMenu.style.display = 'none';
-
-      // Show confirmation
-      const labels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', alternate_answer: 'another valid answer', other: 'other' };
-      const confirmEl = document.getElementById('feedback-flag-confirm');
-      confirmEl.textContent = `Flagged as ${labels[reason] || reason} \u2713`;
-      confirmEl.classList.remove('show');
-      void confirmEl.offsetHeight;
-      confirmEl.classList.add('show');
-
-      const q = state.questions[state.currentQuestion];
-      if (q) {
-        _qbFeedback[q.id] = 'flag';
-        upsertQuestionFeedback({
-          questionId: q.id,
-          roomId: state.room.id,
-          playerName: getDisplayName(),
-          feedbackType: 'flag',
-          flagReason: reason
-        });
-      }
-
-      startFeedbackFadeTimer();
-    });
-  });
-
-  // Close flag menu on outside click
-  _flagMenuCloseHandler = () => { flagMenu.style.display = 'none'; };
-  document.addEventListener('click', _flagMenuCloseHandler);
-}
-
-// ============================================
 // STALE PLAYER AUTO-KICK (5 min disconnect → removed)
 // ============================================
 const STALE_TIMEOUT = STALE_TIMEOUT_MS; // 30 seconds — fast fallback for when unload beacons fail
-let _staleCheckCount = -1;
 
 async function checkStalePresence() {
-  _staleCheckCount++;
+  setStaleCheckCount(_staleCheckCount + 1);
   const now = Date.now();
   for (const [id, since] of state.awayTimestamps) {
     if (now - since < STALE_TIMEOUT) continue;
@@ -3604,7 +2515,7 @@ async function checkStalePresence() {
 // QUESTION BROWSER (between-rounds bottom sheet)
 // ============================================
 
-let _qbFeedback = {}; // { questionId: feedbackType } — shared with handleReviewQuestions
+// _qbFeedback imported from game/state.js
 
 // ============================================
 // EXIT PATHS (player leaves the game permanently)
@@ -3623,7 +2534,7 @@ let _qbFeedback = {}; // { questionId: feedbackType } — shared with handleRevi
 // explicit leave or non-leaving transition.
 
 function handleBackButton() {
-  _isLeaving = true;
+  setIsLeaving(true);
   cleanup();
   if (state.room && state.room.playerId) {
     if (state.players.length <= 1) {
@@ -3694,17 +2605,16 @@ function handleVisibilityChange() {
  * advanced (different question or phase). Handles both brief disconnections
  * and tab-hidden gaps where Realtime messages were missed.
  */
-let _syncInFlight = false;
 async function syncToCurrentState() {
   if (_syncInFlight) return; // Prevent overlapping syncs
-  _syncInFlight = true;
+  setSyncInFlight(true);
   try {
     const { data: roomData } = await fetchRoom(state.room.id);
     if (!roomData || !roomData.game_phase) return;
 
     // Room returned to lobby while we were away
     if (roomData.status === 'lobby') {
-      _isLeaving = true;
+      setIsLeaving(true);
       cleanup();
       navigateWithFadeReplace('lobby.html');
       return;
@@ -3808,7 +2718,7 @@ async function syncToCurrentState() {
   } catch (err) {
     logger.error('Game', 'syncToCurrentState failed', err);
   } finally {
-    _syncInFlight = false;
+    setSyncInFlight(false);
   }
 }
 
@@ -3853,7 +2763,7 @@ function cleanup() {
   resetReturnConfirm();
   if (_flagMenuCloseHandler) {
     document.removeEventListener('click', _flagMenuCloseHandler);
-    _flagMenuCloseHandler = null;
+    setFlagMenuCloseHandler(null);
   }
   if (state.difficultyVoteChannel) {
     supabase.removeChannel(state.difficultyVoteChannel);
@@ -3870,4 +2780,10 @@ function cleanup() {
 // START
 // ============================================
 registerHostCleanup(cleanup);
+registerShowRevealScreen(showRevealScreen);
+registerRevealHelpers({ enableNextQuestion, enableRevealButton, updateRevealButtonText });
+registerRevealScoresRef({
+  handleShowScores, updateScores, clearAutoProceed,
+  showResultsScreen, handlePhaseTransition
+});
 init();
