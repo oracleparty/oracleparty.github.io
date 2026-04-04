@@ -15,6 +15,8 @@
   "license": "ISC",
   "devDependencies": {
     "jsdom": "^29.0.1",
+    "playwright": "^1.59.1",
+    "playwright-core": "^1.53.0",
     "vitest": "^4.1.2"
   }
 }
