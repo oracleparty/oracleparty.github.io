@@ -408,6 +408,7 @@ export async function handlePhaseTransition(phase) {
         playerId: state.room.playerId,
         playerName: getDisplayName(),
         category: state.room.category,
+        subcategory: state.room.subcategory || null,
         totalQuestions: state.totalQuestions
       });
     }

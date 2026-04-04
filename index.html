@@ -19,9 +19,32 @@
 
   <!-- ===== SPLASH SCREEN ===== -->
   <div id="splash" class="screen active" style="display: flex;">
-    <div class="splash__line"></div>
+    <!-- Particle container — populated by JS -->
+    <div class="splash__particles" id="splash-particles"></div>
+
+    <!-- Glyph ring — ancient symbols orbiting the title -->
+    <div class="splash__ring">
+      <span class="splash__glyph" style="--i:0">𓂀</span>
+      <span class="splash__glyph" style="--i:1">☉</span>
+      <span class="splash__glyph" style="--i:2">𓁹</span>
+      <span class="splash__glyph" style="--i:3">◈</span>
+      <span class="splash__glyph" style="--i:4">𓃭</span>
+      <span class="splash__glyph" style="--i:5">⏣</span>
+      <span class="splash__glyph" style="--i:6">𓆣</span>
+      <span class="splash__glyph" style="--i:7">◇</span>
+      <span class="splash__glyph" style="--i:8">𓅓</span>
+      <span class="splash__glyph" style="--i:9">⬡</span>
+      <span class="splash__glyph" style="--i:10">𓊝</span>
+      <span class="splash__glyph" style="--i:11">⊛</span>
+    </div>
+
+    <!-- Title reveal -->
     <h1 class="splash__title">Oracle Party</h1>
-    <div class="splash__ornament"></div>
+
+    <!-- Tagline -->
+    <p class="splash__tagline">Decode the past. Outsmart the algorithm.</p>
+
+    <!-- Loading dots -->
     <div class="splash__loader">
       <div class="loading-dots">
         <span></span>
@@ -80,9 +103,21 @@
       const splash = $('#splash');
       const home = $('#home');
 
+      // Spawn golden dust particles
+      const particleContainer = document.getElementById('splash-particles');
+      for (let i = 0; i < 20; i++) {
+        const p = document.createElement('span');
+        p.className = 'splash__particle';
+        p.style.left = `${10 + Math.random() * 80}%`;
+        p.style.animationDelay = `${Math.random() * 2.5}s`;
+        p.style.animationDuration = `${2 + Math.random() * 2}s`;
+        p.style.setProperty('--drift', `${(Math.random() - 0.5) * 40}px`);
+        particleContainer.appendChild(p);
+      }
+
       // Run both in parallel: minimum splash time + Supabase connection test
       const [, connected] = await Promise.all([
-        delay(2500),
+        delay(3000),
         testConnection(),
         initAuth()
       ]);
@@ -116,7 +151,9 @@
       // Clean up ghost rooms (fire-and-forget, non-blocking)
       cleanupOrphanedRooms().catch(() => {});
 
-      // Transition splash → home
+      // Converge elements before fade-out for cinematic exit
+      splash.classList.add('splash--exiting');
+      await delay(400);
       await transitionScreens(splash, home);
 
       // Friend request notifications (after home is visible so toast is seen)

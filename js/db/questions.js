@@ -610,20 +610,26 @@ export async function fetchQuestionFeedback(roomId, playerName, userId) {
 // ============================================
 
 export async function fetchCategoryPlayCounts() {
-  // Computed view derives games_played from game_history (persists even if rooms are deleted).
-  const { data, error } = await supabase
-    .from('player_stats_computed')
-    .select('category, games_played')
-    .is('subcategory', null); // Only category-level rows
+  // RPC returns sitewide aggregate counts from game_plays (all players, including guests).
+  // Shape: { category, subcategory (null for cat-level), play_count }
+  const { data, error } = await supabase.rpc('get_category_play_counts');
 
   if (error) {
     logger.error('Supabase', 'fetchCategoryPlayCounts failed', error);
     return {};
   }
 
+  // Build a flat map: 'history' → count, 'history/ancient' → count
   const counts = {};
   for (const row of (data || [])) {
-    counts[row.category] = (counts[row.category] || 0) + (row.games_played || 0);
+    if (!row.subcategory) {
+      // Category-level total
+      counts[row.category] = (counts[row.category] || 0) + (row.play_count || 0);
+    } else {
+      // Subcategory-level: key = 'category/subcategory'
+      const key = `${row.category}/${row.subcategory}`;
+      counts[key] = (counts[key] || 0) + (row.play_count || 0);
+    }
   }
   return counts;
 }

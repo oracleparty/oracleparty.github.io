@@ -155,19 +155,21 @@ export function subscribeToPlayers(roomId, callback) {
 // GAME PLAYS (play/completion tracking)
 // ============================================
 
-export async function insertGamePlay({ roomId, playerId, playerName, category, totalQuestions }) {
+export async function insertGamePlay({ roomId, playerId, playerName, category, subcategory, totalQuestions }) {
+  const row = {
+    room_id: roomId,
+    player_id: playerId,
+    player_name: playerName,
+    category,
+    total_questions: totalQuestions,
+    questions_answered: 0,
+    started_at: new Date().toISOString(),
+    completed: false
+  };
+  if (subcategory) row.subcategory = subcategory;
   const { error } = await supabase
     .from('game_plays')
-    .upsert({
-      room_id: roomId,
-      player_id: playerId,
-      player_name: playerName,
-      category,
-      total_questions: totalQuestions,
-      questions_answered: 0,
-      started_at: new Date().toISOString(),
-      completed: false
-    }, { onConflict: 'room_id,player_id' });
+    .upsert(row, { onConflict: 'room_id,player_id' });
 
   if (error) logger.error('Supabase', 'insertGamePlay failed', error);
 }

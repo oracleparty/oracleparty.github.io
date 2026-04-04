@@ -217,20 +217,30 @@ function renderSubcategoryLevel(catName, items, title, parentKey, icon) {
 
   // "All X" row — selects parentKey (null at top level = all in category)
   const allSubcategory = parentKey || '';
+  const allPlays = parentKey
+    ? (categoryPlayCounts[`${catName}/${parentKey}`] || 0)
+    : (categoryPlayCounts[catName] || 0);
+  const allPlaysHtml = allPlays > 0 ? `<span class="subcategory-row__plays">${allPlays.toLocaleString()} plays</span>` : '';
   options.innerHTML = `
     <div class="subcategory-row subcategory-row--all" data-category="${catName}" data-subcategory="${allSubcategory}">
       <span class="subcategory-row__icon">${icon || ''}</span>
       <span class="subcategory-row__label">All ${title}</span>
       <span class="subcategory-row__count" ${parentKey ? `data-sub-count="${parentKey}"` : ''}></span>
+      ${allPlaysHtml}
     </div>
-    ${items.map(s => `
+    ${items.map(s => {
+      const subPlays = categoryPlayCounts[`${catName}/${s.key}`] || 0;
+      const playsHtml = subPlays > 0 ? `<span class="subcategory-row__plays">${subPlays.toLocaleString()} plays</span>` : '';
+      return `
       <div class="subcategory-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
         <span class="subcategory-row__icon">${s.icon}</span>
         <span class="subcategory-row__label">${s.label}</span>
         <span class="subcategory-row__count" data-sub-count="${s.key}"></span>
+        ${playsHtml}
         ${s.children ? '<span class="subcategory-row__chevron">\u203A</span>' : ''}
       </div>
-    `).join('')}
+    `;
+    }).join('')}
   `;
 
   catList.style.display = 'none';
