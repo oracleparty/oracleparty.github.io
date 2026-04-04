@@ -5,6 +5,7 @@
 // ============================================
 
 import { createTypingChannel, unsubscribe } from './supabase.js';
+import { TYPING_TIMEOUT, TYPING_THROTTLE } from './constants.js';
 
 let channel = null;
 let localPlayerId = null;
@@ -42,7 +43,7 @@ export function initTypingIndicator(roomId, playerId, displayName, updateCallbac
       const timeoutId = setTimeout(() => {
         activeTypers.delete(id);
         emitUpdate();
-      }, 3000);
+      }, TYPING_TIMEOUT);
 
       activeTypers.set(id, { name: payload.player_name, timeoutId });
       emitUpdate();
@@ -63,7 +64,7 @@ export function notifyTyping() {
     payload: { player_id: localPlayerId, player_name: localDisplayName }
   });
 
-  sendThrottleId = setTimeout(() => { sendThrottleId = null; }, 1000);
+  sendThrottleId = setTimeout(() => { sendThrottleId = null; }, TYPING_THROTTLE);
 }
 
 /**

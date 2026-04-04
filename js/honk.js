@@ -4,6 +4,7 @@
 // ============================================
 
 import { createHonkChannel, unsubscribe } from './supabase.js';
+import { HONK_THROTTLE } from './constants.js';
 
 // --- State ---
 const honkCounts = {}; // playerId → count (in-memory, resets per session)
@@ -48,7 +49,7 @@ let _lastGooseTime = 0;
 function spawnGooseEmoji() {
   // Throttle: max one animation per 300ms to prevent DOM overload from rapid honks
   const now = Date.now();
-  if (now - _lastGooseTime < 300) return;
+  if (now - _lastGooseTime < HONK_THROTTLE) return;
   _lastGooseTime = now;
   const el = document.createElement('div');
   el.className = 'honk-goose';

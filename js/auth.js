@@ -3,9 +3,11 @@
 // ============================================
 
 import { $, calculateTitle } from './utils.js';
+import { FRIEND_REQUEST_TOAST_MS } from './constants.js';
 import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle } from './titles.js';
+import { logger } from './logger.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
 const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
@@ -100,7 +102,7 @@ export async function initAuth() {
     const result = await supabase.auth.getSession();
     session = result.data?.session;
   } catch (err) {
-    console.warn('[Auth] getSession failed:', err);
+    logger.warn('Auth', 'getSession failed', err);
     return;
   }
 
@@ -124,7 +126,7 @@ export async function initAuth() {
     profile = profileResult.data;
     stats = statsResult || [];
   } catch (err) {
-    console.warn('[Auth] Failed to fetch profile/stats:', err);
+    logger.warn('Auth', 'Failed to fetch profile/stats', err);
   }
 
   if (profile) {
@@ -142,7 +144,7 @@ export async function initAuth() {
             profile.display_name = repaired.display_name;
             profile.discriminator = repaired.discriminator;
           } else {
-            console.warn('[Auth] Profile repair failed:', repairErr?.message);
+            logger.warn('Auth', 'Profile repair failed', repairErr);
             if (!profile.display_name) profile.display_name = dn;
             if (!profile.discriminator) profile.discriminator = '0000';
           }
@@ -151,7 +153,7 @@ export async function initAuth() {
           if (!profile.discriminator) profile.discriminator = '0000';
         }
       } catch (err) {
-        console.warn('[Auth] Profile repair threw:', err);
+        logger.warn('Auth', 'Profile repair threw', err);
         if (!profile.display_name) profile.display_name = getDisplayName() || 'Player';
         if (!profile.discriminator) profile.discriminator = '0000';
       }
@@ -165,7 +167,7 @@ export async function initAuth() {
       profile._cachedTitleTier = titleInfo.tier;
       profile._cachedTitleCategory = titleInfo.category;
     } catch (err) {
-      console.warn('[Auth] Title computation failed:', err);
+      logger.warn('Auth', 'Title computation failed', err);
       profile._cachedTitle = 'Novice';
       profile._cachedTitleTier = 'Novice';
       profile._cachedTitleCategory = null;
@@ -203,7 +205,7 @@ export async function initAuth() {
         }
       }
     } catch (err) {
-      console.warn('[Auth] Profile creation retry failed:', err);
+      logger.warn('Auth', 'Profile creation retry failed', err);
     }
   }
 }
@@ -232,7 +234,7 @@ export async function signUp(email, password, displayName) {
     }
   });
   if (error) {
-    console.error('[Auth] signUp failed:', error.message);
+    logger.error('Auth', 'signUp failed', error);
     return { user: null, profile: null, error };
   }
 
@@ -266,7 +268,7 @@ export async function signUp(email, password, displayName) {
     }
   }
   if (profileErr) {
-    console.error('[Auth] createProfile failed:', profileErr.message);
+    logger.error('Auth', 'createProfile failed', profileErr);
     return { user: data.user, profile: null, error: profileErr };
   }
 
@@ -285,7 +287,7 @@ export async function signUp(email, password, displayName) {
 export async function signIn(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
-    console.error('[Auth] signIn failed:', error.message);
+    logger.error('Auth', 'signIn failed', error);
     return { user: null, profile: null, error };
   }
 
@@ -304,7 +306,7 @@ export async function signIn(email, password) {
  * Sign out. Clears auth state but preserves display name (reverts to guest).
  */
 export async function signOut() {
-  try { await supabase.auth.signOut(); } catch (e) { console.warn('[Auth] signOut error:', e); }
+  try { await supabase.auth.signOut(); } catch (e) { logger.warn('Auth', 'signOut error', e); }
   _currentUser = null;
   _currentProfile = null;
   localStorage.removeItem(PROFILE_CACHE_KEY);
@@ -592,5 +594,5 @@ function _showFriendRequestToast(senderName, requestId) {
     }
   };
 
-  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 10000);
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, FRIEND_REQUEST_TOAST_MS);
 }

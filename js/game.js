@@ -4,6 +4,8 @@
 // ============================================
 
 import { $, transitionScreens, escapeHtml, fuzzyMatch, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
+import { logger } from './logger.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, TIMER_GRACE_MS, WAGER_AUTO_SKIP_MS, REVEAL_ANSWER_DELAY_MS, SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, FEEDBACK_FADE_MS, RESULTS_ACTION_DELAY_MS, RETURN_HOME_DELAY_MS, AUTO_PROCEED_TICK_MS, LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, STALE_TIMEOUT_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from './constants.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -333,13 +335,13 @@ async function init() {
       state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
         .catch(() => {});
     }
-  }, 15000);
+  }, LOBBY_POLL_INTERVAL);
 
   // Poll for stale disconnected players (auto-kick after 5 min)
-  state.stalePollId = setInterval(checkStalePresence, 30000);
+  state.stalePollId = setInterval(checkStalePresence, STALE_CHECK_INTERVAL);
 
   // Periodic sync to catch missed Realtime messages after brief disconnections
-  state._syncIntervalId = setInterval(syncToCurrentState, 60000);
+  state._syncIntervalId = setInterval(syncToCurrentState, STATE_SYNC_INTERVAL);
 
   loadChatMessages();
   attachChatListeners();
@@ -482,7 +484,7 @@ async function initPlayerGame() {
       roomData = data;
       break;
     }
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, PLAYER_INIT_WAIT_MS));
   }
 
   if (!roomData || !roomData.question_ids) {
@@ -503,7 +505,7 @@ async function initPlayerGame() {
         state._hotJoinPollId = null;
         await applyGameState(data);
       }
-    }, 3000);
+    }, PLAYER_READY_CONFIRM_MS);
     return;
   }
 
@@ -1107,7 +1109,7 @@ function showCountdownScreen() {
   const currentScreen = document.querySelector('.screen.active');
   const countdownScreen = $('#countdown-screen');
   if (currentScreen && currentScreen !== countdownScreen) {
-    transitionScreens(currentScreen, countdownScreen, 300);
+    transitionScreens(currentScreen, countdownScreen, COUNTDOWN_TRANSITION_MS);
   } else {
     countdownScreen.style.display = '';
     void countdownScreen.offsetHeight;
@@ -1115,8 +1117,8 @@ function showCountdownScreen() {
   }
 
   const steps = ['3', '2', '1', 'GO!'];
-  const DELAY_MS = 500;  // Brief pause before "3" so everyone sees the countdown screen
-  const STEP_MS = 900;   // Time each number stays on screen
+  const DELAY_MS = COUNTDOWN_DELAY_MS;  // Brief pause before "3" so everyone sees the countdown screen
+  const STEP_MS = COUNTDOWN_STEP_MS;   // Time each number stays on screen
   const TOTAL_MS = DELAY_MS + (steps.length * STEP_MS); // 4100ms
   let lastShownStep = -1;
 
@@ -1152,7 +1154,7 @@ function showCountdownScreen() {
       // Show GO! briefly if we haven't shown it yet
       if (lastShownStep < steps.length - 1) {
         showStep(steps.length - 1);
-        setTimeout(finishCountdown, 300);
+        setTimeout(finishCountdown, COUNTDOWN_FINISH_MS);
       } else {
         finishCountdown();
       }
@@ -1204,7 +1206,7 @@ function showQuestionScreen() {
   let q = state.questions[state.currentQuestion];
   if (!q) {
     // Question missing — try to use the last available question as fallback
-    console.warn(`[Game] Question ${state.currentQuestion} missing, using fallback`);
+    logger.warn('Game', 'Question ' + state.currentQuestion + ' missing, using fallback');
     q = state.questions[state.questions.length - 1];
     if (!q) return; // Truly no questions at all
   }
@@ -1327,7 +1329,7 @@ function showQuestionScreen() {
 
       // Focus the answer input for quick typing
       $('#answer-input').focus({ preventScroll: true });
-    }, 1000);
+    }, WAGER_AUTO_SKIP_MS);
   }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
@@ -1375,7 +1377,7 @@ function renderWagerGrid() {
     // Defensive: all exhausted — assign fallback so player can still submit
     state.currentWager = state.currentQuestion + 1;
     state.wagerExplicitlySelected = true;
-    console.warn('[Game] All wagers exhausted, fallback to', state.currentWager);
+    logger.warn('Game', 'All wagers exhausted, fallback to ' + state.currentWager);
   }
 }
 
@@ -1458,8 +1460,8 @@ function startTimer() {
   if (initial <= 0) {
     updateTimerDisplay(0);
     state.timerExpired = true;
-    // Grace period: give in-flight submissions 500ms to land before auto-submitting
-    state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, 500);
+    // Grace period: give in-flight submissions time to land before auto-submitting
+    state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, TIMER_GRACE_MS);
     return;
   }
 
@@ -1474,8 +1476,8 @@ function startTimer() {
       clearInterval(state.timerId);
       state.timerId = null;
       state.timerExpired = true;
-      // Grace period: give in-flight submissions 500ms to land before auto-submitting
-      state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, 500);
+      // Grace period: give in-flight submissions time to land before auto-submitting
+      state._timerGraceId = setTimeout(() => { state._timerGraceId = null; handleTimerExpired(); }, TIMER_GRACE_MS);
     }
   }, 250);
 }
@@ -1537,7 +1539,7 @@ async function handleTimerExpired() {
     }
     // Broadcast reveal phase so all clients transition
     updateGameState(state.room.id, { game_phase: 'reveal' })
-      .catch(err => console.error('Failed to broadcast reveal phase:', err));
+      .catch(err => logger.error('Game', 'Failed to broadcast reveal phase', err));
   }
 
   // If host/co-host and already on reveal, enable the appropriate button and update text
@@ -1605,7 +1607,7 @@ async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     }
     if (wager === null) {
       wager = 1;
-      console.warn('[Game] doSubmitAnswer: all wagers used, fallback to', wager);
+      logger.warn('Game', 'doSubmitAnswer: all wagers used, fallback to ' + wager);
     }
   }
   const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
@@ -1688,7 +1690,7 @@ async function showRevealScreen() {
         state.currentAnswers = fresh;
         renderRevealAnswers(fresh);
       }
-    }, 1500);
+    }, REVEAL_ANSWER_DELAY_MS);
   }
 
   // Show countdown timer on reveal screen if the round isn't over yet
@@ -2039,12 +2041,12 @@ async function handleRevealResults() {
   try {
     state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
   } catch (err) {
-    console.warn('[Game] Pre-reveal fetch failed, using cached answers:', err);
+    logger.warn('Game', 'Pre-reveal fetch failed, using cached answers', err);
   }
 
   // Broadcast phase change so non-hosts transition to reveal
   updateGameState(state.room.id, { game_phase: 'answer_reveal' })
-    .catch(err => console.error('Failed to broadcast answer_reveal phase:', err));
+    .catch(err => logger.error('Game', 'Failed to broadcast answer_reveal phase', err));
   doReveal();
 }
 
@@ -2245,7 +2247,7 @@ async function showScoresScreen() {
   const btn = $('#btn-scores-action');
   btn.classList.add('hidden');
   if (hasPreviousScores) {
-    setTimeout(() => animateScores(), 800);
+    setTimeout(() => animateScores(), SCORE_PRE_ANIMATE_DELAY_MS);
   } else {
     showFinalScoresState();
   }
@@ -2270,8 +2272,8 @@ function animateScores() {
   const rows = document.querySelectorAll('.score-anim-row');
   const scoreEls = document.querySelectorAll('.score-anim-row__score');
 
-  // Phase 1: Count animation (~1s)
-  const duration = 1000;
+  // Phase 1: Count animation
+  const duration = SCORE_ANIMATE_MS;
   const startTime = performance.now();
 
   function easeOut(t) {
@@ -2294,7 +2296,7 @@ function animateScores() {
       requestAnimationFrame(countStep);
     } else {
       // Phase 2: Reorder animation after a brief pause
-      setTimeout(() => reorderRows(), 300);
+      setTimeout(() => reorderRows(), SCORE_REORDER_DELAY_MS);
     }
   }
 
@@ -2419,7 +2421,7 @@ function startAutoProceed(seconds, actionFn) {
       clearAutoProceed();
       actionFn();
     }
-  }, 1000);
+  }, AUTO_PROCEED_TICK_MS);
 }
 
 function clearAutoProceed() {
@@ -2895,9 +2897,9 @@ async function showResultsScreen() {
         }
         // (Phase 4 will add celebration display here)
         if (newUnlocks.length > 0) {
-          console.log('[Titles] New unlocks:', newUnlocks.map(u => `${u.word} L${u.level}`));
+          logger.debug('Titles', 'New unlocks', newUnlocks.map(u => u.word + ' L' + u.level));
         }
-      }).catch(err => console.warn('[Titles] Evaluation failed:', err));
+      }).catch(err => logger.warn('Titles', 'Evaluation failed', err));
     }
   }
 
@@ -3138,7 +3140,7 @@ async function handlePlayAgain() {
         updateRoomStatus(state.room.id, 'lobby')
       ]);
     } catch (err) {
-      console.error('[Game] handlePlayAgain host cleanup failed:', err);
+      logger.error('Game', 'handlePlayAgain host cleanup failed', err);
       showToast('Error resetting room — retrying...', 'error');
     }
   }
@@ -3157,7 +3159,7 @@ async function handleQuitGame() {
       await removePlayer(state.room?.playerId);
     }
   } catch (err) {
-    console.error('[Game] handleQuitGame DB cleanup failed:', err);
+    logger.error('Game', 'handleQuitGame DB cleanup failed', err);
   }
   sessionStorage.removeItem('oracle_party_room');
   navigateWithFade('index.html');
@@ -3803,7 +3805,7 @@ function showFeedbackUI() {
   container.classList.remove('reveal__feedback--faded');
   state.feedbackFadeTimer = setTimeout(() => {
     container.classList.add('reveal__feedback--faded');
-  }, 5000);
+  }, RESULTS_ACTION_DELAY_MS);
 }
 
 function startFeedbackFadeTimer() {
@@ -3812,7 +3814,7 @@ function startFeedbackFadeTimer() {
   container.classList.remove('reveal__feedback--faded');
   state.feedbackFadeTimer = setTimeout(() => {
     container.classList.add('reveal__feedback--faded');
-  }, 5000);
+  }, RESULTS_ACTION_DELAY_MS);
 }
 
 function initFeedbackListeners() {
@@ -3911,7 +3913,7 @@ function initFeedbackListeners() {
 // ============================================
 // STALE PLAYER AUTO-KICK (5 min disconnect → removed)
 // ============================================
-const STALE_TIMEOUT = 30 * 1000; // 30 seconds — fast fallback for when unload beacons fail
+const STALE_TIMEOUT = STALE_TIMEOUT_MS; // 30 seconds — fast fallback for when unload beacons fail
 let _staleCheckCount = -1;
 
 async function checkStalePresence() {
@@ -3968,7 +3970,7 @@ async function checkStalePresence() {
         state.room.isCohost = false;
         const localMe = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
         if (localMe !== -1) state.players[localMe].is_cohost = false;
-        demoteCohost(state.room.playerId).catch(e => console.warn('[Game] demoteCohost on promotion failed:', e));
+        demoteCohost(state.room.playerId).catch(e => logger.warn('Game', 'demoteCohost on promotion failed', e));
       }
       state.room.isHost = true;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
@@ -4187,7 +4189,7 @@ async function syncToCurrentState() {
 
     handlePhaseTransition(roomData.game_phase);
   } catch (err) {
-    console.error('[Game] syncToCurrentState failed:', err);
+    logger.error('Game', 'syncToCurrentState failed', err);
   } finally {
     _syncInFlight = false;
   }
@@ -4309,7 +4311,7 @@ function handleReturnToLobby() {
     btn.classList.add('btn-return-lobby--confirm');
     _hostSettingsConfirmTimer = setTimeout(() => {
       resetReturnConfirm();
-    }, 3000);
+    }, RETURN_HOME_DELAY_MS);
   }
 }
 
@@ -4343,7 +4345,7 @@ async function executeReturnToLobby() {
     });
     await updateRoomStatus(state.room.id, 'lobby');
   } catch (err) {
-    console.error('[Game] executeReturnToLobby cleanup failed:', err);
+    logger.error('Game', 'executeReturnToLobby cleanup failed', err);
   }
 
   sessionStorage.setItem('oracle_party_returning_from_game', '1');

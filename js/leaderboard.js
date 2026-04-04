@@ -4,6 +4,7 @@
 // ============================================
 
 import { $, $$, escapeHtml, renderAvatar, navigateWithFade } from './utils.js';
+import { LEADERBOARD_LIMIT } from './constants.js';
 import {
   fetchAllPlayerStatsForLeaderboard,
   fetchCategoryLeaderboard,
@@ -102,7 +103,7 @@ async function loadGlobalLeaderboard() {
   // Sort by total score desc, take top 50
   const sorted = Object.entries(userMap)
     .sort((a, b) => b[1].totalScore - a[1].totalScore)
-    .slice(0, 50);
+    .slice(0, LEADERBOARD_LIMIT);
 
   if (sorted.length === 0) {
     container.innerHTML = '<p class="leaderboard-empty">No players yet. Be the first!</p>';
@@ -161,7 +162,7 @@ async function loadWeeklyLeaderboard() {
 
   const sorted = Object.entries(userMap)
     .sort((a, b) => b[1].totalScore - a[1].totalScore)
-    .slice(0, 50);
+    .slice(0, LEADERBOARD_LIMIT);
 
   const profiles = await fetchProfilesBatch(sorted.map(([uid]) => uid));
   const profileMap = {};
@@ -223,7 +224,7 @@ async function loadCategoryLeaderboard() {
   const sorted = stats
     .map(s => ({ ...s, accuracy: Math.round((s.correct_answers / s.questions_answered) * 100) }))
     .sort((a, b) => b.accuracy - a.accuracy || b.questions_answered - a.questions_answered)
-    .slice(0, 50);
+    .slice(0, LEADERBOARD_LIMIT);
 
   const profiles = await fetchProfilesBatch(sorted.map(s => s.user_id));
   const profileMap = {};

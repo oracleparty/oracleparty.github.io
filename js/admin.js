@@ -4,8 +4,10 @@
 // ============================================
 
 import { $ } from './utils.js';
+import { logger } from './logger.js';
 import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS } from './constants.js';
 
 // ============================================
 // INIT
@@ -211,7 +213,7 @@ async function loadFlaggedQueue() {
 // ============================================
 
 let _questionOffset = 0;
-const PAGE_SIZE = 25;
+const PAGE_SIZE = ADMIN_PAGE_SIZE;
 
 async function loadQuestions() {
   const search = $('#q-search').value.trim();
@@ -245,7 +247,7 @@ async function fetchQuestions(search, category, format, offset) {
   query = query.order('id', { ascending: false }).range(offset, offset + PAGE_SIZE - 1);
 
   const { data, error } = await query;
-  if (error) { console.error('[Admin] fetchQuestions failed:', error.message); return []; }
+  if (error) { logger.error('Admin', 'fetchQuestions failed', error); return []; }
   return data || [];
 }
 
@@ -340,7 +342,7 @@ function createQuestionRow(q) {
     if (!error) {
       // Update the summary text
       row.querySelector('.admin-q-row__text').textContent = newText.length > 80 ? newText.slice(0, 80) + '\u2026' : newText;
-      setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      setTimeout(() => { statusEl.textContent = ''; }, ADMIN_STATUS_FADE_MS);
     }
   };
 

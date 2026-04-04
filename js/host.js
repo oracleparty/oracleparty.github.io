@@ -7,7 +7,9 @@ import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.j
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
+import { logger } from './logger.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
+import { CATEGORY_CACHE_TTL, MASTERY_HIGH_THRESHOLD, MASTERY_COMPLETE_THRESHOLD } from './constants.js';
 
 // --- State ---
 let categories = [];
@@ -35,7 +37,7 @@ const hostError = $('#host-error');
 
 // --- Category cache (localStorage) ---
 const CACHE_KEY = 'op_categories';
-const CACHE_TTL = 1000 * 60 * 30; // 30 min — categories rarely change
+const CACHE_TTL = CATEGORY_CACHE_TTL; // from constants.js
 
 function getCachedCategories() {
   try {
@@ -70,7 +72,7 @@ async function init() {
   try {
     await Promise.all([ensureDisplayName(), initAuth()]);
   } catch (err) {
-    console.error('[Host] Auth error:', err);
+    logger.error('Host', 'Auth error', err);
   }
 
   // 3) Fetch categories + play counts + mastery all in parallel
@@ -78,10 +80,10 @@ async function init() {
   if (authUser?.user?.id) _isLoggedIn = true;
 
   const [freshCategories, playCounts, masteryData] = await Promise.all([
-    fetchCategories().catch(err => { console.error('[Host] fetchCategories:', err); return null; }),
-    fetchCategoryPlayCounts().catch(e => { console.warn('[Host] Could not load play counts:', e); return {}; }),
+    fetchCategories().catch(err => { logger.error('Host', 'fetchCategories', err); return null; }),
+    fetchCategoryPlayCounts().catch(e => { logger.warn('Host', 'Could not load play counts', e); return {}; }),
     _isLoggedIn
-      ? fetchMasteryCounts(authUser.user.id).catch(e => { console.warn('[Host] Could not load mastery:', e); return []; })
+      ? fetchMasteryCounts(authUser.user.id).catch(e => { logger.warn('Host', 'Could not load mastery', e); return []; })
       : Promise.resolve([])
   ]);
 
@@ -127,7 +129,7 @@ function renderCategories(cats, playCounts = {}) {
     const total = cat.count || 1;
     const pct = Math.round((mastered / total) * 100);
     // Mastery tier for card border glow
-    const tier = pct >= 100 ? 'complete' : pct >= 75 ? 'high' : '';
+    const tier = pct >= MASTERY_COMPLETE_THRESHOLD ? 'complete' : pct >= MASTERY_HIGH_THRESHOLD ? 'high' : '';
     const tierAttr = tier ? ` data-mastery-tier="${tier}"` : '';
     // Ring markup — only for logged-in users
     const ringHtml = _isLoggedIn ? `<div class="category-card__ring" style="--mastery-pct: ${pct}"></div>` : '';
@@ -192,7 +194,7 @@ function patchCategoryCards(playCounts = {}) {
       }
       if (ring) ring.style.setProperty('--mastery-pct', pct);
       // Update tier glow
-      const tier = pct >= 100 ? 'complete' : pct >= 75 ? 'high' : '';
+      const tier = pct >= MASTERY_COMPLETE_THRESHOLD ? 'complete' : pct >= MASTERY_HIGH_THRESHOLD ? 'high' : '';
       if (tier) card.dataset.masteryTier = tier;
       else delete card.dataset.masteryTier;
     }
@@ -619,7 +621,7 @@ async function handleHostGame() {
       const msg = error.message || 'Unknown error';
       hostError.textContent = `Failed to create room: ${msg}`;
       showToast('Failed to create room', 'error');
-      console.error('[Host] Room creation error:', error);
+      logger.error('Host', 'Room creation error', error);
       resetHostButton();
       return;
     }
@@ -627,7 +629,7 @@ async function handleHostGame() {
     if (!data) {
       hostError.textContent = 'Room was not created. Check Supabase RLS policies on the rooms table.';
       showToast('Failed to create room', 'error');
-      console.error('[Host] createRoom returned null data with no error — likely an RLS policy issue.');
+      logger.error('Host', 'createRoom returned null data with no error — likely an RLS policy issue');
       resetHostButton();
       return;
     }
@@ -644,7 +646,7 @@ async function handleHostGame() {
     const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true, userId, extras);
     if (playerErr || !player) {
       hostError.textContent = 'Room created but failed to join. Try again.';
-      console.error('[Host] addPlayer failed:', playerErr);
+      logger.error('Host', 'addPlayer failed', playerErr);
       resetHostButton();
       return;
     }
@@ -668,7 +670,7 @@ async function handleHostGame() {
 
     navigateWithFade('lobby.html');
   } catch (err) {
-    console.error('[Host] Unexpected error in handleHostGame:', err);
+    logger.error('Host', 'Unexpected error in handleHostGame', err);
     hostError.textContent = `Unexpected error: ${err.message}`;
     resetHostButton();
   }

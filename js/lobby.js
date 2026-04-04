@@ -4,6 +4,8 @@
 // ============================================
 
 import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
+import { logger } from './logger.js';
+import { STALE_TIMEOUT_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS } from './constants.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -134,7 +136,7 @@ async function init() {
       // Poll up to 3 times (1s each) as a safety net.
       let settled = false;
       for (let i = 0; i < 3; i++) {
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, HOST_WAIT_TIMEOUT_MS));
         const { data: recheck } = await fetchRoom(room.id);
         if (!recheck) { sessionStorage.removeItem('oracle_party_room'); window.location.href = 'index.html'; return; }
         if (recheck.status !== 'playing') { settled = true; break; }
@@ -203,7 +205,7 @@ async function init() {
       presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
         .catch(() => {});
     }
-  }, 15000);
+  }, LOBBY_PLAYER_DEBOUNCE_MS);
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -271,7 +273,7 @@ async function init() {
     addSystemMessage('Game ended — back in lobby');
     // BUG 1 FIX: Flash the chat bar so returning players notice chat is preserved.
     // The drawer is closed by default after navigation, so messages feel "gone".
-    setTimeout(flashChatBar, 500);
+    setTimeout(flashChatBar, CHAT_FLASH_MS);
   } else {
     addSystemMessage('You joined the lobby');
   }
@@ -297,7 +299,7 @@ function attachListeners() {
       setTimeout(() => {
         if (hint) hint.textContent = 'tap to copy';
         btnCopyCode.classList.remove('copied');
-      }, 1500);
+      }, CHAT_MSG_DELAY_MS);
     } catch {
       // Fallback: no-op, code is visible
     }
@@ -546,7 +548,7 @@ async function handlePlayerChange(payload) {
     // If current player was removed (e.g. stale beacon from refresh), re-add
     await ensureCurrentPlayer();
   } catch (err) {
-    console.error('[Lobby] handlePlayerChange error:', err);
+    logger.error('Lobby', 'handlePlayerChange error', err);
     // Fallback: full re-fetch on any error
     await loadPlayers();
   }
@@ -633,7 +635,7 @@ async function handleTransferHost(targetPlayerId, targetDisplayName) {
     sendMessage(room.id, 'System', `${getDisplayName()} transferred host to ${targetDisplayName}`);
     addSystemMessage(`You transferred host to ${targetDisplayName}`);
   } catch (err) {
-    console.error('[Lobby] handleTransferHost error:', err);
+    logger.error('Lobby', 'handleTransferHost error', err);
   } finally {
     _isTransferring = false;
   }
@@ -663,7 +665,7 @@ async function handleCohostToggle(playerId, displayName, isDemote) {
     }
     renderPlayers();
   } catch (err) {
-    console.error('[Lobby] handleCohostToggle error:', err);
+    logger.error('Lobby', 'handleCohostToggle error', err);
   } finally {
     _isCohostToggling = false;
   }
@@ -919,7 +921,7 @@ async function handleSendMessage() {
       if (first) first.dataset.msgId = data.id;
     }
   } catch (err) {
-    console.error('[Lobby] sendMessage failed:', err);
+    logger.error('Lobby', 'sendMessage failed', err);
     chatEchoPending = Math.max(0, chatEchoPending - 1);
     chatInput.value = text;
   }
@@ -959,7 +961,7 @@ async function handleToggleReady() {
   try {
     await toggleReady(room.playerId, isReady);
   } catch (err) {
-    console.error('[Lobby] toggleReady failed:', err);
+    logger.error('Lobby', 'toggleReady failed', err);
     // Revert optimistic UI update
     isReady = !isReady;
     btnReady.textContent = isReady ? 'Not Ready' : 'Ready Up';
@@ -984,7 +986,7 @@ async function handleStartGame() {
     await updateRoomStatus(room.id, 'playing');
     // Room subscription will trigger navigation for everyone including host
   } catch (err) {
-    console.error('[Lobby] startGame failed:', err);
+    logger.error('Lobby', 'startGame failed', err);
     btnStartGame.classList.remove('is-loading');
     btnStartGame.textContent = 'Start Game';
   }
@@ -1249,7 +1251,7 @@ function handleRoomChange(payload) {
 // ============================================
 // STALE PLAYER AUTO-KICK (5 min disconnect → removed)
 // ============================================
-const STALE_TIMEOUT = 30 * 1000; // 30 seconds — fast fallback for when unload beacons fail
+const STALE_TIMEOUT = STALE_TIMEOUT_MS; // 30 seconds — fast fallback for when unload beacons fail
 
 function checkStalePresence() {
   const now = Date.now();
