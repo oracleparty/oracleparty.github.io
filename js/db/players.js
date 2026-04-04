@@ -1,5 +1,6 @@
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './client.js';
 import { logger } from '../logger.js';
+import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
 // ============================================
 // Player Management
@@ -140,9 +141,12 @@ export function subscribeToPlayers(roomId, callback) {
       try { callback(payload); } catch (e) { logger.error('Supabase', 'Player change callback error', e); }
     })
     .subscribe((status, err) => {
-      if (err) logger.error('Supabase', 'Players subscription error', err);
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      if (status === 'SUBSCRIBED') {
+        notifyConnectionRestored();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (err) logger.error('Supabase', 'Players subscription error', err);
         logger.warn('Supabase', 'Players subscription failed, status: ' + status);
+        notifyConnectionLost();
       }
     });
 }
@@ -324,9 +328,12 @@ export function subscribeToAnswers(roomId, callback) {
       try { callback(payload); } catch (e) { logger.error('Supabase', 'Answer change callback error', e); }
     })
     .subscribe((status, err) => {
-      if (err) logger.error('Supabase', 'Answers subscription error', err);
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      if (status === 'SUBSCRIBED') {
+        notifyConnectionRestored();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (err) logger.error('Supabase', 'Answers subscription error', err);
         logger.warn('Supabase', 'Answers subscription failed, status: ' + status);
+        notifyConnectionLost();
       }
     });
 }

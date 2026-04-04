@@ -5,6 +5,7 @@
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './client.js';
 import { logger } from '../logger.js';
 import { PUBLIC_ROOMS_LIMIT } from '../constants.js';
+import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
 /**
  * Generate a random 4-letter room code (A-Z).
@@ -325,9 +326,12 @@ export function subscribeToRoom(roomId, callback) {
       try { callback(payload); } catch (e) { logger.error('Supabase', 'Room change callback error', e); }
     })
     .subscribe((status, err) => {
-      if (err) logger.error('Supabase', 'Room subscription error', err);
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      if (status === 'SUBSCRIBED') {
+        notifyConnectionRestored();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (err) logger.error('Supabase', 'Room subscription error', err);
         logger.warn('Supabase', 'Room subscription failed, status: ' + status);
+        notifyConnectionLost();
       }
     });
 }

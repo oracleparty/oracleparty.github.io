@@ -24,3 +24,52 @@ export const logger = {
     currentLevel = LOG_LEVELS[level] ?? LOG_LEVELS.warn;
   },
 };
+
+// ============================================
+// Global Error Tracking
+// ============================================
+
+let _supabaseClient = null;
+
+function _logToSupabase(payload) {
+  if (!_supabaseClient) return;
+  try {
+    _supabaseClient.from('error_logs').insert({
+      ...payload,
+      url: window.location.href,
+      user_agent: navigator.userAgent,
+      timestamp: new Date().toISOString(),
+    }).then(() => {}, () => {}); // fire and forget
+  } catch (_) { /* fail silently */ }
+}
+
+function _showErrorToast(message) {
+  import('./utils.js').then(({ showToast }) => {
+    showToast(`Error: ${String(message).substring(0, 80)}`, 'error');
+  }).catch(() => {});
+}
+
+function initErrorTracking(client) {
+  _supabaseClient = client;
+
+  window.onerror = (message, source, lineno, colno, error) => {
+    logger.error('Global', `Unhandled: ${message}`, { source, lineno, colno });
+    _logToSupabase({ type: 'onerror', message: String(message), source, lineno, colno, stack: error?.stack });
+    _showErrorToast(message);
+  };
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const msg = reason?.message || String(reason);
+    logger.error('Global', `Unhandled rejection: ${msg}`, reason);
+    _logToSupabase({ type: 'unhandledrejection', message: msg, stack: reason?.stack });
+    _showErrorToast(msg);
+  });
+}
+
+// Auto-initialize: dynamic import avoids circular dependency with utils.js
+import('./db/client.js').then(({ supabase }) => {
+  initErrorTracking(supabase);
+}).catch(() => {
+  initErrorTracking(null);
+});
