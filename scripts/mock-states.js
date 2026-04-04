@@ -97,6 +97,38 @@ export const STATES = {
     },
   },
 
+  'subcategory-drill': {
+    page: 'host',
+    screen: 'category-screen',
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const grid = document.getElementById('category-grid');
+      if (grid) grid.style.display = 'none';
+      const subView = document.getElementById('subcategory-view');
+      if (subView) subView.style.display = '';
+      const title = document.getElementById('subcategory-view__title');
+      if (title) title.textContent = '⏳ History';
+      const options = document.getElementById('subcategory-view__options');
+      if (options) {
+        const subs = [
+          { icon: '🏛️', label: 'All History', count: 287, all: true },
+          { icon: '🏺', label: 'Ancient', count: 84 },
+          { icon: '⚔️', label: 'Medieval', count: 62 },
+          { icon: '🏰', label: 'Early Modern', count: 48 },
+          { icon: '🏭', label: 'Modern', count: 58 },
+          { icon: '🌐', label: 'World History', count: 35 },
+        ];
+        options.innerHTML = subs.map(s =>
+          '<div class="subcategory-row' + (s.all ? ' subcategory-row--all' : '') + '">' +
+          '<span class="subcategory-row__icon">' + s.icon + '</span>' +
+          '<span class="subcategory-row__label">' + s.label + '</span>' +
+          '<span class="subcategory-row__count">' + s.count + '</span>' +
+          '</div>'
+        ).join('');
+      }
+    },
+  },
+
   // ==========================================
   // JOIN.HTML
   // ==========================================
@@ -173,6 +205,23 @@ export const STATES = {
 
       const startBtn = document.getElementById('btn-start-game');
       if (startBtn) startBtn.classList.remove('hidden');
+    },
+  },
+
+  'lobby-ready': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      document.querySelectorAll('.player-row').forEach(row => {
+        const existing = row.querySelector('.badge--ready');
+        if (!existing) {
+          const badge = document.createElement('span');
+          badge.className = 'badge badge--ready';
+          badge.textContent = 'Ready';
+          row.appendChild(badge);
+        }
+      });
     },
   },
 
@@ -325,6 +374,30 @@ export const STATES = {
     },
   },
 
+  'reveal-host-override': {
+    page: 'game',
+    screen: 'reveal-screen',
+    inherits: 'reveal-answers',
+    inject: () => {
+      const disq = document.getElementById('btn-disqualify-round');
+      if (disq) disq.classList.remove('hidden');
+      // Flip second answer (incorrect → correct) to simulate host override
+      const rows = document.querySelectorAll('.answer-row');
+      if (rows[1]) {
+        const answer = rows[1].querySelector('.answer-row__answer');
+        if (answer) {
+          answer.classList.remove('answer-row__answer--incorrect');
+          answer.classList.add('answer-row__answer--correct');
+        }
+        const wager = rows[1].querySelector('.answer-row__wager');
+        if (wager) {
+          wager.classList.remove('answer-row__wager--incorrect');
+          wager.classList.add('answer-row__wager--correct');
+        }
+      }
+    },
+  },
+
   // ==========================================
   // GAME.HTML — Scores
   // ==========================================
@@ -364,6 +437,16 @@ export const STATES = {
     },
   },
 
+  'scores-host-view': {
+    page: 'game',
+    screen: 'scores-screen',
+    inherits: 'scores-animated',
+    inject: () => {
+      const editBtn = document.getElementById('btn-edit-scores');
+      if (editBtn) editBtn.classList.remove('hidden');
+    },
+  },
+
   // ==========================================
   // GAME.HTML — Final Wager
   // ==========================================
@@ -394,6 +477,23 @@ export const STATES = {
           '<span class="fw-player-row__score">' + (42 - i * 7) + ' pts</span>' +
           '<span class="fw-player-row__wager' + (locked ? '' : ' fw-player-row__wager--waiting') + '">' + (locked ? '🔒' : '...') + '</span></div>';
       }).join('');
+    },
+  },
+
+  'final-wager-locked': {
+    page: 'game',
+    screen: 'final-wager-screen',
+    inherits: 'final-wager-choosing',
+    inject: () => {
+      const lockBtn = document.getElementById('btn-fw-lock');
+      if (lockBtn) lockBtn.style.display = 'none';
+      const status = document.getElementById('fw-status');
+      if (status) status.classList.remove('hidden');
+      // Mark all players as locked
+      document.querySelectorAll('.fw-player-row__wager--waiting').forEach(el => {
+        el.classList.remove('fw-player-row__wager--waiting');
+        el.textContent = '🔒';
+      });
     },
   },
 
@@ -429,6 +529,32 @@ export const STATES = {
         '<span class="score-anim-row__name">' + s.p.name + '</span>' +
         '<span class="score-anim-row__score">' + s.score + '</span></div>'
       ).join('');
+    },
+  },
+
+  'results-review': {
+    page: 'game',
+    screen: 'results-screen',
+    inherits: 'results-winner',
+    inject: () => {
+      const overlay = document.getElementById('review-overlay');
+      if (overlay) overlay.classList.add('active');
+      const list = document.getElementById('review-list');
+      if (list) {
+        const questions = [
+          { q: 'What ancient wonder was located in the city of Babylon?', a: 'Hanging Gardens', yours: 'Hanging Gardens', correct: true, w: 7 },
+          { q: 'Who painted the ceiling of the Sistine Chapel?', a: 'Michelangelo', yours: 'Michelangelo', correct: true, w: 9 },
+          { q: 'What year did the Berlin Wall fall?', a: '1989', yours: '1991', correct: false, w: 4 },
+        ];
+        list.innerHTML = questions.map((q, i) =>
+          '<div class="review-card">' +
+          '<div class="review-card__header">Q' + (i + 1) + ' · Wager: ' + q.w + '</div>' +
+          '<div class="review-card__question">' + q.q + '</div>' +
+          '<div class="review-card__answer">Answer: <strong>' + q.a + '</strong></div>' +
+          '<div class="review-card__yours ' + (q.correct ? 'review-card__yours--correct' : 'review-card__yours--incorrect') + '">You said: ' + q.yours + '</div>' +
+          '</div>'
+        ).join('');
+      }
     },
   },
 

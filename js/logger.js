@@ -57,6 +57,7 @@ function _logToSupabase(payload) {
 }
 
 function _showErrorToast(message) {
+  if (currentLevel < LOG_LEVELS.debug) return; // suppress in production
   import('./utils.js').then(({ showToast }) => {
     showToast(`Error: ${String(message).substring(0, 80)}`, 'error');
   }).catch(() => {});

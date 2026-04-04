@@ -7,6 +7,9 @@
 //   node scripts/screenshot.js [page] [--screen=id] [--width=N] [--height=N] [--full]
 //   node scripts/screenshot.js --state=<name>        # Render mock state
 //   node scripts/screenshot.js --all                 # Screenshot all mock states
+//   node scripts/screenshot.js --a11y                # Run accessibility scan
+//   node scripts/screenshot.js --theme=dark|oled     # Override theme
+//   node scripts/screenshot.js --exclude-rules=none  # Show ALL a11y violations
 //
 // Output: /tmp/screenshot-<name>.png
 // ============================================
@@ -43,6 +46,7 @@ const height = parseInt(flags.height) || 812;
 const fullPage = flags.full === true;
 const runA11y = flags.a11y === true;
 const theme = flags.theme || null; // 'dark' or 'oled'
+const excludeRules = flags['exclude-rules'] === 'none' ? [] : (flags['exclude-rules'] || 'meta-viewport,region').split(',');
 const ROOT = join(import.meta.dirname, '..');
 
 // Simple static file server
@@ -138,7 +142,9 @@ async function screenshotPage(browser, port, { page, screen, inject, injectArgs,
   let a11yResults = null;
   if (runA11y) {
     try {
-      const results = await new AxeBuilder({ page: p }).analyze();
+      let axe = new AxeBuilder({ page: p });
+      if (excludeRules.length) axe = axe.disableRules(excludeRules);
+      const results = await axe.analyze();
       a11yResults = results.violations;
     } catch { /* axe may fail on some pages */ }
   }

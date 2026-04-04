@@ -1486,8 +1486,8 @@ body::after {
 }
 
 .badge--ready {
-  background: rgba(58, 138, 79, 0.1);
-  color: var(--color-success);
+  background: rgba(46, 122, 66, 0.1);
+  color: #267035;
 }
 .badge--tier {
   background: transparent;
@@ -3279,7 +3279,6 @@ body::after {
   padding: 8px 16px;
   margin-top: var(--space-xs);
   border-radius: 8px;
-  opacity: 0.8;
 }
 .btn-disqualify:active {
   opacity: 1;
