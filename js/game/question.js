@@ -86,11 +86,13 @@ export function showQuestionScreen() {
     $('#wager-grid').style.display = 'none';
     $('.wager-label').style.display = 'none';
     $('#wager-error').style.display = 'none';
+    $('#question-screen .game-content').classList.add('game-content--centered');
   } else {
     $('#question-progress').textContent = `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
     $('#wager-grid').style.display = '';
     $('.wager-label').style.display = '';
     $('#wager-error').style.display = '';
+    $('#question-screen .game-content').classList.remove('game-content--centered');
     renderWagerGrid(); // Must run AFTER state resets — auto-selects last remaining wager
   }
   // BUG 1 FIX: ALWAYS close chat when a new question starts.

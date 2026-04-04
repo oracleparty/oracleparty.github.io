@@ -3,7 +3,7 @@
 // Persistent hub with Realtime chat, players, game start
 // ============================================
 
-import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
+import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from './utils.js';
 import { logger } from './logger.js';
 import { STALE_TIMEOUT_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS } from './constants.js';
 import {
@@ -192,9 +192,11 @@ async function init() {
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         presenceReady = true;
+        notifyConnectionRestored();
         await presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         presenceReady = false;
+        notifyConnectionLost();
       }
     });
   channels.push(presenceChannel);

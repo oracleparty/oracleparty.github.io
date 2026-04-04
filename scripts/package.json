@@ -1,6 +1,8 @@
 {
   "type": "module",
   "dependencies": {
-    "@supabase/supabase-js": "^2"
+    "@axe-core/playwright": "^4.11.1",
+    "@supabase/supabase-js": "^2",
+    "playwright-core": "^1.59.1"
   }
 }

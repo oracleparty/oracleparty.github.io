@@ -2,7 +2,7 @@
 // Oracle Party — Display Name / Auth
 // ============================================
 
-import { $, calculateTitle } from './utils.js';
+import { $, calculateTitle, escapeHtml } from './utils.js';
 import { FRIEND_REQUEST_TOAST_MS } from './constants.js';
 import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
@@ -574,7 +574,7 @@ function _showFriendRequestToast(senderName, requestId) {
     display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap;
   `;
   toast.innerHTML = `
-    <span style="flex:1; font-size: var(--text-sm); font-weight: 500;">${senderName} sent a friend request</span>
+    <span style="flex:1; font-size: var(--text-sm); font-weight: 500;">${escapeHtml(senderName)} sent a friend request</span>
     <button data-fr-accept="${requestId}" class="btn btn-primary" style="padding: var(--space-xs) var(--space-md); font-size: var(--text-xs);">Accept</button>
     <button data-fr-decline="${requestId}" class="btn btn-secondary" style="padding: var(--space-xs) var(--space-md); font-size: var(--text-xs);">Decline</button>
   `;

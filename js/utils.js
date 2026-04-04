@@ -177,14 +177,75 @@ export function showToast(message, type = 'info', duration = TOAST_DURATION_MS) 
     document.body.appendChild(container);
   }
   const toast = document.createElement('div');
-  toast.className = `toast toast--${type}`;
+  toast.className = `toast toast--${type}${duration === Infinity ? ' toast--persistent' : ''}`;
   toast.textContent = message;
   container.appendChild(toast);
-  setTimeout(() => {
-    toast.addEventListener('animationend', () => toast.remove(), { once: true });
-    toast.classList.add('toast--out');
-  }, duration);
+  if (duration !== Infinity) {
+    setTimeout(() => {
+      toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      toast.classList.add('toast--out');
+    }, duration);
+  }
+  return toast;
 }
+
+/** Dismiss a toast element with fade-out animation */
+export function dismissToast(el) {
+  if (!el || !el.parentNode) return;
+  el.addEventListener('animationend', () => el.remove(), { once: true });
+  el.classList.add('toast--out');
+}
+
+// ============================================
+// Connection Monitor (debounced reconnect toasts)
+// ============================================
+
+let _connLostToast = null;
+let _connLostTimeout = null;
+
+/** Call when any Supabase channel reports CHANNEL_ERROR or TIMED_OUT */
+export function notifyConnectionLost() {
+  if (_connLostToast || _connLostTimeout) return;
+  _connLostTimeout = setTimeout(() => {
+    _connLostToast = showToast('Connection lost — reconnecting…', 'error', Infinity);
+    _connLostTimeout = null;
+  }, 300);
+}
+
+/** Call when any Supabase channel reports SUBSCRIBED after a failure */
+export function notifyConnectionRestored() {
+  if (_connLostTimeout) {
+    clearTimeout(_connLostTimeout);
+    _connLostTimeout = null;
+  }
+  if (_connLostToast) {
+    dismissToast(_connLostToast);
+    _connLostToast = null;
+    showToast('Reconnected!', 'success');
+  }
+}
+
+// ============================================
+// Online / Offline Detection
+// ============================================
+
+let _offlineToast = null;
+
+function _handleOffline() {
+  if (_offlineToast) return;
+  _offlineToast = showToast("You're offline", 'error', Infinity);
+}
+
+function _handleOnline() {
+  if (_offlineToast) {
+    dismissToast(_offlineToast);
+    _offlineToast = null;
+  }
+  showToast('Back online', 'success');
+}
+
+window.addEventListener('offline', _handleOffline);
+window.addEventListener('online', _handleOnline);
 
 // ============================================
 // Page Transitions

@@ -3,6 +3,7 @@ import { logger } from '../logger.js';
 import { CHAT_MESSAGES_LIMIT } from '../constants.js';
 import { fetchRoom } from './rooms.js';
 import { fetchPlayers } from './players.js';
+import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
 /**
  * Send a chat message.
@@ -123,9 +124,12 @@ export function subscribeToMessages(roomId, callback) {
       try { callback(payload); } catch (e) { logger.error('Supabase', 'Message callback error', e); }
     })
     .subscribe((status, err) => {
-      if (err) logger.error('Supabase', 'Messages subscription error', err);
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      if (status === 'SUBSCRIBED') {
+        notifyConnectionRestored();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (err) logger.error('Supabase', 'Messages subscription error', err);
         logger.warn('Supabase', 'Messages subscription failed, status: ' + status);
+        notifyConnectionLost();
       }
     });
 }

@@ -3,7 +3,7 @@
 // Entry point, startup, cleanup, sync, lifecycle.
 // ============================================
 
-import { $, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
+import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 import { logger } from '../logger.js';
 import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from '../constants.js';
 import {
@@ -220,9 +220,11 @@ async function init() {
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         state.presenceReady = true;
+        notifyConnectionRestored();
         await state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         state.presenceReady = false;
+        notifyConnectionLost();
       }
     });
   state.channels.push(state.presenceChannel);

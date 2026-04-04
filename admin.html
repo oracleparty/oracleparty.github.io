@@ -4,9 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#F8F7F4">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Oracle Party — Admin</title>
-  <script>(function(){var t=localStorage.getItem('oracle_party_theme')||'light';if(t!=='light'){document.documentElement.setAttribute('data-theme',t);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[t]||'#F8F7F4';}})();</script>
-  <link rel="stylesheet" href="css/style.css?v=20260403v">
+  <script>(function(){var s=localStorage.getItem('oracle_party_theme');if(!s){s=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';localStorage.setItem('oracle_party_theme',s);}if(s!=='light'){document.documentElement.setAttribute('data-theme',s);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[s]||'#F8F7F4';}})();if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
+  <link rel="stylesheet" href="css/style.css?v=20260404">
 </head>
 <body style="opacity:0">
 
@@ -54,6 +59,35 @@
         <div id="flagged-queue"></div>
       </div>
 
+      <!-- ===== RECENT GAMES ===== -->
+      <div class="admin-section">
+        <h2 class="admin-section__title">Recent Games</h2>
+        <div id="recent-games"></div>
+        <button id="btn-load-more-games" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+      </div>
+
+      <!-- ===== CHAT ARCHIVE ===== -->
+      <div class="admin-section">
+        <h2 class="admin-section__title">Chat Archive</h2>
+        <div id="chat-archive"></div>
+        <button id="btn-load-more-chats" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+      </div>
+
+      <!-- ===== ERROR LOGS ===== -->
+      <div class="admin-section">
+        <h2 class="admin-section__title">Error Logs</h2>
+        <div style="display:flex; gap:var(--space-sm); margin-bottom:var(--space-sm);">
+          <select id="error-severity" class="input" style="flex:1;">
+            <option value="">All Types</option>
+            <option value="onerror">onerror</option>
+            <option value="unhandledrejection">unhandledrejection</option>
+          </select>
+          <button id="btn-clear-old-errors" class="btn btn-secondary">Clear 7d+</button>
+        </div>
+        <div id="error-logs"></div>
+        <button id="btn-load-more-errors" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+      </div>
+
       <!-- ===== QUESTION MANAGEMENT ===== -->
       <div class="admin-section">
         <h2 class="admin-section__title">Question Management</h2>
@@ -98,7 +132,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js"></script>
+  <script type="module" src="js/admin.js?v=20260404"></script>
 
 </body>
 </html>
