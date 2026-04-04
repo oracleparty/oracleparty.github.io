@@ -31,6 +31,7 @@
   --font-body:     'Plus Jakarta Sans', sans-serif;
 
   /* Type Scale (mobile-first) */
+  --text-2xs:   0.65rem;
   --text-xs:    0.75rem;
   --text-sm:    0.875rem;
   --text-base:  1rem;
@@ -620,7 +621,7 @@ body::after {
 /* --- Site Brand (consistent across all screens) --- */
 .site-brand {
   font-family: var(--font-display);
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -774,13 +775,13 @@ body::after {
 }
 
 .category-card__count {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   letter-spacing: 0.01em;
 }
 
 .category-card__plays {
-  font-size: 0.65rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-muted);
   opacity: 0.6;
   margin-top: 1px;
@@ -1073,7 +1074,7 @@ body::after {
 
 .settings-group__label {
   font-family: var(--font-heading);
-  font-size: 0.65rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -1083,7 +1084,7 @@ body::after {
 }
 
 .settings-group__hint {
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-dim);
   margin-top: var(--space-xs);
   padding-left: 2px;
@@ -1097,6 +1098,7 @@ body::after {
   border: 1px solid var(--color-surface-light);
   border-radius: var(--radius-md);
   padding: 3px;
+  margin-top: var(--space-sm);
   gap: 3px;
   position: relative;
 }
@@ -1235,7 +1237,7 @@ body::after {
 
 .section-title {
   font-family: var(--font-heading);
-  font-size: 0.65rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -1431,7 +1433,7 @@ body::after {
   padding: 2px var(--space-sm);
   border-radius: var(--radius-full);
   font-family: var(--font-heading);
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1522,7 +1524,7 @@ body::after {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: 10px var(--space-md);
   border-bottom: 1px solid var(--color-surface-light);
   transition: opacity 0.3s ease;
 }
@@ -1785,7 +1787,7 @@ body::after {
 
 .lobby-bar__brand {
   font-family: var(--font-display);
-  font-size: 0.55rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -2329,7 +2331,7 @@ body::after {
 /* --- Wager Grid --- */
 .wager-label {
   font-family: var(--font-heading);
-  font-size: 0.65rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--color-text-muted);
   letter-spacing: 0.08em;
@@ -2542,7 +2544,7 @@ body::after {
 
 .reveal__correct-label {
   font-family: var(--font-heading);
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -2834,7 +2836,7 @@ body::after {
 
 .scores-animated__title {
   font-family: var(--font-heading);
-  font-size: 0.65rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -2866,7 +2868,7 @@ body::after {
   font-family: var(--font-heading);
   font-size: var(--text-sm);
   font-weight: 600;
-  min-width: 32px;
+  min-width: 28px;
   text-align: right;
   flex-shrink: 0;
 }
@@ -2927,19 +2929,23 @@ body::after {
 }
 .btn-return-lobby {
   background: transparent;
-  border: 1.5px solid var(--color-danger);
-  color: var(--color-danger);
+  border: 1.5px solid var(--color-surface-light);
+  color: var(--color-text-dim);
   font-family: var(--font-heading);
   font-weight: 600;
-  padding: 14px;
+  padding: var(--space-md);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--duration-fast), color var(--duration-fast);
   -webkit-tap-highlight-color: transparent;
 }
-.btn-return-lobby:active,
+.btn-return-lobby:active {
+  background: var(--color-surface-light);
+  color: var(--color-text);
+}
 .btn-return-lobby--confirm {
   background: var(--color-danger);
+  border-color: var(--color-danger);
   color: #fff;
 }
 
@@ -3086,7 +3092,9 @@ body::after {
 
 .fw-player-list {
   width: 100%;
-  padding: var(--space-xs) 0;
+  padding: var(--space-md) 0;
+  margin-top: var(--space-sm);
+  border-top: 1px solid var(--color-surface-light);
 }
 
 .fw-player-row {
@@ -3282,10 +3290,10 @@ body::after {
   background: none;
   border: 1px solid var(--color-danger);
   color: var(--color-danger);
-  font-size: 13px;
-  padding: 8px 16px;
+  font-size: var(--text-sm);
+  padding: var(--space-sm) var(--space-md);
   margin-top: var(--space-xs);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .btn-disqualify:active {
   opacity: 1;
@@ -4910,12 +4918,13 @@ body::after {
 /* Inline difficulty vote on final wager screen */
 .dv-inline {
   width: 100%;
-  margin-top: var(--space-lg);
-  padding: 0 var(--space-sm);
+  margin-top: var(--space-xl);
+  padding: var(--space-md) var(--space-sm) 0;
+  border-top: 1px solid var(--color-surface-light);
 }
 .dv-inline__title {
   font-family: var(--font-heading);
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
