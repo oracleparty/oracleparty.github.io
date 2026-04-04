@@ -377,6 +377,11 @@ body::after {
 
 /* --- Splash Screen — Dramatic Reveal --- */
 
+/* Grain texture — real PNG tile for organic paper feel */
+#splash {
+  background: var(--color-bg) url('../img/grain-tile.png') repeat;
+}
+
 /* Radial glow — warm energy emanating from ring */
 #splash::before {
   content: '';
