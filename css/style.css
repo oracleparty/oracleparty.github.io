@@ -438,7 +438,7 @@ body::after {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  animation: ring-enter 1.5s ease-out 0.2s both;
+  animation: ring-enter 1.5s ease-out 0.2s both, ring-spin 30s linear 1.8s infinite;
   z-index: 1;
   pointer-events: none;
 }
@@ -446,6 +446,17 @@ body::after {
 @keyframes ring-enter {
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.6) rotate(-30deg); }
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+}
+
+@keyframes ring-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Counter-spin keeps each glyph upright while the ring rotates */
+@keyframes glyph-counter-spin {
+  from { rotate: 0deg; }
+  to   { rotate: -360deg; }
 }
 
 /* Position each glyph around the circle */
@@ -462,8 +473,8 @@ body::after {
   color: var(--color-primary);
   opacity: 0;
   transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg));
-  animation: glyph-appear 0.6s ease-out both;
-  animation-delay: calc(0.3s + var(--i) * 0.1s);
+  animation: glyph-appear 0.6s ease-out both, glyph-counter-spin 30s linear 1.8s infinite;
+  animation-delay: calc(0.3s + var(--i) * 0.1s), 1.8s;
   text-shadow: 0 0 12px var(--color-primary-glow);
 }
 
@@ -872,22 +883,22 @@ body::after {
   height: 2.75rem;
   margin-bottom: var(--space-sm);
   border-radius: 50%;
-  background: var(--cat-accent, rgba(193, 154, 76, 0.08));
+  background: var(--cat-accent, rgba(193, 154, 76, 0.15));
 }
 
-/* Per-category accent tints */
-.category-card[data-category="history"]         { --cat-accent: rgba(193, 154, 76, 0.12); }
-.category-card[data-category="science"]         { --cat-accent: rgba(70, 130, 180, 0.10); }
-.category-card[data-category="nature"]          { --cat-accent: rgba(85, 140, 85, 0.10); }
-.category-card[data-category="arts-literature"] { --cat-accent: rgba(160, 82, 114, 0.10); }
-.category-card[data-category="culture-society"] { --cat-accent: rgba(140, 100, 160, 0.10); }
-.category-card[data-category="pop-culture"]     { --cat-accent: rgba(220, 140, 50, 0.12); }
-.category-card[data-category="world-geography"] { --cat-accent: rgba(60, 130, 150, 0.10); }
-.category-card[data-category="technology"]      { --cat-accent: rgba(100, 120, 160, 0.10); }
-.category-card[data-category="sports"]          { --cat-accent: rgba(180, 90, 60, 0.10); }
-.category-card[data-category="food"]            { --cat-accent: rgba(180, 120, 60, 0.12); }
-.category-card[data-category="logic"]           { --cat-accent: rgba(80, 120, 140, 0.10); }
-.category-card[data-category="wild-card"]       { --cat-accent: rgba(160, 130, 70, 0.12); }
+/* Per-category accent tints — visible but not overpowering */
+.category-card[data-category="history"]         { --cat-accent: rgba(193, 154, 76, 0.22); }
+.category-card[data-category="science"]         { --cat-accent: rgba(70, 130, 180, 0.18); }
+.category-card[data-category="nature"]          { --cat-accent: rgba(85, 140, 85, 0.18); }
+.category-card[data-category="arts-literature"] { --cat-accent: rgba(160, 82, 114, 0.18); }
+.category-card[data-category="culture-society"] { --cat-accent: rgba(140, 100, 160, 0.18); }
+.category-card[data-category="pop-culture"]     { --cat-accent: rgba(220, 140, 50, 0.20); }
+.category-card[data-category="world-geography"] { --cat-accent: rgba(60, 130, 150, 0.18); }
+.category-card[data-category="technology"]      { --cat-accent: rgba(100, 120, 160, 0.18); }
+.category-card[data-category="sports"]          { --cat-accent: rgba(180, 90, 60, 0.18); }
+.category-card[data-category="food"]            { --cat-accent: rgba(180, 120, 60, 0.20); }
+.category-card[data-category="logic"]           { --cat-accent: rgba(80, 120, 140, 0.18); }
+.category-card[data-category="wild-card"]       { --cat-accent: rgba(160, 130, 70, 0.20); }
 
 /* The ring track (visible for logged-in users with data-mastery) */
 .category-card__ring {
