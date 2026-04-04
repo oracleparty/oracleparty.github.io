@@ -113,8 +113,8 @@
       });
 
       // Phase 2: Lock in one by one — each lock is a distinct moment
-      var lockDelay = 900; // start locking at 0.9s
-      var lockInterval = 110; // 110ms between locks — each one registers
+      var lockDelay = 1000; // start locking at 1.0s
+      var lockInterval = 80; // 80ms between locks — rapid fire energy
 
       glyphs.forEach(function(g, i) {
         setTimeout(function() {
@@ -128,7 +128,7 @@
           setTimeout(function() {
             g.classList.remove('splash__glyph--flash');
             g.classList.add('splash__glyph--locked');
-          }, 120);
+          }, 70);
         }, lockDelay + i * lockInterval);
       });
 
@@ -185,7 +185,7 @@
 
       // Run both in parallel: minimum splash time + Supabase connection test
       const [, connected] = await Promise.all([
-        delay(3400),
+        delay(3000),
         testConnection(),
         initAuth()
       ]);
