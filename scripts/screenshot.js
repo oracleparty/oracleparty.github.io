@@ -42,6 +42,7 @@ const width = parseInt(flags.width) || 375;
 const height = parseInt(flags.height) || 812;
 const fullPage = flags.full === true;
 const runA11y = flags.a11y === true;
+const theme = flags.theme || null; // 'dark' or 'oled'
 const ROOT = join(import.meta.dirname, '..');
 
 // Simple static file server
@@ -111,6 +112,11 @@ async function screenshotPage(browser, port, { page, screen, inject, injectArgs,
       if (active) active.style.display = 'flex';
     }
   }, screen);
+
+  // Apply theme override if requested
+  if (theme) {
+    await p.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+  }
 
   // Run inherited inject first (for states like reveal-with-fun-fact)
   if (inherits && STATES[inherits]) {

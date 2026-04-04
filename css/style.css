@@ -79,7 +79,7 @@
   --color-accent-glow:  rgba(129, 140, 248, 0.15);
   --color-text:         #EDEDF0;
   --color-text-dim:     #9D9DAA;
-  --color-text-muted:   #6B6B7A;
+  --color-text-muted:   #8E8EA8;
   --color-danger:       #F87171;
   --color-success:      #4ADE80;
   --color-overlay:      rgba(0, 0, 0, 0.6);
@@ -99,7 +99,7 @@
   --color-accent-glow:  rgba(129, 140, 248, 0.15);
   --color-text:         #E8E8E8;
   --color-text-dim:     #999999;
-  --color-text-muted:   #666666;
+  --color-text-muted:   #7A7A7A;
   --color-danger:       #F87171;
   --color-success:      #4ADE80;
   --color-overlay:      rgba(0, 0, 0, 0.8);
@@ -1459,6 +1459,30 @@ body::after {
   color: #5B3FA0;
   margin-left: var(--space-xs);
   vertical-align: middle;
+}
+
+[data-theme="dark"] .btn-primary {
+  color: #1C1917;
+}
+[data-theme="oled"] .btn-primary {
+  color: #1C1917;
+}
+
+[data-theme="dark"] .badge--host {
+  background: rgba(217, 163, 64, 0.15);
+  color: #D9A340;
+}
+[data-theme="dark"] .badge--cohost {
+  background: rgba(129, 140, 248, 0.15);
+  color: #818CF8;
+}
+[data-theme="oled"] .badge--host {
+  background: rgba(217, 163, 64, 0.15);
+  color: #D9A340;
+}
+[data-theme="oled"] .badge--cohost {
+  background: rgba(129, 140, 248, 0.15);
+  color: #818CF8;
 }
 
 .badge--ready {
