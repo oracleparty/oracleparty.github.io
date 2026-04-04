@@ -453,23 +453,109 @@ body::after {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 24px;
-  height: 24px;
-  margin: -12px 0 0 -12px;
-  font-size: 18px;
-  line-height: 24px;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  font-size: 22px;
+  line-height: 28px;
   text-align: center;
   color: var(--color-primary);
   opacity: 0;
   transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg));
-  animation: glyph-appear 0.6s ease-out both;
-  animation-delay: calc(0.3s + var(--i) * 0.1s);
+  animation: glyph-appear 0.5s ease-out both;
+  animation-delay: calc(0.15s + var(--i) * 0.06s);
   text-shadow: 0 0 12px var(--color-primary-glow);
+  will-change: opacity, text-shadow;
+}
+
+/* Phase 1: Scrambling — rapid symbol cycling, visible but restless */
+.splash__glyph--scrambling {
+  opacity: 0.55;
+  text-shadow: 0 0 6px var(--color-primary-glow);
+}
+
+/* Phase 2: Locked — glyph found its final form, pulse golden bright */
+.splash__glyph--locked {
+  opacity: 1 !important;
+  color: var(--color-primary);
+  text-shadow: 0 0 22px rgba(150, 105, 31, 0.7), 0 0 50px rgba(150, 105, 31, 0.35);
+  animation: glyph-lock-pulse 0.6s ease-out both;
 }
 
 @keyframes glyph-appear {
   from { opacity: 0; filter: blur(4px); transform: rotate(calc(var(--i) * 30deg)) translateY(-80px) rotate(calc(var(--i) * -30deg)); }
-  to   { opacity: 0.5; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)); }
+  to   { opacity: 0.4; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)); }
+}
+
+@keyframes glyph-lock-pulse {
+  0%   { text-shadow: 0 0 4px var(--color-primary-glow); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)) scale(1); }
+  35%  { text-shadow: 0 0 32px rgba(150, 105, 31, 0.9), 0 0 70px rgba(150, 105, 31, 0.4); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)) scale(1.4); }
+  100% { text-shadow: 0 0 22px rgba(150, 105, 31, 0.6), 0 0 50px rgba(150, 105, 31, 0.25); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)) scale(1); }
+}
+
+/* Eye of Horus — Oracle awakens beneath title */
+.splash__eye {
+  position: relative;
+  z-index: 2;
+  width: 80px;
+  height: 48px;
+  margin-top: var(--space-xl);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.5s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.splash__eye--open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.splash__eye-iris {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  color: var(--color-primary);
+  text-shadow: 0 0 24px rgba(150, 105, 31, 0.7), 0 0 60px rgba(150, 105, 31, 0.3);
+  transform: scale(0.2);
+  opacity: 0;
+  transition: transform 1s cubic-bezier(0.16, 1, 0.3, 1) 0.15s, opacity 0.5s ease-out 0.15s;
+}
+
+.splash__eye--open .splash__eye-iris {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.splash__eye-lid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: var(--color-bg);
+  z-index: 1;
+  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.splash__eye-lid--top {
+  top: 0;
+  transform-origin: top center;
+}
+
+.splash__eye-lid--bottom {
+  bottom: 0;
+  transform-origin: bottom center;
+}
+
+.splash__eye--open .splash__eye-lid--top {
+  transform: scaleY(0);
+}
+
+.splash__eye--open .splash__eye-lid--bottom {
+  transform: scaleY(0);
 }
 
 /* Title — cinematic reveal with letter-spacing + blur */
@@ -506,14 +592,6 @@ body::after {
   }
 }
 
-/* Loader — appears last */
-.splash__loader {
-  margin-top: var(--space-xl);
-  animation: fade-up 0.8s var(--ease-out) 2s both;
-  position: relative;
-  z-index: 2;
-}
-
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -531,9 +609,13 @@ body::after {
   letter-spacing: 0.1em;
   opacity: 0;
 }
-#splash.splash--exiting .splash__tagline,
-#splash.splash--exiting .splash__loader {
+#splash.splash--exiting .splash__tagline {
   transition: opacity 0.3s ease-in;
+  opacity: 0;
+}
+#splash.splash--exiting .splash__eye {
+  transition: transform 0.4s ease-in, opacity 0.3s ease-in;
+  transform: scale(0.5);
   opacity: 0;
 }
 #splash.splash--exiting .splash__particles {

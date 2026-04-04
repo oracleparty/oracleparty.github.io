@@ -24,30 +24,28 @@
 
     <!-- Glyph ring — authentic Egyptian hieroglyphs (Gardiner sign list) -->
     <div class="splash__ring">
-      <span class="splash__glyph" style="--i:0">𓋹</span>
-      <span class="splash__glyph" style="--i:1">𓂀</span>
-      <span class="splash__glyph" style="--i:2">𓅃</span>
-      <span class="splash__glyph" style="--i:3">𓏞</span>
-      <span class="splash__glyph" style="--i:4">𓀭</span>
-      <span class="splash__glyph" style="--i:5">𓇳</span>
-      <span class="splash__glyph" style="--i:6">𓇯</span>
-      <span class="splash__glyph" style="--i:7">𓊝</span>
-      <span class="splash__glyph" style="--i:8">𓃗</span>
-      <span class="splash__glyph" style="--i:9">𓋍</span>
-      <span class="splash__glyph" style="--i:10">𓁹</span>
-      <span class="splash__glyph" style="--i:11">𓆣</span>
+      <span class="splash__glyph" style="--i:0" data-final="𓋹"></span>
+      <span class="splash__glyph" style="--i:1" data-final="𓂀"></span>
+      <span class="splash__glyph" style="--i:2" data-final="𓅃"></span>
+      <span class="splash__glyph" style="--i:3" data-final="𓏞"></span>
+      <span class="splash__glyph" style="--i:4" data-final="𓀭"></span>
+      <span class="splash__glyph" style="--i:5" data-final="𓇳"></span>
+      <span class="splash__glyph" style="--i:6" data-final="𓇯"></span>
+      <span class="splash__glyph" style="--i:7" data-final="𓊝"></span>
+      <span class="splash__glyph" style="--i:8" data-final="𓃗"></span>
+      <span class="splash__glyph" style="--i:9" data-final="𓋍"></span>
+      <span class="splash__glyph" style="--i:10" data-final="𓁹"></span>
+      <span class="splash__glyph" style="--i:11" data-final="𓆣"></span>
     </div>
 
     <!-- Title reveal -->
     <h1 class="splash__title">Oracle Party</h1>
 
-    <!-- Loading dots -->
-    <div class="splash__loader">
-      <div class="loading-dots">
-        <span></span>
-        <span></span>
-        <span></span>
-      </div>
+    <!-- Eye of Horus — Oracle awakens -->
+    <div class="splash__eye" id="splash-eye">
+      <div class="splash__eye-lid splash__eye-lid--top"></div>
+      <div class="splash__eye-iris">𓂀</div>
+      <div class="splash__eye-lid splash__eye-lid--bottom"></div>
     </div>
   </div>
 
@@ -86,24 +84,77 @@
     </div>
   </div>
 
-  <!-- Splash ring spin — standalone, no module deps -->
+  <!-- Splash animation system — standalone, no module deps -->
   <script>
     (function() {
       var ring = document.querySelector('.splash__ring');
       var splash = document.getElementById('splash');
+      var eye = document.getElementById('splash-eye');
       if (!ring || !splash) return;
+
+      var glyphs = ring.querySelectorAll('.splash__glyph');
+      var FINAL = [];
+      glyphs.forEach(function(g) { FINAL.push(g.getAttribute('data-final')); });
+
+      // Pool of scramble hieroglyphs (diverse set for visual chaos)
+      var POOL = '𓀀𓀁𓀂𓀃𓀄𓁀𓁁𓁂𓁃𓁄𓂀𓂁𓂂𓂃𓂄𓃀𓃁𓃂𓃃𓃄𓄀𓄁𓄂𓅀𓅁𓅂𓅃𓆀𓆁𓆂𓆃𓇀𓇁𓇂𓇃𓈀𓈁𓈂𓉀𓉁𓊀𓊁𓋀𓋁𓌀𓌁𓍀𓍁𓎀𓎁𓏀𓏁';
+      var poolArr = Array.from(POOL);
+      function randGlyph() { return poolArr[Math.floor(Math.random() * poolArr.length)]; }
+
+      // Phase 1: Scramble — glyphs appear and cycle through random symbols
+      var locked = new Array(12).fill(false);
+      var scrambleId;
+
+      // Start all glyphs with random content immediately
+      glyphs.forEach(function(g) {
+        g.textContent = randGlyph();
+        g.classList.add('splash__glyph--scrambling');
+      });
+
+      // Scramble cycle: swap every 60ms for frenetic energy
+      scrambleId = setInterval(function() {
+        glyphs.forEach(function(g, i) {
+          if (!locked[i]) g.textContent = randGlyph();
+        });
+      }, 60);
+
+      // Phase 2: Lock in one by one (staggered, with pulse)
+      var lockDelay = 1400; // start locking at 1.4s
+      var lockInterval = 120; // 120ms between each lock
+
+      glyphs.forEach(function(g, i) {
+        setTimeout(function() {
+          locked[i] = true;
+          g.textContent = FINAL[i];
+          g.classList.remove('splash__glyph--scrambling');
+          g.classList.add('splash__glyph--locked');
+        }, lockDelay + i * lockInterval);
+      });
+
+      // After all 12 locked: stop scramble, open the eye, start slow spin
+      var allLockedTime = lockDelay + 12 * lockInterval + 200;
       setTimeout(function() {
-        ring.style.animation = 'none';
-        ring.style.opacity = '1';
-        var angle = 0, last = performance.now();
-        (function spin(now) {
-          angle += (now - last) / 1000 * 18;
-          last = now;
-          ring.style.transform = 'translate(-50%,-50%) rotate(' + angle + 'deg)';
-          if (!splash.classList.contains('splash--exiting'))
-            requestAnimationFrame(spin);
-        })(performance.now());
-      }, 1800);
+        clearInterval(scrambleId);
+
+        // Phase 3: Eye opens
+        if (eye) {
+          eye.classList.add('splash__eye--open');
+        }
+
+        // Start slow ring spin after a beat
+        setTimeout(function() {
+          ring.style.animation = 'none';
+          ring.style.opacity = '1';
+          var angle = 0, last = performance.now();
+          (function spin(now) {
+            angle += (now - last) / 1000 * 12;
+            last = now;
+            ring.style.transform = 'translate(-50%,-50%) rotate(' + angle + 'deg)';
+            if (!splash.classList.contains('splash--exiting'))
+              requestAnimationFrame(spin);
+          })(performance.now());
+        }, 400);
+      }, allLockedTime);
     })();
   </script>
 
