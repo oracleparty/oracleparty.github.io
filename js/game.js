@@ -62,73 +62,11 @@ import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkMuted
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
-import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon } from './categories.js';
-
-function getCategoryLabel() {
-  if (!state.room) return '?';
-  const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
-  const label = resolveCategoryLabel(state.room.category, state.room.subcategory);
-  return `${meta.icon} ${label}`;
-}
-
-// --- State ---
-const state = {
-  room: null,
-  players: [],
-  questions: [],
-  currentQuestion: 0,
-  gamePhase: 'loading',
-  totalQuestions: 0,
-  timerSeconds: 30,
-  usedWagers: new Map(), // Map<wagerValue, isCorrect> for green/red styling
-  currentWager: null,
-  hasSubmitted: false,
-  onRevealScreen: false,
-  resultsRevealed: false,
-  timerExpired: false,
-  scores: {},
-  previousScores: {},   // scores before current round (for animation delta)
-  currentAnswers: [],   // cached answers for current question (avoids re-fetch)
-  timerId: null,
-  channels: [],
-  chatOpen: false,
-  serverTimeOffset: 0,  // serverTime - clientTime in ms
-  questionStartedAt: null, // ISO timestamp from DB — single source of truth for timer
-  presenceChannel: null,
-  presenceReady: false,
-  awayTimestamps: new Map(), // player ID → Date.now() when first seen as away
-  feedbackFadeTimer: null,
-  isFinalWagerRound: false,
-  finalWager: 20, // Default to highest — punishes indecision on final round
-  finalWagerLocked: false,
-  difficultyVoteLocked: false,
-  difficultyVotes: {},       // { playerId: 'easy'|'medium'|'hard' }
-  votedDifficulty: null,     // consensus result
-  difficultyVoteChannel: null,
-  countdownStartedAt: null,
-  _lastProcessedQuestion: -1,
-  stalePollId: null,
-  _timerGraceId: null,
-  presenceHeartbeatId: null,
-  shownQuestionIndices: [],
-  wagerExplicitlySelected: false,
-  _cumulativeScoresWritten: false,
-  _wasHidden: false,
-  chatEchoPending: 0,
-  unreadCount: 0,
-  _hotJoinPollId: null,
-  _gamePlayCompleted: false,
-  _guestNudgeProcessed: false,
-  _syncIntervalId: null,
-  disqualifiedQuestions: new Set(),
-  autoProceedTimerId: null,
-  autoProceedSeconds: 0
-};
-
-/** Host OR co-host — can control game flow (reveal, advance, judge) */
-function canControlGame() {
-  return state.room?.isHost || state.room?.isCohost;
-}
+import { resolveSubcategoryIcon } from './categories.js';
+import {
+  state, canControlGame, getCategoryLabel,
+  resolveFieldMap, getQuestionText, getCorrectAnswer, getAlternates, getDifficulty, getFunFact,
+} from './game/state.js';
 
 // Stored handler for document click (flag menu dismiss) — removed in cleanup()
 let _flagMenuCloseHandler = null;
@@ -145,34 +83,6 @@ let _deferredPhase = null;
 
 // Guard: prevent overlapping screen transitions (causes flash/blink)
 let _screenTransitioning = false;
-
-// --- Question field name resolution ---
-let FIELD_MAP = null;
-
-function resolveFieldMap(question) {
-  if (FIELD_MAP) return;
-  FIELD_MAP = {
-    text: question.question_text !== undefined ? 'question_text'
-        : question.question !== undefined ? 'question'
-        : question.text !== undefined ? 'text'
-        : 'question_text',
-    correct: question.correct_answer !== undefined ? 'correct_answer'
-           : question.answer !== undefined ? 'answer'
-           : 'correct_answer',
-    alternates: question.acceptable_answers !== undefined ? 'acceptable_answers'
-              : question.acceptable_alternates !== undefined ? 'acceptable_alternates'
-              : question.alternates !== undefined ? 'alternates'
-              : 'acceptable_answers',
-    difficulty: question.difficulty !== undefined ? 'difficulty' : 'difficulty',
-    fun_fact: question.fun_fact !== undefined ? 'fun_fact' : 'fun_fact'
-  };
-}
-
-function getQuestionText(q) { return q[FIELD_MAP.text] || ''; }
-function getCorrectAnswer(q) { return q[FIELD_MAP.correct] || ''; }
-function getAlternates(q) { return q[FIELD_MAP.alternates] || []; }
-function getDifficulty(q) { return q[FIELD_MAP.difficulty] || 'medium'; }
-function getFunFact(q) { return q[FIELD_MAP.fun_fact] || ''; }
 
 // ============================================
 // INIT
