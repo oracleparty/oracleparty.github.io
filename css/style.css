@@ -5340,9 +5340,10 @@ body::after {
 .btn-tertiary {
   background: none;
   border: none;
-  color: var(--color-text-dim);
+  color: var(--color-text-muted);
   font-family: var(--font-heading);
   font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
   padding: var(--space-sm);
   text-decoration: underline;

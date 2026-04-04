@@ -137,6 +137,8 @@ export const STATES = {
     screen: null,
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const empty = document.getElementById('public-games-empty');
+      if (empty) empty.classList.remove('hidden');
     },
   },
 
@@ -148,20 +150,21 @@ export const STATES = {
       const container = document.getElementById('public-games');
       if (!container) return;
       const games = [
-        { host: 'CaptainTrivia', category: '⏳ History', code: 'ABCD', players: '4/8', status: 'In Lobby' },
-        { host: 'QuizWhiz', category: '⚗️ Science', code: 'EFGH', players: '2/8', status: 'In Lobby' },
-        { host: 'BrainStorm', category: '🃏 Wild Card', code: 'IJKL', players: '6/8', status: 'Playing' },
+        { host: 'CaptainTrivia', icon: '⏳', cat: 'History \u00b7 10Q \u00b7 30s', code: 'ABCD', players: '4 players', statusClass: 'lobby', statusText: 'In Lobby' },
+        { host: 'QuizWhiz', icon: '⚗️', cat: 'Science \u00b7 15Q \u00b7 45s', code: 'EFGH', players: '2 players', statusClass: 'lobby', statusText: 'In Lobby' },
+        { host: 'BrainStorm', icon: '🃏', cat: 'Wild Card \u00b7 20Q \u00b7 30s', code: 'IJKL', players: '6 players', statusClass: 'playing', statusText: 'In Progress' },
       ];
       container.innerHTML = games.map(g => `
         <button class="public-game-row" data-code="${g.code}">
-          <div class="public-game-row__top">
-            <span class="public-game-row__host">${g.host}</span>
-            <span class="public-game-row__category">${g.category}</span>
+          <span class="public-game-row__icon">${g.icon}</span>
+          <div class="public-game-row__info">
+            <div class="public-game-row__host">${g.host}'s game</div>
+            <div class="public-game-row__category">${g.cat}</div>
           </div>
-          <div class="public-game-row__bottom">
-            <span class="public-game-row__code">${g.code}</span>
-            <span class="public-game-row__players">${g.players}</span>
-            <span class="public-game-row__status">${g.status}</span>
+          <div class="public-game-row__meta">
+            <div class="public-game-row__code">${g.code}</div>
+            <div class="public-game-row__players">${g.players}</div>
+            <div class="public-game-row__status public-game-row__status--${g.statusClass}">${g.statusText}</div>
           </div>
         </button>
       `).join('');
