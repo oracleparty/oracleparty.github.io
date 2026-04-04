@@ -5,7 +5,7 @@
 
 import { $, transitionScreens, escapeHtml, fuzzyMatch, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import { logger } from './logger.js';
-import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, TIMER_GRACE_MS, WAGER_AUTO_SKIP_MS, REVEAL_ANSWER_DELAY_MS, SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, FEEDBACK_FADE_MS, RESULTS_ACTION_DELAY_MS, RETURN_HOME_DELAY_MS, AUTO_PROCEED_TICK_MS, LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, STALE_TIMEOUT_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from './constants.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, TIMER_GRACE_MS, WAGER_AUTO_SKIP_MS, REVEAL_ANSWER_DELAY_MS, SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, FEEDBACK_FADE_MS, RESULTS_ACTION_DELAY_MS, AUTO_PROCEED_TICK_MS, LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, STALE_TIMEOUT_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from './constants.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -71,6 +71,10 @@ import {
   _appendLocalChatNotice, addGameSystemMessage, handleSendGameChat,
   updateTypingUI,
 } from './game/chat.js';
+import {
+  initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear,
+  resetReturnConfirm, registerCleanup as registerHostCleanup,
+} from './game/host.js';
 
 // Stored handler for document click (flag menu dismiss) — removed in cleanup()
 let _flagMenuCloseHandler = null;
@@ -3809,172 +3813,6 @@ async function syncToCurrentState() {
 }
 
 // ============================================
-// HOST SETTINGS PANEL (in-game gear icon)
-// ============================================
-
-let _hostSettingsConfirmTimer = null;
-
-function initHostSettingsPanel() {
-  const sheet = $('#host-settings-sheet');
-  const backdrop = $('#host-settings-backdrop');
-  const returnBtn = $('#btn-return-to-lobby');
-
-  if (!sheet) return;
-
-  // Attach click handler to all gear buttons (one per screen header)
-  document.querySelectorAll('.host-settings-gear').forEach(btn => {
-    btn.onclick = (e) => { e.stopPropagation(); openHostSettingsSheet(); };
-  });
-  backdrop.onclick = () => closeHostSettingsSheet();
-
-  // Toggle handlers for in-game settings
-  sheet.querySelectorAll('.toggle-group[data-game-setting]').forEach(group => {
-    group.querySelectorAll('.toggle-option').forEach(opt => {
-      opt.onclick = () => {
-        const key = group.dataset.gameSetting;
-        const value = opt.dataset.value;
-        // Update active state visually
-        group.querySelectorAll('.toggle-option').forEach(o => o.classList.toggle('active', o === opt));
-        handleGameSettingChange(key, value);
-      };
-    });
-  });
-
-  // Return to Lobby — double-tap confirmation
-  returnBtn.onclick = () => handleReturnToLobby();
-}
-
-function openHostSettingsSheet() {
-  const sheet = $('#host-settings-sheet');
-  if (!sheet) return;
-
-  // Sync toggle states from current settings
-  syncHostSettingsToggles();
-
-  sheet.classList.add('active');
-}
-
-function closeHostSettingsSheet() {
-  const sheet = $('#host-settings-sheet');
-  if (sheet) sheet.classList.remove('active');
-
-  // Reset return-to-lobby confirmation
-  resetReturnConfirm();
-}
-
-function syncHostSettingsToggles() {
-  const sheet = $('#host-settings-sheet');
-  if (!sheet) return;
-
-  sheet.querySelectorAll('.toggle-group[data-game-setting]').forEach(group => {
-    const key = group.dataset.gameSetting;
-    let currentValue;
-    if (key === 'autoProceed') {
-      currentValue = String(state.autoProceedSeconds || 0);
-    } else if (key === 'questionTimer') {
-      currentValue = String(state.timerSeconds || 30);
-    }
-    group.querySelectorAll('.toggle-option').forEach(opt => {
-      opt.classList.toggle('active', opt.dataset.value === currentValue);
-    });
-  });
-}
-
-async function handleGameSettingChange(key, value) {
-  const numVal = Number(value);
-  const columnMap = {
-    autoProceed: 'auto_proceed',
-    questionTimer: 'question_timer'
-  };
-
-  // Update local state
-  if (key === 'autoProceed') {
-    state.autoProceedSeconds = numVal;
-  } else if (key === 'questionTimer') {
-    state.timerSeconds = numVal;
-  }
-
-  // Update room settings
-  if (state.room?.settings) {
-    state.room.settings[key] = numVal;
-  }
-
-  // Persist to sessionStorage
-  sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-
-  // Push to Supabase (triggers Realtime for other players)
-  const column = columnMap[key];
-  if (column) {
-    await updateGameState(state.room.id, { [column]: numVal });
-  }
-}
-
-function handleReturnToLobby() {
-  const btn = $('#btn-return-to-lobby');
-  if (!btn) return;
-
-  if (_hostSettingsConfirmTimer) {
-    // Second tap — confirmed
-    clearTimeout(_hostSettingsConfirmTimer);
-    _hostSettingsConfirmTimer = null;
-    executeReturnToLobby();
-  } else {
-    // First tap — show confirmation
-    btn.textContent = 'Tap again to confirm';
-    btn.classList.add('btn-return-lobby--confirm');
-    _hostSettingsConfirmTimer = setTimeout(() => {
-      resetReturnConfirm();
-    }, RETURN_HOME_DELAY_MS);
-  }
-}
-
-function resetReturnConfirm() {
-  const btn = $('#btn-return-to-lobby');
-  if (btn) {
-    btn.textContent = 'Return to Lobby';
-    btn.classList.remove('btn-return-lobby--confirm');
-  }
-  if (_hostSettingsConfirmTimer) {
-    clearTimeout(_hostSettingsConfirmTimer);
-    _hostSettingsConfirmTimer = null;
-  }
-}
-
-async function executeReturnToLobby() {
-  closeHostSettingsSheet();
-  hideHostSettingsGear();
-
-  _isLeaving = true;
-  try { cleanup(); } catch (_) {}
-
-  try {
-    await deleteAnswersByRoom(state.room.id);
-    await updateGameState(state.room.id, {
-      game_phase: 'lobby',
-      current_question: 0,
-      question_ids: [],
-      question_started_at: null,
-      countdown_started_at: null
-    });
-    await updateRoomStatus(state.room.id, 'lobby');
-  } catch (err) {
-    logger.error('Game', 'executeReturnToLobby cleanup failed', err);
-  }
-
-  sessionStorage.setItem('oracle_party_returning_from_game', '1');
-  navigateWithFadeReplace('lobby.html');
-}
-
-function showHostSettingsGear() {
-  if (!state.room?.isHost) return;
-  document.querySelectorAll('.host-settings-gear').forEach(btn => btn.classList.remove('hidden'));
-}
-
-function hideHostSettingsGear() {
-  document.querySelectorAll('.host-settings-gear').forEach(btn => btn.classList.add('hidden'));
-}
-
-// ============================================
 // CLEANUP (shared teardown for all exit paths)
 // ============================================
 
@@ -4031,4 +3869,5 @@ function cleanup() {
 // ============================================
 // START
 // ============================================
+registerHostCleanup(cleanup);
 init();
