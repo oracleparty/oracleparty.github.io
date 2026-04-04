@@ -9,6 +9,8 @@ import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
 import { updateGameState, submitAnswer, fetchAnswersForQuestion, incrementQuestionsAnswered } from '../supabase.js';
+import { computeScoreEarned } from './scoring-helpers.js';
+import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
 import { showHostSettingsGear } from './host.js';
 
@@ -229,11 +231,7 @@ function selectWager(value, btnEl) {
  * Returns fractional seconds for precise bar rendering.
  */
 function getServerTimeLeft() {
-  if (!state.questionStartedAt) return state.timerSeconds;
-  const startMs = new Date(state.questionStartedAt).getTime();
-  const nowServerMs = Date.now() + state.serverTimeOffset;
-  const elapsedMs = nowServerMs - startMs;
-  return Math.max(0, state.timerSeconds - elapsedMs / 1000);
+  return _getServerTimeLeft(state.questionStartedAt, state.serverTimeOffset, state.timerSeconds);
 }
 
 /** Update both question-screen and reveal-screen timer displays */
@@ -427,7 +425,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
       logger.warn('Game', 'doSubmitAnswer: all wagers used, fallback to ' + wager);
     }
   }
-  const scoreEarned = isCorrect ? wager : (state.isFinalWagerRound ? -wager : 0);
+  const scoreEarned = computeScoreEarned(isCorrect, wager, state.isFinalWagerRound);
 
   await submitAnswer({
     roomId: state.room.id,
