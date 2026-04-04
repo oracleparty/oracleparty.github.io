@@ -433,12 +433,12 @@ body::after {
 /* Glyph ring — 12 ancient symbols orbiting the title */
 .splash__ring {
   position: absolute;
-  width: 220px;
-  height: 220px;
+  width: 240px;
+  height: 240px;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  animation: ring-spin 30s linear infinite, ring-enter 1.5s ease-out 0.2s both;
+  animation: ring-enter 1.5s ease-out 0.2s both;
   z-index: 1;
   pointer-events: none;
 }
@@ -448,33 +448,28 @@ body::after {
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
 }
 
-@keyframes ring-spin {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to   { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
 /* Position each glyph around the circle */
 .splash__glyph {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 20px;
-  height: 20px;
-  margin: -10px 0 0 -10px;
-  font-size: 14px;
-  line-height: 20px;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  font-size: 18px;
+  line-height: 24px;
   text-align: center;
   color: var(--color-primary);
   opacity: 0;
-  transform: rotate(calc(var(--i) * 30deg)) translateY(-110px) rotate(calc(var(--i) * -30deg));
+  transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg));
   animation: glyph-appear 0.6s ease-out both;
   animation-delay: calc(0.3s + var(--i) * 0.1s);
   text-shadow: 0 0 12px var(--color-primary-glow);
 }
 
 @keyframes glyph-appear {
-  from { opacity: 0; filter: blur(4px); }
-  to   { opacity: 0.5; filter: blur(0); }
+  from { opacity: 0; filter: blur(4px); transform: rotate(calc(var(--i) * 30deg)) translateY(-80px) rotate(calc(var(--i) * -30deg)); }
+  to   { opacity: 0.5; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)); }
 }
 
 /* Title — cinematic reveal with letter-spacing + blur */
@@ -836,7 +831,7 @@ body::after {
 }
 
 .category-card__icon {
-  font-size: 2rem;
+  font-size: 1.6rem;
   margin-bottom: var(--space-sm);
   line-height: 1;
   transition: transform var(--duration-fast) var(--ease-out);
@@ -873,10 +868,26 @@ body::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   margin-bottom: var(--space-sm);
+  border-radius: 50%;
+  background: var(--cat-accent, rgba(193, 154, 76, 0.08));
 }
+
+/* Per-category accent tints */
+.category-card[data-category="history"]         { --cat-accent: rgba(193, 154, 76, 0.12); }
+.category-card[data-category="science"]         { --cat-accent: rgba(70, 130, 180, 0.10); }
+.category-card[data-category="nature"]          { --cat-accent: rgba(85, 140, 85, 0.10); }
+.category-card[data-category="arts-literature"] { --cat-accent: rgba(160, 82, 114, 0.10); }
+.category-card[data-category="culture-society"] { --cat-accent: rgba(140, 100, 160, 0.10); }
+.category-card[data-category="pop-culture"]     { --cat-accent: rgba(220, 140, 50, 0.12); }
+.category-card[data-category="world-geography"] { --cat-accent: rgba(60, 130, 150, 0.10); }
+.category-card[data-category="technology"]      { --cat-accent: rgba(100, 120, 160, 0.10); }
+.category-card[data-category="sports"]          { --cat-accent: rgba(180, 90, 60, 0.10); }
+.category-card[data-category="food"]            { --cat-accent: rgba(180, 120, 60, 0.12); }
+.category-card[data-category="logic"]           { --cat-accent: rgba(80, 120, 140, 0.10); }
+.category-card[data-category="wild-card"]       { --cat-accent: rgba(160, 130, 70, 0.12); }
 
 /* The ring track (visible for logged-in users with data-mastery) */
 .category-card__ring {
