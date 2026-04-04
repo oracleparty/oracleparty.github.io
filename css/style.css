@@ -470,8 +470,9 @@ body::after {
 
 /* Phase 1: Scrambling — rapid symbol cycling, visible but restless */
 .splash__glyph--scrambling {
-  opacity: 0.55;
-  text-shadow: 0 0 6px var(--color-primary-glow);
+  opacity: 1 !important;
+  color: #8A6020;
+  text-shadow: 0 0 6px rgba(120, 80, 20, 0.3);
 }
 
 /* Phase 2: Locked — glyph found its final form, pulse golden bright */
@@ -484,7 +485,7 @@ body::after {
 
 @keyframes glyph-appear {
   from { opacity: 0; filter: blur(4px); transform: rotate(calc(var(--i) * 30deg)) translateY(-80px) rotate(calc(var(--i) * -30deg)); }
-  to   { opacity: 0.4; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)); }
+  to   { opacity: 1; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-120px) rotate(calc(var(--i) * -30deg)); }
 }
 
 @keyframes glyph-lock-pulse {
