@@ -511,18 +511,6 @@ body::after {
   }
 }
 
-/* Tagline — fades in after title */
-.splash__tagline {
-  font-family: var(--font-heading);
-  font-size: var(--text-sm);
-  color: var(--color-text-dim);
-  letter-spacing: 0.04em;
-  margin-top: var(--space-md);
-  position: relative;
-  z-index: 2;
-  animation: fade-up 0.8s var(--ease-out) 1.6s both;
-}
-
 /* Loader — appears last */
 .splash__loader {
   margin-top: var(--space-xl);
