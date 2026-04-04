@@ -112,6 +112,26 @@
         particleContainer.appendChild(p);
       }
 
+      // Spin the glyph ring via JS (CSS can't reliably compose two transform animations)
+      const ring = document.querySelector('.splash__ring');
+      let ringAngle = 0;
+      let ringLast = performance.now();
+      function spinRing(now) {
+        const dt = (now - ringLast) / 1000;
+        ringLast = now;
+        ringAngle += dt * 18; // 18°/s ≈ 20s per full revolution
+        ring.style.transform = `translate(-50%, -50%) rotate(${ringAngle}deg)`;
+        if (!splash.classList.contains('splash--exiting')) {
+          requestAnimationFrame(spinRing);
+        }
+      }
+      // Start spinning after the enter animation finishes
+      ring.addEventListener('animationend', () => {
+        ring.style.animation = 'none'; // remove fill-forward so JS can control transform
+        ring.style.opacity = '1';
+        requestAnimationFrame(spinRing);
+      });
+
       // Run both in parallel: minimum splash time + Supabase connection test
       const [, connected] = await Promise.all([
         delay(3000),
