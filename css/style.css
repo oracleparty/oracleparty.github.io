@@ -377,6 +377,19 @@ body::after {
 
 /* --- Splash Screen — Dramatic Reveal --- */
 
+/* Subtle parchment texture — layered noise for depth */
+#splash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(180, 150, 100, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(160, 130, 80, 0.04) 0%, transparent 50%),
+    repeating-conic-gradient(rgba(140, 120, 80, 0.015) 0% 25%, transparent 0% 50%) 0 0 / 4px 4px;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* Radial glow — warm energy emanating from ring */
 #splash::before {
   content: '';
@@ -476,12 +489,21 @@ body::after {
   text-shadow: 0 0 4px rgba(120, 80, 20, 0.2);
 }
 
-/* Phase 2: Locked — glyph found its final form, golden flash */
+/* Phase 2a: Flash — bright white-gold burst on lock-in */
+.splash__glyph--flash {
+  opacity: 1 !important;
+  color: #C4960F;
+  text-shadow: 0 0 40px rgba(200, 160, 40, 1), 0 0 80px rgba(180, 140, 30, 0.6), 0 0 4px rgba(255, 240, 200, 0.9);
+  transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1.6);
+  transition: none;
+}
+
+/* Phase 2b: Locked — settled into final form after flash */
 .splash__glyph--locked {
   opacity: 1 !important;
   color: #7A5010;
   text-shadow: 0 0 24px rgba(150, 105, 31, 0.8), 0 0 56px rgba(150, 105, 31, 0.4);
-  animation: glyph-lock-pulse 0.5s ease-out both;
+  animation: glyph-lock-settle 0.4s ease-out both;
 }
 
 @keyframes glyph-appear {
@@ -489,9 +511,8 @@ body::after {
   to   { opacity: 1; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)); }
 }
 
-@keyframes glyph-lock-pulse {
-  0%   { color: #9A7030; text-shadow: 0 0 4px var(--color-primary-glow); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1); }
-  30%  { color: #6A4008; text-shadow: 0 0 36px rgba(180, 130, 40, 1), 0 0 80px rgba(150, 105, 31, 0.5); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1.5); }
+@keyframes glyph-lock-settle {
+  0%   { color: #C4960F; text-shadow: 0 0 36px rgba(200, 160, 40, 0.9), 0 0 70px rgba(180, 140, 30, 0.5); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1.5); }
   100% { color: #7A5010; text-shadow: 0 0 24px rgba(150, 105, 31, 0.7), 0 0 56px rgba(150, 105, 31, 0.3); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1); }
 }
 

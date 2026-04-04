@@ -97,41 +97,44 @@
       var poolArr = Array.from(POOL);
       function randGlyph() { return poolArr[Math.floor(Math.random() * poolArr.length)]; }
 
-      // Phase 1: Scramble — glyphs appear and cycle through random symbols
+      // Phase 1: Scramble — each glyph cycles at its own chaotic rate
       var locked = new Array(12).fill(false);
-      var scrambleId;
+      var scrambleTimers = [];
 
       // Start all glyphs with random content immediately
-      glyphs.forEach(function(g) {
+      glyphs.forEach(function(g, i) {
         g.textContent = randGlyph();
         g.classList.add('splash__glyph--scrambling');
+        // Each glyph gets its own scramble interval (40-120ms) for organic chaos
+        var rate = 40 + Math.floor(Math.random() * 80);
+        scrambleTimers.push(setInterval(function() {
+          if (!locked[i]) g.textContent = randGlyph();
+        }, rate));
       });
 
-      // Scramble cycle: swap every 60ms for frenetic energy
-      scrambleId = setInterval(function() {
-        glyphs.forEach(function(g, i) {
-          if (!locked[i]) g.textContent = randGlyph();
-        });
-      }, 60);
-
-      // Phase 2: Lock in one by one (staggered, with pulse)
-      var lockDelay = 1000; // start locking at 1.0s
-      var lockInterval = 80; // 80ms between each lock
+      // Phase 2: Lock in one by one — each lock is a distinct moment
+      var lockDelay = 900; // start locking at 0.9s
+      var lockInterval = 110; // 110ms between locks — each one registers
 
       glyphs.forEach(function(g, i) {
         setTimeout(function() {
           locked[i] = true;
-          g.textContent = FINAL[i];
+          clearInterval(scrambleTimers[i]);
+          // Brief bright flash before settling
           g.classList.remove('splash__glyph--scrambling');
-          g.classList.add('splash__glyph--locked');
+          g.classList.add('splash__glyph--flash');
+          g.textContent = FINAL[i];
+          // Settle into locked state after flash
+          setTimeout(function() {
+            g.classList.remove('splash__glyph--flash');
+            g.classList.add('splash__glyph--locked');
+          }, 120);
         }, lockDelay + i * lockInterval);
       });
 
-      // After all 12 locked: stop scramble, open the eye, start slow spin
-      var allLockedTime = lockDelay + 12 * lockInterval + 200;
+      // After all 12 locked: open the eye, start slow spin
+      var allLockedTime = lockDelay + 12 * lockInterval + 300;
       setTimeout(function() {
-        clearInterval(scrambleId);
-
         // Phase 3: Eye opens
         if (eye) {
           eye.classList.add('splash__eye--open');
@@ -182,7 +185,7 @@
 
       // Run both in parallel: minimum splash time + Supabase connection test
       const [, connected] = await Promise.all([
-        delay(3000),
+        delay(3400),
         testConnection(),
         initAuth()
       ]);
