@@ -377,17 +377,6 @@ body::after {
 
 /* --- Splash Screen — Dramatic Reveal --- */
 
-/* Grain texture — organic Perlin noise overlay */
-.splash__grain {
-  position: absolute;
-  inset: 0;
-  filter: url(#grain-filter);
-  opacity: 0.35;
-  mix-blend-mode: overlay;
-  pointer-events: none;
-  z-index: 0;
-}
-
 /* Radial glow — warm energy emanating from ring */
 #splash::before {
   content: '';
