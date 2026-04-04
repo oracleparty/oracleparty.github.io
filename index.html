@@ -119,8 +119,8 @@
       }, 60);
 
       // Phase 2: Lock in one by one (staggered, with pulse)
-      var lockDelay = 1400; // start locking at 1.4s
-      var lockInterval = 120; // 120ms between each lock
+      var lockDelay = 1000; // start locking at 1.0s
+      var lockInterval = 80; // 80ms between each lock
 
       glyphs.forEach(function(g, i) {
         setTimeout(function() {
