@@ -1,11 +1,11 @@
 // ============================================
-// Oracle Party — Game
-// Gameplay loop: question (with wager) → submit → reveal (live) → repeat
+// Oracle Party — Game Init
+// Entry point, startup, cleanup, sync, lifecycle.
 // ============================================
 
-import { $, navigateWithFade, navigateWithFadeReplace } from './utils.js';
-import { logger } from './logger.js';
-import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from './constants.js';
+import { $, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
+import { logger } from '../logger.js';
+import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from '../constants.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -30,47 +30,48 @@ import {
   appendUsedQuestionIds,
   fetchAllOpenQuestions,
   fetchExclusiveWildCardQuestions
-} from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
-import { initHonkSystem, sendHonk, destroyHonkSystem } from './honk.js';
-import { initTypingIndicator, destroyTypingIndicator } from './typing.js';
-import { updatePresence } from './presence.js';
+} from '../supabase.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from '../auth.js';
+import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
+import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
+import { updatePresence } from '../presence.js';
+import { attachProfileCardHandler } from '../profile.js';
 import {
   state,
   resolveFieldMap,
   _flagMenuCloseHandler, setFlagMenuCloseHandler,
   _isLeaving, setIsLeaving,
   _syncInFlight, setSyncInFlight,
-} from './game/state.js';
+} from './state.js';
 import {
   attachChatListeners, loadChatMessages, handleNewMessage,
   updateTypingUI,
-} from './game/chat.js';
+} from './chat.js';
 import {
   initHostSettingsPanel,
   resetReturnConfirm, registerCleanup as registerHostCleanup,
-} from './game/host.js';
+} from './host.js';
 import {
   showQuestionScreen,
   registerShowRevealScreen, registerRevealHelpers,
-} from './game/question.js';
+} from './question.js';
 import {
   showRevealScreen, enableRevealButton,
   enableNextQuestion, updateRevealButtonText,
   updateHonkBadges, handleNextQuestion, initFeedbackListeners,
   registerScoresRef as registerRevealScoresRef,
-} from './game/reveal.js';
+} from './reveal.js';
 import {
   handleShowScores, showResultsScreen, updateScores, clearAutoProceed,
   registerCleanup as registerScoresCleanup,
   registerShowQuestionScreen as registerScoresShowQuestionScreen,
   registerHandleNextQuestion as registerScoresHandleNextQuestion,
-} from './game/scores.js';
+} from './scores.js';
 import {
   handlePhaseTransition, handleRoomChange, handlePlayerChange,
   handleAnswerChange, checkStalePresence,
   registerCleanup as registerPhasesCleanup,
-} from './game/phases.js';
+} from './phases.js';
 
 // ============================================
 // INIT
