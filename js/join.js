@@ -7,6 +7,8 @@ import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } fro
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
+import { logger } from './logger.js';
+import { PUBLIC_GAMES_REFRESH, PULL_REFRESH_THRESHOLD } from './constants.js';
 
 // DOM refs
 const codeInput = $('#code-input');
@@ -23,7 +25,7 @@ async function init() {
   try {
     await Promise.all([ensureDisplayName(), initAuth()]);
   } catch (err) {
-    console.error('[Join] init error:', err);
+    logger.error('Join', 'init error', err);
   }
   attachListeners();
   initThemeToggle();
@@ -31,7 +33,7 @@ async function init() {
   publicGamesEl.innerHTML = Array(3).fill('<div class="skeleton skeleton-row"></div>').join('');
   if (publicGamesEmpty) publicGamesEmpty.classList.add('hidden');
   loadPublicGames().catch(e => {
-    console.warn('[Join] loadPublicGames failed:', e);
+    logger.warn('Join', 'loadPublicGames failed', e);
     $$('.skeleton', publicGamesEl).forEach(el => el.remove());
     if (publicGamesEmpty) publicGamesEmpty.classList.remove('hidden');
   });
@@ -46,7 +48,7 @@ async function init() {
   }
 
   // Refresh public games every 10s
-  refreshInterval = setInterval(loadPublicGames, 10000);
+  refreshInterval = setInterval(loadPublicGames, PUBLIC_GAMES_REFRESH);
 
   // Trap browser back button — always go to index.html
   history.pushState({ page: 'join' }, '');
@@ -123,7 +125,7 @@ async function joinRoom(code) {
     if (playerErr || !player) {
       joinError.textContent = 'Failed to join room. Try again.';
       showToast('Failed to join room', 'error');
-      console.error('[Join] addPlayer failed:', playerErr);
+      logger.error('Join', 'addPlayer failed', playerErr);
       resetJoinButton();
       return;
     }
@@ -149,7 +151,7 @@ async function joinRoom(code) {
     // If the game is already in progress, go straight to game.html (hot join)
     navigateWithFade(room.status === 'playing' ? 'game.html' : 'lobby.html');
   } catch (err) {
-    console.error('[Join] Unexpected error:', err);
+    logger.error('Join', 'Unexpected error', err);
     joinError.textContent = `Error: ${err.message}`;
     resetJoinButton();
   }
@@ -234,9 +236,9 @@ _pageContent.addEventListener('touchmove', (e) => {
   if (dy < 0) { _ptrActive = false; return; }
   const pull = Math.min(dy, 80);
   _ptrIndicator.style.height = pull + 'px';
-  _ptrIndicator.style.opacity = Math.min(pull / 60, 1);
+  _ptrIndicator.style.opacity = Math.min(pull / PULL_REFRESH_THRESHOLD, 1);
   _ptrIndicator.querySelector('.ptr-indicator__text').textContent =
-    pull >= 60 ? 'Release to refresh' : 'Pull to refresh';
+    pull >= PULL_REFRESH_THRESHOLD ? 'Release to refresh' : 'Pull to refresh';
 }, { passive: true });
 
 _pageContent.addEventListener('touchend', () => {
@@ -245,7 +247,7 @@ _pageContent.addEventListener('touchend', () => {
   const height = parseInt(_ptrIndicator.style.height) || 0;
   // Re-enable transition for smooth collapse
   _ptrIndicator.style.transition = '';
-  if (height >= 60) {
+  if (height >= PULL_REFRESH_THRESHOLD) {
     _ptrIndicator.querySelector('.ptr-indicator__text').textContent = 'Refreshing...';
     _ptrIndicator.style.height = '40px';
     loadPublicGames().then(() => {

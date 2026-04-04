@@ -4,6 +4,7 @@
 // ============================================
 
 import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade } from './utils.js';
+import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT } from './constants.js';
 import {
   supabase,
   fetchProfile,
@@ -30,6 +31,7 @@ import {
 import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
+import { logger } from './logger.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode } from './categories.js';
 
@@ -240,7 +242,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       totalWins += s.wins || 0;
       totalAnswered += s.questions_answered || 0;
       totalCorrect += s.correct_answers || 0;
-      if (s.questions_answered >= 20) {
+      if (s.questions_answered >= MIN_QUESTIONS_FOR_ACCURACY) {
         const acc = s.correct_answers / s.questions_answered;
         if (acc > bestAcc) { bestAcc = acc; bestCat = s.category; }
       }
@@ -583,7 +585,7 @@ export async function initProfilePage() {
                 const subMastered = _mastery[subKey] || 0;
                 if (subMastered > 0) {
                   const subTotal = subTotals[subKey] || 0;
-                  const indent = depth > 0 ? ' style="padding-left:' + (12 + depth * 16) + 'px"' : '';
+                  const indent = depth > 0 ? ' style="padding-left:' + (MASTERY_TREE_BASE_INDENT + depth * MASTERY_TREE_DEPTH_INDENT) + 'px"' : '';
                   html += `<div class="mastery-row mastery-row--sub"${indent}>
                     <span class="mastery-row__icon">${s.icon}</span>
                     <span class="mastery-row__name">${s.label}</span>
@@ -685,7 +687,7 @@ export async function initProfilePage() {
     totalWins += s.wins || 0;
     totalAnswered += s.questions_answered || 0;
     totalCorrect += s.correct_answers || 0;
-    if (s.questions_answered >= 10) {
+    if (s.questions_answered >= MIN_QUESTIONS_FOR_CATEGORY) {
       const acc = s.correct_answers / s.questions_answered;
       if (acc > strongAcc) { strongAcc = acc; strongCat = s.category; }
       if (acc < weakAcc) { weakAcc = acc; weakCat = s.category; }
@@ -932,9 +934,9 @@ async function loadFriendsTab(userId) {
   let pending = [];
   try {
     pending = await fetchPendingRequests(userId);
-    console.log('[Profile] Pending friend requests:', pending.length, pending);
+    logger.debug('Profile', 'Pending friend requests: ' + pending.length, pending);
   } catch (err) {
-    console.error('[Profile] fetchPendingRequests failed:', err);
+    logger.error('Profile', 'fetchPendingRequests failed', err);
   }
   if (pending.length > 0) {
     pendingSection.style.display = '';
@@ -970,7 +972,7 @@ async function loadFriendsTab(userId) {
         try {
           const { error } = await acceptFriendRequest(parseInt(acceptBtn.dataset.accept, 10));
           if (error) {
-            console.error('[Profile] acceptFriendRequest failed:', error);
+            logger.error('Profile', 'acceptFriendRequest failed', error);
             acceptBtn.textContent = 'Error';
             acceptBtn.disabled = false;
             setTimeout(() => { acceptBtn.textContent = origText; }, 2000);
@@ -979,7 +981,7 @@ async function loadFriendsTab(userId) {
           acceptBtn.textContent = 'Accepted!';
           setTimeout(() => loadFriendsTab(userId), 600);
         } catch (err) {
-          console.error('[Profile] acceptFriendRequest threw:', err);
+          logger.error('Profile', 'acceptFriendRequest threw', err);
           acceptBtn.textContent = 'Error';
           acceptBtn.disabled = false;
           setTimeout(() => { acceptBtn.textContent = origText; }, 2000);
@@ -993,7 +995,7 @@ async function loadFriendsTab(userId) {
         try {
           await declineFriendRequest(parseInt(declineBtn.dataset.decline, 10));
         } catch (err) {
-          console.error('[Profile] declineFriendRequest threw:', err);
+          logger.error('Profile', 'declineFriendRequest threw', err);
         }
         loadFriendsTab(userId);
         return;
@@ -1112,7 +1114,7 @@ async function loadFriendsTab(userId) {
       }
       const row = e.target.closest('[data-profile-user-id]');
       if (row) {
-        console.log('[Profile] Friend row tapped, userId:', row.dataset.profileUserId);
+        logger.debug('Profile', 'Friend row tapped, userId: ' + row.dataset.profileUserId);
         showProfileCard({
           userId: row.dataset.profileUserId,
           displayName: row.dataset.profileName || 'Unknown',
@@ -1239,7 +1241,7 @@ async function _batchFetchProfiles(userIds) {
     .in('user_id', userIds);
 
   if (error) {
-    console.error('[Profile] _batchFetchProfiles failed:', error.message);
+    logger.error('Profile', '_batchFetchProfiles failed', error);
     return {};
   }
   const map = {};

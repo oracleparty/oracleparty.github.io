@@ -1,0 +1,761 @@
+// ============================================
+// Oracle Party — Game Init
+// Entry point, startup, cleanup, sync, lifecycle.
+// ============================================
+
+import { $, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
+import { logger } from '../logger.js';
+import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from '../constants.js';
+import {
+  addPlayer,
+  fetchPlayers,
+  fetchQuestionsByCategory,
+  fetchQuestionsByIds,
+  supabase,
+  updateGameState,
+  fetchAllAnswers,
+  fetchRoom,
+  subscribeToRoom,
+  subscribeToAnswers,
+  subscribeToMessages,
+  unsubscribe,
+  getServerTimeOffset,
+  createPresenceChannel,
+  removePlayer,
+  removePlayerBeacon,
+  deleteRoom,
+  deleteRoomBeacon,
+  subscribeToPlayers,
+  reassignPlayerAnswers,
+  appendUsedQuestionIds,
+  fetchAllOpenQuestions,
+  fetchExclusiveWildCardQuestions
+} from '../supabase.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from '../auth.js';
+import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
+import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
+import { updatePresence } from '../presence.js';
+import { attachProfileCardHandler } from '../profile.js';
+import {
+  state,
+  resolveFieldMap,
+  _flagMenuCloseHandler, setFlagMenuCloseHandler,
+  _isLeaving, setIsLeaving,
+  _syncInFlight, setSyncInFlight,
+} from './state.js';
+import {
+  attachChatListeners, loadChatMessages, handleNewMessage,
+  updateTypingUI,
+} from './chat.js';
+import {
+  initHostSettingsPanel,
+  resetReturnConfirm, registerCleanup as registerHostCleanup,
+} from './host.js';
+import {
+  showQuestionScreen,
+  registerShowRevealScreen, registerRevealHelpers,
+} from './question.js';
+import {
+  showRevealScreen, enableRevealButton,
+  enableNextQuestion, updateRevealButtonText,
+  updateHonkBadges, handleNextQuestion, initFeedbackListeners,
+  registerScoresRef as registerRevealScoresRef,
+} from './reveal.js';
+import {
+  handleShowScores, showResultsScreen, updateScores, clearAutoProceed,
+  registerCleanup as registerScoresCleanup,
+  registerShowQuestionScreen as registerScoresShowQuestionScreen,
+  registerHandleNextQuestion as registerScoresHandleNextQuestion,
+} from './scores.js';
+import {
+  handlePhaseTransition, handleRoomChange, handlePlayerChange,
+  handleAnswerChange, checkStalePresence,
+  registerCleanup as registerPhasesCleanup,
+} from './phases.js';
+
+// ============================================
+// INIT
+// ============================================
+
+async function init() {
+  document.body.style.opacity = '1';
+  // Load room data synchronously so back button works even during init
+  const stored = sessionStorage.getItem('oracle_party_room');
+  if (!stored) {
+    window.location.href = 'index.html';
+    return;
+  }
+
+  state.room = JSON.parse(stored);
+  state.totalQuestions = state.room.settings?.questionsPerGame || 10;
+  state.timerSeconds = state.room.settings?.questionTimer || 30;
+  state.autoProceedSeconds = state.room.settings?.autoProceed || 0;
+
+  // Set up back button handler IMMEDIATELY (before any async work)
+  // so pressing back always goes to index.html, even during slow init
+  history.replaceState({ inGame: true }, '');
+  history.pushState({ inGame: true }, '');
+  window.addEventListener('popstate', handleBackButton);
+  // Safari bfcache: if this page is restored from cache after navigating away, go home
+  window.addEventListener('pageshow', (e) => { if (e.persisted) { cleanup(); window.location.href = 'index.html'; } });
+
+  await Promise.all([ensureDisplayName(), initAuth()]);
+
+  // Calibrate clock offset between client and server
+  state.serverTimeOffset = await getServerTimeOffset();
+
+  state.players = await fetchPlayers(state.room.id);
+
+  // Validate room still exists (may have been deleted while player was away)
+  const { data: roomCheck } = await fetchRoom(state.room.id);
+  if (!roomCheck) {
+    sessionStorage.removeItem('oracle_party_room');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  // If current player is missing (e.g. removePlayerBeacon fired on refresh), re-add them
+  // Room existence already validated above — safe to re-add
+  const me = state.players.find(p => String(p.id) === String(state.room.playerId));
+  if (!me) {
+    const displayName = getDisplayName();
+
+    // Before creating a new row, check if a player with the same display name already
+    // exists — this happens when the page reloads before removePlayerBeacon completes
+    // (pull-to-refresh on iOS, slow beacon, bfcache restore, etc.).
+    const existingByName = state.players.find(p => p.display_name === displayName);
+    if (existingByName) {
+      // Reconnect to the existing row — update our local player ID reference only
+      state.room.playerId = existingByName.id;
+      sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+      // state.players already reflects the current DB state — no re-fetch needed
+    } else {
+      // Beacon already fired (player row deleted). Record the old ID so we can still
+      // recover wagers from answers that reference it, then create a fresh row.
+      const prevPlayerId = state.room.playerId;
+      const authUser = getCurrentUser();
+      const rejoinUserId = authUser?.user?.id || null;
+      const extras = {};
+      if (authUser?.profile) {
+        extras.avatarColor = authUser.profile.avatar_color;
+        extras.avatarEmoji = authUser.profile.avatar_emoji;
+        extras.title = authUser.profile._cachedTitle || null;
+      }
+      const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost, rejoinUserId, extras);
+      if (rejoinedPlayer) {
+        state.room.playerId = rejoinedPlayer.id;
+        sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+        state.players = await fetchPlayers(state.room.id);
+
+        // Migrate orphaned answers from old player to new player so
+        // updateScores() attributes them correctly and the scoreboard
+        // shows the right totals.
+        await reassignPlayerAnswers(state.room.id, prevPlayerId, rejoinedPlayer.id);
+
+        // Rebuild used wagers from the migrated answers (now under new player ID).
+        // initHostGame / applyGameState will also rebuild, but this is a safety net
+        // in case that code path is skipped (e.g. lobby-status room on reconnect).
+        const allAnswers = await fetchAllAnswers(state.room.id);
+        const myAnswers = allAnswers.filter(a => String(a.player_id) === String(rejoinedPlayer.id));
+        for (const a of myAnswers) {
+          if (a.wager) state.usedWagers.set(a.wager, !!a.is_correct);
+        }
+      }
+    }
+  }
+
+  // Detect co-host status from player record
+  const myPlayer = state.players.find(p => String(p.id) === String(state.room.playerId));
+  if (myPlayer?.is_cohost) {
+    state.room.isCohost = true;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+  }
+
+  for (const p of state.players) {
+    state.scores[p.id] = 0;
+  }
+
+  const roomCh = subscribeToRoom(state.room.id, handleRoomChange);
+  const answerCh = subscribeToAnswers(state.room.id, handleAnswerChange);
+  const msgCh = subscribeToMessages(state.room.id, handleNewMessage);
+  const playerCh = subscribeToPlayers(state.room.id, handlePlayerChange);
+  state.channels = [roomCh, answerCh, msgCh, playerCh];
+
+  // Presence tracking (away/active state)
+  state.presenceChannel = createPresenceChannel(state.room.id, String(state.room.playerId));
+  state.presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      const ps = state.presenceChannel.presenceState();
+      // Build set of connected + active player IDs
+      const connectedActive = new Set();
+      for (const key of Object.keys(ps)) {
+        for (const p of ps[key]) {
+          if (!p.is_away) connectedActive.add(String(p.player_id));
+        }
+      }
+      // Track when each player first went away (preserve existing timestamps)
+      const newAway = new Map();
+      for (const p of state.players) {
+        const id = String(p.id);
+        if (!connectedActive.has(id)) {
+          newAway.set(id, state.awayTimestamps.get(id) || Date.now());
+        }
+      }
+      state.awayTimestamps = newAway;
+      checkStalePresence();
+      // Update away classes on visible rows without full re-render
+      document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
+        row.classList.toggle('answer-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
+      });
+      document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
+        row.classList.toggle('score-anim-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
+      });
+      document.querySelectorAll('#results-list .results-row').forEach(row => {
+        row.classList.toggle('results-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
+      });
+      document.querySelectorAll('#fw-player-list .fw-player-row').forEach(row => {
+        row.classList.toggle('fw-player-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
+      });
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        state.presenceReady = true;
+        await state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        state.presenceReady = false;
+      }
+    });
+  state.channels.push(state.presenceChannel);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  // Heartbeat: re-track presence every 15s so transient failures self-heal
+  state.presenceHeartbeatId = setInterval(() => {
+    if (state.presenceChannel) {
+      state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
+        .catch(() => {});
+    }
+  }, LOBBY_POLL_INTERVAL);
+
+  // Poll for stale disconnected players (auto-kick after 5 min)
+  state.stalePollId = setInterval(checkStalePresence, STALE_CHECK_INTERVAL);
+
+  // Periodic sync to catch missed Realtime messages after brief disconnections
+  state._syncIntervalId = setInterval(syncToCurrentState, STATE_SYNC_INTERVAL);
+
+  loadChatMessages();
+  attachChatListeners();
+  initFeedbackListeners();
+
+  // Typing indicator
+  initTypingIndicator(state.room.id, state.room.playerId, getDisplayName(), updateTypingUI);
+
+  // Honk system
+  initHonkSystem(state.room.id, state.room.playerId, () => {
+    // Re-render visible player rows to update honk badges
+    updateHonkBadges();
+  });
+
+  // Honk click handler (event delegation on scores + results containers)
+  // Note: #reveal-answers is NOT included here because renderRevealAnswers()
+  // clones the container (destroying this listener). It attaches its own.
+  for (const sel of ['#scores-animated-list', '#results-list']) {
+    const el = document.querySelector(sel);
+    if (el) el.addEventListener('click', (e) => {
+      const btn = e.target.closest('.honk-btn');
+      if (!btn) return;
+      sendHonk(btn.dataset.honkTarget);
+    });
+  }
+
+  // Profile card on player tap (scores + results containers)
+  for (const sel of ['#scores-animated-list', '#results-list', '#fw-player-list']) {
+    const el = document.querySelector(sel);
+    if (el) attachProfileCardHandler(el, () => state.players, state.room.id);
+  }
+
+  // Track presence as "in game"
+  updatePresence({ activity: 'game', roomId: state.room.id, category: state.room.category });
+
+  if (state.room.isHost || state.room.isCohost) {
+    await initHostGame();
+    if (state.room.isHost) initHostSettingsPanel();
+  } else {
+    await initPlayerGame();
+  }
+}
+
+async function initHostGame() {
+  // Check if there's already a game in progress (host refreshed mid-game)
+  const { data: roomData } = await fetchRoom(state.room.id);
+  if (roomData && roomData.question_ids && roomData.question_ids.length > 0 && roomData.game_phase && roomData.game_phase !== 'lobby') {
+    // Reconnect to existing game
+    // question_ids has N+1 entries (N regular + 1 final wager)
+    state.totalQuestions = Math.max(1, roomData.question_ids.length - 1);
+    state.questions = await fetchQuestionsByIds(roomData.question_ids);
+    if (state.questions.length > 0) resolveFieldMap(state.questions[0]);
+    state.currentQuestion = roomData.current_question || 0;
+
+    // Detect final wager phases
+    if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
+      state.isFinalWagerRound = true;
+    }
+
+    // Rebuild used wagers from existing answers (clear first to prevent stale data)
+    state.usedWagers = new Map();
+    const allAnswers = await fetchAllAnswers(state.room.id);
+    const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+    for (const a of myAnswers) {
+      state.usedWagers.set(a.wager, !!a.is_correct);
+    }
+    // Recover final wager value if locked in
+    const fwAnswer = myAnswers.find(a => a.question_number === state.totalQuestions);
+    if (fwAnswer) {
+      state.finalWager = fwAnswer.wager;
+      state.finalWagerLocked = true;
+    }
+
+    if (roomData.question_started_at) {
+      state.questionStartedAt = roomData.question_started_at;
+    }
+
+    // If reconnecting to countdown, skip straight to question
+    if (roomData.game_phase === 'countdown') {
+      await updateGameState(state.room.id, { game_phase: 'question', current_question: 0 });
+      handlePhaseTransition('question');
+    } else {
+      handlePhaseTransition(roomData.game_phase);
+    }
+    return;
+  }
+
+  // Fetch used question IDs for repeat prevention (persists across Play Again cycles)
+  const { data: roomForExclude } = await fetchRoom(state.room.id);
+  const excludeIds = roomForExclude?.used_question_ids || [];
+
+  // Collect logged-in player user IDs for smart question selection
+  const playerUserIds = state.players.map(p => p.user_id).filter(Boolean);
+
+  // Fetch totalQuestions + 1 (extra for final wager round) with smart selection
+  const subcategory = state.room.subcategory || null;
+  let questions;
+  if (subcategory === '__all_questions__') {
+    questions = await fetchAllOpenQuestions(state.totalQuestions + 1, excludeIds, playerUserIds);
+  } else if (subcategory === '__true_wild_card__') {
+    questions = await fetchExclusiveWildCardQuestions(state.totalQuestions + 1, excludeIds);
+  } else {
+    questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, subcategory);
+  }
+
+  if (questions.length === 0) {
+    $('#game-loading .game-loading__text').textContent = 'No questions found for this category.';
+    return;
+  }
+
+  // If we got fewer than requested, adjust totalQuestions (the extra is for final wager)
+  if (questions.length <= state.totalQuestions) {
+    state.totalQuestions = Math.max(1, questions.length - 1);
+  }
+  state.questions = questions;
+  resolveFieldMap(questions[0]);
+
+  const questionIds = questions.map(q => q.id);
+
+  // Track these question IDs as used (persists across Play Again — no repeats)
+  appendUsedQuestionIds(state.room.id, questionIds);
+  const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
+  state.countdownStartedAt = countdownStartedAt;
+  await updateGameState(state.room.id, {
+    question_ids: questionIds,
+    game_phase: 'countdown',
+    current_question: 0,
+    countdown_started_at: countdownStartedAt
+  });
+
+  state.gamePhase = 'countdown';
+  showCountdownScreen();
+}
+
+async function initPlayerGame() {
+  let roomData = null;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { data } = await fetchRoom(state.room.id);
+    if (data && data.question_ids && data.question_ids.length > 0 && data.game_phase) {
+      roomData = data;
+      break;
+    }
+    await new Promise(r => setTimeout(r, PLAYER_INIT_WAIT_MS));
+  }
+
+  if (!roomData || !roomData.question_ids) {
+    $('#game-loading .game-loading__text').textContent = 'Waiting for host...';
+    // Keep polling — Realtime handleRoomChange may also catch it, but this is a safety net
+    state._hotJoinPollId = setInterval(async () => {
+      const { data } = await fetchRoom(state.room.id);
+      if (!data) {
+        // Room was deleted — stop polling and go home
+        clearInterval(state._hotJoinPollId);
+        state._hotJoinPollId = null;
+        sessionStorage.removeItem('oracle_party_room');
+        window.location.href = 'index.html';
+        return;
+      }
+      if (data.question_ids && data.question_ids.length > 0 && data.game_phase) {
+        clearInterval(state._hotJoinPollId);
+        state._hotJoinPollId = null;
+        await applyGameState(data);
+      }
+    }, PLAYER_READY_CONFIRM_MS);
+    return;
+  }
+
+  await applyGameState(roomData);
+}
+
+/**
+ * Apply fetched room data to local state and transition to the correct phase.
+ * Used by both initPlayerGame (initial load) and hot-join fallback poll.
+ */
+async function applyGameState(roomData) {
+  // question_ids has N+1 entries (N regular + 1 final wager)
+  state.totalQuestions = Math.max(1, roomData.question_ids.length - 1);
+  state.questions = await fetchQuestionsByIds(roomData.question_ids);
+
+  if (state.questions.length > 0) {
+    resolveFieldMap(state.questions[0]);
+  }
+
+  state.currentQuestion = roomData.current_question || 0;
+
+  // Build list of questions shown so far (for question browser on reconnect)
+  state.shownQuestionIndices = [];
+  for (let i = 0; i <= state.currentQuestion; i++) {
+    state.shownQuestionIndices.push(i);
+  }
+
+  // Detect final wager phases
+  if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
+    state.isFinalWagerRound = true;
+  }
+
+  // Rebuild used wagers from existing answers (clear first to prevent stale data)
+  state.usedWagers = new Map();
+  const allAnswers = await fetchAllAnswers(state.room.id);
+  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+  for (const a of myAnswers) {
+    state.usedWagers.set(a.wager, !!a.is_correct);
+  }
+
+  // Rebuild disqualified questions: detect questions where ALL answers have score_earned=0
+  state.disqualifiedQuestions = new Set();
+  const answersByQ = {};
+  for (const a of allAnswers) {
+    if (!answersByQ[a.question_number]) answersByQ[a.question_number] = [];
+    answersByQ[a.question_number].push(a);
+  }
+  for (const [qNum, answers] of Object.entries(answersByQ)) {
+    if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
+      state.disqualifiedQuestions.add(parseInt(qNum, 10));
+    }
+  }
+
+  // Recover final wager value if locked in
+  const fwAnswer = myAnswers.find(a => a.question_number === state.totalQuestions);
+  if (fwAnswer) {
+    state.finalWager = fwAnswer.wager;
+    state.finalWagerLocked = true;
+  }
+
+  // Store server timer start for reconnect scenarios
+  if (roomData.question_started_at) {
+    state.questionStartedAt = roomData.question_started_at;
+  }
+  if (roomData.countdown_started_at) {
+    state.countdownStartedAt = roomData.countdown_started_at;
+  }
+
+  // Hydrate scores from DB so existing players' scores are correct
+  await updateScores();
+
+  handlePhaseTransition(roomData.game_phase);
+}
+
+
+// ============================================
+// QUESTION BROWSER (between-rounds bottom sheet)
+// ============================================
+
+
+// ============================================
+// EXIT PATHS (player leaves the game permanently)
+// ============================================
+// Four ways a player leaves:
+//   1. Quit button   → handleQuitGame()    → awaits DB delete, then navigates home
+//   2. Browser back  → handleBackButton()  → fire-and-forget DB delete, navigates home
+//   3. Tab close     → handleUnload()      → beacon delete (survives page teardown)
+//   4. Room deleted  → handleRoomChange()  → navigates home (room already gone)
+//
+// Two non-leaving transitions (player stays in the room):
+//   5. Play Again    → handlePlayAgain()   → navigates to lobby
+//   6. Back to lobby → handleRoomChange()  → navigates to lobby
+//
+// _isLeaving prevents handleUnload from double-removing after an
+// explicit leave or non-leaving transition.
+
+function handleBackButton() {
+  setIsLeaving(true);
+  cleanup();
+  if (state.room && state.room.playerId) {
+    if (state.players.length <= 1) {
+      deleteRoomBeacon(state.room.id);
+    } else {
+      removePlayerBeacon(state.room.playerId);
+    }
+  }
+  sessionStorage.removeItem('oracle_party_room');
+  window.location.href = 'index.html';
+}
+
+function handleUnload() {
+  if (_isLeaving) return;
+  // Send beacon FIRST — maximize chance it completes before browser tears down the page
+  if (state.room && state.room.playerId) {
+    if (state.players.length <= 1) {
+      deleteRoomBeacon(state.room.id);
+    } else {
+      removePlayerBeacon(state.room.playerId);
+    }
+  }
+  cleanup();
+}
+
+// Safari doesn't reliably fire beforeunload — pagehide is the fallback
+window.addEventListener('beforeunload', handleUnload);
+window.addEventListener('pagehide', handleUnload);
+
+// ============================================
+// AFK DETECTION (player temporarily inactive)
+// ============================================
+// Uses Supabase Realtime Presence (ephemeral, not DB).
+// Each connected client tracks { player_id, is_away }.
+//
+// The sync handler compares presence against the DB players list:
+//   - Connected + active tab  → normal icon
+//   - Connected + hidden tab  → faded icon
+//   - Disconnected (not in presence) → faded icon
+//
+// presenceReady guards .track() calls. On channel error it
+// resets to false; on auto-reconnect subscribe fires again
+// and re-tracks current visibility state (self-healing).
+
+function handleVisibilityChange() {
+  if (!state.presenceChannel) return;
+  // Always attempt to track — swallow errors so transient failures
+  // don't permanently break away detection.
+  state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
+    .catch(() => {});
+
+  if (document.hidden) {
+    // Track that we went hidden — syncToCurrentState needs to know
+    state._wasHidden = true;
+    return;
+  }
+
+  // When tab becomes visible again, sync to current game state.
+  // Supabase Realtime does NOT replay missed messages after a disconnect,
+  // so we fetch from DB to catch up if the game advanced while we were away.
+  if (state.room && state.gamePhase !== 'loading') {
+    syncToCurrentState();
+  }
+}
+
+/**
+ * Fetch current room state from DB and sync local state if the game has
+ * advanced (different question or phase). Handles both brief disconnections
+ * and tab-hidden gaps where Realtime messages were missed.
+ */
+async function syncToCurrentState() {
+  if (_syncInFlight) return; // Prevent overlapping syncs
+  setSyncInFlight(true);
+  try {
+    const { data: roomData } = await fetchRoom(state.room.id);
+    if (!roomData || !roomData.game_phase) return;
+
+    // Room returned to lobby while we were away
+    if (roomData.status === 'lobby') {
+      setIsLeaving(true);
+      cleanup();
+      navigateWithFadeReplace('lobby.html');
+      return;
+    }
+
+    const questionChanged = roomData.current_question !== undefined &&
+                            roomData.current_question !== state.currentQuestion;
+
+    const wasHidden = state._wasHidden;
+    state._wasHidden = false;
+
+    // Phase-only sync when returning from hidden tab.
+    // Realtime may have missed messages while the tab was hidden, so we need
+    // to catch up on phase transitions even if the question hasn't changed.
+    if (!questionChanged) {
+      // Only sync phase if we were actually hidden (missed Realtime messages)
+      if (wasHidden && roomData.game_phase && roomData.game_phase !== state.gamePhase) {
+        // Don't sync backwards — only advance to later phases.
+        // This prevents a stale DB read from regressing local state.
+        const PHASE_ORDER = ['countdown', 'question', 'reveal', 'answer_reveal', 'scores_reveal', 'difficulty_vote', 'final_wager', 'final_question', 'results'];
+        const currentIdx = PHASE_ORDER.indexOf(state.gamePhase);
+        const serverIdx = PHASE_ORDER.indexOf(roomData.game_phase);
+        // If server phase isn't in our ordering (unknown phase), allow sync
+        if (serverIdx > currentIdx || currentIdx === -1 || serverIdx === -1) {
+          // Sync timestamps before transitioning
+          if (roomData.question_started_at) state.questionStartedAt = roomData.question_started_at;
+          if (roomData.countdown_started_at) state.countdownStartedAt = roomData.countdown_started_at;
+          if (['final_wager', 'final_question', 'difficulty_vote'].includes(roomData.game_phase)) {
+            state.isFinalWagerRound = true;
+          }
+          handlePhaseTransition(roomData.game_phase);
+        }
+      }
+      return;
+    }
+
+    // Update local state to match server
+    if (roomData.current_question !== undefined) {
+      state.currentQuestion = roomData.current_question;
+    }
+    if (roomData.question_started_at) {
+      state.questionStartedAt = roomData.question_started_at;
+    }
+    if (roomData.countdown_started_at) {
+      state.countdownStartedAt = roomData.countdown_started_at;
+    }
+    if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
+      state.isFinalWagerRound = true;
+    }
+
+    // Reset per-question state if the question advanced
+    if (questionChanged) {
+      state.hasSubmitted = false;
+      state.onRevealScreen = false;
+      state.resultsRevealed = false;
+      state.timerExpired = false;
+      state.currentAnswers = [];
+      state.currentWager = null;
+      state.wagerExplicitlySelected = false;
+      state.previousScores = {};
+
+      // Rebuild usedWagers from DB (host may have auto-submitted wagers
+      // for questions we missed while disconnected)
+      const allAnswers = await fetchAllAnswers(state.room.id);
+      const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
+      state.usedWagers = new Map();
+      for (const a of myAnswers) {
+        state.usedWagers.set(a.wager, !!a.is_correct);
+      }
+
+      // Rebuild disqualified questions from answer state
+      state.disqualifiedQuestions = new Set();
+      const answersByQ = {};
+      for (const a of allAnswers) {
+        if (!answersByQ[a.question_number]) answersByQ[a.question_number] = [];
+        answersByQ[a.question_number].push(a);
+      }
+      for (const [qNum, answers] of Object.entries(answersByQ)) {
+        if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
+          state.disqualifiedQuestions.add(parseInt(qNum, 10));
+        }
+      }
+
+      // Rebuild question browser indices for missed questions
+      state.shownQuestionIndices = [];
+      for (let i = 0; i <= state.currentQuestion; i++) {
+        state.shownQuestionIndices.push(i);
+      }
+
+      // Rebuild scores from DB
+      await updateScores();
+
+      // Set gamePhase to 'loading' so handlePhaseTransition preserves
+      // questionStartedAt instead of clearing it (line 636). This mimics
+      // the init reconnect path — without it, the player gets stuck on a
+      // hidden question screen waiting for a timer start that already happened.
+      state.gamePhase = 'loading';
+    }
+
+    handlePhaseTransition(roomData.game_phase);
+  } catch (err) {
+    logger.error('Game', 'syncToCurrentState failed', err);
+  } finally {
+    setSyncInFlight(false);
+  }
+}
+
+// ============================================
+// CLEANUP (shared teardown for all exit paths)
+// ============================================
+
+function cleanup() {
+  window.removeEventListener('popstate', handleBackButton);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  // (ResizeObserver removed — chat is now inline flex, no positioning needed)
+  destroyHonkSystem();
+  destroyTypingIndicator();
+  if (state.timerId) {
+    clearInterval(state.timerId);
+    state.timerId = null;
+  }
+  if (state._timerGraceId) {
+    clearTimeout(state._timerGraceId);
+    state._timerGraceId = null;
+  }
+  if (state.stalePollId) {
+    clearInterval(state.stalePollId);
+    state.stalePollId = null;
+  }
+  if (state._hotJoinPollId) {
+    clearInterval(state._hotJoinPollId);
+    state._hotJoinPollId = null;
+  }
+  if (state._dvTimerId) { clearInterval(state._dvTimerId); state._dvTimerId = null;
+  }
+  if (state.presenceHeartbeatId) {
+    clearInterval(state.presenceHeartbeatId);
+    state.presenceHeartbeatId = null;
+  }
+  if (state._syncIntervalId) {
+    clearInterval(state._syncIntervalId);
+    state._syncIntervalId = null;
+  }
+  clearAutoProceed();
+  hideHostSettingsGear();
+  resetReturnConfirm();
+  if (_flagMenuCloseHandler) {
+    document.removeEventListener('click', _flagMenuCloseHandler);
+    setFlagMenuCloseHandler(null);
+  }
+  if (state.difficultyVoteChannel) {
+    supabase.removeChannel(state.difficultyVoteChannel);
+    state.difficultyVoteChannel = null;
+  }
+  for (const ch of state.channels) unsubscribe(ch);
+  state.channels = [];
+  state.presenceReady = false;
+  state.presenceChannel = null;
+  state.awayTimestamps = new Map();
+}
+
+// ============================================
+// START
+// ============================================
+registerHostCleanup(cleanup);
+registerShowRevealScreen(showRevealScreen);
+registerRevealHelpers({ enableNextQuestion, enableRevealButton, updateRevealButtonText });
+registerRevealScoresRef({
+  handleShowScores, updateScores, clearAutoProceed,
+  showResultsScreen, handlePhaseTransition
+});
+registerScoresCleanup(cleanup);
+registerScoresShowQuestionScreen(showQuestionScreen);
+registerScoresHandleNextQuestion(handleNextQuestion);
+registerPhasesCleanup(cleanup);
+init();

@@ -4,6 +4,8 @@
 // Phase 1: Word list, unlock conditions, evaluation logic.
 // ============================================
 
+import { MIN_QUESTIONS_FOR_TITLE, LOYAL_DAYS, ANCIENT_DAYS, NIGHT_OWL_START_HOUR, NIGHT_OWL_END_HOUR } from './constants.js';
+
 // ============================================
 // MASTER WORD LIST
 // ============================================
@@ -42,7 +44,7 @@ export const TITLE_WORDS = {
   loyal: {
     slot: 1, word: 'Loyal', rarity: 'common',
     hint: 'Time reveals the faithful',
-    unlock: { type: 'loyalty', condition: { stat: 'accountAgeDays', value: 30 } },
+    unlock: { type: 'loyalty', condition: { stat: 'accountAgeDays', value: LOYAL_DAYS } },
     levelMultiplier: 4 // L2: 120 days, L3: 360 days
   },
   steadfast: {
@@ -78,7 +80,7 @@ export const TITLE_WORDS = {
   ancient: {
     slot: 1, word: 'Ancient', rarity: 'rare',
     hint: 'They were here before the legends',
-    unlock: { type: 'loyalty', condition: { stat: 'accountAgeDays', value: 365 } },
+    unlock: { type: 'loyalty', condition: { stat: 'accountAgeDays', value: ANCIENT_DAYS } },
     levelMultiplier: 1 // Only 1 level for a year-old account
   },
 
@@ -292,7 +294,7 @@ const TIER_THRESHOLDS = {
 export function computeCategoryTiers(stats) {
   const tiers = {};
   for (const s of (stats || [])) {
-    if (s.questions_answered < 20) continue;
+    if (s.questions_answered < MIN_QUESTIONS_FOR_TITLE) continue;
     const accuracy = s.correct_answers / s.questions_answered;
     const score = accuracy * Math.log2(s.questions_answered);
     let tier = null;
@@ -427,7 +429,7 @@ function computeWordLevel(wordDef, categoryTiers, aggStats, profile, context) {
       const { stat, value } = condition;
       if (stat === 'nightOwl') {
         const hour = context?.hour ?? new Date().getHours();
-        if (hour < 2 || hour >= 5) return 0;
+        if (hour < NIGHT_OWL_START_HOUR || hour >= NIGHT_OWL_END_HOUR) return 0;
         baseAchieved = 1; // Hidden words are typically L1 only unless replayed
       } else if (stat === 'perfectGame') {
         if (!context?.perfectGame) return 0;

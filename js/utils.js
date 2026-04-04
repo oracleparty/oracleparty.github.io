@@ -2,6 +2,8 @@
 // Oracle Party — Shared Utilities
 // ============================================
 
+import { FADE_MS, TOAST_DURATION_MS, TRANSITION_MS, FUZZY_MATCH_THRESHOLD, MIN_WORD_LENGTH_LASTNAME, MIN_QUESTIONS_FOR_TITLE, TIER_ORACLE, TIER_MASTER, TIER_SCHOLAR, TIER_APPRENTICE } from './constants.js';
+
 /** querySelector shorthand */
 export const $ = (sel, ctx = document) => ctx.querySelector(sel);
 
@@ -12,7 +14,7 @@ export const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
  * Transition between two screens.
  * Fades out the current screen, then fades in the next.
  */
-export function transitionScreens(fromEl, toEl, duration = 500) {
+export function transitionScreens(fromEl, toEl, duration = FADE_MS) {
   return new Promise((resolve) => {
     // Dismiss any floating overlays (bottom sheets, review panel) that could
     // remain stuck above the next screen due to fixed/absolute positioning
@@ -122,10 +124,10 @@ export const CATEGORY_TITLES = {
 };
 
 const TITLE_TIERS = [
-  { min: 6.5, label: 'Oracle' },
-  { min: 5.5, label: 'Master' },
-  { min: 4.5, label: 'Scholar' },
-  { min: 3.0, label: 'Apprentice' },
+  { min: TIER_ORACLE, label: 'Oracle' },
+  { min: TIER_MASTER, label: 'Master' },
+  { min: TIER_SCHOLAR, label: 'Scholar' },
+  { min: TIER_APPRENTICE, label: 'Apprentice' },
 ];
 
 /**
@@ -141,7 +143,7 @@ export function calculateTitle(stats) {
   let bestCat = null;
 
   for (const s of (stats || [])) {
-    if (s.questions_answered < 20) continue;
+    if (s.questions_answered < MIN_QUESTIONS_FOR_TITLE) continue;
     const accuracy = s.correct_answers / s.questions_answered;
     const score = accuracy * Math.log2(s.questions_answered);
     if (score > bestScore) {
@@ -167,7 +169,7 @@ export function calculateTitle(stats) {
  * @param {'info'|'success'|'error'} type - Toast variant
  * @param {number} duration - Auto-dismiss delay in ms
  */
-export function showToast(message, type = 'info', duration = 3000) {
+export function showToast(message, type = 'info', duration = TOAST_DURATION_MS) {
   let container = document.querySelector('.toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -209,7 +211,7 @@ export function navigateWithFade(url) {
   if (_isNavigating) return;
   _isNavigating = true;
   document.body.classList.add('page-fade-out');
-  setTimeout(() => { window.location.href = url; }, 260);
+  setTimeout(() => { window.location.href = url; }, TRANSITION_MS);
 }
 
 /**
@@ -220,7 +222,7 @@ export function navigateWithFadeReplace(url) {
   if (_isNavigating) return;
   _isNavigating = true;
   document.body.classList.add('page-fade-out');
-  setTimeout(() => { window.location.replace(url); }, 260);
+  setTimeout(() => { window.location.replace(url); }, TRANSITION_MS);
 }
 
 // ============================================
@@ -336,7 +338,7 @@ export function fuzzyMatch(submitted, correct, alternates = []) {
     }
 
     // Levenshtein distance with threshold (word-part tolerance only)
-    const threshold = Math.max(1, Math.floor(normalizedCandidate.length * 0.25));
+    const threshold = Math.max(1, Math.floor(normalizedCandidate.length * FUZZY_MATCH_THRESHOLD));
     const distance = levenshteinDistance(normalizedSubmitted, normalizedCandidate);
     if (distance <= threshold) return true;
 
@@ -346,9 +348,9 @@ export function fuzzyMatch(submitted, correct, alternates = []) {
     if (normalizedCandidate.includes(' ')) {
       const words = normalizedCandidate.split(/\s+/);
       for (const word of words) {
-        if (word.length > 3) {
+        if (word.length > MIN_WORD_LENGTH_LASTNAME) {
           const wordDist = levenshteinDistance(normalizedSubmitted, word);
-          const wordThreshold = Math.max(1, Math.floor(word.length * 0.25));
+          const wordThreshold = Math.max(1, Math.floor(word.length * FUZZY_MATCH_THRESHOLD));
           if (wordDist <= wordThreshold) return true;
         }
       }
