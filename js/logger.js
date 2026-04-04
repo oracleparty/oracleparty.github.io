@@ -30,6 +30,19 @@ export const logger = {
 // ============================================
 
 let _supabaseClient = null;
+const _errorTimestamps = [];
+const MAX_ERRORS_PER_MINUTE = 10;
+
+function _isRateLimited() {
+  const now = Date.now();
+  // Drop entries older than 60s
+  while (_errorTimestamps.length && _errorTimestamps[0] < now - 60000) {
+    _errorTimestamps.shift();
+  }
+  if (_errorTimestamps.length >= MAX_ERRORS_PER_MINUTE) return true;
+  _errorTimestamps.push(now);
+  return false;
+}
 
 function _logToSupabase(payload) {
   if (!_supabaseClient) return;
@@ -54,16 +67,20 @@ function initErrorTracking(client) {
 
   window.onerror = (message, source, lineno, colno, error) => {
     logger.error('Global', `Unhandled: ${message}`, { source, lineno, colno });
-    _logToSupabase({ type: 'onerror', message: String(message), source, lineno, colno, stack: error?.stack });
-    _showErrorToast(message);
+    if (!_isRateLimited()) {
+      _logToSupabase({ type: 'onerror', message: String(message), source, lineno, colno, stack: error?.stack });
+      _showErrorToast(message);
+    }
   };
 
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
     const msg = reason?.message || String(reason);
     logger.error('Global', `Unhandled rejection: ${msg}`, reason);
-    _logToSupabase({ type: 'unhandledrejection', message: msg, stack: reason?.stack });
-    _showErrorToast(msg);
+    if (!_isRateLimited()) {
+      _logToSupabase({ type: 'unhandledrejection', message: msg, stack: reason?.stack });
+      _showErrorToast(msg);
+    }
   });
 }
 

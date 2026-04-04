@@ -5330,6 +5330,9 @@ body::after {
 .toast--success { border-left: 3px solid #22c55e; }
 .toast--error   { border-left: 3px solid #ef4444; }
 .toast--info    { border-left: 3px solid var(--color-primary); }
+.toast--persistent {
+  animation: toast-in 0.3s var(--ease-out) forwards, toast-pulse 2s ease-in-out 0.3s infinite;
+}
 .toast--out {
   animation: toast-out 0.25s var(--ease-out) forwards;
 }
@@ -5340,6 +5343,10 @@ body::after {
 @keyframes toast-out {
   from { opacity: 1; transform: translateY(0); }
   to   { opacity: 0; transform: translateY(-8px); }
+}
+@keyframes toast-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 /* ============================================

@@ -177,7 +177,7 @@ export function showToast(message, type = 'info', duration = TOAST_DURATION_MS) 
     document.body.appendChild(container);
   }
   const toast = document.createElement('div');
-  toast.className = `toast toast--${type}`;
+  toast.className = `toast toast--${type}${duration === Infinity ? ' toast--persistent' : ''}`;
   toast.textContent = message;
   container.appendChild(toast);
   if (duration !== Infinity) {
