@@ -875,18 +875,18 @@ body::after {
   background: var(--cat-accent, rgba(193, 154, 76, 0.15));
 }
 
-/* Per-category accent tints — 12 hues spaced around the color wheel */
-.category-card[data-category="history"]         { --cat-accent: rgba(180, 135, 45, 0.25); }  /* gold — 45° */
-.category-card[data-category="science"]         { --cat-accent: rgba(30, 120, 210, 0.20); }  /* azure — 210° */
-.category-card[data-category="nature"]          { --cat-accent: rgba(40, 160, 60, 0.20); }   /* green — 130° */
-.category-card[data-category="arts-literature"] { --cat-accent: rgba(180, 50, 130, 0.20); }  /* magenta — 325° */
-.category-card[data-category="culture-society"] { --cat-accent: rgba(110, 60, 190, 0.20); }  /* violet — 270° */
-.category-card[data-category="pop-culture"]     { --cat-accent: rgba(240, 90, 40, 0.22); }   /* vermillion — 15° */
-.category-card[data-category="world-geography"] { --cat-accent: rgba(15, 160, 140, 0.20); }  /* teal — 170° */
-.category-card[data-category="technology"]      { --cat-accent: rgba(70, 120, 170, 0.20); }   /* steel blue */
-.category-card[data-category="sports"]          { --cat-accent: rgba(210, 40, 50, 0.20); }   /* crimson — 355° */
-.category-card[data-category="food"]            { --cat-accent: rgba(220, 160, 30, 0.22); }  /* saffron — 55° */
-.category-card[data-category="logic"]           { --cat-accent: rgba(0, 130, 180, 0.20); }   /* cerulean — 195° */
+/* Per-category accent tints — every category a unique hue family */
+.category-card[data-category="history"]         { --cat-accent: rgba(180, 135, 45, 0.25); }  /* gold */
+.category-card[data-category="science"]         { --cat-accent: rgba(30, 120, 210, 0.22); }  /* blue */
+.category-card[data-category="nature"]          { --cat-accent: rgba(40, 160, 60, 0.22); }   /* green */
+.category-card[data-category="arts-literature"] { --cat-accent: rgba(180, 50, 130, 0.20); }  /* magenta */
+.category-card[data-category="culture-society"] { --cat-accent: rgba(110, 60, 190, 0.20); }  /* violet */
+.category-card[data-category="pop-culture"]     { --cat-accent: rgba(240, 90, 40, 0.22); }   /* orange */
+.category-card[data-category="world-geography"] { --cat-accent: rgba(15, 160, 140, 0.22); }  /* teal */
+.category-card[data-category="technology"]      { --cat-accent: rgba(80, 80, 90, 0.22); }    /* gunmetal */
+.category-card[data-category="sports"]          { --cat-accent: rgba(210, 40, 50, 0.20); }   /* red */
+.category-card[data-category="food"]            { --cat-accent: rgba(160, 200, 60, 0.22); }  /* lime */
+.category-card[data-category="logic"]           { --cat-accent: rgba(160, 120, 100, 0.25); }   /* sandstone */
 .category-card[data-category="wild-card"]       { --cat-accent: transparent; }
 .category-card[data-category="wild-card"] .category-card__icon-wrap {
   background: conic-gradient(
