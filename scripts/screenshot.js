@@ -2,18 +2,20 @@
 // ============================================
 // Oracle Party — Screenshot Helper
 // Takes a screenshot of any page at mobile viewport (375px).
-// Usage: node scripts/screenshot.js [page] [--width=N] [--height=N] [--full]
-//   page:    HTML file name without extension (default: "index")
-//   --width: viewport width in px (default: 375)
-//   --height: viewport height in px (default: 812)
-//   --full:  capture full page scroll (not just viewport)
-// Output: /tmp/screenshot-<page>.png
+//
+// Usage:
+//   node scripts/screenshot.js [page] [--screen=id] [--width=N] [--height=N] [--full]
+//   node scripts/screenshot.js --state=<name>        # Render mock state
+//   node scripts/screenshot.js --all                 # Screenshot all mock states
+//
+// Output: /tmp/screenshot-<name>.png
 // ============================================
 
 import { chromium } from 'playwright-core';
 import { createServer } from 'http';
 import { readFile } from 'fs/promises';
 import { join, extname } from 'path';
+import { STATES } from './mock-states.js';
 
 const MIME = {
   '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
@@ -35,7 +37,6 @@ for (const a of args) {
   }
 }
 
-const page = positional[0] || 'index';
 const width = parseInt(flags.width) || 375;
 const height = parseInt(flags.height) || 812;
 const fullPage = flags.full === true;
@@ -63,28 +64,23 @@ function startServer() {
   });
 }
 
-async function main() {
-  const { server, port } = await startServer();
+// Take a single screenshot
+async function screenshotPage(browser, port, { page, screen, inject, injectArgs, inherits, outName }) {
   const url = `http://127.0.0.1:${port}/${page}.html`;
-  const outPath = `/tmp/screenshot-${page}.png`;
+  const outPath = `/tmp/screenshot-${outName}.png`;
 
-  // Use pre-installed Chromium binary
-  const executablePath = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-  const browser = await chromium.launch({ executablePath });
   const context = await browser.newContext({
     viewport: { width, height },
-    deviceScaleFactor: 2, // Retina-quality for detail
+    deviceScaleFactor: 2,
   });
   const p = await context.newPage();
 
-  // Suppress external resource errors (Supabase, Google Fonts, etc.)
   p.on('pageerror', () => {});
   p.on('requestfailed', () => {});
 
-  // Block external requests (Supabase, Google Fonts, analytics) — they hang in sandboxed envs
   await p.route('**/*', (route) => {
-    const url = route.request().url();
-    if (url.startsWith(`http://127.0.0.1:${port}`)) {
+    const reqUrl = route.request().url();
+    if (reqUrl.startsWith(`http://127.0.0.1:${port}`)) {
       route.continue();
     } else {
       route.abort();
@@ -93,12 +89,12 @@ async function main() {
 
   await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 5000 });
 
-  // Force body visible and show target screen (pages use opacity:0 + display:none by default)
-  const screen = flags.screen || null;
+  // Force body visible and show target screen
   await p.evaluate((screenId) => {
     document.body.style.opacity = '1';
+    // Hide all modals by default
+    document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
     if (screenId) {
-      // Hide all screens, show target
       document.querySelectorAll('.screen').forEach(s => {
         s.style.display = 'none';
         s.classList.remove('active');
@@ -109,20 +105,69 @@ async function main() {
         target.classList.add('active');
       }
     } else {
-      // Show first screen with .active class, or first .screen
       const active = document.querySelector('.screen.active') || document.querySelector('.screen');
       if (active) active.style.display = 'flex';
     }
   }, screen);
 
-  // Brief pause for CSS transitions to settle
+  // Run inherited inject first (for states like reveal-with-fun-fact)
+  if (inherits && STATES[inherits]) {
+    const base = STATES[inherits];
+    const baseArgs = base.injectArgs ? base.injectArgs() : undefined;
+    await p.evaluate(base.inject, baseArgs);
+  }
+
+  // Run the state's inject function
+  if (inject) {
+    const injectData = injectArgs ? injectArgs() : undefined;
+    await p.evaluate(inject, injectData);
+  }
+
   await p.waitForTimeout(300);
-
   await p.screenshot({ path: outPath, fullPage });
-  console.log(outPath);
+  await context.close();
+  return outPath;
+}
 
-  await browser.close();
-  server.close();
+async function main() {
+  const { server, port } = await startServer();
+  const executablePath = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+  const browser = await chromium.launch({ executablePath });
+
+  try {
+    if (flags.all) {
+      // Screenshot all mock states
+      const names = Object.keys(STATES);
+      console.log(`Screenshotting ${names.length} states...`);
+      for (const name of names) {
+        const state = STATES[name];
+        const path = await screenshotPage(browser, port, { ...state, outName: name });
+        console.log(path);
+      }
+    } else if (flags.state) {
+      // Screenshot a specific mock state
+      const state = STATES[flags.state];
+      if (!state) {
+        console.error(`Unknown state: ${flags.state}\nAvailable: ${Object.keys(STATES).join(', ')}`);
+        process.exit(1);
+      }
+      const path = await screenshotPage(browser, port, { ...state, outName: flags.state });
+      console.log(path);
+    } else {
+      // Legacy mode: screenshot a page directly
+      const page = positional[0] || 'index';
+      const path = await screenshotPage(browser, port, {
+        page,
+        screen: flags.screen || null,
+        inject: null,
+        outName: flags.screen || page,
+      });
+      console.log(path);
+    }
+  } finally {
+    await browser.close();
+    server.close();
+  }
 }
 
 main().catch((e) => {
