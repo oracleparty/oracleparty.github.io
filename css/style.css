@@ -433,8 +433,8 @@ body::after {
 /* Glyph ring — 12 ancient symbols orbiting the title */
 .splash__ring {
   position: absolute;
-  width: 290px;
-  height: 290px;
+  width: 270px;
+  height: 270px;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -461,7 +461,7 @@ body::after {
   text-align: center;
   color: var(--color-primary);
   opacity: 0;
-  transform: rotate(calc(var(--i) * 30deg)) translateY(-142px) rotate(calc(var(--i) * -30deg));
+  transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg));
   animation: glyph-appear 0.5s ease-out both;
   animation-delay: calc(0.15s + var(--i) * 0.06s);
   text-shadow: 0 0 12px var(--color-primary-glow);
@@ -484,14 +484,14 @@ body::after {
 }
 
 @keyframes glyph-appear {
-  from { opacity: 0; filter: blur(4px); transform: rotate(calc(var(--i) * 30deg)) translateY(-90px) rotate(calc(var(--i) * -30deg)); }
-  to   { opacity: 1; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-142px) rotate(calc(var(--i) * -30deg)); }
+  from { opacity: 0; filter: blur(4px); transform: rotate(calc(var(--i) * 30deg)) translateY(-85px) rotate(calc(var(--i) * -30deg)); }
+  to   { opacity: 1; filter: blur(0); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)); }
 }
 
 @keyframes glyph-lock-pulse {
-  0%   { text-shadow: 0 0 4px var(--color-primary-glow); transform: rotate(calc(var(--i) * 30deg)) translateY(-142px) rotate(calc(var(--i) * -30deg)) scale(1); }
-  35%  { text-shadow: 0 0 32px rgba(150, 105, 31, 0.9), 0 0 70px rgba(150, 105, 31, 0.4); transform: rotate(calc(var(--i) * 30deg)) translateY(-142px) rotate(calc(var(--i) * -30deg)) scale(1.4); }
-  100% { text-shadow: 0 0 22px rgba(150, 105, 31, 0.6), 0 0 50px rgba(150, 105, 31, 0.25); transform: rotate(calc(var(--i) * 30deg)) translateY(-142px) rotate(calc(var(--i) * -30deg)) scale(1); }
+  0%   { text-shadow: 0 0 4px var(--color-primary-glow); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1); }
+  35%  { text-shadow: 0 0 32px rgba(150, 105, 31, 0.9), 0 0 70px rgba(150, 105, 31, 0.4); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1.4); }
+  100% { text-shadow: 0 0 22px rgba(150, 105, 31, 0.6), 0 0 50px rgba(150, 105, 31, 0.25); transform: rotate(calc(var(--i) * 30deg)) translateY(-132px) rotate(calc(var(--i) * -30deg)) scale(1); }
 }
 
 /* Eye of Horus — Oracle awakens beneath title */
@@ -500,18 +500,18 @@ body::after {
   z-index: 2;
   top: 50%;
   left: 50%;
-  margin-top: 32px;
-  transform: translate(-50%, 0) scale(0.3);
+  margin-top: 28px;
+  transform: translate(-50%, 0) scaleY(0) scaleX(0.7);
   font-size: 36px;
   color: var(--color-primary);
   text-shadow: 0 0 20px rgba(150, 105, 31, 0.6), 0 0 50px rgba(150, 105, 31, 0.25);
   opacity: 0;
-  transition: opacity 0.6s ease-out, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.3s ease-out, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .splash__eye--open {
   opacity: 1;
-  transform: translate(-50%, 0) scale(1);
+  transform: translate(-50%, 0) scaleY(1) scaleX(1);
 }
 
 /* Title — cinematic reveal with letter-spacing + blur */
@@ -571,7 +571,7 @@ body::after {
 }
 #splash.splash--exiting .splash__eye {
   transition: transform 0.4s ease-in, opacity 0.3s ease-in;
-  transform: translate(-50%, 0) scale(0.5);
+  transform: translate(-50%, 0) scaleY(0) scaleX(0.7);
   opacity: 0;
 }
 #splash.splash--exiting .splash__particles {
