@@ -3,8 +3,7 @@
    Clean, premium, light theme
    ============================================ */
 
-/* --- Google Fonts --- */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+/* --- Google Fonts loaded via <link> in HTML <head> for faster rendering --- */
 
 /* --- CSS Variables --- */
 :root {
@@ -13,17 +12,17 @@
   --color-bg-deep:      #F0EFEB;
   --color-surface:      #FFFFFF;
   --color-surface-light: #E8E6E1;
-  --color-primary:      #C68A2E;
-  --color-primary-dim:  #B07A28;
-  --color-primary-glow: rgba(198, 138, 46, 0.15);
+  --color-primary:      #96691F;
+  --color-primary-dim:  #855D1B;
+  --color-primary-glow: rgba(150, 105, 31, 0.15);
   --color-accent:       #5B6ABF;
   --color-accent-dim:   #4E5BA6;
   --color-accent-glow:  rgba(91, 106, 191, 0.12);
   --color-text:         #1C1917;
-  --color-text-dim:     #78716C;
-  --color-text-muted:   #A8A29E;
-  --color-danger:       #C44B4B;
-  --color-success:      #3A8A4F;
+  --color-text-dim:     #6B645F;
+  --color-text-muted:   #6E6966;
+  --color-danger:       #B53E3E;
+  --color-success:      #2E7A42;
   --color-overlay:      rgba(28, 25, 23, 0.5);
 
   /* Typography */
@@ -1003,7 +1002,6 @@ body::after {
   border: 1px dashed var(--color-surface-light);
   border-radius: var(--radius-md);
   text-align: center;
-  opacity: 0.7;
 }
 
 .placeholder-section__title {
@@ -1450,15 +1448,15 @@ body::after {
 }
 
 .badge--host {
-  background: var(--color-primary-glow);
-  color: var(--color-primary);
+  background: rgba(150, 105, 31, 0.12);
+  color: #7A5518;
   margin-left: var(--space-xs);
   vertical-align: middle;
 }
 
 .badge--cohost {
-  background: rgba(167, 139, 250, 0.15);
-  color: #A78BFA;
+  background: rgba(100, 70, 180, 0.12);
+  color: #5B3FA0;
   margin-left: var(--space-xs);
   vertical-align: middle;
 }

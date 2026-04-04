@@ -14,6 +14,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
     "jsdom": "^29.0.1",
     "playwright": "^1.59.1",
     "playwright-core": "^1.53.0",

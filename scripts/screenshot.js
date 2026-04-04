@@ -12,8 +12,9 @@
 // ============================================
 
 import { chromium } from 'playwright-core';
+import AxeBuilder from '@axe-core/playwright';
 import { createServer } from 'http';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 import { join, extname } from 'path';
 import { STATES } from './mock-states.js';
 
@@ -40,6 +41,7 @@ for (const a of args) {
 const width = parseInt(flags.width) || 375;
 const height = parseInt(flags.height) || 812;
 const fullPage = flags.full === true;
+const runA11y = flags.a11y === true;
 const ROOT = join(import.meta.dirname, '..');
 
 // Simple static file server
@@ -125,8 +127,18 @@ async function screenshotPage(browser, port, { page, screen, inject, injectArgs,
 
   await p.waitForTimeout(300);
   await p.screenshot({ path: outPath, fullPage });
+
+  // Run accessibility scan if requested
+  let a11yResults = null;
+  if (runA11y) {
+    try {
+      const results = await new AxeBuilder({ page: p }).analyze();
+      a11yResults = results.violations;
+    } catch { /* axe may fail on some pages */ }
+  }
+
   await context.close();
-  return outPath;
+  return { path: outPath, a11y: a11yResults };
 }
 
 async function main() {
@@ -135,34 +147,51 @@ async function main() {
   const browser = await chromium.launch({ executablePath });
 
   try {
+    const allA11y = [];
+
     if (flags.all) {
-      // Screenshot all mock states
       const names = Object.keys(STATES);
-      console.log(`Screenshotting ${names.length} states...`);
+      console.log(`Screenshotting ${names.length} states${runA11y ? ' + a11y scan' : ''}...`);
       for (const name of names) {
         const state = STATES[name];
-        const path = await screenshotPage(browser, port, { ...state, outName: name });
+        const { path, a11y } = await screenshotPage(browser, port, { ...state, outName: name });
         console.log(path);
+        if (a11y?.length) allA11y.push({ state: name, violations: a11y });
       }
     } else if (flags.state) {
-      // Screenshot a specific mock state
       const state = STATES[flags.state];
       if (!state) {
         console.error(`Unknown state: ${flags.state}\nAvailable: ${Object.keys(STATES).join(', ')}`);
         process.exit(1);
       }
-      const path = await screenshotPage(browser, port, { ...state, outName: flags.state });
+      const { path, a11y } = await screenshotPage(browser, port, { ...state, outName: flags.state });
       console.log(path);
+      if (a11y?.length) allA11y.push({ state: flags.state, violations: a11y });
     } else {
-      // Legacy mode: screenshot a page directly
       const page = positional[0] || 'index';
-      const path = await screenshotPage(browser, port, {
+      const { path, a11y } = await screenshotPage(browser, port, {
         page,
         screen: flags.screen || null,
         inject: null,
         outName: flags.screen || page,
       });
       console.log(path);
+      if (a11y?.length) allA11y.push({ state: page, violations: a11y });
+    }
+
+    // Print accessibility summary
+    if (runA11y) {
+      const outFile = '/tmp/a11y-report.json';
+      await writeFile(outFile, JSON.stringify(allA11y, null, 2));
+      const total = allA11y.reduce((n, s) => n + s.violations.length, 0);
+      console.log(`\nAccessibility: ${total} violation${total !== 1 ? 's' : ''} across ${allA11y.length} state${allA11y.length !== 1 ? 's' : ''}`);
+      for (const { state, violations } of allA11y) {
+        for (const v of violations) {
+          console.log(`  [${state}] ${v.impact}: ${v.id} — ${v.help} (${v.nodes.length} instance${v.nodes.length !== 1 ? 's' : ''})`);
+        }
+      }
+      if (total > 0) console.log(`Full report: ${outFile}`);
+      else console.log('No accessibility violations found!');
     }
   } finally {
     await browser.close();
