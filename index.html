@@ -86,6 +86,27 @@
     </div>
   </div>
 
+  <!-- Splash ring spin — standalone, no module deps -->
+  <script>
+    (function() {
+      var ring = document.querySelector('.splash__ring');
+      var splash = document.getElementById('splash');
+      if (!ring || !splash) return;
+      setTimeout(function() {
+        ring.style.animation = 'none';
+        ring.style.opacity = '1';
+        var angle = 0, last = performance.now();
+        (function spin(now) {
+          angle += (now - last) / 1000 * 18;
+          last = now;
+          ring.style.transform = 'translate(-50%,-50%) rotate(' + angle + 'deg)';
+          if (!splash.classList.contains('splash--exiting'))
+            requestAnimationFrame(spin);
+        })(performance.now());
+      }, 1800);
+    })();
+  </script>
+
   <!-- ===== SCRIPTS ===== -->
   <script type="module">
     import { $, transitionScreens, delay, renderAvatar, navigateWithFade } from './js/utils.js';
@@ -111,22 +132,6 @@
         p.style.setProperty('--drift', `${(Math.random() - 0.5) * 40}px`);
         particleContainer.appendChild(p);
       }
-
-      // Spin the glyph ring via JS after CSS enter animation completes
-      const ring = document.querySelector('.splash__ring');
-      setTimeout(() => {
-        // Kill CSS animation so inline transform takes effect
-        ring.style.animation = 'none';
-        ring.style.opacity = '1';
-        let angle = 0, last = performance.now();
-        (function spin(now) {
-          angle += (now - last) / 1000 * 18; // 18°/s
-          last = now;
-          ring.style.transform = 'translate(-50%,-50%) rotate(' + angle + 'deg)';
-          if (!splash.classList.contains('splash--exiting'))
-            requestAnimationFrame(spin);
-        })(performance.now());
-      }, 1800);
 
       // Run both in parallel: minimum splash time + Supabase connection test
       const [, connected] = await Promise.all([
