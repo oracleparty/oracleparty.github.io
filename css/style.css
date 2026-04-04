@@ -449,8 +449,8 @@ body::after {
 }
 
 @keyframes ring-spin {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to   { transform: translate(-50%, -50%) rotate(360deg); }
+  from { rotate: 0deg; }
+  to   { rotate: 360deg; }
 }
 
 /* Counter-spin keeps each glyph upright while the ring rotates */
@@ -532,6 +532,7 @@ body::after {
 
 /* Exit animation — everything converges to center and shrinks */
 #splash.splash--exiting .splash__ring {
+  animation: none;
   transition: transform 0.5s ease-in, opacity 0.4s ease-in;
   transform: translate(-50%, -50%) scale(0.3);
   opacity: 0;
