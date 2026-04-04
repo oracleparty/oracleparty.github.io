@@ -4,7 +4,7 @@
 // Supabase API calls are always network-only.
 // ============================================
 
-const CACHE_VERSION = 'op-v2';
+const CACHE_VERSION = 'op-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -41,7 +41,8 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: network-first for API/realtime, cache-first for app shell
+// Fetch: network-first for everything, cache as fallback (offline support).
+// This ensures users always get fresh files while still working offline.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -56,18 +57,17 @@ self.addEventListener('fetch', (event) => {
     return; // let the browser handle it normally
   }
 
-  // App shell: try cache first, fall back to network
+  // Network-first: always try fresh, fall back to cache if offline
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(response => {
-        // Cache successful responses for future use
+    fetch(event.request)
+      .then(response => {
+        // Update cache with fresh response
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_VERSION).then(cache => cache.put(event.request, clone));
         }
         return response;
-      });
-    })
+      })
+      .catch(() => caches.match(event.request))
   );
 });

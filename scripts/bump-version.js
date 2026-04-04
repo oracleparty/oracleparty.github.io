@@ -39,4 +39,15 @@ for (const file of HTML_FILES) {
   }
 }
 
+// Also bump service worker cache version so stale caches get purged
+const swPath = join(ROOT, 'sw.js');
+let sw = await readFile(swPath, 'utf8');
+const swOriginal = sw;
+sw = sw.replace(/const CACHE_VERSION = '[^']+';/, `const CACHE_VERSION = 'op-v${version}';`);
+if (sw !== swOriginal) {
+  await writeFile(swPath, sw);
+  totalUpdates++;
+  console.log(`  sw.js → op-v${version}`);
+}
+
 console.log(`\nUpdated ${totalUpdates} file${totalUpdates !== 1 ? 's' : ''} to v=${version}`);
