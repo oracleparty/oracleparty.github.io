@@ -29,7 +29,8 @@ import {
   reassignPlayerAnswers,
   appendUsedQuestionIds,
   fetchAllOpenQuestions,
-  fetchExclusiveWildCardQuestions
+  fetchExclusiveWildCardQuestions,
+  fetchQuestionFeedback
 } from '../supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from '../auth.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
@@ -42,6 +43,7 @@ import {
   _flagMenuCloseHandler, setFlagMenuCloseHandler,
   _isLeaving, setIsLeaving,
   _syncInFlight, setSyncInFlight,
+  _qbFeedback,
 } from './state.js';
 import {
   attachChatListeners, loadChatMessages, handleNewMessage,
@@ -72,6 +74,25 @@ import {
   handleAnswerChange, checkStalePresence,
   registerCleanup as registerPhasesCleanup,
 } from './phases.js';
+
+// ============================================
+// FEEDBACK PREFETCH
+// ============================================
+
+/** Load any previous feedback this player gave on these questions. */
+async function prefetchFeedback() {
+  try {
+    const ratings = await fetchQuestionFeedback(state.room.id, getDisplayName());
+    for (const r of ratings) {
+      _qbFeedback[r.question_id] = {
+        type: r.feedback_type,
+        reason: r.flag_reason || null
+      };
+    }
+  } catch (e) {
+    logger.error('Init', 'prefetchFeedback failed', e);
+  }
+}
 
 // ============================================
 // INIT
@@ -296,6 +317,7 @@ async function initHostGame() {
     state.questions = await fetchQuestionsByIds(roomData.question_ids);
     if (state.questions.length > 0) resolveFieldMap(state.questions[0]);
     state.currentQuestion = roomData.current_question || 0;
+    prefetchFeedback(); // fire-and-forget: restore previous ratings
 
     // Detect final wager phases
     if (['final_wager', 'final_question'].includes(roomData.game_phase)) {
@@ -359,6 +381,7 @@ async function initHostGame() {
   }
   state.questions = questions;
   resolveFieldMap(questions[0]);
+  prefetchFeedback(); // fire-and-forget: restore previous ratings
 
   const questionIds = questions.map(q => q.id);
 
@@ -427,6 +450,7 @@ async function applyGameState(roomData) {
   }
 
   state.currentQuestion = roomData.current_question || 0;
+  prefetchFeedback(); // fire-and-forget: restore previous ratings
 
   // Build list of questions shown so far (for question browser on reconnect)
   state.shownQuestionIndices = [];

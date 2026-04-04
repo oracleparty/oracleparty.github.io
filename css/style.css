@@ -3446,7 +3446,15 @@ body::after {
 
 .review-item__feedback {
   display: flex;
+  align-items: center;
   gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+.review-item__flag-reason {
+  font-size: var(--text-2xs);
+  color: var(--color-danger);
+  font-family: var(--font-heading);
+  font-weight: 500;
 }
 
 /* Host answer rows in Review Questions overlay */

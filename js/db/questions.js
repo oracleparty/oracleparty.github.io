@@ -582,7 +582,7 @@ export async function fetchQuestionFeedback(roomId, playerName, userId) {
   // Fetch room-level feedback
   const { data, error } = await supabase
     .from('question_feedback')
-    .select('question_id, feedback_type')
+    .select('question_id, feedback_type, flag_reason')
     .eq('room_id', roomId)
     .eq('player_name', playerName);
   if (error) { logger.error('Supabase', 'fetchQuestionFeedback failed', error); return []; }
@@ -592,7 +592,7 @@ export async function fetchQuestionFeedback(roomId, playerName, userId) {
   if (userId) {
     const { data: acct } = await supabase
       .from('question_feedback')
-      .select('question_id, feedback_type')
+      .select('question_id, feedback_type, flag_reason')
       .eq('room_id', '__account__')
       .eq('player_name', userId);
     if (acct) {

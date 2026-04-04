@@ -1082,7 +1082,7 @@ async function handleReviewQuestions() {
 
   // Always fetch latest feedback from DB (merges with any in-memory state)
   const ratings = await fetchQuestionFeedback(state.room.id, getDisplayName());
-  for (const r of ratings) _qbFeedback[r.question_id] = r.feedback_type;
+  for (const r of ratings) _qbFeedback[r.question_id] = { type: r.feedback_type, reason: r.flag_reason || null };
 
   // Build question list (all regular + final wager question)
   const totalQ = Math.min(state.questions.length, state.totalQuestions + 1);
@@ -1095,7 +1095,8 @@ async function handleReviewQuestions() {
     const isFinal = i === state.totalQuestions;
     const label = isFinal ? 'Final Question' : `Question ${i + 1}`;
     const myAnswer = answerByQ[i];
-    const existing = _qbFeedback[q.id] || null;
+    const fb = _qbFeedback[q.id] || null;
+    const existingType = fb?.type || null;
 
     let playerAnswerHtml = '';
     if (myAnswer) {
@@ -1128,8 +1129,14 @@ async function handleReviewQuestions() {
       }
     }
 
+    // Flag reason label for previously-flagged questions
+    const flagReasonLabels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', alternate_answer: 'another valid answer', other: 'other' };
+    const flagReasonHtml = (existingType === 'flag' && fb.reason)
+      ? `<span class="review-item__flag-reason">Flagged: ${flagReasonLabels[fb.reason] || fb.reason}</span>`
+      : '';
+
     const item = document.createElement('div');
-    const isFlagged = existing === 'thumbs_down' || existing === 'flag';
+    const isFlagged = existingType === 'thumbs_down' || existingType === 'flag';
     item.className = 'review-item' + (isFlagged ? ' review-item--flagged' : '');
     item.innerHTML = `
       <div class="review-item__num">${label}</div>
@@ -1137,9 +1144,10 @@ async function handleReviewQuestions() {
       <div class="review-item__a">${escapeHtml(getCorrectAnswer(q))}</div>
       ${canControlGame() ? hostAnswersHtml : playerAnswerHtml}
       <div class="review-item__feedback">
-        <button class="feedback-btn${existing === 'thumbs_up' ? ' feedback-btn--active' : ''}" data-type="thumbs_up" data-qid="${q.id}" aria-label="Thumbs up">👍</button>
-        <button class="feedback-btn${existing === 'thumbs_down' ? ' feedback-btn--active' : ''}" data-type="thumbs_down" data-qid="${q.id}" aria-label="Thumbs down">👎</button>
-        <button class="feedback-btn${existing === 'flag' ? ' feedback-btn--active' : ''}" data-type="flag" data-qid="${q.id}" aria-label="Flag">🚩</button>
+        <button class="feedback-btn${existingType === 'thumbs_up' ? ' feedback-btn--active' : ''}" data-type="thumbs_up" data-qid="${q.id}" aria-label="Thumbs up">👍</button>
+        <button class="feedback-btn${existingType === 'thumbs_down' ? ' feedback-btn--active' : ''}" data-type="thumbs_down" data-qid="${q.id}" aria-label="Thumbs down">👎</button>
+        <button class="feedback-btn feedback-btn--flag${existingType === 'flag' ? ' feedback-btn--active' : ''}" data-type="flag" data-qid="${q.id}" aria-label="Flag">🚩</button>
+        ${flagReasonHtml}
       </div>
     `;
     list.appendChild(item);
@@ -1153,12 +1161,13 @@ async function handleReviewQuestions() {
       const qid = btn.dataset.qid;
 
       const reviewItem = btn.closest('.review-item');
+      const reasonLabel = reviewItem.querySelector('.review-item__flag-reason');
 
       if (type === 'flag') {
         const wasActive = btn.classList.contains('feedback-btn--active');
         btn.classList.toggle('feedback-btn--active');
         if (!wasActive) {
-          _qbFeedback[qid] = 'flag';
+          _qbFeedback[qid] = { type: 'flag', reason: 'other' };
           upsertQuestionFeedback({
             questionId: qid,
             roomId: state.room.id,
@@ -1166,13 +1175,17 @@ async function handleReviewQuestions() {
             feedbackType: 'flag',
             flagReason: 'other'
           });
+          if (reasonLabel) reasonLabel.textContent = 'Flagged: other';
+          else btn.insertAdjacentHTML('afterend', '<span class="review-item__flag-reason">Flagged: other</span>');
         } else {
           _qbFeedback[qid] = null;
           deleteQuestionFeedback({ questionId: qid, roomId: state.room.id, playerName: getDisplayName() });
+          if (reasonLabel) reasonLabel.remove();
         }
         // Update flagged highlight
-        const fb = _qbFeedback[qid];
-        reviewItem.classList.toggle('review-item--flagged', fb === 'flag' || fb === 'thumbs_down');
+        const fbObj = _qbFeedback[qid];
+        const fbType = fbObj?.type || null;
+        reviewItem.classList.toggle('review-item--flagged', fbType === 'flag' || fbType === 'thumbs_down');
         return;
       }
 
@@ -1185,7 +1198,7 @@ async function handleReviewQuestions() {
       btn.classList.toggle('feedback-btn--active');
 
       if (btn.classList.contains('feedback-btn--active')) {
-        _qbFeedback[qid] = type;
+        _qbFeedback[qid] = { type, reason: null };
         upsertQuestionFeedback({
           questionId: qid,
           roomId: state.room.id,
@@ -1198,8 +1211,9 @@ async function handleReviewQuestions() {
         deleteQuestionFeedback({ questionId: qid, roomId: state.room.id, playerName: getDisplayName() });
       }
       // Update flagged highlight
-      const fb = _qbFeedback[qid];
-      reviewItem.classList.toggle('review-item--flagged', fb === 'flag' || fb === 'thumbs_down');
+      const fbObj = _qbFeedback[qid];
+      const fbType = fbObj?.type || null;
+      reviewItem.classList.toggle('review-item--flagged', fbType === 'flag' || fbType === 'thumbs_down');
     });
   });
 

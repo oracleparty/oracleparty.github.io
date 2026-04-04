@@ -561,6 +561,24 @@ function showFeedbackUI() {
   const container = $('#reveal-feedback');
   container.style.display = '';
   container.classList.remove('reveal__feedback--faded');
+
+  // Restore previous feedback state for this question
+  const q = state.questions[state.currentQuestion];
+  if (q) {
+    const fb = _qbFeedback[q.id];
+    const fbType = fb?.type || null;
+    container.querySelectorAll('.feedback-btn').forEach(b => {
+      b.classList.toggle('feedback-btn--active', b.dataset.type === fbType);
+    });
+    // If previously flagged with a specific reason, show confirmation text
+    if (fbType === 'flag' && fb.reason) {
+      const labels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', alternate_answer: 'another valid answer', other: 'other' };
+      const confirmEl = document.getElementById('feedback-flag-confirm');
+      confirmEl.textContent = `Flagged as ${labels[fb.reason] || fb.reason} \u2713`;
+      confirmEl.classList.add('show');
+    }
+  }
+
   state.feedbackFadeTimer = setTimeout(() => {
     container.classList.add('reveal__feedback--faded');
   }, RESULTS_ACTION_DELAY_MS);
@@ -605,7 +623,7 @@ export function initFeedbackListeners() {
       } else {
         btn.classList.add('feedback-btn--active');
         if (q) {
-          _qbFeedback[q.id] = type;
+          _qbFeedback[q.id] = { type, reason: null };
           upsertQuestionFeedback({
             questionId: q.id,
             roomId: state.room.id,
@@ -649,7 +667,7 @@ export function initFeedbackListeners() {
 
       const q = state.questions[state.currentQuestion];
       if (q) {
-        _qbFeedback[q.id] = 'flag';
+        _qbFeedback[q.id] = { type: 'flag', reason };
         upsertQuestionFeedback({
           questionId: q.id,
           roomId: state.room.id,
