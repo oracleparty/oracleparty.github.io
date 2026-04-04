@@ -168,15 +168,15 @@
       const splash = $('#splash');
       const home = $('#home');
 
-      // Spawn golden dust particles
+      // Spawn golden ember particles — fewer, bigger, concentrated near ring
       const particleContainer = document.getElementById('splash-particles');
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 10; i++) {
         const p = document.createElement('span');
         p.className = 'splash__particle';
-        p.style.left = `${10 + Math.random() * 80}%`;
-        p.style.animationDelay = `${Math.random() * 2.5}s`;
-        p.style.animationDuration = `${2 + Math.random() * 2}s`;
-        p.style.setProperty('--drift', `${(Math.random() - 0.5) * 40}px`);
+        p.style.left = `${25 + Math.random() * 50}%`;
+        p.style.animationDelay = `${0.5 + Math.random() * 2}s`;
+        p.style.animationDuration = `${2.5 + Math.random() * 1.5}s`;
+        p.style.setProperty('--drift', `${(Math.random() - 0.5) * 30}px`);
         particleContainer.appendChild(p);
       }
 
