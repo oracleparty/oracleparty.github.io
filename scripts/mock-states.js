@@ -59,10 +59,10 @@ export const STATES = {
     screen: 'home',
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
-      // Render avatar + theme toggle so they're visible in screenshots
+      // Render dock contents for screenshots
       const avatar = document.getElementById('home-avatar');
       if (avatar && !avatar.children.length) {
-        avatar.innerHTML = '<div class="avatar avatar--guest" style="width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--color-primary-dim);color:#fff;font-weight:700;font-size:var(--text-base);">G</div>';
+        avatar.innerHTML = '<div class="avatar avatar--guest" style="width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--color-primary-dim);color:#fff;font-weight:700;font-size:12px;">G</div>';
       }
       const themeBtn = document.getElementById('theme-toggle');
       if (themeBtn && !themeBtn.textContent.trim()) {

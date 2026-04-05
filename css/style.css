@@ -824,6 +824,89 @@ body::after {
   animation: fade-up 0.6s var(--ease-out) 0.28s both;
 }
 
+.home.active .home__dock {
+  animation: fade-up 0.6s var(--ease-out) 0.36s both;
+}
+
+/* --- Bottom Dock --- */
+.home__dock {
+  position: absolute;
+  bottom: max(var(--space-xl), env(safe-area-inset-bottom, 12px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 5;
+}
+
+[data-theme="light"] .home__dock,
+:root:not([data-theme]) .home__dock {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.home__dock-btn {
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  transition: color 0.15s ease, transform 0.1s ease;
+}
+
+.home__dock-btn:active {
+  transform: scale(0.9);
+}
+
+.home__dock-btn--hiero {
+  color: var(--color-primary);
+  font-size: 18px;
+  opacity: 0.6;
+}
+
+.home__dock-btn .avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  border-radius: 50%;
+}
+
+.home__dock-btn .avatar.avatar--guest {
+  background: var(--color-primary-dim) !important;
+}
+
+.home__dock-div {
+  width: 1px;
+  height: 16px;
+  background: var(--color-primary);
+  opacity: 0.2;
+}
+
+/* Override base styles when inside dock */
+.home__dock .theme-toggle {
+  position: static;
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font-size: 14px;
+  padding: 4px 10px;
+  color: var(--color-text-muted);
+}
+
 /* --- Site Brand (consistent across all screens) --- */
 .site-brand {
   font-family: var(--font-display);
@@ -4006,40 +4089,11 @@ body::after {
    HOME AVATAR ICON
    ============================================ */
 
-.home-avatar {
-  position: absolute;
-  top: var(--space-lg);
-  left: var(--space-lg);
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid var(--color-surface-light);
-  padding: 0;
-  background: var(--color-bg-deep);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 5;
-  transition: transform 0.15s ease;
-}
-.home-avatar:active {
-  transform: scale(0.92);
-}
 .home-signin-link {
   display: none;
 }
 .home-signin-link.hidden {
   display: none;
-}
-.home-avatar .avatar {
-  width: 100%;
-  height: 100%;
-  font-size: 20px;
-}
-.home-avatar .avatar.avatar--guest {
-  font-size: var(--text-base);
-  background: var(--color-primary-dim) !important;
 }
 
 /* ============================================
