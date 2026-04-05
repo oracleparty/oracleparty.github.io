@@ -684,9 +684,19 @@ body::after {
   animation: glyph-drift ease-in-out infinite;
 }
 
+.home__glyph--hiero {
+  color: var(--color-primary);
+  opacity: 0.15;
+}
+
 [data-theme="dark"] .home__glyph,
 [data-theme="oled"] .home__glyph {
   opacity: 0.10;
+}
+
+[data-theme="dark"] .home__glyph--hiero,
+[data-theme="oled"] .home__glyph--hiero {
+  opacity: 0.14;
 }
 
 @keyframes glyph-drift {

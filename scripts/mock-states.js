@@ -60,18 +60,27 @@ export const STATES = {
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
       // Spawn floating category glyphs for visual QA
-      const icons = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
+      const emoji = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
+      const hiero = ['𓋹','𓂀','𓅃','𓏞','𓀭','𓇳','𓇯','𓊝','𓃗','𓋍','𓁹','𓆣'];
+      const allGlyphs = [...emoji, ...hiero];
       const container = document.getElementById('home-glyphs');
       if (container && !container.children.length) {
-        for (let i = 0; i < 16; i++) {
+        const placed = [];
+        const MIN_DIST = 12;
+        for (let i = 0; i < 18; i++) {
           const g = document.createElement('span');
-          g.className = 'home__glyph';
-          g.textContent = icons[i % icons.length];
-          let left;
-          if (Math.random() < 0.5) { left = 2 + Math.random() * 22; }
-          else { left = 76 + Math.random() * 22; }
+          const isHiero = i % allGlyphs.length >= emoji.length;
+          g.className = 'home__glyph' + (isHiero ? ' home__glyph--hiero' : '');
+          g.textContent = allGlyphs[i % allGlyphs.length];
+          let left, top, attempts = 0;
+          do {
+            left = Math.random() < 0.5 ? 2 + Math.random() * 22 : 76 + Math.random() * 22;
+            top = 3 + Math.random() * 90;
+            attempts++;
+          } while (attempts < 20 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < MIN_DIST));
+          placed.push([left, top]);
           g.style.left = `${left}%`;
-          g.style.top = `${3 + Math.random() * 90}%`;
+          g.style.top = `${top}%`;
           g.style.fontSize = `${22 + Math.random() * 10}px`;
           g.style.animationDelay = `${Math.random() * 8}s`;
           g.style.animationDuration = `${8 + Math.random() * 8}s`;

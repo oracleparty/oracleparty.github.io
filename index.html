@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260405d">
+  <link rel="stylesheet" href="css/style.css?v=20260405e">
 </head>
 <body style="opacity:0">
 
@@ -174,18 +174,27 @@
       const home = $('#home');
 
       // Spawn floating category glyphs as background texture
-      const categoryIcons = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
+      const categoryEmoji = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
+      const categoryHiero = ['𓋹','𓂀','𓅃','𓏞','𓀭','𓇳','𓇯','𓊝','𓃗','𓋍','𓁹','𓆣'];
+      const allGlyphs = [...categoryEmoji, ...categoryHiero];
       const glyphContainer = document.getElementById('home-glyphs');
-      for (let i = 0; i < 16; i++) {
+      const placed = []; // track positions for minimum distance
+      const MIN_DIST = 12; // minimum distance in % units
+      for (let i = 0; i < 18; i++) {
         const g = document.createElement('span');
-        g.className = 'home__glyph';
-        g.textContent = categoryIcons[i % categoryIcons.length];
+        const isHiero = i % allGlyphs.length >= categoryEmoji.length;
+        g.className = 'home__glyph' + (isHiero ? ' home__glyph--hiero' : '');
+        g.textContent = allGlyphs[i % allGlyphs.length];
         // Push toward edges — avoid center content column
-        let left;
-        if (Math.random() < 0.5) { left = 2 + Math.random() * 22; } // left edge
-        else { left = 76 + Math.random() * 22; } // right edge
+        let left, top, attempts = 0;
+        do {
+          left = Math.random() < 0.5 ? 2 + Math.random() * 22 : 76 + Math.random() * 22;
+          top = 3 + Math.random() * 90;
+          attempts++;
+        } while (attempts < 20 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < MIN_DIST));
+        placed.push([left, top]);
         g.style.left = `${left}%`;
-        g.style.top = `${3 + Math.random() * 90}%`;
+        g.style.top = `${top}%`;
         g.style.fontSize = `${22 + Math.random() * 10}px`;
         g.style.animationDelay = `${Math.random() * 8}s`;
         g.style.animationDuration = `${8 + Math.random() * 8}s`;
