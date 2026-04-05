@@ -59,6 +59,16 @@ export const STATES = {
     screen: 'home',
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      // Render avatar + theme toggle so they're visible in screenshots
+      const avatar = document.getElementById('home-avatar');
+      if (avatar && !avatar.children.length) {
+        avatar.innerHTML = '<div class="avatar avatar--guest" style="width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--color-primary-dim);color:#fff;font-weight:700;font-size:var(--text-base);">G</div>';
+      }
+      const themeBtn = document.getElementById('theme-toggle');
+      if (themeBtn && !themeBtn.textContent.trim()) {
+        const isDark = document.documentElement.getAttribute('data-theme') && document.documentElement.getAttribute('data-theme') !== 'light';
+        themeBtn.textContent = isDark ? '☀️' : '🌙';
+      }
       // Spawn floating category glyphs for visual QA
       const emoji = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
       const hiero = ['𓋹','𓂀','𓅃','𓏞','𓀭','𓇳','𓇯','𓊝','𓃗','𓋍','𓁹','𓆣'];
