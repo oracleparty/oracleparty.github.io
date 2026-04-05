@@ -602,7 +602,7 @@ export async function initProfilePage() {
 
           return `<div class="mastery-group" data-cat="${cat}">
             <div class="mastery-row${hasSubs && subHtml ? ' mastery-row--expandable' : ''}">
-              <span class="mastery-row__icon">${meta.icon}</span>
+              <span class="mastery-row__icon">${meta.emoji || meta.icon}</span>
               <span class="mastery-row__name">${meta.label}</span>
               <span class="mastery-row__fraction">${mastered}/${total}</span>
               <div class="mastery-bar mastery-bar--inline"><div class="mastery-bar__fill" style="width: ${pct}%"></div></div>
@@ -740,7 +740,7 @@ export async function initProfilePage() {
 
         return `<div class="profile-category-group" data-category="${s.category}">
           <div class="profile-category-row${hasSubs ? ' profile-category-row--expandable' : ''}">
-            <span>${meta.icon}</span>
+            <span>${meta.emoji || meta.icon}</span>
             <span class="profile-category-row__name">${meta.label}</span>
             <span class="profile-category-row__accuracy">${acc}%</span>
             ${hasSubs ? '<span class="profile-category-row__chevron">›</span>' : ''}
@@ -777,7 +777,7 @@ export async function initProfilePage() {
           const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
           const placeSuffix = g.placement === 1 ? 'st' : g.placement === 2 ? 'nd' : g.placement === 3 ? 'rd' : 'th';
           return `<div class="profile-game-row">
-            <span>${meta.icon}</span>
+            <span>${meta.emoji || meta.icon}</span>
             <span class="profile-game-row__category">${meta.label}</span>
             <span class="profile-game-row__placement">${g.placement}${placeSuffix}/${g.total_players}</span>
             <span class="profile-game-row__score">${g.score} pts</span>
@@ -791,7 +791,7 @@ export async function initProfilePage() {
   if (favCatEl) {
     favCatEl.innerHTML = Object.entries(CATEGORY_META).map(([name, meta]) => {
       const selected = profile.favorite_category === name ? 'selected' : '';
-      return `<button class="profile-fav-cat ${selected}" data-cat="${name}">${meta.icon} ${meta.label}</button>`;
+      return `<button class="profile-fav-cat ${selected}" data-cat="${name}">${meta.emoji || meta.icon} ${meta.label}</button>`;
     }).join('');
 
     favCatEl.onclick = async (e) => {

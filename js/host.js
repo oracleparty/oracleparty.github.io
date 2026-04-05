@@ -233,7 +233,7 @@ function renderSubcategoryLevel(catName, items, title, parentKey, icon) {
       const playsHtml = subPlays > 0 ? `<span class="subcategory-row__plays">${subPlays.toLocaleString()} plays</span>` : '';
       return `
       <div class="subcategory-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
-        <span class="subcategory-row__icon">${s.icon}</span>
+        <span class="subcategory-row__icon">${s.emoji || s.icon}</span>
         <span class="subcategory-row__label">${s.label}</span>
         <span class="subcategory-row__count" data-sub-count="${s.key}"></span>
         ${playsHtml}
@@ -288,12 +288,12 @@ function renderWildCardOptions(catName, cat, meta) {
   const titleEl = $('#subcategory-view__title');
   const options = $('#subcategory-view__options');
 
-  navStack.push({ catName, items: null, title: meta.label, parentKey: null, icon: meta.icon, isWildCard: true });
-  titleEl.textContent = `${meta.icon} ${meta.label}`;
+  navStack.push({ catName, items: null, title: meta.label, parentKey: null, icon: meta.emoji || meta.icon, isWildCard: true });
+  titleEl.textContent = `${meta.emoji || meta.icon} ${meta.label}`;
 
   options.innerHTML = meta.wildCardOptions.map(opt => `
     <div class="subcategory-row" data-category="${catName}" data-subcategory="${opt.key}">
-      <span class="subcategory-row__icon">${opt.icon}</span>
+      <span class="subcategory-row__icon">${opt.emoji || opt.icon}</span>
       <span class="subcategory-row__label">${opt.label}</span>
       <span class="subcategory-row__count" data-wc-count="${opt.key}"></span>
     </div>
@@ -327,7 +327,7 @@ function openCategorySheet() {
     const isSelected = selectedCategory?.name === cat.name;
     return `
       <div class="category-sheet-row${isSelected ? ' selected' : ''}" data-category="${cat.name}">
-        <span class="category-sheet-row__icon">${meta.icon}</span>
+        <span class="category-sheet-row__icon">${meta.emoji || meta.icon}</span>
         <span class="category-sheet-row__label">${meta.label}</span>
         ${hasDrill ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
@@ -354,7 +354,7 @@ function renderSheetLevel(catName, items, title, parentKey) {
     </div>
     ${items.map(s => `
       <div class="category-sheet-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
-        <span class="category-sheet-row__icon">${s.icon}</span>
+        <span class="category-sheet-row__icon">${s.emoji || s.icon}</span>
         <span class="category-sheet-row__label">${s.label}</span>
         ${s.children ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
@@ -379,7 +379,7 @@ function renderSheetWildCardOptions(catName, meta) {
     <div class="category-sheet-back" data-action="back">\u2190 ${meta.label}</div>
     ${meta.wildCardOptions.map(opt => `
       <div class="category-sheet-row" data-category="${catName}" data-subcategory="${opt.key}">
-        <span class="category-sheet-row__icon">${opt.icon}</span>
+        <span class="category-sheet-row__icon">${opt.emoji || opt.icon}</span>
         <span class="category-sheet-row__label">${opt.label}</span>
         <span class="category-sheet-row__count" data-wc-count="${opt.key}"></span>
       </div>
@@ -442,7 +442,7 @@ function attachListeners() {
 
     if (meta?.subcategories?.length) {
       navStack = [];
-      drillIntoLevel(catName, meta.subcategories, meta.label, null, meta.icon);
+      drillIntoLevel(catName, meta.subcategories, meta.label, null, meta.emoji || meta.icon);
       return;
     }
 
@@ -472,7 +472,7 @@ function attachListeners() {
       const subKey = row.dataset.subcategory;
       const node = findSubcategoryNode(meta, subKey);
       if (node?.children) {
-        drillIntoLevel(catName, node.children, node.label, node.key, node.icon);
+        drillIntoLevel(catName, node.children, node.label, node.key, node.emoji || node.icon);
         return;
       }
     }

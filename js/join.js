@@ -190,7 +190,7 @@ async function loadPublicGames() {
     row.className = 'public-game-row';
     row.dataset.code = room.code;
     row.innerHTML = `
-      <span class="public-game-row__icon">${meta.icon}</span>
+      <span class="public-game-row__icon">${meta.emoji || meta.icon}</span>
       <div class="public-game-row__info">
         <div class="public-game-row__host">${escapeHtml(room.host_name)}'s game</div>
         <div class="public-game-row__category">${catLabel} &middot; ${room.questions_per_game}Q &middot; ${room.question_timer}s</div>

@@ -1059,7 +1059,7 @@ function openLobbyCategorySheet() {
     const isSelected = name === room.category;
     return `
       <div class="category-sheet-row${isSelected ? ' selected' : ''}" data-category="${name}">
-        <span class="category-sheet-row__icon">${meta.icon}</span>
+        <span class="category-sheet-row__icon">${meta.emoji || meta.icon}</span>
         <span class="category-sheet-row__label">${meta.label}</span>
         ${hasDrill ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
       </div>
@@ -1086,7 +1086,7 @@ function renderLobbySheetLevel(catName, items, title, parentKey) {
     </div>
     ${items.map(s => `
       <div class="category-sheet-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
-        <span class="category-sheet-row__icon">${s.icon}</span>
+        <span class="category-sheet-row__icon">${s.emoji || s.icon}</span>
         <span class="category-sheet-row__label">${s.label}</span>
         <span class="category-sheet-row__count" data-sub-count="${s.key}"></span>
         ${s.children ? '<span class="category-sheet-row__chevron">\u203A</span>' : ''}
@@ -1109,7 +1109,7 @@ function renderLobbySheetWildCardOptions(catName, meta) {
     <div class="category-sheet-back" data-action="back">\u2190 ${meta.label}</div>
     ${meta.wildCardOptions.map(opt => `
       <div class="category-sheet-row" data-category="${catName}" data-subcategory="${opt.key}">
-        <span class="category-sheet-row__icon">${opt.icon}</span>
+        <span class="category-sheet-row__icon">${opt.emoji || opt.icon}</span>
         <span class="category-sheet-row__label">${opt.label}</span>
         <span class="category-sheet-row__count" data-wc-count="${opt.key}"></span>
       </div>

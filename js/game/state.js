@@ -115,7 +115,7 @@ export function getCategoryLabel() {
   if (!state.room) return '?';
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   const label = resolveCategoryLabel(state.room.category, state.room.subcategory);
-  return `${meta.icon} ${label}`;
+  return `${meta.emoji || meta.icon} ${label}`;
 }
 
 // --- Feedback cache (shared between reveal + review) ---
