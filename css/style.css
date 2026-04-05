@@ -629,11 +629,11 @@ body::after {
 #home::before {
   content: '';
   position: absolute;
-  width: 360px;
-  height: 360px;
+  width: 400px;
+  height: 400px;
   border-radius: 50%;
   background: radial-gradient(circle, var(--color-primary-glow) 0%, transparent 70%);
-  opacity: 0.5;
+  opacity: 0.4;
   pointer-events: none;
   top: 50%;
   left: 50%;
@@ -661,23 +661,66 @@ body::after {
   pointer-events: none;
 }
 
-.home__crystal {
-  font-size: 48px;
-  margin-bottom: var(--space-md);
+/* Geometric mark — concentric rings */
+.home__mark {
   position: relative;
+  width: 72px;
+  height: 72px;
+  margin-bottom: var(--space-lg);
   z-index: 1;
-  animation: crystal-float 3s ease-in-out infinite;
-  filter: drop-shadow(0 4px 12px rgba(198, 138, 46, 0.25));
+  animation: mark-pulse 4s ease-in-out infinite;
 }
 
-@keyframes crystal-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+@keyframes mark-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+.home__mark-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-primary);
+}
+
+.home__mark-ring--outer {
+  inset: 0;
+  opacity: 0.35;
+}
+
+.home__mark-ring--inner {
+  width: 44px;
+  height: 44px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.55;
+}
+
+.home__mark-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Divider — thin gold hairline */
+.home__divider {
+  width: 40px;
+  height: 1px;
+  background: var(--color-primary);
+  opacity: 0.3;
+  margin: var(--space-sm) auto var(--space-xl);
+  position: relative;
+  z-index: 1;
 }
 
 .home__brand {
   font-family: var(--font-display);
-  font-size: var(--text-4xl);
+  font-size: var(--text-5xl);
   font-weight: 800;
   color: var(--color-primary);
   text-align: center;
@@ -696,7 +739,7 @@ body::after {
   color: var(--color-text-dim);
   text-align: center;
   letter-spacing: 0.02em;
-  margin-bottom: var(--space-2xl);
+  margin-bottom: 0;
   position: relative;
   z-index: 1;
 }
@@ -704,7 +747,7 @@ body::after {
 .home__actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: var(--space-lg);
   width: 100%;
   max-width: 320px;
   padding: 0 var(--space-xl);
@@ -725,7 +768,7 @@ body::after {
 }
 
 /* Home entrance animations */
-.home.active .home__crystal {
+.home.active .home__mark {
   animation: fade-up 0.6s var(--ease-out) 0.05s both;
 }
 
@@ -733,12 +776,12 @@ body::after {
   animation: fade-up 0.6s var(--ease-out) 0.12s both;
 }
 
-.home.active .home__tagline {
+.home.active .home__divider {
   animation: fade-up 0.6s var(--ease-out) 0.2s both;
 }
 
 .home.active .home__actions {
-  animation: fade-up 0.6s var(--ease-out) 0.32s both;
+  animation: fade-up 0.6s var(--ease-out) 0.28s both;
 }
 
 /* --- Site Brand (consistent across all screens) --- */
