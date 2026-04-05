@@ -1028,34 +1028,34 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Hieroglyph watermark — flush bottom, per-glyph sizing */
+/* Hieroglyph watermark — large, confident, fills the card */
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
-  bottom: 4px;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   font-family: 'Hieroglyphs', sans-serif;
-  font-size: 3.5rem;
+  font-size: 4.5rem;
   line-height: 1;
   color: var(--color-primary);
-  opacity: 0.18;
+  opacity: 0.15;
   pointer-events: none;
   z-index: 0;
 }
-/* Per-glyph sizing — round 1: conservative bump from 3.5rem baseline */
-.category-card[data-hiero="𓋹"]::after { font-size: 4rem; bottom: 8px; }  /* ankh — descenders */
-.category-card[data-hiero="𓂀"]::after { font-size: 2.8rem; bottom: auto; top: 50%; transform: translate(-50%, -50%); }  /* eye — centered, extreme proportions */
-.category-card[data-hiero="𓅃"]::after { font-size: 5rem; bottom: 8px; }  /* falcon — tail descends */
-.category-card[data-hiero="𓅝"]::after { font-size: 4.5rem; bottom: 10px; }  /* ibis — perch descends */
-.category-card[data-hiero="𓀭"]::after { font-size: 4rem; bottom: 10px; }  /* seated god — descenders */
-.category-card[data-hiero="𓇼"]::after { font-size: 6rem; }     /* star — intrinsically small */
-.category-card[data-hiero="𓈉"]::after { font-size: 6rem; }     /* desert hills — flat/short */
-.category-card[data-hiero="𓊝"]::after { font-size: 5rem; bottom: 6px; }  /* adze — base descends */
-.category-card[data-hiero="𓃗"]::after { font-size: 4.5rem; bottom: 8px; }  /* horse — hooves */
-.category-card[data-hiero="𓎿"]::after { font-size: 4.5rem; bottom: 8px; }  /* beer jug — base descends */
-.category-card[data-hiero="𓃻"]::after { font-size: 3.8rem; bottom: 14px; }  /* baboon — tall + descenders */
-.category-card[data-hiero="𓆣"]::after { font-size: 3.8rem; bottom: 14px; }  /* scarab — horns + legs */
+/* Per-glyph tuning — each sized to fill the card naturally */
+.category-card[data-hiero="𓋹"]::after { font-size: 5.5rem; bottom: 4px; }    /* ankh — tall vertical, perch at bottom */
+.category-card[data-hiero="𓂀"]::after { font-size: 5rem; bottom: auto; top: 50%; transform: translate(-50%, -50%); }  /* eye of horus — wide/flat, center it */
+.category-card[data-hiero="𓅃"]::after { font-size: 6rem; bottom: 4px; }      /* falcon — naturally perches at bottom */
+.category-card[data-hiero="𓅝"]::after { font-size: 5.5rem; bottom: 4px; }    /* ibis — tall bird, perch at bottom */
+.category-card[data-hiero="𓀭"]::after { font-size: 5.5rem; bottom: 4px; }    /* seated god — sits at bottom */
+.category-card[data-hiero="𓇼"]::after { font-size: 6.5rem; bottom: 10px; }    /* star — compact shape, lift to prevent bottom clip */
+.category-card[data-hiero="𓈉"]::after { font-size: 7rem; bottom: 0; }        /* desert hills — flat/wide, sit at base */
+.category-card[data-hiero="𓊝"]::after { font-size: 5.5rem; bottom: 4px; }    /* adze — angled tool shape */
+.category-card[data-hiero="𓃗"]::after { font-size: 5.5rem; bottom: 4px; }    /* horse — hooves on ground */
+.category-card[data-hiero="𓎿"]::after { font-size: 5.5rem; bottom: 4px; }    /* beer jug — sits at bottom */
+.category-card[data-hiero="𓃻"]::after { font-size: 5.8rem; bottom: 8px; }     /* baboon — tall figure, sits at bottom */
+.category-card[data-hiero="𓆣"]::after { font-size: 5.5rem; bottom: 8px; }    /* scarab — wings + legs fill the card */
 
 [data-theme="dark"] .category-card::after {
   opacity: 0.20;
