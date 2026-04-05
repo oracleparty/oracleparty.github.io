@@ -1049,8 +1049,8 @@ body::after {
 /* Per-glyph: max font-size via ink-bounds measurement.
    REAL card: 156×139px (measured with actual page padding 24px, gap 16px).
    bottom = descent + 1px. right = -rPad for flush right. */
-.category-card[data-hiero="𓋹"]::after { font-size: 8.4rem; bottom: 4px; }     /* center, ink:63×139 desc=3 */
-.category-card[data-hiero="𓂀"]::after { font-size: 8.4rem; bottom: 30px; }    /* center, ink:155×130 desc=29 */
+.category-card[data-hiero="𓋹"]::after { font-size: 6.9rem; bottom: 0; }        /* center, loop=44px encircles icon, ink:51×115 desc=3 */
+.category-card[data-hiero="𓂀"]::after { font-size: 6.9rem; bottom: 51px; }    /* center, eye body=77×54 encloses icon, ink:127×106 desc=23 */
 .category-card[data-hiero="𓅃"]::after { font-size: 8.4rem; bottom: 3px; left: auto; right: -6px; transform: none; }  /* right, ink:138×139 desc=2 */
 .category-card[data-hiero="𓅝"]::after { font-size: 8.6rem; bottom: 0; left: -6px; transform: none; }    /* left flush, ink:105×139 desc=-1 */
 .category-card[data-hiero="𓀭"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:88×139 desc=-1 */
