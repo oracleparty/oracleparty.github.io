@@ -1028,7 +1028,10 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Hieroglyph watermark — fills card, flush bottom */
+/* Hieroglyph watermark — fills card, flush bottom.
+   Each glyph has unique descent below the font baseline.
+   bottom offset = descent pixels to prevent clipping.
+   Measured via canvas ink-bounds at target font-size. Card height ~138px. */
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
@@ -1043,19 +1046,20 @@ body::after {
   pointer-events: none;
   z-index: 0;
 }
-/* Per-glyph tuning — sized to fit real card height (~120px) */
-.category-card[data-hiero="𓋹"]::after { font-size: 4.5rem; }                  /* ankh — tall vertical */
-.category-card[data-hiero="𓂀"]::after { font-size: 4.5rem; bottom: auto; top: 50%; transform: translate(-50%, -50%); }  /* eye of horus — wide, centered */
-.category-card[data-hiero="𓅃"]::after { font-size: 4.5rem; }                  /* falcon — perched at bottom */
-.category-card[data-hiero="𓅝"]::after { font-size: 4.5rem; }                  /* ibis — perched at bottom */
-.category-card[data-hiero="𓀭"]::after { font-size: 4.5rem; }                  /* seated god */
-.category-card[data-hiero="𓇼"]::after { font-size: 6rem; }                    /* star — compact shape, push big */
-.category-card[data-hiero="𓈉"]::after { font-size: 6.5rem; }                  /* desert hills — flat/wide */
-.category-card[data-hiero="𓊝"]::after { font-size: 4.5rem; }                  /* adze */
-.category-card[data-hiero="𓃗"]::after { font-size: 5rem; }                    /* horse */
-.category-card[data-hiero="𓎿"]::after { font-size: 4.5rem; }                  /* beer jug */
-.category-card[data-hiero="𓃻"]::after { font-size: 3.8rem; left: auto; right: 4px; transform: none; }  /* baboon — bottom-right */
-.category-card[data-hiero="𓆣"]::after { font-size: 4.5rem; }                  /* scarab */
+/* Per-glyph: bottom = measured descent + 2px safety margin.
+   Descent measured via canvas ink-bounds at exact font-size used. */
+.category-card[data-hiero="𓋹"]::after { font-size: 4.5rem; bottom: 4px; }     /* inkH=76 desc=2 */
+.category-card[data-hiero="𓂀"]::after { font-size: 4.5rem; bottom: 17px; }    /* inkH=70 desc=15 */
+.category-card[data-hiero="𓅃"]::after { font-size: 4.5rem; bottom: 3px; }     /* inkH=75 desc=1 */
+.category-card[data-hiero="𓅝"]::after { font-size: 4.5rem; }                  /* inkH=73 desc=-1 (no clip) */
+.category-card[data-hiero="𓀭"]::after { font-size: 4.5rem; }                  /* inkH=72 desc=-1 (no clip) */
+.category-card[data-hiero="𓇼"]::after { font-size: 5rem; bottom: 19px; }      /* inkH=85 desc=17 */
+.category-card[data-hiero="𓈉"]::after { font-size: 6.5rem; bottom: 11px; }    /* inkH=61 desc=9 */
+.category-card[data-hiero="𓊝"]::after { font-size: 4.5rem; bottom: 3px; }     /* inkH=67 desc=1 */
+.category-card[data-hiero="𓃗"]::after { font-size: 5rem; bottom: 3px; }       /* inkH=88 desc=1 */
+.category-card[data-hiero="𓎿"]::after { font-size: 4.5rem; }                  /* inkH=72 desc=-1 (no clip) */
+.category-card[data-hiero="𓃻"]::after { font-size: 3.8rem; bottom: 14px; left: auto; right: 4px; transform: none; }  /* inkH=74 desc=12, bottom-right */
+.category-card[data-hiero="𓆣"]::after { font-size: 4rem; bottom: 16px; }      /* inkH=78 desc=14 */
 
 [data-theme="dark"] .category-card::after {
   opacity: 0.20;
