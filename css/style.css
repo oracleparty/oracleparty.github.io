@@ -669,6 +669,31 @@ body::after {
   pointer-events: none;
 }
 
+/* Floating category glyphs — background texture */
+.home__glyphs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home__glyph {
+  position: absolute;
+  opacity: 0.12;
+  animation: glyph-drift ease-in-out infinite;
+}
+
+[data-theme="dark"] .home__glyph,
+[data-theme="oled"] .home__glyph {
+  opacity: 0.10;
+}
+
+@keyframes glyph-drift {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(4deg); }
+}
+
 /* Oracle Eye mark — Unicode Eye of Horus glyph */
 .home__mark {
   font-size: 72px;

@@ -59,6 +59,25 @@ export const STATES = {
     screen: 'home',
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      // Spawn floating category glyphs for visual QA
+      const icons = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
+      const container = document.getElementById('home-glyphs');
+      if (container && !container.children.length) {
+        for (let i = 0; i < 16; i++) {
+          const g = document.createElement('span');
+          g.className = 'home__glyph';
+          g.textContent = icons[i % icons.length];
+          let left;
+          if (Math.random() < 0.5) { left = 2 + Math.random() * 22; }
+          else { left = 76 + Math.random() * 22; }
+          g.style.left = `${left}%`;
+          g.style.top = `${3 + Math.random() * 90}%`;
+          g.style.fontSize = `${22 + Math.random() * 10}px`;
+          g.style.animationDelay = `${Math.random() * 8}s`;
+          g.style.animationDuration = `${8 + Math.random() * 8}s`;
+          container.appendChild(g);
+        }
+      }
     },
   },
 
