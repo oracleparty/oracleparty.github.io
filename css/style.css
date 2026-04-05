@@ -855,7 +855,9 @@ body::after {
 .home__dock-btn {
   background: none;
   border: none;
-  padding: 6px 12px;
+  width: 36px;
+  height: 32px;
+  padding: 0;
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
