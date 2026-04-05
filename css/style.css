@@ -466,6 +466,7 @@ body::after {
   width: 28px;
   height: 28px;
   margin: -14px 0 0 -14px;
+  font-family: 'Hieroglyphs', sans-serif;
   font-size: 22px;
   line-height: 28px;
   text-align: center;
@@ -520,6 +521,7 @@ body::after {
   left: 50%;
   margin-top: 24px;
   transform: translate(-50%, 0) scaleY(0) scaleX(0.7);
+  font-family: 'Hieroglyphs', sans-serif;
   font-size: 44px;
   color: var(--color-primary);
   text-shadow: 0 0 24px rgba(150, 105, 31, 0.7), 0 0 60px rgba(150, 105, 31, 0.3);

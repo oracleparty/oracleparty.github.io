@@ -23,7 +23,7 @@ export const CATEGORY_META = {
     { key: 'plants', icon: '𓆭', emoji: '🌸', label: 'Plants' },
     { key: 'environment', icon: '𓈖', emoji: '🌊', label: 'Environment' },
   ]},
-  'arts-literature':  { icon: '𓏞', emoji: '📜', label: 'Arts & Literature', subcategories: [  // Y1 Papyrus scroll
+  'arts-literature':  { icon: '𓅝', emoji: '📜', label: 'Arts & Literature', subcategories: [  // G26 Ibis — Thoth, inventor of writing
     { key: 'literature', icon: '𓏛', emoji: '📖', label: 'Literature' },
     { key: 'visual-arts', icon: '𓍹', emoji: '🎨', label: 'Visual Arts' },
     { key: 'performing-arts', icon: '𓁐', emoji: '🎭', label: 'Performing Arts' },
@@ -36,7 +36,7 @@ export const CATEGORY_META = {
     { key: 'institutions', icon: '𓉐', emoji: '⚖️', label: 'Institutions' },
     { key: 'misc', icon: '𓂀', emoji: '🏛️', label: 'Misc' },
   ]},
-  'pop-culture':      { icon: '𓇳', emoji: '🎬', label: 'Pop Culture', subcategories: [  // N5 Sun disk — star / fame
+  'pop-culture':      { icon: '𓇼', emoji: '🎬', label: 'Pop Culture', subcategories: [  // N14 Star — fame / celebrity
     { key: 'entertainment', icon: '𓇳', emoji: '🎭', label: 'Entertainment', children: [
       { key: 'entertainment-movies', icon: '𓁹', emoji: '🎥', label: 'Movies' },
       { key: 'entertainment-television', icon: '𓇯', emoji: '📺', label: 'Television' },
@@ -46,7 +46,7 @@ export const CATEGORY_META = {
     { key: 'celebrities', icon: '𓇳', emoji: '⭐', label: 'Celebrities' },
     { key: 'misc', icon: '𓇳', emoji: '🎬', label: 'Misc' },
   ]},
-  'world-geography':  { icon: '𓇯', emoji: '🌍', label: 'World Geography', subcategories: [  // N1 Sky — the expanse / the world
+  'world-geography':  { icon: '𓈉', emoji: '🌍', label: 'World Geography', subcategories: [  // N25 Desert hills — landscape / terrain
     { key: 'human', icon: '𓉐', emoji: '🏙️', label: 'Human', children: [
       { key: 'human-countries', icon: '𓈎', emoji: '🏳️', label: 'Countries', children: [
         { key: 'human-countries-capitals', icon: '𓊹', emoji: '🏛️', label: 'Capitals' },
@@ -69,7 +69,7 @@ export const CATEGORY_META = {
     { key: 'racing', icon: '𓃗', emoji: '🏎️', label: 'Racing' },
     { key: 'misc', icon: '𓃗', emoji: '⚽', label: 'Misc' },
   ]},
-  'food':             { icon: '𓋍', emoji: '🍕', label: 'Food & Drink', subcategories: [  // S30 Offering table — feast
+  'food':             { icon: '𓎿', emoji: '🍕', label: 'Food & Drink', subcategories: [  // W22 Beer jug — ancient beverage
     { key: 'cuisines', icon: '𓎟', emoji: '🍽️', label: 'Cuisines' },
     { key: 'ingredients', icon: '𓆭', emoji: '🧅', label: 'Ingredients' },
     { key: 'beverages', icon: '𓈖', emoji: '🍹', label: 'Beverages' },
@@ -77,7 +77,7 @@ export const CATEGORY_META = {
     { key: 'language', icon: '𓏞', emoji: '📝', label: 'Language' },
     { key: 'misc', icon: '𓋍', emoji: '🍕', label: 'Misc' },
   ]},
-  'logic':            { icon: '𓁹', emoji: '🧩', label: 'Logic', subcategories: [  // D4 Eye — precision / focus
+  'logic':            { icon: '𓃻', emoji: '🧩', label: 'Logic', subcategories: [  // E36 Baboon — sacred to Thoth, wisdom & calculation
     { key: 'math', icon: '𓏞', emoji: '🔢', label: 'Math' },
     { key: 'puzzles-strategy', icon: '𓂧', emoji: '♟️', label: 'Puzzles & Strategy' },
   ]},

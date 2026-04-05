@@ -22,14 +22,14 @@ const CATEGORIES = [
   { icon: '⏳', hiero: '𓋹', label: 'History', key: 'history', count: 287 },
   { icon: '⚗️', hiero: '𓂀', label: 'Science', key: 'science', count: 195 },
   { icon: '🌿', hiero: '𓅃', label: 'Nature', key: 'nature', count: 142 },
-  { icon: '📜', hiero: '𓏞', label: 'Arts & Literature', key: 'arts-literature', count: 168 },
+  { icon: '📜', hiero: '𓅝', label: 'Arts & Literature', key: 'arts-literature', count: 168 },
   { icon: '🏛️', hiero: '𓀭', label: 'Culture & Society', key: 'culture-society', count: 124 },
-  { icon: '🎬', hiero: '𓇳', label: 'Pop Culture', key: 'pop-culture', count: 156 },
-  { icon: '🌍', hiero: '𓇯', label: 'World Geography', key: 'world-geography', count: 132 },
+  { icon: '🎬', hiero: '𓇼', label: 'Pop Culture', key: 'pop-culture', count: 156 },
+  { icon: '🌍', hiero: '𓈉', label: 'World Geography', key: 'world-geography', count: 132 },
   { icon: '💻', hiero: '𓊝', label: 'Technology', key: 'technology', count: 98 },
   { icon: '⚽', hiero: '𓃗', label: 'Sports', key: 'sports', count: 110 },
-  { icon: '🍕', hiero: '𓋍', label: 'Food', key: 'food', count: 87 },
-  { icon: '🧩', hiero: '𓁹', label: 'Logic', key: 'logic', count: 64 },
+  { icon: '🍕', hiero: '𓎿', label: 'Food', key: 'food', count: 87 },
+  { icon: '🧩', hiero: '𓃻', label: 'Logic', key: 'logic', count: 64 },
   { icon: '🃏', hiero: '𓆣', label: 'Wild Card', key: 'wild-card', count: 169 },
 ];
 
@@ -72,7 +72,7 @@ export const STATES = {
       }
       // Spawn floating category glyphs for visual QA
       const emoji = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
-      const hiero = ['𓋹','𓂀','𓅃','𓏞','𓀭','𓇳','𓇯','𓊝','𓃗','𓋍','𓁹','𓆣'];
+      const hiero = ['𓋹','𓂀','𓅃','𓅝','𓀭','𓇼','𓈉','𓊝','𓃗','𓎿','𓃻','𓆣'];
       const allGlyphs = [...emoji, ...hiero];
       const container = document.getElementById('home-glyphs');
       if (container && !container.children.length) {
