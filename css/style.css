@@ -1052,7 +1052,7 @@ body::after {
 .category-card[data-hiero="𓋹"]::after { font-size: 8.4rem; bottom: 4px; }     /* center, ink:63×139 desc=3 */
 .category-card[data-hiero="𓂀"]::after { font-size: 8.4rem; bottom: 30px; }    /* center, ink:155×130 desc=29 */
 .category-card[data-hiero="𓅃"]::after { font-size: 8.4rem; bottom: 3px; left: auto; right: -6px; transform: none; }  /* right, ink:138×139 desc=2 */
-.category-card[data-hiero="𓅝"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:105×139 desc=-1 */
+.category-card[data-hiero="𓅝"]::after { font-size: 8.6rem; bottom: 0; left: -6px; transform: none; }    /* left flush, ink:105×139 desc=-1 */
 .category-card[data-hiero="𓀭"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:88×139 desc=-1 */
 .category-card[data-hiero="𓇼"]::after { font-size: 8.2rem; bottom: 30px; }    /* center, ink:148×139 desc=29 */
 .category-card[data-hiero="𓈉"]::after { font-size: 7.2rem; bottom: 11px; }    /* center, ink:155×67 desc=10 */
