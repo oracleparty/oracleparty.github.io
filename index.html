@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260405e">
+  <link rel="stylesheet" href="css/style.css?v=20260405f">
 </head>
 <body style="opacity:0">
 
@@ -185,13 +185,19 @@
         const isHiero = i % allGlyphs.length >= categoryEmoji.length;
         g.className = 'home__glyph' + (isHiero ? ' home__glyph--hiero' : '');
         g.textContent = allGlyphs[i % allGlyphs.length];
-        // Push toward edges — avoid center content column
+        // Scatter across full width but weight toward edges (away from center content)
         let left, top, attempts = 0;
         do {
-          left = Math.random() < 0.5 ? 2 + Math.random() * 22 : 76 + Math.random() * 22;
+          // Generate across full width, but bias away from center using a curve
+          let raw = Math.random() * 100;
+          // Push toward edges: remap so center (35-65%) is less likely
+          if (raw > 30 && raw < 70) {
+            raw = Math.random() < 0.5 ? Math.random() * 30 : 70 + Math.random() * 30;
+          }
+          left = Math.max(2, Math.min(96, raw));
           top = 3 + Math.random() * 90;
           attempts++;
-        } while (attempts < 20 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < MIN_DIST));
+        } while (attempts < 30 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < MIN_DIST));
         placed.push([left, top]);
         g.style.left = `${left}%`;
         g.style.top = `${top}%`;

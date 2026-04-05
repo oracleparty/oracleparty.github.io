@@ -74,10 +74,14 @@ export const STATES = {
           g.textContent = allGlyphs[i % allGlyphs.length];
           let left, top, attempts = 0;
           do {
-            left = Math.random() < 0.5 ? 2 + Math.random() * 22 : 76 + Math.random() * 22;
+            let raw = Math.random() * 100;
+            if (raw > 30 && raw < 70) {
+              raw = Math.random() < 0.5 ? Math.random() * 30 : 70 + Math.random() * 30;
+            }
+            left = Math.max(2, Math.min(96, raw));
             top = 3 + Math.random() * 90;
             attempts++;
-          } while (attempts < 20 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < MIN_DIST));
+          } while (attempts < 30 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < MIN_DIST));
           placed.push([left, top]);
           g.style.left = `${left}%`;
           g.style.top = `${top}%`;
