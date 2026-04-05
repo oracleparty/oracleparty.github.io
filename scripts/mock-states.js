@@ -66,7 +66,6 @@ export const STATES = {
       const container = document.getElementById('home-glyphs');
       if (container && !container.children.length) {
         const placed = [];
-        const MIN_DIST = 12;
         for (let i = 0; i < 18; i++) {
           const g = document.createElement('span');
           const isHiero = i % allGlyphs.length >= emoji.length;
@@ -74,14 +73,10 @@ export const STATES = {
           g.textContent = allGlyphs[i % allGlyphs.length];
           let left, top, attempts = 0;
           do {
-            let raw = Math.random() * 100;
-            if (raw > 30 && raw < 70) {
-              raw = Math.random() < 0.5 ? Math.random() * 30 : 70 + Math.random() * 30;
-            }
-            left = Math.max(2, Math.min(96, raw));
+            left = 2 + Math.random() * 94;
             top = 3 + Math.random() * 90;
             attempts++;
-          } while (attempts < 30 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < MIN_DIST));
+          } while (attempts < 15 && placed.some(p => Math.hypot(p[0] - left, p[1] - top) < 5));
           placed.push([left, top]);
           g.style.left = `${left}%`;
           g.style.top = `${top}%`;
