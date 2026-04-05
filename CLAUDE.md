@@ -177,11 +177,12 @@ node scripts/screenshot.js --state=<name> --a11y
 2. **Read the screenshot with the Read tool** and critically assess — does it actually look good? Be honest.
 3. **Look closely at every detail.** Check alignment, centering, spacing, overlap, color consistency, icon rendering, text readability. Don't gloss over obvious issues like off-center elements, overlapping content, or broken layouts. If something looks even slightly off, fix it before moving on.
 4. **ZOOM IN to verify.** Overview screenshots are NOT sufficient. For any element that could have clipping, overflow, alignment, or sizing issues, create a zoomed-in test (e.g. 2 cards at 250px height, not 12 cards at 900px) and inspect at close range. Do NOT eyeball small thumbnails and claim they look fine — that is self-deception and wastes everyone's time. If you can't clearly see whether something is clipped or misaligned, you haven't zoomed in enough.
-5. **Fix issues, re-screenshot, repeat** until genuinely confident. Not "good enough" — actually good.
-6. **Check all three themes** (light, dark, OLED) for any visual change.
-7. **Compare against the vision** — does every element earn its place? Does anything look cheap, generic, or like a developer placeholder?
-8. **Playtest gameplay changes** — use mock states or manual browser testing to verify the actual game flow works, not just static visuals.
-9. **Never claim something looks good when it doesn't.** Be the harshest critic before the user has to be. Fuzzy eyeballing is not review — it is self-deception that wastes hours of the user's time.
+5. **TEST AT REAL DIMENSIONS.** When creating isolated test pages to verify individual components, use the EXACT same dimensions as the real page (same grid settings, same padding, NO min-height overrides, NO artificially tall containers). Testing at fake dimensions and then claiming things look fine is the single biggest recurring mistake — it has wasted literal hours. If the real cards are ~120px tall in a 2-column grid, test at that height. Never add `min-height: 140px` or similar to "see more detail" — you're seeing a lie.
+6. **Fix issues, re-screenshot, repeat** until genuinely confident. Not "good enough" — actually good.
+7. **Check all three themes** (light, dark, OLED) for any visual change.
+8. **Compare against the vision** — does every element earn its place? Does anything look cheap, generic, or like a developer placeholder?
+9. **Playtest gameplay changes** — use mock states or manual browser testing to verify the actual game flow works, not just static visuals.
+10. **Never claim something looks good when it doesn't.** Be the harshest critic before the user has to be. Fuzzy eyeballing is not review — it is self-deception that wastes hours of the user's time.
 
 ## Gotchas — Common Mistakes to Avoid
 - NEVER show internal state markers (like `__WAGER_LOCKED__`) to players

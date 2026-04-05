@@ -1054,7 +1054,7 @@ body::after {
 .category-card[data-hiero="𓊝"]::after { font-size: 4.5rem; }                  /* adze */
 .category-card[data-hiero="𓃗"]::after { font-size: 5rem; }                    /* horse */
 .category-card[data-hiero="𓎿"]::after { font-size: 4.5rem; }                  /* beer jug */
-.category-card[data-hiero="𓃻"]::after { font-size: 4.2rem; bottom: auto; top: 50%; left: auto; right: 4px; transform: translateY(-50%); }  /* baboon — centered-right */
+.category-card[data-hiero="𓃻"]::after { font-size: 3.8rem; left: auto; right: 4px; transform: none; }  /* baboon — bottom-right */
 .category-card[data-hiero="𓆣"]::after { font-size: 4.5rem; }                  /* scarab */
 
 [data-theme="dark"] .category-card::after {
