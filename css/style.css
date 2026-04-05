@@ -4007,6 +4007,7 @@ body::after {
 }
 .home-avatar .avatar.avatar--guest {
   font-size: var(--text-base);
+  background: var(--color-primary-dim) !important;
 }
 
 /* ============================================
