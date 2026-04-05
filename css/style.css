@@ -1032,7 +1032,7 @@ body::after {
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
-  bottom: 0;
+  bottom: -2px;
   left: 50%;
   transform: translateX(-50%);
   font-family: 'Hieroglyphs', sans-serif;
@@ -1044,18 +1044,18 @@ body::after {
   z-index: 0;
 }
 /* Per-glyph tuning — each sized to fill the card naturally */
-.category-card[data-hiero="𓋹"]::after { font-size: 5.5rem; bottom: 4px; }    /* ankh — tall vertical, perch at bottom */
-.category-card[data-hiero="𓂀"]::after { font-size: 5rem; bottom: auto; top: 50%; transform: translate(-50%, -50%); }  /* eye of horus — wide/flat, center it */
-.category-card[data-hiero="𓅃"]::after { font-size: 6rem; bottom: 4px; }      /* falcon — naturally perches at bottom */
-.category-card[data-hiero="𓅝"]::after { font-size: 5.5rem; bottom: 4px; }    /* ibis — tall bird, perch at bottom */
-.category-card[data-hiero="𓀭"]::after { font-size: 5.5rem; bottom: 4px; }    /* seated god — sits at bottom */
-.category-card[data-hiero="𓇼"]::after { font-size: 6.5rem; bottom: 10px; }    /* star — compact shape, lift to prevent bottom clip */
-.category-card[data-hiero="𓈉"]::after { font-size: 7rem; bottom: 0; }        /* desert hills — flat/wide, sit at base */
-.category-card[data-hiero="𓊝"]::after { font-size: 5.5rem; bottom: 4px; }    /* adze — angled tool shape */
-.category-card[data-hiero="𓃗"]::after { font-size: 5.5rem; bottom: 4px; }    /* horse — hooves on ground */
-.category-card[data-hiero="𓎿"]::after { font-size: 5.5rem; bottom: 4px; }    /* beer jug — sits at bottom */
-.category-card[data-hiero="𓃻"]::after { font-size: 5.8rem; bottom: 8px; }     /* baboon — tall figure, sits at bottom */
-.category-card[data-hiero="𓆣"]::after { font-size: 5.5rem; bottom: 8px; }    /* scarab — wings + legs fill the card */
+.category-card[data-hiero="𓋹"]::after { font-size: 6rem; bottom: -2px; }     /* ankh — flush bottom */
+.category-card[data-hiero="𓂀"]::after { font-size: 5.5rem; bottom: auto; top: 50%; transform: translate(-50%, -50%); }  /* eye of horus — wide, centered */
+.category-card[data-hiero="𓅃"]::after { font-size: 6.5rem; bottom: -2px; }   /* falcon — perched flush at bottom */
+.category-card[data-hiero="𓅝"]::after { font-size: 6rem; bottom: -2px; }     /* ibis — perched flush at bottom */
+.category-card[data-hiero="𓀭"]::after { font-size: 6rem; bottom: -2px; }     /* seated god — flush bottom */
+.category-card[data-hiero="𓇼"]::after { font-size: 7.5rem; bottom: -2px; }    /* star — compact glyph, push big, flush bottom */
+.category-card[data-hiero="𓈉"]::after { font-size: 8rem; bottom: -2px; }     /* desert hills — flat/wide, flush at base */
+.category-card[data-hiero="𓊝"]::after { font-size: 6rem; bottom: -2px; }     /* adze — flush bottom */
+.category-card[data-hiero="𓃗"]::after { font-size: 6.5rem; bottom: -2px; }   /* horse — hooves flush at bottom */
+.category-card[data-hiero="𓎿"]::after { font-size: 6rem; bottom: -2px; }     /* beer jug — flush bottom */
+.category-card[data-hiero="𓃻"]::after { font-size: 6rem; bottom: -2px; left: auto; right: -4px; transform: none; }  /* baboon — flush bottom-right */
+.category-card[data-hiero="𓆣"]::after { font-size: 6rem; bottom: -2px; }     /* scarab — flush bottom */
 
 [data-theme="dark"] .category-card::after {
   opacity: 0.20;
