@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260405n">
+  <link rel="stylesheet" href="css/style.css?v=20260405p">
 </head>
 <body style="opacity:0">
 
@@ -227,19 +227,13 @@
         console.warn('[Oracle Party] Supabase connection issue — proceeding anyway.');
       }
 
-      // Render home avatar in dock
+      // Render home avatar in dock — gold initial
       const homeAvatar = $('#home-avatar');
       const authUser = getCurrentUser();
-      if (authUser?.profile) {
-        homeAvatar.innerHTML = renderAvatar({
-          displayName: authUser.profile.display_name,
-          avatarColor: authUser.profile.avatar_color,
-          avatarEmoji: authUser.profile.avatar_emoji
-        });
-      } else {
-        // Guest: show hieroglyph face instead of colored bubble
-        homeAvatar.textContent = '𓁷';
-        homeAvatar.classList.add('home__dock-btn--hiero');
+      const displayName = authUser?.profile?.display_name || getDisplayName() || '';
+      homeAvatar.textContent = displayName ? displayName.charAt(0).toUpperCase() : '?';
+      homeAvatar.classList.add('home__dock-btn--initial');
+      if (!authUser?.profile) {
         $('#home-signin').classList.remove('hidden');
       }
 

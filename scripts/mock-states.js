@@ -62,8 +62,8 @@ export const STATES = {
       // Render dock contents for screenshots
       const avatar = document.getElementById('home-avatar');
       if (avatar && !avatar.textContent.trim()) {
-        avatar.textContent = '𓁷';
-        avatar.classList.add('home__dock-btn--hiero');
+        avatar.textContent = 'J';
+        avatar.classList.add('home__dock-btn--initial');
       }
       const themeBtn = document.getElementById('theme-toggle');
       if (themeBtn && !themeBtn.textContent.trim()) {
