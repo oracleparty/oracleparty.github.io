@@ -661,50 +661,38 @@ body::after {
   pointer-events: none;
 }
 
-/* Geometric mark — concentric rings */
-.home__mark {
+/* Oracle Eye mark */
+.home__mark-wrap {
   position: relative;
-  width: 72px;
-  height: 72px;
   margin-bottom: var(--space-lg);
   z-index: 1;
-  animation: mark-pulse 4s ease-in-out infinite;
 }
 
-@keyframes mark-pulse {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; }
-}
-
-.home__mark-ring {
+/* Warm glow behind the eye */
+.home__mark-wrap::before {
+  content: '';
   position: absolute;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
-  border: 1.5px solid var(--color-primary);
-}
-
-.home__mark-ring--outer {
-  inset: 0;
-  opacity: 0.35;
-}
-
-.home__mark-ring--inner {
-  width: 44px;
-  height: 44px;
+  background: radial-gradient(circle, var(--color-primary-glow) 0%, transparent 70%);
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  opacity: 0.55;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
-.home__mark-dot {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.home__mark {
+  display: block;
+  color: var(--color-primary);
+  filter: drop-shadow(0 0 16px var(--color-primary-glow));
+  animation: mark-breathe 4s ease-in-out infinite;
+}
+
+@keyframes mark-breathe {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
 }
 
 /* Divider — thin gold hairline */
@@ -768,7 +756,7 @@ body::after {
 }
 
 /* Home entrance animations */
-.home.active .home__mark {
+.home.active .home__mark-wrap {
   animation: fade-up 0.6s var(--ease-out) 0.05s both;
 }
 
