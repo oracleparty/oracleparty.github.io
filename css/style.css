@@ -1015,14 +1015,14 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Hieroglyph watermark — centered, grounded to card bottom */
+/* Hieroglyph watermark — full card fill */
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
-  bottom: -10px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  font-size: 5.5rem;
+  transform: translate(-50%, -50%);
+  font-size: 7rem;
   line-height: 1;
   color: var(--color-primary);
   opacity: 0.10;
@@ -1031,11 +1031,11 @@ body::after {
 }
 
 [data-theme="dark"] .category-card::after {
-  opacity: 0.14;
+  opacity: 0.12;
 }
 
 [data-theme="oled"] .category-card::after {
-  opacity: 0.16;
+  opacity: 0.14;
 }
 
 /* Warm shimmer on hover — top-left corner glow */
