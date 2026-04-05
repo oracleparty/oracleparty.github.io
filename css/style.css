@@ -626,18 +626,26 @@ body::after {
 }
 
 /* --- Home Screen --- */
-#home::before {
-  content: '';
-  position: absolute;
-  width: 400px;
-  height: 400px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--color-primary-glow) 0%, transparent 70%);
-  opacity: 0.4;
-  pointer-events: none;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -60%);
+#home {
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(198, 138, 46, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.03) 100%),
+    var(--color-bg);
+  padding-bottom: 8vh; /* shift content above dead center */
+}
+
+[data-theme="dark"] #home {
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(217, 163, 64, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.15) 100%),
+    var(--color-bg);
+}
+
+[data-theme="oled"] #home {
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(217, 163, 64, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, transparent 50%, rgba(0, 0, 0, 0.3) 100%),
+    var(--color-bg);
 }
 
 .home-toast {
@@ -664,7 +672,7 @@ body::after {
 /* Oracle Eye mark */
 .home__mark-wrap {
   position: relative;
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
   z-index: 1;
 }
 
@@ -672,21 +680,21 @@ body::after {
 .home__mark-wrap::before {
   content: '';
   position: absolute;
-  width: 140px;
-  height: 140px;
+  width: 180px;
+  height: 180px;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--color-primary-glow) 0%, transparent 70%);
+  background: radial-gradient(circle, var(--color-primary-glow) 0%, transparent 65%);
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  opacity: 0.7;
+  opacity: 1;
   pointer-events: none;
 }
 
 .home__mark {
   display: block;
   color: var(--color-primary);
-  filter: drop-shadow(0 0 16px var(--color-primary-glow));
+  filter: drop-shadow(0 0 20px var(--color-primary-glow));
   animation: mark-breathe 4s ease-in-out infinite;
 }
 
@@ -697,11 +705,11 @@ body::after {
 
 /* Divider — thin gold hairline */
 .home__divider {
-  width: 40px;
+  width: 48px;
   height: 1px;
   background: var(--color-primary);
-  opacity: 0.3;
-  margin: var(--space-sm) auto var(--space-xl);
+  opacity: 0.25;
+  margin: var(--space-lg) auto var(--space-2xl);
   position: relative;
   z-index: 1;
 }
@@ -714,7 +722,7 @@ body::after {
   text-align: center;
   letter-spacing: -0.02em;
   margin-bottom: var(--space-xs);
-  text-shadow: 0 0 40px var(--color-primary-glow);
+  text-shadow: 0 0 50px var(--color-primary-glow), 0 0 100px var(--color-primary-glow);
   position: relative;
   z-index: 1;
 }
@@ -743,16 +751,28 @@ body::after {
   z-index: 1;
 }
 
-/* Buttons — more presence (scoped to :not(:active) so base active styles still apply) */
-.home__actions .btn-primary:not(:active) {
+/* Buttons — elevated presence */
+.home__actions .btn-primary {
   box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.08),
-    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(150, 105, 31, 0.25),
+    0 1px 3px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
+.home__actions .btn-primary:active {
+  box-shadow:
+    0 1px 3px rgba(150, 105, 31, 0.15),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+}
 
-.home__actions .btn-secondary:not(:active) {
-  box-shadow: inset 0 0 0 1.5px rgba(198, 138, 46, 0.35);
+.home__actions .btn-secondary {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(198, 138, 46, 0.3),
+    0 1px 4px rgba(0, 0, 0, 0.04);
+}
+.home__actions .btn-secondary:active {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(198, 138, 46, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 /* Home entrance animations */
@@ -5530,11 +5550,13 @@ body::after {
   border: none;
   color: var(--color-text-muted);
   font-family: var(--font-heading);
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   cursor: pointer;
   padding: var(--space-sm);
-  text-decoration: underline;
+  text-decoration: none;
   width: 100%;
   text-align: center;
 }
