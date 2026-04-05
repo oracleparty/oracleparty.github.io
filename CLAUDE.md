@@ -187,6 +187,7 @@ node scripts/screenshot.js --state=<name> --a11y
 ## Gotchas — Common Mistakes to Avoid
 - **STOP EYEBALLING. MEASURE.** When something keeps breaking despite repeated attempts, you are guessing instead of diagnosing. Stop tweaking numbers blindly. Write code to measure the actual values (pixel bounds, element dimensions, font metrics). You can solve ANY recurring issue if you actually investigate the root cause instead of cargo-culting CSS values. Hieroglyph descent clipping was solved in 5 minutes once we measured ink bounds via canvas — after wasting hours of the user's time on blind guesses.
 - **Never ignore a recurring mystery.** If something keeps going wrong, it means you don't understand the system. Stop and figure out WHY before trying another fix. The answer is always findable.
+- **Measure ALL dimensions, not just the one you're focused on.** When told to fix vertical clipping, also check horizontal. When told to flush to the right, also verify the left isn't clipped. A fix to one axis can reveal or cause issues on the other axis. Always measure both width AND height ink bounds, and verify the glyph fits the card in BOTH dimensions simultaneously. Include border-radius safe zones in calculations.
 - NEVER show internal state markers (like `__WAGER_LOCKED__`) to players
 - Always fully reset game state when returning to lobby via Play Again
 - Score should never go negative on regular rounds — only final wager

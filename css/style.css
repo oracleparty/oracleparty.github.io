@@ -1046,20 +1046,21 @@ body::after {
   pointer-events: none;
   z-index: 0;
 }
-/* Per-glyph: max font-size via ink-bounds measurement (card: 180×139px).
-   bottom = measured descent + 1px. Position per user preference. */
-.category-card[data-hiero="𓋹"]::after { font-size: 8.4rem; bottom: 4px; }     /* center, inkH=139 desc=3 */
-.category-card[data-hiero="𓂀"]::after { font-size: 9rem; bottom: 32px; }      /* center, inkH=139 desc=31 */
-.category-card[data-hiero="𓅃"]::after { font-size: 8.4rem; bottom: 3px; left: auto; right: -6px; transform: none; }  /* right flush, rPad=6 */
-.category-card[data-hiero="𓅝"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right flush, rPad=6 */
-.category-card[data-hiero="𓀭"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right flush, rPad=6 */
-.category-card[data-hiero="𓇼"]::after { font-size: 8.2rem; bottom: 30px; }    /* center, inkH=139 desc=29 */
-.category-card[data-hiero="𓈉"]::after { font-size: 8.4rem; bottom: 13px; }    /* center flush sides, inkH=77 desc=12 */
-.category-card[data-hiero="𓊝"]::after { font-size: 9.1rem; bottom: 4px; }     /* center flush sides, inkH=135 desc=3 */
-.category-card[data-hiero="𓃗"]::after { font-size: 7.9rem; bottom: 4px; }     /* center, inkH=139 desc=3 */
-.category-card[data-hiero="𓎿"]::after { font-size: 8.7rem; bottom: 0; }       /* center, inkH=139 desc=-1 */
-.category-card[data-hiero="𓃻"]::after { font-size: 7.1rem; bottom: 25px; left: auto; right: -5px; transform: none; }  /* right flush, rPad=5 */
-.category-card[data-hiero="𓆣"]::after { font-size: 7.2rem; bottom: 25px; }    /* center, inkH=138 desc=24 */
+/* Per-glyph: max font-size via ink-bounds measurement.
+   REAL card: 156×139px (measured with actual page padding 24px, gap 16px).
+   bottom = descent + 1px. right = -rPad for flush right. */
+.category-card[data-hiero="𓋹"]::after { font-size: 8.4rem; bottom: 4px; }     /* center, ink:63×139 desc=3 */
+.category-card[data-hiero="𓂀"]::after { font-size: 8.4rem; bottom: 30px; }    /* center, ink:155×130 desc=29 */
+.category-card[data-hiero="𓅃"]::after { font-size: 8.4rem; bottom: 3px; left: auto; right: -6px; transform: none; }  /* right, ink:138×139 desc=2 */
+.category-card[data-hiero="𓅝"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:105×139 desc=-1 */
+.category-card[data-hiero="𓀭"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:88×139 desc=-1 */
+.category-card[data-hiero="𓇼"]::after { font-size: 8.2rem; bottom: 30px; }    /* center, ink:148×139 desc=29 */
+.category-card[data-hiero="𓈉"]::after { font-size: 7.2rem; bottom: 11px; }    /* center, ink:155×67 desc=10 */
+.category-card[data-hiero="𓊝"]::after { font-size: 8.3rem; bottom: 4px; }     /* center, ink:155×122 desc=3 */
+.category-card[data-hiero="𓃗"]::after { font-size: 7.9rem; bottom: 4px; }     /* center, ink:139×139 desc=3 */
+.category-card[data-hiero="𓎿"]::after { font-size: 8.7rem; bottom: 0; }       /* center, ink:43×139 desc=-1 */
+.category-card[data-hiero="𓃻"]::after { font-size: 7.1rem; bottom: 25px; left: auto; right: -5px; transform: none; }  /* right, ink:90×139 desc=24 */
+.category-card[data-hiero="𓆣"]::after { font-size: 7.2rem; bottom: 25px; }    /* center, ink:91×138 desc=24 */
 
 [data-theme="dark"] .category-card::after {
   opacity: 0.20;
