@@ -137,10 +137,10 @@ function renderCategories(cats, playCounts = {}) {
     const countId = cat.name === 'wild-card' ? 'id="wc-card-count"' : '';
     const displayCount = cat.count;
     return `
-      <div class="category-card" data-category="${cat.name}"${tierAttr}>
+      <div class="category-card" data-category="${cat.name}" data-hiero="${meta.icon}"${tierAttr}>
         <div class="category-card__icon-wrap">
           ${ringHtml}
-          <div class="category-card__icon">${meta.icon}</div>
+          <div class="category-card__icon">${meta.emoji || meta.icon}</div>
         </div>
         <div class="category-card__name">${meta.label}</div>
         <div class="category-card__count" ${countId}>${displayCount} questions</div>

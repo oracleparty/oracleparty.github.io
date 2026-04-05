@@ -19,18 +19,18 @@ const PLAYERS = [
 ];
 
 const CATEGORIES = [
-  { icon: '⏳', label: 'History', key: 'history', count: 287 },
-  { icon: '⚗️', label: 'Science', key: 'science', count: 195 },
-  { icon: '🌿', label: 'Nature', key: 'nature', count: 142 },
-  { icon: '📜', label: 'Arts & Literature', key: 'arts-literature', count: 168 },
-  { icon: '🏛️', label: 'Culture & Society', key: 'culture-society', count: 124 },
-  { icon: '🎬', label: 'Pop Culture', key: 'pop-culture', count: 156 },
-  { icon: '🌍', label: 'World Geography', key: 'world-geography', count: 132 },
-  { icon: '💻', label: 'Technology', key: 'technology', count: 98 },
-  { icon: '⚽', label: 'Sports', key: 'sports', count: 110 },
-  { icon: '🍕', label: 'Food', key: 'food', count: 87 },
-  { icon: '🧩', label: 'Logic', key: 'logic', count: 64 },
-  { icon: '🃏', label: 'Wild Card', key: 'wild-card', count: 169 },
+  { icon: '⏳', hiero: '𓋹', label: 'History', key: 'history', count: 287 },
+  { icon: '⚗️', hiero: '𓂀', label: 'Science', key: 'science', count: 195 },
+  { icon: '🌿', hiero: '𓅃', label: 'Nature', key: 'nature', count: 142 },
+  { icon: '📜', hiero: '𓏞', label: 'Arts & Literature', key: 'arts-literature', count: 168 },
+  { icon: '🏛️', hiero: '𓀭', label: 'Culture & Society', key: 'culture-society', count: 124 },
+  { icon: '🎬', hiero: '𓇳', label: 'Pop Culture', key: 'pop-culture', count: 156 },
+  { icon: '🌍', hiero: '𓇯', label: 'World Geography', key: 'world-geography', count: 132 },
+  { icon: '💻', hiero: '𓊝', label: 'Technology', key: 'technology', count: 98 },
+  { icon: '⚽', hiero: '𓃗', label: 'Sports', key: 'sports', count: 110 },
+  { icon: '🍕', hiero: '𓋍', label: 'Food', key: 'food', count: 87 },
+  { icon: '🧩', hiero: '𓁹', label: 'Logic', key: 'logic', count: 64 },
+  { icon: '🃏', hiero: '𓆣', label: 'Wild Card', key: 'wild-card', count: 169 },
 ];
 
 // Helper: the avatar function as a string so inject functions can include it
@@ -112,7 +112,7 @@ export const STATES = {
       const grid = document.getElementById('category-grid');
       if (!grid) return;
       grid.innerHTML = cats.map(c => `
-        <button class="category-card" data-category="${c.key}">
+        <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}">
           <div class="category-card__icon-wrap"><span class="category-card__icon">${c.icon}</span></div>
           <div class="category-card__name">${c.label}</div>
           <div class="category-card__count">${c.count} Qs</div>
