@@ -1,47 +1,52 @@
 <!DOCTYPE html>
 <html data-theme="dark">
 <head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1A1A2E">
-<title>Hieroglyph Rendering Test</title>
+<title>Watermark Test — All 12 Categories</title>
+<link rel="stylesheet" href="css/style.css">
 <style>
-  @font-face {
-    font-family: 'Hieroglyphs';
-    src: url('fonts/hieroglyphs.woff2') format('woff2');
-    font-weight: normal;
-    font-style: normal;
-    font-display: swap;
-  }
-  body { background: #1A1A2E; color: #e8e0d0; font-family: -apple-system, sans-serif; margin: 0; padding: 16px; }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .cell { background: #252547; border-radius: 12px; padding: 12px 8px; text-align: center; }
-  .glyph { font-size: 64px; line-height: 1.2; color: #c68a2e; display: block; font-family: 'Hieroglyphs', sans-serif; }
-  .emoji { font-size: 28px; margin-top: 4px; display: block; }
-  .code { font-size: 10px; color: #888; margin-top: 4px; }
-  .label { font-size: 11px; color: #ccc; margin-top: 2px; font-weight: 600; }
-  h1 { font-size: 16px; text-align: center; margin-bottom: 16px; color: #c68a2e; }
-  .section { margin-top: 20px; font-size: 13px; color: #c68a2e; font-weight: 600; border-bottom: 1px solid #333; padding-bottom: 4px; margin-bottom: 12px; }
+  body { margin: 0; padding: 8px; background: var(--color-bg); }
+  .test-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 16px; }
+  .test-grid-2col { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-md); }
+  .category-card { min-height: 80px; }
+  .test-grid .category-card { padding: 14px 6px 10px !important; }
+  .test-grid .category-card__name { font-size: 9px !important; }
+  h1 { font-size: 13px; text-align: center; color: var(--color-primary); margin: 8px 0; font-family: var(--font-heading); }
+  h2 { font-size: 11px; text-align: center; color: var(--color-text-dim); margin: 4px 0 8px; font-family: var(--font-heading); }
 </style>
 </head>
 <body>
-<h1>Final Hieroglyph Set (Web Font)</h1>
-<p style="font-size:11px;color:#888;text-align:center;margin-bottom:16px;">These render identically on every device via Noto Sans Egyptian Hieroglyphs</p>
-
-<div class="section">Category Hieroglyphs</div>
-<div class="grid">
-  <div class="cell"><span class="glyph">𓋹</span><span class="emoji">⏳</span><div class="label">History</div><div class="code">S34 Ankh</div></div>
-  <div class="cell"><span class="glyph">𓂀</span><span class="emoji">⚗️</span><div class="label">Science</div><div class="code">D10 Eye of Horus</div></div>
-  <div class="cell"><span class="glyph">𓅃</span><span class="emoji">🌿</span><div class="label">Nature</div><div class="code">G5 Falcon</div></div>
-  <div class="cell"><span class="glyph">𓅝</span><span class="emoji">📜</span><div class="label">Arts & Lit</div><div class="code">G26 Ibis (Thoth)</div></div>
-  <div class="cell"><span class="glyph">𓀭</span><span class="emoji">🏛️</span><div class="label">Culture</div><div class="code">A40 Seated God</div></div>
-  <div class="cell"><span class="glyph">𓇼</span><span class="emoji">🎬</span><div class="label">Pop Culture</div><div class="code">N14 Star</div></div>
-  <div class="cell"><span class="glyph">𓈉</span><span class="emoji">🌍</span><div class="label">Geography</div><div class="code">N25 Desert Hills</div></div>
-  <div class="cell"><span class="glyph">𓊝</span><span class="emoji">💻</span><div class="label">Technology</div><div class="code">U19 Adze</div></div>
-  <div class="cell"><span class="glyph">𓃗</span><span class="emoji">⚽</span><div class="label">Sports</div><div class="code">E6 Horse</div></div>
-  <div class="cell"><span class="glyph">𓎿</span><span class="emoji">🍕</span><div class="label">Food & Drink</div><div class="code">W22 Beer Jug</div></div>
-  <div class="cell"><span class="glyph">𓃻</span><span class="emoji">🧩</span><div class="label">Logic</div><div class="code">E36 Baboon</div></div>
-  <div class="cell"><span class="glyph">𓆣</span><span class="emoji">🃏</span><div class="label">Wild Card</div><div class="code">L1 Scarab</div></div>
+<h1>All 12 Watermarks</h1>
+<div class="test-grid">
+  <button class="category-card" data-hiero="𓋹"><div class="category-card__icon-wrap"><span class="category-card__icon">⏳</span></div><div class="category-card__name">History</div></button>
+  <button class="category-card" data-hiero="𓂀"><div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div><div class="category-card__name">Science</div></button>
+  <button class="category-card" data-hiero="𓅃"><div class="category-card__icon-wrap"><span class="category-card__icon">🌿</span></div><div class="category-card__name">Nature</div></button>
+  <button class="category-card" data-hiero="𓅝"><div class="category-card__icon-wrap"><span class="category-card__icon">📜</span></div><div class="category-card__name">Arts & Lit</div></button>
+  <button class="category-card" data-hiero="𓀭"><div class="category-card__icon-wrap"><span class="category-card__icon">🏛️</span></div><div class="category-card__name">Culture</div></button>
+  <button class="category-card" data-hiero="𓇼"><div class="category-card__icon-wrap"><span class="category-card__icon">🎬</span></div><div class="category-card__name">Pop Culture</div></button>
+  <button class="category-card" data-hiero="𓈉"><div class="category-card__icon-wrap"><span class="category-card__icon">🌍</span></div><div class="category-card__name">Geography</div></button>
+  <button class="category-card" data-hiero="𓊝"><div class="category-card__icon-wrap"><span class="category-card__icon">💻</span></div><div class="category-card__name">Technology</div></button>
+  <button class="category-card" data-hiero="𓃗"><div class="category-card__icon-wrap"><span class="category-card__icon">⚽</span></div><div class="category-card__name">Sports</div></button>
+  <button class="category-card" data-hiero="𓎿"><div class="category-card__icon-wrap"><span class="category-card__icon">🍕</span></div><div class="category-card__name">Food</div></button>
+  <button class="category-card" data-hiero="𓃻"><div class="category-card__icon-wrap"><span class="category-card__icon">🧩</span></div><div class="category-card__name">Logic</div></button>
+  <button class="category-card" data-hiero="𓆣"><div class="category-card__icon-wrap"><span class="category-card__icon">🃏</span></div><div class="category-card__name">Wild Card</div></button>
 </div>
-
+<h2>2-Column (Actual Size)</h2>
+<div class="test-grid-2col">
+  <button class="category-card" data-hiero="𓋹"><div class="category-card__icon-wrap"><span class="category-card__icon">⏳</span></div><div class="category-card__name">History</div><div class="category-card__count">287 Qs</div></button>
+  <button class="category-card" data-hiero="𓂀"><div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div><div class="category-card__name">Science</div><div class="category-card__count">195 Qs</div></button>
+  <button class="category-card" data-hiero="𓅃"><div class="category-card__icon-wrap"><span class="category-card__icon">🌿</span></div><div class="category-card__name">Nature</div><div class="category-card__count">142 Qs</div></button>
+  <button class="category-card" data-hiero="𓅝"><div class="category-card__icon-wrap"><span class="category-card__icon">📜</span></div><div class="category-card__name">Arts & Literature</div><div class="category-card__count">168 Qs</div></button>
+  <button class="category-card" data-hiero="𓀭"><div class="category-card__icon-wrap"><span class="category-card__icon">🏛️</span></div><div class="category-card__name">Culture & Society</div><div class="category-card__count">124 Qs</div></button>
+  <button class="category-card" data-hiero="𓇼"><div class="category-card__icon-wrap"><span class="category-card__icon">🎬</span></div><div class="category-card__name">Pop Culture</div><div class="category-card__count">156 Qs</div></button>
+  <button class="category-card" data-hiero="𓈉"><div class="category-card__icon-wrap"><span class="category-card__icon">🌍</span></div><div class="category-card__name">World Geography</div><div class="category-card__count">132 Qs</div></button>
+  <button class="category-card" data-hiero="𓊝"><div class="category-card__icon-wrap"><span class="category-card__icon">💻</span></div><div class="category-card__name">Technology</div><div class="category-card__count">98 Qs</div></button>
+  <button class="category-card" data-hiero="𓃗"><div class="category-card__icon-wrap"><span class="category-card__icon">⚽</span></div><div class="category-card__name">Sports</div><div class="category-card__count">110 Qs</div></button>
+  <button class="category-card" data-hiero="𓎿"><div class="category-card__icon-wrap"><span class="category-card__icon">🍕</span></div><div class="category-card__name">Food & Drink</div><div class="category-card__count">87 Qs</div></button>
+  <button class="category-card" data-hiero="𓃻"><div class="category-card__icon-wrap"><span class="category-card__icon">🧩</span></div><div class="category-card__name">Logic</div><div class="category-card__count">64 Qs</div></button>
+  <button class="category-card" data-hiero="𓆣"><div class="category-card__icon-wrap"><span class="category-card__icon">🃏</span></div><div class="category-card__name">Wild Card</div><div class="category-card__count">169 Qs</div></button>
+</div>
 </body>
 </html>

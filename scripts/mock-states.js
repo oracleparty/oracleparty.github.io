@@ -111,13 +111,40 @@ export const STATES = {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
       const grid = document.getElementById('category-grid');
       if (!grid) return;
+      // Tighter cards so all 12 fit in viewport for visual QA
+      grid.style.gap = '8px';
       grid.innerHTML = cats.map(c => `
-        <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}">
+        <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:12px 8px 8px;">
           <div class="category-card__icon-wrap"><span class="category-card__icon">${c.icon}</span></div>
           <div class="category-card__name">${c.label}</div>
           <div class="category-card__count">${c.count} Qs</div>
         </button>
       `).join('');
+    },
+  },
+
+  'watermark-all': {
+    page: 'host',
+    screen: 'category-screen',
+    injectArgs: () => CATEGORIES,
+    inject: (cats) => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      function renderAll() {
+        const grid = document.getElementById('category-grid');
+        if (!grid) return;
+        grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+        grid.style.gap = '6px';
+        grid.innerHTML = cats.map(c => `
+          <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:10px 6px 6px;">
+            <div class="category-card__icon-wrap"><span class="category-card__icon">${c.icon}</span></div>
+            <div class="category-card__name" style="font-size:10px;">${c.label}</div>
+          </button>
+        `).join('');
+      }
+      renderAll();
+      // Re-render after host.js overwrites (it runs async)
+      setTimeout(renderAll, 100);
+      setTimeout(renderAll, 200);
     },
   },
 
