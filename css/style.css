@@ -669,33 +669,30 @@ body::after {
   pointer-events: none;
 }
 
-/* Oracle Eye mark */
-.home__mark-wrap {
-  position: relative;
+/* Oracle Eye mark — Unicode Eye of Horus glyph */
+.home__mark {
+  font-size: 56px;
+  line-height: 1;
+  color: var(--color-primary);
   margin-bottom: var(--space-md);
+  position: relative;
   z-index: 1;
+  filter: drop-shadow(0 0 20px var(--color-primary-glow));
+  animation: mark-breathe 4s ease-in-out infinite;
 }
 
 /* Warm glow behind the eye */
-.home__mark-wrap::before {
+.home__mark::before {
   content: '';
   position: absolute;
-  width: 180px;
-  height: 180px;
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
   background: radial-gradient(circle, var(--color-primary-glow) 0%, transparent 65%);
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  opacity: 1;
   pointer-events: none;
-}
-
-.home__mark {
-  display: block;
-  color: var(--color-primary);
-  filter: drop-shadow(0 0 20px var(--color-primary-glow));
-  animation: mark-breathe 4s ease-in-out infinite;
 }
 
 @keyframes mark-breathe {
@@ -776,8 +773,8 @@ body::after {
 }
 
 /* Home entrance animations */
-.home.active .home__mark-wrap {
-  animation: fade-up 0.6s var(--ease-out) 0.05s both;
+.home.active .home__mark {
+  animation: fade-up 0.6s var(--ease-out) 0.05s both, mark-breathe 4s ease-in-out 0.7s infinite;
 }
 
 .home.active .home__brand {
