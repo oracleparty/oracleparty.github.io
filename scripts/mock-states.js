@@ -61,8 +61,9 @@ export const STATES = {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
       // Render dock contents for screenshots
       const avatar = document.getElementById('home-avatar');
-      if (avatar && !avatar.children.length) {
-        avatar.innerHTML = '<div class="avatar avatar--guest" style="width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--color-primary-dim);color:#fff;font-weight:700;font-size:12px;">G</div>';
+      if (avatar && !avatar.textContent.trim()) {
+        avatar.textContent = '𓁷';
+        avatar.classList.add('home__dock-btn--hiero');
       }
       const themeBtn = document.getElementById('theme-toggle');
       if (themeBtn && !themeBtn.textContent.trim()) {
