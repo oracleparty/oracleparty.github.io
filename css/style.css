@@ -1028,15 +1028,15 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Hieroglyph watermark — flush bottom, fit within card */
+/* Hieroglyph watermark — flush bottom, max size */
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
-  bottom: 4px;
+  bottom: -2px;
   left: 50%;
   transform: translateX(-50%);
   font-family: 'Hieroglyphs', sans-serif;
-  font-size: 5rem;
+  font-size: 7rem;
   line-height: 1;
   color: var(--color-primary);
   opacity: 0.18;
