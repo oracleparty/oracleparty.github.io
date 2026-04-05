@@ -886,6 +886,17 @@ body::after {
   opacity: 0.7;
 }
 
+.home__dock-btn--avatar {
+  opacity: 0.85;
+}
+
+.home__dock-btn--avatar .avatar {
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  border-radius: 50%;
+}
+
 .home__dock-div {
   width: 1px;
   height: 12px;
@@ -1004,26 +1015,47 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Hieroglyph watermark — large, tucked into bottom-right corner */
+/* Hieroglyph watermark — large, varied position per card */
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
-  bottom: -12px;
-  right: -8px;
-  font-size: 5rem;
+  font-size: 5.5rem;
   line-height: 1;
   color: var(--color-primary);
-  opacity: 0.07;
+  opacity: 0.10;
   pointer-events: none;
   z-index: 0;
+  /* Default: bottom-right */
+  bottom: -10px;
+  right: -6px;
+}
+
+/* Alternate positions for visual variety */
+.category-card:nth-child(3n+2)::after {
+  bottom: -10px;
+  right: auto;
+  left: -8px;
+}
+
+.category-card:nth-child(4n+3)::after {
+  bottom: auto;
+  top: -8px;
+  right: -6px;
+}
+
+.category-card:nth-child(6n+5)::after {
+  bottom: auto;
+  top: -6px;
+  right: auto;
+  left: -8px;
 }
 
 [data-theme="dark"] .category-card::after {
-  opacity: 0.10;
+  opacity: 0.14;
 }
 
 [data-theme="oled"] .category-card::after {
-  opacity: 0.12;
+  opacity: 0.16;
 }
 
 /* Warm shimmer on hover — top-left corner glow */
