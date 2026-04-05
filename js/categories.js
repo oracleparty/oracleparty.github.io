@@ -107,13 +107,49 @@ export function findSubcategoryNode(meta, key) {
 }
 
 /**
- * Resolve the icon for a subcategory key. Falls back to the category icon.
- * @param {object} meta  CATEGORY_META[catName]
- * @param {string|null} subcategoryKey
- * @returns {string} icon character
+ * Build a breadcrumb label for a category + subcategory key.
+ * e.g. resolveCategoryLabel('world-geography', 'human-countries-capitals')
+ *   → "World Geography — Human — Countries — Capitals"
+ * If subcategoryKey is null/empty, returns just the category label.
  */
-export function resolveSubcategoryIcon(meta, subcategoryKey) {
+export function resolveCategoryLabel(category, subcategoryKey) {
+  const meta = CATEGORY_META[category];
+  if (!meta) return category;
+  if (!subcategoryKey) return meta.label;
+
+  // Wild-card special options
+  if (meta.wildCardOptions) {
+    const opt = meta.wildCardOptions.find(o => o.key === subcategoryKey);
+    if (opt) return `${meta.label} \u2014 ${opt.label}`;
+  }
+
+  function search(nodes, path) {
+    for (const node of nodes) {
+      if (node.key === subcategoryKey) return [...path, node.label];
+      if (node.children) {
+        const result = search(node.children, [...path, node.label]);
+        if (result) return result;
+      }
+    }
+    return null;
+  }
+
+  const chain = search(meta.subcategories || [], [meta.label]);
+  return chain ? chain.join(' \u2014 ') : meta.label;
+}
+
+/**
+ * Resolve the icon for a subcategory key. Falls back to the category icon.
+ */
+export function resolveSubcategoryIcon(category, subcategoryKey) {
+  const meta = CATEGORY_META[category];
+  if (!meta) return '?';
   if (!subcategoryKey) return meta.emoji || meta.icon;
+  // Wild-card special options
+  if (meta.wildCardOptions) {
+    const opt = meta.wildCardOptions.find(o => o.key === subcategoryKey);
+    if (opt) return opt.emoji || opt.icon;
+  }
   const node = findSubcategoryNode(meta, subcategoryKey);
   return node?.emoji || node?.icon || meta.emoji || meta.icon;
 }
