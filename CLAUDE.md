@@ -155,6 +155,13 @@ Oracle-Party/
 - No external JS frameworks. Supabase JS client is the only dependency.
 - When in doubt, keep it simple. We can add complexity later.
 
+## Visual Review Process (MANDATORY)
+- **Screenshot tool**: `node scripts/screenshot.js [page] --screen=[id] --theme=[dark|oled]` — takes screenshots at 375px mobile viewport via Puppeteer. Output: `/tmp/screenshot-<name>.png`
+- **ALWAYS screenshot before pushing.** Never push UI changes blind. Take the screenshot, read it with the Read tool, critically assess, fix issues, re-screenshot. Iterate until confident.
+- **Playtest gameplay changes** before committing — run through the actual game flow, not just static screenshots.
+- **Check all three themes** (light, dark, OLED) for any visual change.
+- **Compare against the vision** — does the change match the intended direction? Does every element earn its place? Does anything look cheap, generic, or like a developer placeholder?
+
 ## Gotchas — Common Mistakes to Avoid
 - NEVER show internal state markers (like `__WAGER_LOCKED__`) to players
 - Always fully reset game state when returning to lobby via Play Again
