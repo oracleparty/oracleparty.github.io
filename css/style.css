@@ -1032,29 +1032,30 @@ body::after {
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
-  bottom: -2px;
+  bottom: 4px;
   left: 50%;
   transform: translateX(-50%);
   font-family: 'Hieroglyphs', sans-serif;
-  font-size: 7rem;
+  font-size: 3.5rem;
   line-height: 1;
   color: var(--color-primary);
   opacity: 0.18;
   pointer-events: none;
   z-index: 0;
 }
-/* Per-glyph sizing — tuned to fill card without top cutoff */
-.category-card[data-hiero="𓋹"]::after { font-size: 4.8rem; }   /* ankh — very tall loop */
-.category-card[data-hiero="𓂀"]::after { font-size: 4.2rem; }   /* eye of horus — very wide with horns */
-.category-card[data-hiero="𓅝"]::after { font-size: 5.5rem; }   /* ibis — tall bird */
-.category-card[data-hiero="𓀭"]::after { font-size: 5.2rem; }   /* seated god — tall crown */
-.category-card[data-hiero="𓇼"]::after { font-size: 7.5rem; }   /* star — small glyph, boosted */
-.category-card[data-hiero="𓈉"]::after { font-size: 9rem; }     /* desert hills — flat, max it */
-.category-card[data-hiero="𓊝"]::after { font-size: 6.5rem; }   /* adze — wide */
-.category-card[data-hiero="𓃗"]::after { font-size: 5.8rem; }   /* horse — tall head/ears */
-.category-card[data-hiero="𓎿"]::after { font-size: 6.5rem; }   /* beer jug — tall handle */
-.category-card[data-hiero="𓃻"]::after { font-size: 6.5rem; }   /* baboon — medium-tall */
-.category-card[data-hiero="𓆣"]::after { font-size: 5.5rem; }   /* scarab — horns extend up */
+/* Per-glyph sizing — round 1: conservative bump from 3.5rem baseline */
+.category-card[data-hiero="𓋹"]::after { font-size: 4rem; bottom: 8px; }  /* ankh — descenders */
+.category-card[data-hiero="𓂀"]::after { font-size: 2.8rem; bottom: auto; top: 50%; transform: translate(-50%, -50%); }  /* eye — centered, extreme proportions */
+.category-card[data-hiero="𓅃"]::after { font-size: 5rem; bottom: 8px; }  /* falcon — tail descends */
+.category-card[data-hiero="𓅝"]::after { font-size: 4.5rem; bottom: 10px; }  /* ibis — perch descends */
+.category-card[data-hiero="𓀭"]::after { font-size: 4rem; bottom: 10px; }  /* seated god — descenders */
+.category-card[data-hiero="𓇼"]::after { font-size: 6rem; }     /* star — intrinsically small */
+.category-card[data-hiero="𓈉"]::after { font-size: 6rem; }     /* desert hills — flat/short */
+.category-card[data-hiero="𓊝"]::after { font-size: 5rem; bottom: 6px; }  /* adze — base descends */
+.category-card[data-hiero="𓃗"]::after { font-size: 4.5rem; bottom: 8px; }  /* horse — hooves */
+.category-card[data-hiero="𓎿"]::after { font-size: 4.5rem; bottom: 8px; }  /* beer jug — base descends */
+.category-card[data-hiero="𓃻"]::after { font-size: 3.8rem; bottom: 14px; }  /* baboon — tall + descenders */
+.category-card[data-hiero="𓆣"]::after { font-size: 3.8rem; bottom: 14px; }  /* scarab — horns + legs */
 
 [data-theme="dark"] .category-card::after {
   opacity: 0.20;
