@@ -709,7 +709,7 @@ body::after {
   height: 1px;
   background: var(--color-primary);
   opacity: 0.25;
-  margin: var(--space-lg) auto var(--space-2xl);
+  margin: var(--space-md) auto var(--space-xl);
   position: relative;
   z-index: 1;
 }
