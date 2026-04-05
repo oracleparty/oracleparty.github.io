@@ -5,6 +5,15 @@
 
 /* --- Google Fonts loaded via <link> in HTML <head> for faster rendering --- */
 
+/* --- Egyptian Hieroglyphs (subset, self-hosted for cross-platform consistency) --- */
+@font-face {
+  font-family: 'Hieroglyphs';
+  src: url('../fonts/hieroglyphs.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* --- CSS Variables --- */
 :root {
   /* Colors — Warm Light Theme */
@@ -687,6 +696,7 @@ body::after {
 .home__glyph--hiero {
   color: var(--color-primary);
   opacity: 0.15;
+  font-family: 'Hieroglyphs', sans-serif;
 }
 
 [data-theme="dark"] .home__glyph,
@@ -876,6 +886,7 @@ body::after {
   color: var(--color-primary);
   font-size: 18px;
   opacity: 0.7;
+  font-family: 'Hieroglyphs', sans-serif;
 }
 
 .home__dock-btn--initial {
@@ -1022,6 +1033,7 @@ body::after {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  font-family: 'Hieroglyphs', sans-serif;
   font-size: 7rem;
   line-height: 1;
   color: var(--color-primary);

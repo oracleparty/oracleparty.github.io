@@ -5,10 +5,17 @@
 <meta name="theme-color" content="#1A1A2E">
 <title>Hieroglyph Rendering Test</title>
 <style>
+  @font-face {
+    font-family: 'Hieroglyphs';
+    src: url('fonts/hieroglyphs.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
   body { background: #1A1A2E; color: #e8e0d0; font-family: -apple-system, sans-serif; margin: 0; padding: 16px; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .cell { background: #252547; border-radius: 12px; padding: 12px 8px; text-align: center; }
-  .glyph { font-size: 64px; line-height: 1.2; color: #c68a2e; display: block; }
+  .glyph { font-size: 64px; line-height: 1.2; color: #c68a2e; display: block; font-family: 'Hieroglyphs', sans-serif; }
   .code { font-size: 10px; color: #888; margin-top: 4px; }
   .label { font-size: 11px; color: #ccc; margin-top: 2px; font-weight: 600; }
   h1 { font-size: 16px; text-align: center; margin-bottom: 16px; color: #c68a2e; }
