@@ -671,7 +671,7 @@ body::after {
 
 /* Oracle Eye mark — Unicode Eye of Horus glyph */
 .home__mark {
-  font-size: 56px;
+  font-size: 72px;
   line-height: 1;
   color: var(--color-primary);
   margin-bottom: var(--space-md);

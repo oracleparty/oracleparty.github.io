@@ -155,12 +155,31 @@ Oracle-Party/
 - No external JS frameworks. Supabase JS client is the only dependency.
 - When in doubt, keep it simple. We can add complexity later.
 
-## Visual Review Process (MANDATORY)
-- **Screenshot tool**: `node scripts/screenshot.js [page] --screen=[id] --theme=[dark|oled]` — takes screenshots at 375px mobile viewport via Puppeteer. Output: `/tmp/screenshot-<name>.png`
-- **ALWAYS screenshot before pushing.** Never push UI changes blind. Take the screenshot, read it with the Read tool, critically assess, fix issues, re-screenshot. Iterate until confident.
-- **Playtest gameplay changes** before committing — run through the actual game flow, not just static screenshots.
-- **Check all three themes** (light, dark, OLED) for any visual change.
-- **Compare against the vision** — does the change match the intended direction? Does every element earn its place? Does anything look cheap, generic, or like a developer placeholder?
+## Visual Review & Playtesting (MANDATORY)
+
+### Screenshot Tool
+```bash
+# Single page/screen
+node scripts/screenshot.js [page] --screen=[id] --theme=[dark|oled]
+# Specific mock state (realistic data)
+node scripts/screenshot.js --state=<name>
+# All mock states at once
+node scripts/screenshot.js --all
+# With accessibility scan
+node scripts/screenshot.js --state=<name> --a11y
+```
+- Output: `/tmp/screenshot-<name>.png` — read with the Read tool to visually inspect
+- Mock states defined in `scripts/mock-states.js` — covers splash, home, category grid, lobby, gameplay, reveal, results, etc.
+- Default viewport: 375×812 (iPhone), 2x device scale. Override with `--width=N --height=N`
+
+### The Process (NON-NEGOTIABLE)
+1. **ALWAYS screenshot before pushing.** Never push UI changes blind.
+2. **Read the screenshot with the Read tool** and critically assess — does it actually look good? Be honest.
+3. **Fix issues, re-screenshot, repeat** until genuinely confident. Not "good enough" — actually good.
+4. **Check all three themes** (light, dark, OLED) for any visual change.
+5. **Compare against the vision** — does every element earn its place? Does anything look cheap, generic, or like a developer placeholder?
+6. **Playtest gameplay changes** — use mock states or manual browser testing to verify the actual game flow works, not just static visuals.
+7. **Never claim something looks good when it doesn't.** Be the harshest critic before the user has to be.
 
 ## Gotchas — Common Mistakes to Avoid
 - NEVER show internal state markers (like `__WAGER_LOCKED__`) to players
