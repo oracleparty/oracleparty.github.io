@@ -175,26 +175,30 @@ export async function insertGamePlay({ roomId, playerId, playerName, category, s
 }
 
 export async function incrementQuestionsAnswered(roomId, playerId) {
-  // Fetch current count, then increment
-  const { data, error: fetchErr } = await supabase
-    .from('game_plays')
-    .select('questions_answered')
-    .eq('room_id', roomId)
-    .eq('player_id', playerId)
-    .single();
+  // Atomic increment via Supabase RPC — avoids read-then-write race condition.
+  // Falls back to client-side increment if the RPC doesn't exist yet (migration 022).
+  const { error } = await supabase.rpc('increment_questions_answered', {
+    p_room_id: roomId,
+    p_player_id: playerId
+  });
 
-  if (fetchErr || !data) {
-    logger.error('Supabase', 'incrementQuestionsAnswered fetch failed', fetchErr);
-    return;
+  if (error) {
+    // Fallback: RPC may not be deployed yet — use direct update
+    logger.warn('Supabase', 'increment RPC failed, falling back to direct update', error);
+    const { data } = await supabase
+      .from('game_plays')
+      .select('questions_answered')
+      .eq('room_id', roomId)
+      .eq('player_id', playerId)
+      .single();
+    if (data) {
+      await supabase
+        .from('game_plays')
+        .update({ questions_answered: (data.questions_answered || 0) + 1 })
+        .eq('room_id', roomId)
+        .eq('player_id', playerId);
+    }
   }
-
-  const { error } = await supabase
-    .from('game_plays')
-    .update({ questions_answered: (data.questions_answered || 0) + 1 })
-    .eq('room_id', roomId)
-    .eq('player_id', playerId);
-
-  if (error) logger.error('Supabase', 'incrementQuestionsAnswered update failed', error);
 }
 
 export async function completeGamePlay({ roomId, playerId, finalScore }) {

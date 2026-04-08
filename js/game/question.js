@@ -9,7 +9,7 @@ import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
 import { updateGameState, submitAnswer, fetchAnswersForQuestion, incrementQuestionsAnswered } from '../supabase.js';
-import { computeScoreEarned } from './scoring-helpers.js';
+import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
 import { showHostSettingsGear } from './host.js';
@@ -203,7 +203,7 @@ function renderWagerGrid() {
     state.wagerExplicitlySelected = true;
   } else if (available.length === 0) {
     // Defensive: all exhausted — assign fallback so player can still submit
-    state.currentWager = state.currentQuestion + 1;
+    state.currentWager = findNextAvailableWager(state.usedWagers, state.totalQuestions);
     state.wagerExplicitlySelected = true;
     logger.warn('Game', 'All wagers exhausted, fallback to ' + state.currentWager);
   }
@@ -417,15 +417,9 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   } else if (state.currentWager) {
     wager = state.currentWager;
   } else {
-    // Fallback: find lowest available wager
-    wager = null;
-    for (let i = 1; i <= state.totalQuestions; i++) {
-      if (!state.usedWagers.has(i)) { wager = i; break; }
-    }
-    if (wager === null) {
-      wager = 1;
-      logger.warn('Game', 'doSubmitAnswer: all wagers used, fallback to ' + wager);
-    }
+    // Fallback: find lowest available wager (centralised in scoring-helpers)
+    wager = findNextAvailableWager(state.usedWagers, state.totalQuestions);
+    logger.warn('Game', 'doSubmitAnswer: no wager selected, auto-assigned ' + wager);
   }
   const scoreEarned = computeScoreEarned(isCorrect, wager, state.isFinalWagerRound);
 
