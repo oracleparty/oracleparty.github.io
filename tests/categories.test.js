@@ -133,25 +133,27 @@ describe('resolveSubcategoryIcon', () => {
   });
 
   it('returns category icon when no subcategory', () => {
-    expect(resolveSubcategoryIcon('history', null)).toBe(CATEGORY_META['history'].icon);
+    const meta = CATEGORY_META['history'];
+    expect(resolveSubcategoryIcon('history', null)).toBe(meta.emoji || meta.icon);
   });
 
   it('returns subcategory icon for depth-1 node', () => {
     const node = findSubcategoryNode(CATEGORY_META['history'], 'ancient');
-    expect(resolveSubcategoryIcon('history', 'ancient')).toBe(node.icon);
+    expect(resolveSubcategoryIcon('history', 'ancient')).toBe(node.emoji || node.icon);
   });
 
   it('returns deeply nested subcategory icon', () => {
     const node = findSubcategoryNode(CATEGORY_META['world-geography'], 'human-countries-capitals');
-    expect(resolveSubcategoryIcon('world-geography', 'human-countries-capitals')).toBe(node.icon);
+    expect(resolveSubcategoryIcon('world-geography', 'human-countries-capitals')).toBe(node.emoji || node.icon);
   });
 
   it('falls back to category icon for unknown subcategory', () => {
-    expect(resolveSubcategoryIcon('history', 'nonexistent')).toBe(CATEGORY_META['history'].icon);
+    const meta = CATEGORY_META['history'];
+    expect(resolveSubcategoryIcon('history', 'nonexistent')).toBe(meta.emoji || meta.icon);
   });
 
   it('resolves wild-card option icons', () => {
-    const allQIcon = CATEGORY_META['wild-card'].wildCardOptions.find(o => o.key === '__all_questions__').icon;
-    expect(resolveSubcategoryIcon('wild-card', '__all_questions__')).toBe(allQIcon);
+    const opt = CATEGORY_META['wild-card'].wildCardOptions.find(o => o.key === '__all_questions__');
+    expect(resolveSubcategoryIcon('wild-card', '__all_questions__')).toBe(opt.emoji || opt.icon);
   });
 });
