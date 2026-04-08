@@ -286,8 +286,10 @@ export async function getServerTimeOffset() {
       const clientMidpoint = (before + after) / 2;
       return serverTime - clientMidpoint;
     }
+    console.warn('[Oracle Party] Server time sync: no Date header, falling back to local time');
     return 0;
-  } catch {
+  } catch (err) {
+    console.warn('[Oracle Party] Server time sync failed, falling back to local time:', err);
     return 0;
   }
 }

@@ -39,9 +39,9 @@ document.addEventListener('click', _unlockAudio, true);
 export function setHonkMuted(muted) { _honkMuted = muted; }
 
 function playHonk() {
-  const sound = new Audio('honk.mp3');
-  sound.volume = 1.0;
-  sound.play().catch(() => {});
+  honkAudio.currentTime = 0;
+  honkAudio.volume = 1.0;
+  honkAudio.play().catch(() => {});
 }
 
 // --- Animation ---

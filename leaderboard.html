@@ -26,22 +26,22 @@
     </div>
 
     <!-- Tabs -->
-    <div class="profile-tabs">
-      <button class="profile-tab active" data-tab="global">Global</button>
-      <button class="profile-tab" data-tab="weekly">Weekly</button>
-      <button class="profile-tab" data-tab="category">Category</button>
-      <button class="profile-tab" data-tab="friends">Friends</button>
+    <div class="profile-tabs" role="tablist" aria-label="Leaderboard views">
+      <button class="profile-tab active" data-tab="global" role="tab" aria-selected="true" aria-controls="tab-global">Global</button>
+      <button class="profile-tab" data-tab="weekly" role="tab" aria-selected="false" aria-controls="tab-weekly">Weekly</button>
+      <button class="profile-tab" data-tab="category" role="tab" aria-selected="false" aria-controls="tab-category">Category</button>
+      <button class="profile-tab" data-tab="friends" role="tab" aria-selected="false" aria-controls="tab-friends">Friends</button>
     </div>
 
     <!-- Global -->
-    <div id="tab-global" class="leaderboard-tab">
+    <div id="tab-global" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-global">
       <div id="lb-global-list" class="leaderboard-list">
         <p class="leaderboard-loading">Loading...</p>
       </div>
     </div>
 
     <!-- Weekly -->
-    <div id="tab-weekly" class="leaderboard-tab" style="display:none;">
+    <div id="tab-weekly" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-weekly" style="display:none;">
       <p class="leaderboard-reset-note" id="weekly-reset-note"></p>
       <div id="lb-weekly-list" class="leaderboard-list">
         <p class="leaderboard-loading">Loading...</p>
@@ -49,7 +49,7 @@
     </div>
 
     <!-- Category -->
-    <div id="tab-category" class="leaderboard-tab" style="display:none;">
+    <div id="tab-category" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-category" style="display:none;">
       <div style="display: flex; gap: var(--space-xs); margin: var(--space-sm) var(--space-lg);">
         <select id="lb-category-select" class="input" style="flex: 1;">
           <option value="history">History</option>
@@ -73,7 +73,7 @@
     </div>
 
     <!-- Friends -->
-    <div id="tab-friends" class="leaderboard-tab" style="display:none;">
+    <div id="tab-friends" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-friends" style="display:none;">
       <div id="lb-friends-list" class="leaderboard-list">
         <p class="leaderboard-loading">Loading...</p>
       </div>

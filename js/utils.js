@@ -184,6 +184,8 @@ export function showToast(message, type = 'info', duration = TOAST_DURATION_MS) 
     setTimeout(() => {
       toast.addEventListener('animationend', () => toast.remove(), { once: true });
       toast.classList.add('toast--out');
+      // Fallback: remove after 1s if animationend never fires (tab switch, reduced motion)
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 1000);
     }, duration);
   }
   return toast;

@@ -886,7 +886,11 @@ export async function initProfilePage() {
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const target = tab.dataset.tab;
-      tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === target));
+      tabs.forEach(t => {
+        const isActive = t.dataset.tab === target;
+        t.classList.toggle('active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
       if (target === 'profile') {
         profileContent.style.display = '';
         friendsContent.style.display = 'none';

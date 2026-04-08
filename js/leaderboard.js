@@ -30,7 +30,11 @@ async function init() {
   const tabs = $$('.profile-tab');
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tab.dataset.tab));
+      tabs.forEach(t => {
+        const isActive = t.dataset.tab === tab.dataset.tab;
+        t.classList.toggle('active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
       $$('.leaderboard-tab').forEach(el => { el.style.display = 'none'; });
       $(`#tab-${tab.dataset.tab}`).style.display = '';
       loadTab(tab.dataset.tab);

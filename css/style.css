@@ -5860,3 +5860,12 @@ body[style*="opacity: 0"] {
   margin-bottom: var(--space-sm);
 }
 
+/* --- Reduced Motion Accessibility --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+

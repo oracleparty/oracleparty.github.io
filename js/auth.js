@@ -359,7 +359,13 @@ export function showSignUpModal() {
     overlay.classList.add('active');
     // Refresh the displayed name (may have changed since modal was first injected)
     const nameDisplay = $('#signup-name-display');
-    if (nameDisplay) nameDisplay.innerHTML = `Playing as: <strong>${getDisplayName() || 'Guest'}</strong>`;
+    if (nameDisplay) {
+      nameDisplay.textContent = '';
+      nameDisplay.append('Playing as: ');
+      const strong = document.createElement('strong');
+      strong.textContent = getDisplayName() || 'Guest';
+      nameDisplay.appendChild(strong);
+    }
     emailInput.focus();
 
     dismissBtn.onclick = () => {
@@ -395,7 +401,13 @@ export function showSignUpModal() {
         if (!displayName || !displayName.trim()) return;
         // Update the name display in the modal
         const nameDisplay = $('#signup-name-display');
-        if (nameDisplay) nameDisplay.innerHTML = `Playing as: <strong>${displayName}</strong>`;
+        if (nameDisplay) {
+          nameDisplay.textContent = '';
+          nameDisplay.append('Playing as: ');
+          const s = document.createElement('strong');
+          s.textContent = displayName;
+          nameDisplay.appendChild(s);
+        }
       }
 
       submitBtn.disabled = true;

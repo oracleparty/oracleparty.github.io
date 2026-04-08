@@ -53,13 +53,13 @@
     </div>
 
     <!-- Tabs -->
-    <div class="profile-tabs">
-      <button class="profile-tab active" data-tab="profile">Profile</button>
-      <button class="profile-tab" data-tab="friends">Friends <span id="friends-tab-badge" class="profile-tab__badge hidden"></span></button>
+    <div class="profile-tabs" role="tablist" aria-label="Profile sections">
+      <button class="profile-tab active" data-tab="profile" role="tab" aria-selected="true" aria-controls="profile-tab-content">Profile</button>
+      <button class="profile-tab" data-tab="friends" role="tab" aria-selected="false" aria-controls="friends-tab-content">Friends <span id="friends-tab-badge" class="profile-tab__badge hidden"></span></button>
     </div>
 
     <!-- ===== PROFILE TAB ===== -->
-    <div id="profile-tab-content">
+    <div id="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile">
 
       <!-- Bio -->
       <div class="profile-section">
@@ -106,7 +106,7 @@
     </div>
 
     <!-- ===== FRIENDS TAB ===== -->
-    <div id="friends-tab-content" style="display: none;">
+    <div id="friends-tab-content" role="tabpanel" aria-labelledby="tab-friends" style="display: none;">
 
       <!-- Search -->
       <div class="profile-section">
