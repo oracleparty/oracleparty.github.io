@@ -8,7 +8,7 @@ import { findNextAvailableWager } from './scoring-helpers.js';
 import { getCountdownElapsed } from './timer-helpers.js';
 import { determineNextHost } from './host-promotion.js';
 import { logger } from '../logger.js';
-import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS } from '../constants.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS } from '../constants.js';
 import {
   updateGameState,
   fetchQuestionsByIds,
@@ -753,24 +753,37 @@ export function handleAnswerChange(payload) {
   });
 }
 
-// STALE PLAYER AUTO-KICK (5 min disconnect → removed)
+// STALE PLAYER AUTO-KICK
 // ============================================
-const STALE_TIMEOUT = STALE_TIMEOUT_MS; // 30 seconds — fast fallback for when unload beacons fail
+// Uses last_seen_at (DB heartbeat) for reliable stale detection.
+// Two thresholds:
+//   - DISCONNECTED_TIMEOUT_MS (45s): player beacon fired (tab close)
+//   - STALE_TIMEOUT_MS (3 min): heartbeat stopped (internet loss / crash)
 
 export async function checkStalePresence() {
   setStaleCheckCount(_staleCheckCount + 1);
   const now = Date.now();
-  for (const [id, since] of state.awayTimestamps) {
-    if (now - since < STALE_TIMEOUT) continue;
+
+  for (const p of state.players) {
+    const id = String(p.id);
     if (id === String(state.room.playerId)) continue;
 
-    const stalePlayer = state.players.find(p => String(p.id) === id);
-    if (!stalePlayer) continue;
+    const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).getTime() : 0;
+    const silenceMs = now - lastSeen;
+    const hasDisconnected = !!p.disconnected_at;
 
-    if (stalePlayer.is_host) {
+    // Fast path: beacon fired + heartbeat stopped for 45s → remove
+    // Slow path: no beacon but heartbeat stopped for 3 min → remove
+    const threshold = hasDisconnected ? DISCONNECTED_TIMEOUT_MS : STALE_TIMEOUT_MS;
+    if (silenceMs < threshold) continue;
+
+    if (p.is_host) {
       // Stale host: earliest connected player kicks them (deterministic)
       const connected = state.players
-        .filter(p => !state.awayTimestamps.has(String(p.id)))
+        .filter(pl => {
+          const ls = pl.last_seen_at ? new Date(pl.last_seen_at).getTime() : 0;
+          return (now - ls) < DISCONNECTED_TIMEOUT_MS && !pl.disconnected_at;
+        })
         .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
       if (connected[0] && String(connected[0].id) === String(state.room.playerId)) {
         removePlayer(id);

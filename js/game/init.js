@@ -5,7 +5,7 @@
 
 import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 import { logger } from '../logger.js';
-import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from '../constants.js';
+import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from '../constants.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -23,6 +23,8 @@ import {
   createPresenceChannel,
   removePlayer,
   removePlayerBeacon,
+  markDisconnectedBeacon,
+  playerHeartbeat,
   deleteRoom,
   deleteRoomBeacon,
   subscribeToPlayers,
@@ -135,24 +137,26 @@ async function init() {
     return;
   }
 
-  // If current player is missing (e.g. removePlayerBeacon fired on refresh), re-add them
-  // Room existence already validated above — safe to re-add
+  // Session resume: since handleUnload now marks disconnected_at instead of deleting,
+  // the player row should still exist after a refresh. Clear the disconnect flag.
   const me = state.players.find(p => String(p.id) === String(state.room.playerId));
-  if (!me) {
+  if (me) {
+    // Player row exists — clear disconnected_at and refresh last_seen_at immediately
+    if (me.disconnected_at) {
+      await playerHeartbeat(state.room.playerId);
+    }
+  } else {
+    // Player row genuinely missing (stale timeout removed them, or explicit kick).
+    // Fall back to re-join logic.
     const displayName = getDisplayName();
 
-    // Before creating a new row, check if a player with the same display name already
-    // exists — this happens when the page reloads before removePlayerBeacon completes
-    // (pull-to-refresh on iOS, slow beacon, bfcache restore, etc.).
+    // Check if a player with the same display name exists (beacon race edge case)
     const existingByName = state.players.find(p => p.display_name === displayName);
     if (existingByName) {
-      // Reconnect to the existing row — update our local player ID reference only
       state.room.playerId = existingByName.id;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-      // state.players already reflects the current DB state — no re-fetch needed
     } else {
-      // Beacon already fired (player row deleted). Record the old ID so we can still
-      // recover wagers from answers that reference it, then create a fresh row.
+      // Create a fresh player row and migrate orphaned answers
       const prevPlayerId = state.room.playerId;
       const authUser = getCurrentUser();
       const rejoinUserId = authUser?.user?.id || null;
@@ -168,14 +172,8 @@ async function init() {
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
         state.players = await fetchPlayers(state.room.id);
 
-        // Migrate orphaned answers from old player to new player so
-        // updateScores() attributes them correctly and the scoreboard
-        // shows the right totals.
         await reassignPlayerAnswers(state.room.id, prevPlayerId, rejoinedPlayer.id);
 
-        // Rebuild used wagers from the migrated answers (now under new player ID).
-        // initHostGame / applyGameState will also rebuild, but this is a safety net
-        // in case that code path is skipped (e.g. lobby-status room on reconnect).
         const allAnswers = await fetchAllAnswers(state.room.id);
         const myAnswers = allAnswers.filter(a => String(a.player_id) === String(rejoinedPlayer.id));
         for (const a of myAnswers) {
@@ -259,7 +257,14 @@ async function init() {
     }
   }, LOBBY_POLL_INTERVAL);
 
-  // Poll for stale disconnected players (auto-kick after 5 min)
+  // DB heartbeat: update last_seen_at every 15s for stale detection.
+  // Also sends an immediate heartbeat to clear any disconnected_at from a prior refresh.
+  playerHeartbeat(state.room.playerId).catch(() => {});
+  state._dbHeartbeatId = setInterval(() => {
+    playerHeartbeat(state.room.playerId).catch(() => {});
+  }, HEARTBEAT_DB_INTERVAL_MS);
+
+  // Poll for stale disconnected players (auto-kick after timeout)
   state.stalePollId = setInterval(checkStalePresence, STALE_CHECK_INTERVAL);
 
   // Periodic sync to catch missed Realtime messages after brief disconnections
@@ -577,13 +582,11 @@ function handleBackButton() {
 
 function handleUnload() {
   if (_isLeaving) return;
-  // Send beacon FIRST — maximize chance it completes before browser tears down the page
+  // Soft disconnect: mark player as disconnected but DON'T delete.
+  // Refresh will resume via sessionStorage; tab close will be cleaned up
+  // by stale check after DISCONNECTED_TIMEOUT_MS.
   if (state.room && state.room.playerId) {
-    if (state.players.length <= 1) {
-      deleteRoomBeacon(state.room.id);
-    } else {
-      removePlayerBeacon(state.room.playerId);
-    }
+    markDisconnectedBeacon(state.room.playerId);
   }
   cleanup();
 }
@@ -619,6 +622,10 @@ function handleVisibilityChange() {
     state._wasHidden = true;
     return;
   }
+
+  // Tab became visible — send immediate DB heartbeat so other clients
+  // see us as alive right away (don't wait for 15s interval).
+  playerHeartbeat(state.room.playerId).catch(() => {});
 
   // When tab becomes visible again, sync to current game state.
   // Supabase Realtime does NOT replay missed messages after a disconnect,
@@ -781,6 +788,10 @@ function cleanup() {
   if (state.presenceHeartbeatId) {
     clearInterval(state.presenceHeartbeatId);
     state.presenceHeartbeatId = null;
+  }
+  if (state._dbHeartbeatId) {
+    clearInterval(state._dbHeartbeatId);
+    state._dbHeartbeatId = null;
   }
   if (state._syncIntervalId) {
     clearInterval(state._syncIntervalId);

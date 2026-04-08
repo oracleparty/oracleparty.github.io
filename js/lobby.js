@@ -5,7 +5,7 @@
 
 import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from './utils.js';
 import { logger } from './logger.js';
-import { STALE_TIMEOUT_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS } from './constants.js';
+import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HEARTBEAT_DB_INTERVAL_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS } from './constants.js';
 import {
   addPlayer,
   fetchPlayers,
@@ -13,6 +13,8 @@ import {
   sendMessage,
   removePlayer,
   removePlayerBeacon,
+  markDisconnectedBeacon,
+  playerHeartbeat,
   deleteRoom,
   deleteRoomBeacon,
   promoteToHost,
@@ -55,6 +57,7 @@ let presenceReady = false;
 let awayTimestamps = new Map(); // player ID → Date.now() when first seen as away
 let playerPollInterval = null;
 let presenceHeartbeatId = null;
+let dbHeartbeatId = null;
 
 // --- DOM refs ---
 const lobbyCategory = $('#lobby-category');
@@ -208,6 +211,13 @@ async function init() {
         .catch(() => {});
     }
   }, LOBBY_PLAYER_DEBOUNCE_MS);
+
+  // DB heartbeat: update last_seen_at every 15s for stale detection.
+  // Also sends an immediate heartbeat to clear any disconnected_at from a prior refresh.
+  playerHeartbeat(room.playerId).catch(() => {});
+  dbHeartbeatId = setInterval(() => {
+    playerHeartbeat(room.playerId).catch(() => {});
+  }, HEARTBEAT_DB_INTERVAL_MS);
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -766,7 +776,15 @@ function attachSettingsListeners() {
  */
 async function ensureCurrentPlayer() {
   const me = players.find(p => String(p.id) === String(room.playerId));
-  if (me) return;
+  if (me) {
+    // Player row exists — clear any disconnected_at from a prior refresh/unload.
+    // The DB heartbeat in init() also does this, but doing it here too ensures
+    // the stale check doesn't race-remove us before the heartbeat fires.
+    if (me.disconnected_at) {
+      playerHeartbeat(room.playerId).catch(() => {});
+    }
+    return;
+  }
 
   // Verify room still exists before re-adding (don't resurrect zombie rooms)
   const { data: roomCheck } = await fetchRoom(room.id);
@@ -779,8 +797,8 @@ async function ensureCurrentPlayer() {
   const displayName = getDisplayName();
 
   // Before creating a new entry, check if a player with the same display name already
-  // exists — this happens when the page reloads before removePlayerBeacon completes
-  // (pull-to-refresh on iOS, bfcache restore, slow beacon, etc.).
+  // exists — this handles edge cases where the old player row was legitimately removed
+  // (stale timeout, explicit kick) but sessionStorage still references it.
   const existingByName = players.find(p => p.display_name === displayName);
   if (existingByName) {
     room.playerId = existingByName.id;
@@ -1263,24 +1281,35 @@ function handleRoomChange(payload) {
 }
 
 // ============================================
-// STALE PLAYER AUTO-KICK (5 min disconnect → removed)
+// STALE PLAYER AUTO-KICK
 // ============================================
-const STALE_TIMEOUT = STALE_TIMEOUT_MS; // 30 seconds — fast fallback for when unload beacons fail
+// Uses last_seen_at (DB heartbeat) for reliable stale detection.
+// Two thresholds:
+//   - DISCONNECTED_TIMEOUT_MS (45s): player beacon fired (tab close / navigation)
+//   - STALE_TIMEOUT_MS (3 min): player heartbeat stopped (internet loss / crash)
 
 function checkStalePresence() {
   const now = Date.now();
-  for (const [id, since] of awayTimestamps) {
-    if (now - since < STALE_TIMEOUT) continue;
-    // Don't kick ourselves
-    if (id === String(room.playerId)) continue;
+  for (const p of players) {
+    const id = String(p.id);
+    if (id === String(room.playerId)) continue; // Don't kick ourselves
 
-    const stalePlayer = players.find(p => String(p.id) === id);
-    if (!stalePlayer) continue;
+    const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).getTime() : 0;
+    const silenceMs = now - lastSeen;
+    const hasDisconnected = !!p.disconnected_at;
 
-    if (stalePlayer.is_host) {
+    // Fast path: beacon fired (tab close) + heartbeat stopped for 45s → remove
+    // Slow path: no beacon but heartbeat stopped for 3 minutes → remove
+    const threshold = hasDisconnected ? DISCONNECTED_TIMEOUT_MS : STALE_TIMEOUT_MS;
+    if (silenceMs < threshold) continue;
+
+    if (p.is_host) {
       // Stale host: earliest connected player kicks them (deterministic)
       const connected = players
-        .filter(p => !awayTimestamps.has(String(p.id)))
+        .filter(pl => {
+          const ls = pl.last_seen_at ? new Date(pl.last_seen_at).getTime() : 0;
+          return (now - ls) < DISCONNECTED_TIMEOUT_MS && !pl.disconnected_at;
+        })
         .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
       if (connected[0] && String(connected[0].id) === String(room.playerId)) {
         removePlayer(id);
@@ -1334,13 +1363,13 @@ function handleBackButton() {
 
 function handleUnload() {
   if (isLeaving) return;
-  // Send beacon FIRST — maximize chance it completes before browser tears down the page
+  // Soft disconnect: mark player as disconnected but DON'T delete.
+  // If this is a refresh, the page will reload, find the player row via
+  // sessionStorage, and clear disconnected_at via heartbeat.
+  // If this is a tab close (sessionStorage gone), the stale check will
+  // remove the player after DISCONNECTED_TIMEOUT_MS.
   if (room && room.playerId) {
-    if (players.length <= 1) {
-      deleteRoomBeacon(room.id);
-    } else {
-      removePlayerBeacon(room.playerId);
-    }
+    markDisconnectedBeacon(room.playerId);
   }
   cleanup();
 }
@@ -1366,6 +1395,11 @@ function handleVisibilityChange() {
   // don't permanently break away detection.
   presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
     .catch(() => {});
+  // When tab becomes visible, send immediate DB heartbeat so other clients
+  // see our last_seen_at refresh instantly (don't wait for the 15s interval).
+  if (!document.hidden) {
+    playerHeartbeat(room.playerId).catch(() => {});
+  }
 }
 
 // ============================================
@@ -1381,6 +1415,8 @@ function cleanup() {
   playerPollInterval = null;
   clearInterval(presenceHeartbeatId);
   presenceHeartbeatId = null;
+  clearInterval(dbHeartbeatId);
+  dbHeartbeatId = null;
   for (const ch of channels) unsubscribe(ch);
   channels = [];
   presenceReady = false;

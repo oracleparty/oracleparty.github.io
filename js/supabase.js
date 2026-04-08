@@ -18,7 +18,8 @@ export {
 // --- Players & Answers ---
 export {
   addPlayer, promoteToHost, demoteHost, promoteToCohost, demoteCohost,
-  removePlayer, removePlayerBeacon, fetchPlayers, toggleReady,
+  removePlayer, removePlayerBeacon, markDisconnectedBeacon, playerHeartbeat,
+  fetchPlayers, toggleReady,
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
   fetchAllAnswers, deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,

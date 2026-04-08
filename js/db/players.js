@@ -80,6 +80,7 @@ export async function removePlayer(playerId) {
 /**
  * Fire-and-forget player removal using fetch with keepalive.
  * Reliable during page unload (beforeunload / pagehide).
+ * Used ONLY for explicit leave actions (Leave button, Back button).
  */
 export function removePlayerBeacon(playerId) {
   fetch(`${SUPABASE_URL}/rest/v1/players?id=eq.${playerId}`, {
@@ -90,6 +91,40 @@ export function removePlayerBeacon(playerId) {
     },
     keepalive: true
   });
+}
+
+/**
+ * Fire-and-forget soft disconnect signal using fetch with keepalive.
+ * Sets disconnected_at on the player row WITHOUT deleting it.
+ * Used on beforeunload/pagehide so refresh can resume the session.
+ * If the player comes back (refresh), playerHeartbeat clears this.
+ * If they don't (tab close), stale check removes them after timeout.
+ */
+export function markDisconnectedBeacon(playerId) {
+  fetch(`${SUPABASE_URL}/rest/v1/players?id=eq.${playerId}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({ disconnected_at: new Date().toISOString() }),
+    keepalive: true
+  });
+}
+
+/**
+ * Update last_seen_at and clear disconnected_at for a player.
+ * Called every 15s as a DB heartbeat, and immediately on session resume.
+ * Proves the player is still alive; stale check uses last_seen_at for cleanup.
+ */
+export async function playerHeartbeat(playerId) {
+  const { error } = await supabase
+    .from('players')
+    .update({ last_seen_at: new Date().toISOString(), disconnected_at: null })
+    .eq('id', playerId);
+  if (error) logger.error('Supabase', 'playerHeartbeat failed', error);
 }
 
 /**
