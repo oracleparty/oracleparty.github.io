@@ -979,14 +979,26 @@ async function handleToggleReady() {
 
 // --- Start Game (host) ---
 async function handleStartGame() {
-  if (players.length < 2) return;
+  if (players.length < 2) {
+    showToast('Need at least 2 players to start!', 'error');
+    return;
+  }
 
   btnStartGame.classList.add('is-loading');
   btnStartGame.textContent = 'Starting...';
 
   try {
     await updateRoomStatus(room.id, 'playing');
-    // Room subscription will trigger navigation for everyone including host
+    // Realtime subscription triggers navigation for everyone including host.
+    // Safety fallback: if Realtime doesn't fire within 5s, navigate directly.
+    setTimeout(() => {
+      if (!isLeaving) {
+        logger.warn('Lobby', 'Realtime did not fire — navigating directly');
+        isLeaving = true;
+        cleanup();
+        navigateWithFadeReplace('game.html');
+      }
+    }, 5000);
   } catch (err) {
     logger.error('Lobby', 'startGame failed', err);
     btnStartGame.classList.remove('is-loading');
@@ -1197,7 +1209,7 @@ function handleRoomChange(payload) {
   // Game start — navigate all players
   if (newRoom.status === 'playing') {
     isLeaving = true;
-    cleanup();
+    try { cleanup(); } catch (_) {}
     navigateWithFadeReplace('game.html');
     return;
   }

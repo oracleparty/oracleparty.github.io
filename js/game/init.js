@@ -371,7 +371,21 @@ async function initHostGame() {
   }
 
   if (questions.length === 0) {
-    $('#game-loading .game-loading__text').textContent = 'No questions found for this category.';
+    const loadingEl = document.querySelector('#game-loading .game-loading__text');
+    if (loadingEl) {
+      loadingEl.textContent = 'No questions found for this category.';
+      const backBtn = document.createElement('button');
+      backBtn.className = 'btn btn-secondary';
+      backBtn.textContent = 'Back to Lobby';
+      backBtn.style.marginTop = 'var(--space-lg)';
+      backBtn.onclick = () => {
+        setIsLeaving(true);
+        cleanup();
+        sessionStorage.setItem('oracle_party_returning_from_game', '1');
+        navigateWithFadeReplace('lobby.html');
+      };
+      loadingEl.after(backBtn);
+    }
     return;
   }
 
@@ -412,7 +426,8 @@ async function initPlayerGame() {
   }
 
   if (!roomData || !roomData.question_ids) {
-    $('#game-loading .game-loading__text').textContent = 'Waiting for host...';
+    const loadingEl = document.querySelector('#game-loading .game-loading__text');
+    if (loadingEl) loadingEl.textContent = 'Waiting for host...';
     // Keep polling — Realtime handleRoomChange may also catch it, but this is a safety net
     state._hotJoinPollId = setInterval(async () => {
       const { data } = await fetchRoom(state.room.id);
@@ -430,6 +445,25 @@ async function initPlayerGame() {
         await applyGameState(data);
       }
     }, PLAYER_READY_CONFIRM_MS);
+    // After 30s still waiting, show a Back to Lobby option
+    setTimeout(() => {
+      if (state._hotJoinPollId && loadingEl && !document.getElementById('guest-back-btn')) {
+        const backBtn = document.createElement('button');
+        backBtn.id = 'guest-back-btn';
+        backBtn.className = 'btn btn-secondary';
+        backBtn.textContent = 'Back to Lobby';
+        backBtn.style.marginTop = 'var(--space-lg)';
+        backBtn.onclick = () => {
+          clearInterval(state._hotJoinPollId);
+          state._hotJoinPollId = null;
+          setIsLeaving(true);
+          cleanup();
+          sessionStorage.setItem('oracle_party_returning_from_game', '1');
+          navigateWithFadeReplace('lobby.html');
+        };
+        loadingEl.after(backBtn);
+      }
+    }, 30000);
     return;
   }
 
