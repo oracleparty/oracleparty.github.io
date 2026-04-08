@@ -7,7 +7,7 @@
 --    Called from JS as: supabase.rpc('increment_questions_answered', { p_room_id, p_player_id })
 -- ============================================
 
-CREATE OR REPLACE FUNCTION increment_questions_answered(p_room_id bigint, p_player_id bigint)
+CREATE OR REPLACE FUNCTION increment_questions_answered(p_room_id uuid, p_player_id uuid)
 RETURNS void
 LANGUAGE sql
 SECURITY DEFINER
@@ -18,7 +18,7 @@ AS $$
 $$;
 
 -- Grant execute to anon and authenticated roles (matches your existing access pattern)
-GRANT EXECUTE ON FUNCTION increment_questions_answered(bigint, bigint) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION increment_questions_answered(uuid, uuid) TO anon, authenticated;
 
 
 -- ============================================
