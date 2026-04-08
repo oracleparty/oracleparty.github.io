@@ -1049,15 +1049,15 @@ body::after {
 /* Per-glyph: max font-size via ink-bounds measurement.
    REAL card: 156×139px (measured with actual page padding 24px, gap 16px).
    bottom = descent + 1px. right = -rPad for flush right. */
-.category-card[data-hiero="𓋹"]::after { font-size: 6.9rem; bottom: auto; top: 26.8px; }  /* top-positioned: loop=44px encircles icon at (78,47) */
-.category-card[data-hiero="𓂀"]::after { font-size: 6.9rem; bottom: auto; top: -24.7px; } /* top-positioned: eye body=78×54 encloses icon */
+.category-card[data-hiero="𓋹"]::after { font-size: 8.4rem; bottom: auto; top: 23.8px; }  /* top-positioned: loop=53×49 encircles 44px icon, stem clipped 23px below card */
+.category-card[data-hiero="𓂀"]::after { font-size: 8.4rem; bottom: auto; top: -38.7px; } /* top-positioned: eye body=93×66 encloses icon, 4.5px clipped above */
 .category-card[data-hiero="𓅃"]::after { font-size: 8.4rem; bottom: 3px; left: auto; right: -6px; transform: none; }  /* right, ink:138×139 desc=2 */
-.category-card[data-hiero="𓅝"]::after { font-size: 8.6rem; bottom: 0; left: -6px; transform: none; }    /* left flush, ink:105×139 desc=-1 */
+.category-card[data-hiero="𓅝"]::after { font-size: 8.5rem; bottom: 0; left: -6px; transform: none; }    /* left flush, reduced from 8.6 to avoid top clipping (ink=139=card height at 8.6) */
 .category-card[data-hiero="𓀭"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:88×139 desc=-1 */
 .category-card[data-hiero="𓇼"]::after { font-size: 8.2rem; bottom: 30px; }    /* center, ink:148×139 desc=29 */
 .category-card[data-hiero="𓈉"]::after { font-size: 7.2rem; bottom: 11px; }    /* center, ink:155×67 desc=10 */
 .category-card[data-hiero="𓊝"]::after { font-size: 8.3rem; bottom: 4px; }     /* center, ink:155×122 desc=3 */
-.category-card[data-hiero="𓃗"]::after { font-size: 7.9rem; bottom: 4px; }     /* center, ink:139×139 desc=3 */
+.category-card[data-hiero="𓃗"]::after { font-size: 7.8rem; bottom: 3px; }     /* center, bottom:3 prevents 0.4px top clip */
 .category-card[data-hiero="𓎿"]::after { font-size: 8.7rem; bottom: 0; }       /* center, ink:43×139 desc=-1 */
 .category-card[data-hiero="𓃻"]::after { font-size: 7.1rem; bottom: 25px; left: auto; right: -5px; transform: none; }  /* right, ink:90×139 desc=24 */
 .category-card[data-hiero="𓆣"]::after { font-size: 7.2rem; bottom: 25px; }    /* center, ink:91×138 desc=24 */
