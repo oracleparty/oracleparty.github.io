@@ -1049,7 +1049,7 @@ body::after {
 }
 /* Per-glyph overrides. font-size in cqi (relative to card content box),
    offsets in cqi or %. Calibrated at 123.5px content box (155.5px card − 32px padding). */
-.category-card[data-hiero="𓋹"]::after { font-size: 150cqi; bottom: auto; top: 1.5rem; }     /* ankh loop fully contains emoji bubble */
+.category-card[data-hiero="𓋹"]::after { font-size: 150cqi; bottom: auto; top: 2rem; }       /* ankh loop fully contains emoji bubble */
 .category-card[data-hiero="𓂀"]::after { font-size: 109cqi; bottom: auto; top: -2.4rem; }   /* eye encloses emoji; top is fixed (rem) to match fixed emoji padding */
 .category-card[data-hiero="𓅃"]::after { font-size: 93cqi; bottom: 1.6cqi; }                /* falcon, centered */
 .category-card[data-hiero="𓅝"]::after { font-size: 126cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush, nudged right for beak room */
@@ -1058,7 +1058,7 @@ body::after {
 .category-card[data-hiero="𓈉"]::after { font-size: 93cqi; bottom: 8.9cqi; }                /* land, centered */
 .category-card[data-hiero="𓊝"]::after { font-size: 108cqi; bottom: 3.2cqi; }               /* tool, centered */
 .category-card[data-hiero="𓃗"]::after { font-size: 101cqi; bottom: 2.4cqi; }               /* bull, centered */
-.category-card[data-hiero="𓎿"]::after { font-size: 170cqi; bottom: 0; }                    /* vase, neck threads through emoji, rim extends above */
+.category-card[data-hiero="𓎿"]::after { font-size: 113cqi; bottom: 0; left: -4%; transform: none; }  /* vase, bottom-left flush, original size */
 .category-card[data-hiero="𓃻"]::after { font-size: 92cqi; bottom: 20.2cqi; left: auto; right: -3%; transform: none; }  /* man, right flush */
 .category-card[data-hiero="𓆣"]::after { font-size: 93cqi; bottom: 20.2cqi; }               /* scarab, centered */
 
