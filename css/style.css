@@ -1017,6 +1017,7 @@ body::after {
   cursor: pointer;
   position: relative;
   overflow: hidden;
+  container-type: inline-size;
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.04),
     0 2px 8px rgba(0, 0, 0, 0.03);
@@ -1029,38 +1030,37 @@ body::after {
 }
 
 /* Hieroglyph watermark — fills card, flush bottom.
-   Each glyph has unique descent below the font baseline.
-   bottom offset = descent pixels to prevent clipping.
-   Measured via canvas ink-bounds at target font-size. Card height ~138px. */
+   Uses container query units (cqi) so glyphs scale proportionally with card
+   width across all phone sizes. 1cqi = 1% of card's inline size.
+   Calibrated on 155.5px card width (375px viewport, 2-col grid). */
 .category-card::after {
   content: attr(data-hiero);
   position: absolute;
-  bottom: 2px;
+  bottom: 1.3cqi;
   left: 50%;
   transform: translateX(-50%);
   font-family: 'Hieroglyphs', sans-serif;
-  font-size: 3.5rem;
+  font-size: 36cqi;
   line-height: 1;
   color: var(--color-primary);
   opacity: 0.15;
   pointer-events: none;
   z-index: 0;
 }
-/* Per-glyph: max font-size via ink-bounds measurement.
-   REAL card: ~155×126px (measured with actual page padding, gap, grid-auto-rows).
-   bottom = descent + 1px. right = -rPad for flush right. */
-.category-card[data-hiero="𓋹"]::after { font-size: 8.4rem; bottom: auto; top: 23.8px; }  /* top-positioned: loop=53×49 encircles 44px icon, stem clipped 23px below card */
-.category-card[data-hiero="𓂀"]::after { font-size: 8.4rem; bottom: auto; top: -38.7px; } /* top-positioned: eye body=93×66 encloses icon, 4.5px clipped above */
-.category-card[data-hiero="𓅃"]::after { font-size: 7.2rem; bottom: 2px; }  /* centered (inherits default left:50% translateX), fits any card width */
-.category-card[data-hiero="𓅝"]::after { font-size: 8.5rem; bottom: 0; left: -6px; transform: none; }    /* left flush, reduced from 8.6 to avoid top clipping (ink=139=card height at 8.6) */
-.category-card[data-hiero="𓀭"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:88×139 desc=-1 */
-.category-card[data-hiero="𓇼"]::after { font-size: 8.2rem; bottom: 30px; }    /* center, ink:148×139 desc=29 */
-.category-card[data-hiero="𓈉"]::after { font-size: 7.2rem; bottom: 11px; }    /* center, ink:155×67 desc=10 */
-.category-card[data-hiero="𓊝"]::after { font-size: 8.3rem; bottom: 4px; }     /* center, ink:155×122 desc=3 */
-.category-card[data-hiero="𓃗"]::after { font-size: 7.8rem; bottom: 3px; }     /* center, bottom:3 prevents 0.4px top clip */
-.category-card[data-hiero="𓎿"]::after { font-size: 8.7rem; bottom: 0; }       /* center, ink:43×139 desc=-1 */
-.category-card[data-hiero="𓃻"]::after { font-size: 7.1rem; bottom: 25px; left: auto; right: -5px; transform: none; }  /* right, ink:90×139 desc=24 */
-.category-card[data-hiero="𓆣"]::after { font-size: 7.2rem; bottom: 25px; }    /* center, ink:91×138 desc=24 */
+/* Per-glyph overrides. font-size in cqi, offsets in cqi or %.
+   All values calibrated at 155.5px card width then verified visually. */
+.category-card[data-hiero="𓋹"]::after { font-size: 86cqi; bottom: auto; top: 15.3cqi; }   /* ankh loop encircles icon */
+.category-card[data-hiero="𓂀"]::after { font-size: 86cqi; bottom: auto; top: -24.9cqi; }  /* eye of horus encloses icon */
+.category-card[data-hiero="𓅃"]::after { font-size: 74cqi; bottom: 1.3cqi; }               /* falcon, centered */
+.category-card[data-hiero="𓅝"]::after { font-size: 87cqi; bottom: 0; left: -4%; transform: none; }   /* ibis, left flush */
+.category-card[data-hiero="𓀭"]::after { font-size: 88cqi; bottom: 0; left: auto; right: -4%; transform: none; }  /* pharaoh, right flush */
+.category-card[data-hiero="𓇼"]::after { font-size: 84cqi; bottom: 19.3cqi; }              /* star, centered */
+.category-card[data-hiero="𓈉"]::after { font-size: 74cqi; bottom: 7.1cqi; }               /* land, centered */
+.category-card[data-hiero="𓊝"]::after { font-size: 85cqi; bottom: 2.6cqi; }               /* tool, centered */
+.category-card[data-hiero="𓃗"]::after { font-size: 80cqi; bottom: 1.9cqi; }               /* bull, centered */
+.category-card[data-hiero="𓎿"]::after { font-size: 90cqi; bottom: 0; }                    /* vase, centered */
+.category-card[data-hiero="𓃻"]::after { font-size: 73cqi; bottom: 16.1cqi; left: auto; right: -3%; transform: none; }  /* man, right flush */
+.category-card[data-hiero="𓆣"]::after { font-size: 74cqi; bottom: 16.1cqi; }              /* scarab, centered */
 
 [data-theme="dark"] .category-card::after {
   opacity: 0.20;
