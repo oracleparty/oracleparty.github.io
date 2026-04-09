@@ -1051,7 +1051,7 @@ body::after {
    bottom = descent + 1px. right = -rPad for flush right. */
 .category-card[data-hiero="𓋹"]::after { font-size: 8.4rem; bottom: auto; top: 23.8px; }  /* top-positioned: loop=53×49 encircles 44px icon, stem clipped 23px below card */
 .category-card[data-hiero="𓂀"]::after { font-size: 8.4rem; bottom: auto; top: -38.7px; } /* top-positioned: eye body=93×66 encloses icon, 4.5px clipped above */
-.category-card[data-hiero="𓅃"]::after { font-size: 8.4rem; bottom: 3px; left: auto; right: -6px; transform: none; }  /* right, ink:138×139 desc=2 */
+.category-card[data-hiero="𓅃"]::after { font-size: 7.8rem; bottom: 3px; left: auto; right: 12px; transform: none; }  /* right-aligned, sized to show full beak */
 .category-card[data-hiero="𓅝"]::after { font-size: 8.5rem; bottom: 0; left: -6px; transform: none; }    /* left flush, reduced from 8.6 to avoid top clipping (ink=139=card height at 8.6) */
 .category-card[data-hiero="𓀭"]::after { font-size: 8.6rem; bottom: 0; left: auto; right: -6px; transform: none; }    /* right, ink:88×139 desc=-1 */
 .category-card[data-hiero="𓇼"]::after { font-size: 8.2rem; bottom: 30px; }    /* center, ink:148×139 desc=29 */
