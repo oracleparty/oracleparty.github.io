@@ -1055,9 +1055,9 @@ body::after {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -26%);
+  transform: translate(-50%, -32%);
   font-family: 'Hieroglyphs', sans-serif;
-  font-size: 130cqi;
+  font-size: 145cqi;
   line-height: 1;
   color: var(--color-primary);
   opacity: 0.15;
