@@ -93,6 +93,18 @@ function run() {
   const imgLeft = emojiCX - irisCX;
   const imgTop = emojiCY - irisCY;
 
+  // Debug: draw iris marker on the canvas so we can verify detection
+  if (new URLSearchParams(location.search).has('eye-debug')) {
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(irisCX * dpr, irisCY * dpr, 8 * dpr, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 3 * dpr;
+    ctx.stroke();
+    // Log values
+    console.log('EYE CALIBRATE:', { emojiCX, emojiCY, irisCX, irisCY, imgLeft, imgTop, inkW: inkW/dpr, inkH: inkH/dpr, minX: minX/dpr, minY: minY/dpr, dpr, contentW, fontSize });
+  }
+
   // Theme opacity
   const theme = document.documentElement.dataset.theme;
   const opacity = theme === 'oled' ? 0.22 : theme === 'dark' ? 0.20 : 0.15;
