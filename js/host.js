@@ -10,6 +10,7 @@ import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
 import { CATEGORY_CACHE_TTL, MASTERY_HIGH_THRESHOLD, MASTERY_COMPLETE_THRESHOLD } from './constants.js';
+import { calibrateEye } from './eye-calibrate.js';
 
 // --- State ---
 let categories = [];
@@ -110,6 +111,9 @@ async function init() {
     // Return visit — cards already visible from cache. Patch in-place to avoid blink.
     patchCategoryCards(categoryPlayCounts);
   }
+
+  // Runtime Eye of Horus iris alignment (after cards are in DOM)
+  requestAnimationFrame(() => calibrateEye());
 
   // Always attach listeners even if data fetch fails
   attachListeners();
