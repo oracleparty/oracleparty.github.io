@@ -163,13 +163,12 @@
           <span>Size</span><input type="range" id="t-size" min="30" max="160" value="88" step="1"><span id="v-size"></span>
           <span>Bottom</span><input type="range" id="t-bot" min="-60" max="80" value="5" step="1"><span id="v-bot"></span>
           <span>Left</span><input type="range" id="t-left" min="-30" max="130" value="50" step="1"><span id="v-left"></span>
-          <span>Opacity</span><input type="range" id="t-opa" min="5" max="60" value="15" step="1"><span id="v-opa"></span>
         </div>
       </div>`;
     document.body.appendChild(panel);
 
-    const els = { size: 't-size', bot: 't-bot', left: 't-left', opa: 't-opa' };
-    const vals = { size: 'v-size', bot: 'v-bot', left: 'v-left', opa: 'v-opa' };
+    const els = { size: 't-size', bot: 't-bot', left: 't-left' };
+    const vals = { size: 'v-size', bot: 'v-bot', left: 'v-left' };
     const cssEl = document.getElementById('tune-css');
     const style = document.createElement('style');
     document.head.appendChild(style);
@@ -178,16 +177,14 @@
       const s = document.getElementById(els.size).value;
       const b = document.getElementById(els.bot).value;
       const l = document.getElementById(els.left).value;
-      const o = document.getElementById(els.opa).value;
       document.getElementById(vals.size).textContent = s;
       document.getElementById(vals.bot).textContent = b;
       document.getElementById(vals.left).textContent = l;
-      document.getElementById(vals.opa).textContent = '.' + o;
 
       const selector = '.category-card[data-hiero="' + glyph + '"]::after';
-      const css = selector + '{font-size:' + s + 'cqi!important;bottom:' + b + 'cqi!important;top:auto!important;left:' + l + '%!important;transform:translateX(-50%)!important;opacity:0.' + o + '!important;}';
+      const css = selector + '{font-size:' + s + 'cqi!important;bottom:' + b + 'cqi!important;top:auto!important;left:' + l + '%!important;transform:translateX(-50%)!important;}';
       style.textContent = css;
-      cssEl.textContent = s + 'cqi / bot:' + b + ' / left:' + l + '% / opa:0.' + o;
+      cssEl.textContent = s + 'cqi / bot:' + b + ' / left:' + l + '%';
     }
 
     Object.values(els).forEach(id => document.getElementById(id).addEventListener('input', update));
