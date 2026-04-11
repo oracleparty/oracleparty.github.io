@@ -112,9 +112,9 @@ export const STATES = {
       const grid = document.getElementById('category-grid');
       if (!grid) return;
       // Tighter cards so all 12 fit in viewport for visual QA
-      grid.style.gap = '8px';
+      grid.style.gap = '0.5rem';
       grid.innerHTML = cats.map(c => `
-        <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:12px 8px 8px;">
+        <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:0.75rem 0.5rem 0.5rem;">
           <div class="category-card__icon-wrap"><span class="category-card__icon">${c.icon}</span></div>
           <div class="category-card__name">${c.label}</div>
           <div class="category-card__count">${c.count} Qs</div>
@@ -133,11 +133,11 @@ export const STATES = {
         const grid = document.getElementById('category-grid');
         if (!grid) return;
         grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-        grid.style.gap = '6px';
+        grid.style.gap = '0.375rem';
         grid.innerHTML = cats.map(c => `
-          <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:10px 6px 6px;">
+          <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:0.625rem 0.375rem 0.375rem;">
             <div class="category-card__icon-wrap"><span class="category-card__icon">${c.icon}</span></div>
-            <div class="category-card__name" style="font-size:10px;">${c.label}</div>
+            <div class="category-card__name" style="font-size:0.625rem;">${c.label}</div>
           </button>
         `).join('');
       }
