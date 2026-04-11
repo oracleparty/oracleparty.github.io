@@ -3,101 +3,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Eye Test</title>
+  <title>Eye Position Test</title>
   <script>(function(){var s=localStorage.getItem('oracle_party_theme');if(s&&s!=='light')document.documentElement.setAttribute('data-theme',s);})()</script>
   <link rel="stylesheet" href="css/style.css?v=20260411b">
   <style>
-    body { padding: 1rem; }
-    .test-label { font-family: var(--font-heading); font-size: var(--text-sm); color: var(--color-text-dim); margin: 0.5rem 0 0.25rem; text-align: center; }
-    .test-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
-    h2 { font-family: var(--font-display); font-size: var(--text-lg); color: var(--color-text); text-align: center; margin-bottom: 1rem; }
-    /* Override eye positioning per card */
-    .eye-a .category-card[data-hiero="𓂀"]::after { font-size: 88cqi; bottom: 5cqi; }
-    .eye-b .category-card[data-hiero="𓂀"]::after { font-size: 88cqi; bottom: 15cqi; }
-    .eye-c .category-card[data-hiero="𓂀"]::after { font-size: 88cqi; bottom: 25cqi; }
-    .eye-d .category-card[data-hiero="𓂀"]::after { font-size: 75cqi; bottom: 10cqi; }
-    .eye-e .category-card[data-hiero="𓂀"]::after { font-size: 75cqi; bottom: 20cqi; }
-    .eye-f .category-card[data-hiero="𓂀"]::after { font-size: 65cqi; bottom: 15cqi; }
-    .eye-g .category-card[data-hiero="𓂀"]::after { font-size: 109cqi; bottom: auto; top: -2.4rem; }
-    .eye-h .category-card[data-hiero="𓂀"]::after { font-size: 95cqi; bottom: 10cqi; }
+    body { overflow-y: auto !important; padding-bottom: 2rem; }
+    .test-section { padding: 0 var(--space-lg); margin-bottom: 2rem; }
+    .test-label {
+      font-family: var(--font-heading); font-size: var(--text-lg); font-weight: 700;
+      color: var(--color-primary); text-align: center;
+      margin: 1.5rem 0 0.75rem; letter-spacing: -0.01em;
+    }
+    .test-sublabel {
+      font-family: var(--font-body); font-size: var(--text-xs);
+      color: var(--color-text-muted); text-align: center; margin-bottom: 0.5rem;
+    }
+    /* Per-section eye overrides */
+    .eye-a .category-card[data-hiero="𓂀"]::after { font-size: 88cqi !important; bottom: 5cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
+    .eye-b .category-card[data-hiero="𓂀"]::after { font-size: 88cqi !important; bottom: 18cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
+    .eye-c .category-card[data-hiero="𓂀"]::after { font-size: 80cqi !important; bottom: 12cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
+    .eye-d .category-card[data-hiero="𓂀"]::after { font-size: 75cqi !important; bottom: 18cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
+    .eye-e .category-card[data-hiero="𓂀"]::after { font-size: 95cqi !important; bottom: 12cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
+    .eye-f .category-card[data-hiero="𓂀"]::after { font-size: 70cqi !important; bottom: 15cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
   </style>
 </head>
 <body>
-  <h2>Pick the best eye</h2>
+<script>
+const CATS = [
+  { icon: '⏳', hiero: '𓋹', label: 'History', key: 'history', count: 287 },
+  { icon: '⚗️', hiero: '𓂀', label: 'Science', key: 'science', count: 506 },
+  { icon: '🌿', hiero: '𓅃', label: 'Nature', key: 'nature', count: 142 },
+  { icon: '📜', hiero: '𓅝', label: 'Arts & Literature', key: 'arts-literature', count: 168 },
+  { icon: '🏛️', hiero: '𓀭', label: 'Culture & Society', key: 'culture-society', count: 124 },
+  { icon: '🎬', hiero: '𓇼', label: 'Pop Culture', key: 'pop-culture', count: 156 },
+  { icon: '🌍', hiero: '𓈉', label: 'World Geography', key: 'world-geography', count: 132 },
+  { icon: '💻', hiero: '𓊝', label: 'Technology', key: 'technology', count: 98 },
+  { icon: '⚽', hiero: '𓃗', label: 'Sports', key: 'sports', count: 110 },
+  { icon: '🍕', hiero: '𓎿', label: 'Food', key: 'food', count: 87 },
+  { icon: '🧩', hiero: '𓃻', label: 'Logic', key: 'logic', count: 64 },
+  { icon: '🃏', hiero: '𓆣', label: 'Wild Card', key: 'wild-card', count: 169 },
+];
 
-  <div class="test-grid">
-    <div class="eye-a">
-      <p class="test-label">A: 88cqi, bot 5 (current)</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-    <div class="eye-b">
-      <p class="test-label">B: 88cqi, bot 15</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-    <div class="eye-c">
-      <p class="test-label">C: 88cqi, bot 25</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-    <div class="eye-d">
-      <p class="test-label">D: 75cqi, bot 10</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-    <div class="eye-e">
-      <p class="test-label">E: 75cqi, bot 20</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-    <div class="eye-f">
-      <p class="test-label">F: 65cqi, bot 15</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-    <div class="eye-g">
-      <p class="test-label">G: 109cqi, top -2.4rem (old)</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-    <div class="eye-h">
-      <p class="test-label">H: 95cqi, bot 10</p>
-      <div class="category-card" data-category="science" data-hiero="𓂀">
-        <div class="category-card__icon-wrap"><span class="category-card__icon">⚗️</span></div>
-        <div class="category-card__name">Science</div>
-        <div class="category-card__count">506 Qs</div>
-        <div class="category-card__plays">0 plays</div>
-      </div>
-    </div>
-  </div>
+const variants = [
+  { id: 'a', label: 'A — Current (88cqi, bottom 5)', desc: 'What you see now' },
+  { id: 'b', label: 'B — Raised (88cqi, bottom 18)', desc: 'Same size, pushed up' },
+  { id: 'c', label: 'C — Smaller + raised (80cqi, bottom 12)', desc: 'Reduced to fit' },
+  { id: 'd', label: 'D — Compact (75cqi, bottom 18)', desc: 'Smaller, centered higher' },
+  { id: 'e', label: 'E — Larger (95cqi, bottom 12)', desc: 'Bigger, raised' },
+  { id: 'f', label: 'F — Small (70cqi, bottom 15)', desc: 'Fully contained' },
+];
+
+function makeGrid(cats) {
+  return cats.map(c =>
+    '<div class="category-card" data-category="' + c.key + '" data-hiero="' + c.hiero + '">' +
+      '<div class="category-card__icon-wrap"><span class="category-card__icon">' + c.icon + '</span></div>' +
+      '<div class="category-card__name">' + c.label + '</div>' +
+      '<div class="category-card__count">' + c.count + ' Qs</div>' +
+      '<div class="category-card__plays">0 plays</div>' +
+    '</div>'
+  ).join('');
+}
+
+document.body.innerHTML = variants.map(v =>
+  '<div class="test-section eye-' + v.id + '">' +
+    '<p class="test-label">' + v.label + '</p>' +
+    '<p class="test-sublabel">' + v.desc + '</p>' +
+    '<div class="category-grid">' + makeGrid(CATS) + '</div>' +
+  '</div>'
+).join('');
+</script>
 </body>
 </html>
