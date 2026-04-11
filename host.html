@@ -145,5 +145,37 @@
   <!-- ===== SCRIPTS ===== -->
   <script type="module" src="js/host.js?v=20260404"></script>
 
+  <!-- Eye debug: visit host.html?eye=true to get live sliders -->
+  <script>
+  if (new URLSearchParams(location.search).has('eye')) {
+    const panel = document.createElement('div');
+    panel.innerHTML = `
+      <div style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(0,0,0,0.92);padding:12px 16px 20px;font-family:sans-serif;color:#fff;font-size:13px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+          <b>Eye of Horus Tuner</b>
+          <span id="eye-vals" style="color:#D9A340;"></span>
+        </div>
+        <label>Size: <input type="range" id="eye-size" min="50" max="130" value="88" style="width:100%"></label>
+        <label>Bottom: <input type="range" id="eye-bot" min="-10" max="50" value="5" style="width:100%"></label>
+      </div>`;
+    document.body.appendChild(panel);
+
+    const sizeEl = document.getElementById('eye-size');
+    const botEl = document.getElementById('eye-bot');
+    const valsEl = document.getElementById('eye-vals');
+    let style = document.createElement('style');
+    document.head.appendChild(style);
+
+    function update() {
+      const s = sizeEl.value, b = botEl.value;
+      style.textContent = '.category-card[data-hiero="𓂀"]::after{font-size:'+s+'cqi!important;bottom:'+b+'cqi!important;top:auto!important;left:50%!important;transform:translateX(-50%)!important;}';
+      valsEl.textContent = s + 'cqi / bot ' + b + 'cqi';
+    }
+    sizeEl.addEventListener('input', update);
+    botEl.addEventListener('input', update);
+    update();
+  }
+  </script>
+
 </body>
 </html>
