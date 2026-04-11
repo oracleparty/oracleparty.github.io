@@ -1049,7 +1049,7 @@ body::after {
 }
 /* Per-glyph overrides. font-size in cqi (relative to card content box),
    offsets in cqi or %. Calibrated at 123.5px content box (155.5px card − 32px padding). */
-.category-card[data-hiero="𓋹"]::after { font-size: 93cqi; bottom: 0; }                     /* ankh, centered, same scale as falcon/scarab */
+.category-card[data-hiero="𓋹"]::after { font-size: 113cqi; bottom: 0; }                     /* ankh, centered, same scale as vase */
 .category-card[data-hiero="𓂀"]::after { font-size: 109cqi; bottom: auto; top: -2.4rem; }   /* eye encloses emoji; top is fixed (rem) to match fixed emoji padding */
 .category-card[data-hiero="𓅃"]::after { font-size: 93cqi; bottom: 1.6cqi; }                /* falcon, centered */
 .category-card[data-hiero="𓅝"]::after { font-size: 126cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush, nudged right for beak room */
