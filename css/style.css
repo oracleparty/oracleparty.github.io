@@ -1059,7 +1059,7 @@ body::after {
 .category-card[data-hiero="𓊝"]::after { font-size: 108cqi; bottom: 3.2cqi; }               /* tool, centered */
 .category-card[data-hiero="𓃗"]::after { font-size: 101cqi; bottom: 2.4cqi; }               /* bull, centered */
 .category-card[data-hiero="𓎿"]::after { font-size: 113cqi; bottom: 0; }                    /* vase, centered */
-.category-card[data-hiero="𓃻"]::after { font-size: 108cqi; bottom: 20.2cqi; left: auto; right: -3%; transform: none; }  /* man, right flush */
+.category-card[data-hiero="𓃻"]::after { font-size: 120cqi; bottom: 20.2cqi; left: auto; right: -3%; transform: none; }  /* man, right flush */
 .category-card[data-hiero="𓆣"]::after { font-size: 93cqi; bottom: 20.2cqi; }               /* scarab, centered */
 
 [data-theme="dark"] .category-card::after {
