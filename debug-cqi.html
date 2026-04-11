@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>CQI Debug</title>
+<link rel="stylesheet" href="css/style.css?v=20260411a">
+<style>
+body { margin: 0; padding: 16px; background: var(--color-bg, #f8f7f4); font-family: system-ui; }
+.debug-info { background: #000; color: #0f0; padding: 12px; border-radius: 8px; font-size: 11px; margin-bottom: 12px; font-family: monospace; white-space: pre-wrap; }
+.test-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+</style>
+</head>
+<body>
+<div class="debug-info" id="debug"></div>
+<div class="test-grid" id="grid"></div>
+<script>
+const cats = [
+  {h:'𓋹',i:'⏳',n:'History'},{h:'𓅃',i:'🌿',n:'Nature'},
+  {h:'𓃻',i:'🧩',n:'Logic'},{h:'𓎿',i:'🍕',n:'Food'}
+];
+const grid = document.getElementById('grid');
+grid.innerHTML = cats.map(c =>
+  `<button class="category-card" data-category="x" data-hiero="${c.h}">
+    <div class="category-card__icon-wrap"><span class="category-card__icon">${c.i}</span></div>
+    <div class="category-card__name">${c.n}</div>
+    <div class="category-card__count">100 questions</div>
+    <div class="category-card__plays">0 plays</div>
+  </button>`
+).join('');
+
+requestAnimationFrame(() => {
+  const card = document.querySelector('.category-card');
+  const rect = card.getBoundingClientRect();
+  const cs = getComputedStyle(card);
+  const afterCs = getComputedStyle(card, '::after');
+  const iconWrap = card.querySelector('.category-card__icon-wrap');
+  const iconRect = iconWrap.getBoundingClientRect();
+  
+  const info = [
+    'VIEWPORT: ' + window.innerWidth + 'x' + window.innerHeight,
+    'CARD: ' + Math.round(rect.width) + 'x' + Math.round(rect.height),
+    'CARD padding: ' + cs.paddingTop + ' ' + cs.paddingRight + ' ' + cs.paddingBottom + ' ' + cs.paddingLeft,
+    'CONTENT BOX W: ' + Math.round(rect.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)),
+    'CONTAINER TYPE: ' + cs.containerType,
+    '::after font-size: ' + afterCs.fontSize,
+    '::after bottom: ' + afterCs.bottom,
+    '::after top: ' + afterCs.top,
+    '::after transform: ' + afterCs.transform,
+    'ICON-WRAP: ' + Math.round(iconRect.width) + 'x' + Math.round(iconRect.height),
+    'ICON center from card top: ' + Math.round(iconRect.top - rect.top + iconRect.height/2),
+    'CSS.supports cqi: ' + CSS.supports('font-size', '100cqi'),
+    'UA: ' + navigator.userAgent.slice(0, 80),
+  ];
+  document.getElementById('debug').textContent = info.join('\n');
+});
+</script>
+</body>
+</html>
