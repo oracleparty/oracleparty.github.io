@@ -147,6 +147,9 @@ Oracle-Party/
 
 ## Rules for Claude Code
 - **STOP and ASK** before making architectural decisions not covered in this spec
+- **READ THIS ENTIRE FILE BEFORE DOING ANYTHING.** Every section. Every gotcha. No exceptions. If you skip this and repeat a documented mistake, you are wasting the user's time and money.
+- **MAXIMUM EFFORT ALWAYS.** Never guess when you can investigate. Never deploy without verifying. Never assume cross-browser behavior without testing. Never touch code you haven't read. Never change things that aren't broken.
+- **ONLY change what was asked.** If asked to fix one glyph, fix ONLY that glyph. Do not "improve" 11 others based on Chromium screenshots. Working code that was calibrated on the actual device must not be touched.
 - Do NOT modify files outside the current phase unless necessary
 - Test each screen on mobile viewport (375px) before moving on
 - Commit after each working milestone

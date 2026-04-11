@@ -7,18 +7,23 @@
   <script>(function(){var s=localStorage.getItem('oracle_party_theme');if(s&&s!=='light')document.documentElement.setAttribute('data-theme',s);})()</script>
   <link rel="stylesheet" href="css/style.css?v=20260411b">
   <style>
-    body { overflow-y: auto !important; padding-bottom: 2rem; }
-    .test-section { padding: 0 var(--space-lg); margin-bottom: 2rem; }
+    /* Override screen lock so page scrolls */
+    .screen { position: static !important; height: auto !important; overflow: visible !important; }
+    .screen--scrollable { overflow: visible !important; }
+    body { overflow-y: auto !important; min-height: 100dvh; }
+
     .test-label {
       font-family: var(--font-heading); font-size: var(--text-lg); font-weight: 700;
       color: var(--color-primary); text-align: center;
-      margin: 1.5rem 0 0.75rem; letter-spacing: -0.01em;
+      padding: 1.5rem 0 0.25rem; letter-spacing: -0.01em;
     }
     .test-sublabel {
       font-family: var(--font-body); font-size: var(--text-xs);
       color: var(--color-text-muted); text-align: center; margin-bottom: 0.5rem;
     }
-    /* Per-section eye overrides */
+    .test-divider { border: none; border-top: 1px solid var(--color-surface-light); margin: 1rem 0 0; }
+
+    /* Per-section eye overrides — only the Science card changes */
     .eye-a .category-card[data-hiero="𓂀"]::after { font-size: 88cqi !important; bottom: 5cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
     .eye-b .category-card[data-hiero="𓂀"]::after { font-size: 88cqi !important; bottom: 18cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
     .eye-c .category-card[data-hiero="𓂀"]::after { font-size: 80cqi !important; bottom: 12cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
@@ -27,7 +32,8 @@
     .eye-f .category-card[data-hiero="𓂀"]::after { font-size: 70cqi !important; bottom: 15cqi !important; top: auto !important; left: 50% !important; transform: translateX(-50%) !important; }
   </style>
 </head>
-<body>
+<body style="opacity:1">
+
 <script>
 const CATS = [
   { icon: '⏳', hiero: '𓋹', label: 'History', key: 'history', count: 287 },
@@ -45,32 +51,35 @@ const CATS = [
 ];
 
 const variants = [
-  { id: 'a', label: 'A — Current (88cqi, bottom 5)', desc: 'What you see now' },
-  { id: 'b', label: 'B — Raised (88cqi, bottom 18)', desc: 'Same size, pushed up' },
-  { id: 'c', label: 'C — Smaller + raised (80cqi, bottom 12)', desc: 'Reduced to fit' },
-  { id: 'd', label: 'D — Compact (75cqi, bottom 18)', desc: 'Smaller, centered higher' },
-  { id: 'e', label: 'E — Larger (95cqi, bottom 12)', desc: 'Bigger, raised' },
-  { id: 'f', label: 'F — Small (70cqi, bottom 15)', desc: 'Fully contained' },
+  { id: 'a', label: 'A — Current (88, bot 5)', desc: 'What you see now' },
+  { id: 'b', label: 'B — Raised (88, bot 18)', desc: 'Same size, pushed up' },
+  { id: 'c', label: 'C — Smaller (80, bot 12)', desc: 'Reduced + raised' },
+  { id: 'd', label: 'D — Compact (75, bot 18)', desc: 'Smaller, higher' },
+  { id: 'e', label: 'E — Larger (95, bot 12)', desc: 'Bigger, raised' },
+  { id: 'f', label: 'F — Small (70, bot 15)', desc: 'Fully contained' },
 ];
 
-function makeGrid(cats) {
-  return cats.map(c =>
-    '<div class="category-card" data-category="' + c.key + '" data-hiero="' + c.hiero + '">' +
-      '<div class="category-card__icon-wrap"><span class="category-card__icon">' + c.icon + '</span></div>' +
-      '<div class="category-card__name">' + c.label + '</div>' +
-      '<div class="category-card__count">' + c.count + ' Qs</div>' +
-      '<div class="category-card__plays">0 plays</div>' +
-    '</div>'
-  ).join('');
+function cardHTML(c) {
+  return '<div class="category-card" data-category="' + c.key + '" data-hiero="' + c.hiero + '">' +
+    '<div class="category-card__icon-wrap"><span class="category-card__icon">' + c.icon + '</span></div>' +
+    '<div class="category-card__name">' + c.label + '</div>' +
+    '<div class="category-card__count">' + c.count + ' Qs</div>' +
+    '<div class="category-card__plays">0 plays</div>' +
+  '</div>';
 }
 
+// Build page using the exact same structure as host.html
 document.body.innerHTML = variants.map(v =>
-  '<div class="test-section eye-' + v.id + '">' +
-    '<p class="test-label">' + v.label + '</p>' +
-    '<p class="test-sublabel">' + v.desc + '</p>' +
-    '<div class="category-grid">' + makeGrid(CATS) + '</div>' +
+  '<div class="screen screen--scrollable active eye-' + v.id + '" style="display:flex;">' +
+    '<header class="page-header"><h1 class="page-header__title">' + v.label + '</h1></header>' +
+    '<div class="page-content">' +
+      '<p class="test-sublabel">' + v.desc + '</p>' +
+      '<div class="category-grid">' + CATS.map(cardHTML).join('') + '</div>' +
+    '</div>' +
+    '<hr class="test-divider">' +
   '</div>'
 ).join('');
 </script>
+
 </body>
 </html>
