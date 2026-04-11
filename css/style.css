@@ -1052,19 +1052,20 @@ body::after {
   z-index: 0;
 }
 /* Per-glyph overrides. font-size in cqi (relative to card content box),
-   offsets in cqi or %. Calibrated at 123.5px content box (155.5px card − 32px padding). */
-.category-card[data-hiero="𓋹"]::after { font-size: 109cqi; bottom: 0; }                    /* ankh, centered */
-.category-card[data-hiero="𓂀"]::after { font-size: 109cqi; bottom: auto; top: -2.4rem; }   /* eye encloses emoji; top is fixed (rem) to match fixed emoji padding */
-.category-card[data-hiero="𓅃"]::after { font-size: 103cqi; bottom: 0; }                    /* falcon, centered */
-.category-card[data-hiero="𓅝"]::after { font-size: 126cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush, nudged right for beak room */
-.category-card[data-hiero="𓀭"]::after { font-size: 126cqi; bottom: 0; left: auto; right: -4%; transform: none; }  /* pharaoh, right flush */
-.category-card[data-hiero="𓇼"]::after { font-size: 106cqi; bottom: 24.3cqi; }              /* star, centered */
-.category-card[data-hiero="𓈉"]::after { font-size: 93cqi; bottom: 8.9cqi; }                /* land, centered */
-.category-card[data-hiero="𓊝"]::after { font-size: 108cqi; bottom: 3.2cqi; }               /* tool, centered */
-.category-card[data-hiero="𓃗"]::after { font-size: 101cqi; bottom: 2.4cqi; }               /* bull, centered */
-.category-card[data-hiero="𓎿"]::after { font-size: 113cqi; bottom: 0; }                    /* vase, centered */
-.category-card[data-hiero="𓃻"]::after { font-size: 92cqi; bottom: 20.2cqi; left: auto; right: -3%; transform: none; }  /* man, right flush */
-.category-card[data-hiero="𓆣"]::after { font-size: 93cqi; bottom: 20.2cqi; }               /* scarab, centered */
+   offsets in cqi or %. Calibrated at 123.5px content box (155.5px card − 32px padding).
+   Sized so no glyph produces harsh clip lines at card edges. */
+.category-card[data-hiero="𓋹"]::after { font-size: 100cqi; bottom: 0; }                    /* ankh, centered */
+.category-card[data-hiero="𓂀"]::after { font-size: 88cqi; bottom: auto; top: -1rem; }      /* eye, reduced to keep curl visible */
+.category-card[data-hiero="𓅃"]::after { font-size: 90cqi; bottom: 0; }                     /* falcon, centered */
+.category-card[data-hiero="𓅝"]::after { font-size: 110cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush */
+.category-card[data-hiero="𓀭"]::after { font-size: 108cqi; bottom: 0; left: auto; right: -4%; transform: none; }  /* pharaoh, right flush */
+.category-card[data-hiero="𓇼"]::after { font-size: 88cqi; bottom: 20cqi; }                 /* star, centered, reduced to contain points */
+.category-card[data-hiero="𓈉"]::after { font-size: 93cqi; bottom: 8.9cqi; }                /* land, centered — already well contained */
+.category-card[data-hiero="𓊝"]::after { font-size: 82cqi; bottom: 12cqi; }                 /* tool, smaller + raised to avoid bottom bar artifact */
+.category-card[data-hiero="𓃗"]::after { font-size: 88cqi; bottom: 0; }                     /* bull, reduced to keep horns visible */
+.category-card[data-hiero="𓎿"]::after { font-size: 98cqi; bottom: 0; }                     /* vase, reduced to keep rim visible */
+.category-card[data-hiero="𓃻"]::after { font-size: 82cqi; bottom: 16cqi; left: auto; right: -3%; transform: none; }  /* man, right flush */
+.category-card[data-hiero="𓆣"]::after { font-size: 82cqi; bottom: 16cqi; }                 /* scarab, centered */
 
 [data-theme="dark"] .category-card::after {
   opacity: 0.20;
