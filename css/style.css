@@ -1052,10 +1052,13 @@ body::after {
   z-index: 0;
 }
 /* Per-glyph overrides. font-size in cqi (relative to card content box),
-   offsets in cqi or %. Calibrated at 123.5px content box (155.5px card − 32px padding). */
-.category-card[data-hiero="𓋹"]::after { font-size: 109cqi; bottom: 0; }                    /* ankh, centered flush bottom */
-.category-card[data-hiero="𓂀"]::after { font-size: 103cqi; bottom: 0; }                    /* eye, centered flush bottom */
-.category-card[data-hiero="𓅃"]::after { font-size: 103cqi; bottom: 0; }                    /* falcon, centered */
+   offsets in cqi or %. Calibrated at 120.5px content box (155.5px card − 3px border − 32px padding).
+   BOTTOM OFFSETS: font has ascent=1.324em, descent=0.326em. With line-height:1, half-leading=-0.325em,
+   so the line box bottom sits ≈ AT the baseline (not the descender line). bottom:0 = baseline at card
+   edge = any descent ink gets clipped. Each glyph's bottom offset must be ≥ its ink descent in cqi. */
+.category-card[data-hiero="𓋹"]::after { font-size: 109cqi; bottom: 5cqi; }                 /* ankh: 3% descent=3.3cqi + 1.7cqi buffer */
+.category-card[data-hiero="𓂀"]::after { font-size: 103cqi; bottom: 24.5cqi; }              /* eye: 22% descent=22.7cqi + 1.8cqi buffer (tail extends far below baseline) */
+.category-card[data-hiero="𓅃"]::after { font-size: 103cqi; bottom: 4cqi; }                 /* falcon: 2% descent=2.1cqi + 1.9cqi buffer */
 .category-card[data-hiero="𓅝"]::after { font-size: 126cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush, nudged right for beak room */
 .category-card[data-hiero="𓀭"]::after { font-size: 126cqi; bottom: 0; left: auto; right: -4%; transform: none; }  /* pharaoh, right flush */
 .category-card[data-hiero="𓇼"]::after { font-size: 106cqi; bottom: 24.3cqi; }              /* star, centered */
