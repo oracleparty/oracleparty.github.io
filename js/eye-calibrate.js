@@ -8,8 +8,8 @@
  * Works on every browser because each browser renders its own bitmap.
  */
 
-const IRIS_REL_X = 0.41;
-const IRIS_REL_Y = 0.19;
+const IRIS_REL_X = 0.476;  // Calibrated on-device via iris-calibrator.html
+const IRIS_REL_Y = 0.356;
 const FONT_SIZE_CQI = 1.13;
 
 export function calibrateEye() {
