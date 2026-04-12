@@ -5,43 +5,62 @@
  * iris center via ink-bounds + fixed proportions, then positions a
  * canvas-generated image so the iris lands exactly on the emoji center.
  *
- * No font metric math needed — the canvas IS the rendered glyph,
- * and we position the resulting image directly.
+ * Works on every browser because each browser renders its own bitmap.
  */
 
 const IRIS_REL_X = 0.41;
 const IRIS_REL_Y = 0.19;
-const FONT_SIZE_CQI = 1.13; // 113cqi = 113% of content box width
+const FONT_SIZE_CQI = 1.13;
 
 export function calibrateEye() {
   document.fonts.ready.then(() => {
     if (!document.fonts.check('16px Hieroglyphs')) {
       const f = new FontFace('Hieroglyphs', 'url(fonts/hieroglyphs.woff2)');
-      f.load().then(loaded => { document.fonts.add(loaded); run(); }).catch(() => {});
+      f.load().then(loaded => { document.fonts.add(loaded); run(); }).catch(e => {
+        if (isDebug()) showDebug({ error: 'Font load failed: ' + e.message });
+      });
     } else {
       run();
     }
   });
 }
 
+function isDebug() {
+  return new URLSearchParams(location.search).has('eye-debug');
+}
+
+function showDebug(data) {
+  let panel = document.getElementById('eye-debug-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'eye-debug-panel';
+    panel.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,0.95);color:#0f0;font:11px/1.4 monospace;padding:8px;max-height:40vh;overflow-y:auto;';
+    document.body.appendChild(panel);
+  }
+  panel.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 1);
+}
+
 function run() {
   const card = document.querySelector('.category-card[data-category="science"]');
-  if (!card) return;
+  if (!card) {
+    if (isDebug()) showDebug('No science card found');
+    return;
+  }
   const iconWrap = card.querySelector('.category-card__icon-wrap');
-  if (!iconWrap) return;
+  if (!iconWrap) {
+    if (isDebug()) showDebug('No icon-wrap found');
+    return;
+  }
 
-  // Emoji center in card coordinates
   const cardRect = card.getBoundingClientRect();
   const iconRect = iconWrap.getBoundingClientRect();
   const emojiCX = iconRect.left + iconRect.width / 2 - cardRect.left;
   const emojiCY = iconRect.top + iconRect.height / 2 - cardRect.top;
 
-  // Card content width for sizing
   const cs = getComputedStyle(card);
   const contentW = cardRect.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   const fontSize = contentW * FONT_SIZE_CQI;
 
-  // Render glyph to canvas with textBaseline='top' — simplest coordinate system
   const dpr = window.devicePixelRatio || 1;
   const canvasLogicalW = Math.ceil(fontSize * 2);
   const canvasLogicalH = Math.ceil(fontSize * 2);
@@ -53,7 +72,6 @@ function run() {
   ctx.font = `${fontSize}px Hieroglyphs`;
   ctx.textBaseline = 'top';
 
-  // Get theme color
   const color = getComputedStyle(document.documentElement)
     .getPropertyValue('--color-primary').trim() || '#C68A2E';
   ctx.fillStyle = color;
@@ -76,46 +94,59 @@ function run() {
   }
   const inkW = maxX - minX;
   const inkH = maxY - minY;
-  if (inkW < 5 || inkH < 5) return;
+  if (inkW < 5 || inkH < 5) {
+    if (isDebug()) showDebug('Ink bounds too small: ' + inkW + 'x' + inkH + ' (font not rendered?)');
+    return;
+  }
 
-  // Iris center in LOGICAL pixels (divide physical by dpr)
+  // Iris center in LOGICAL pixels
   const irisCX = (minX + inkW * IRIS_REL_X) / dpr;
   const irisCY = (minY + inkH * IRIS_REL_Y) / dpr;
-
-  // The canvas was drawn with text at (0, 0) with textBaseline='top'.
-  // So the image top-left IS the text origin.
-  // The iris is at (irisCX, irisCY) logical pixels from the image top-left.
-  //
-  // Position the image so that point lands on the emoji center:
-  //   imageLeft = emojiCX - irisCX
-  //   imageTop  = emojiCY - irisCY
 
   const imgLeft = emojiCX - irisCX;
   const imgTop = emojiCY - irisCY;
 
-  // Debug: draw iris marker on the canvas so we can verify detection
-  if (new URLSearchParams(location.search).has('eye-debug')) {
+  // Debug mode: draw marker and show values
+  if (isDebug()) {
+    // Draw iris crosshair on canvas (logical coords since ctx is scaled)
     ctx.globalAlpha = 1;
-    ctx.beginPath();
-    ctx.arc(irisCX * dpr, irisCY * dpr, 8 * dpr, 0, Math.PI * 2);
     ctx.strokeStyle = '#ff0000';
-    ctx.lineWidth = 3 * dpr;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(irisCX, irisCY, 10, 0, Math.PI * 2);
     ctx.stroke();
-    // Log values
-    console.log('EYE CALIBRATE:', { emojiCX, emojiCY, irisCX, irisCY, imgLeft, imgTop, inkW: inkW/dpr, inkH: inkH/dpr, minX: minX/dpr, minY: minY/dpr, dpr, contentW, fontSize });
+    ctx.beginPath();
+    ctx.moveTo(irisCX - 15, irisCY);
+    ctx.lineTo(irisCX + 15, irisCY);
+    ctx.moveTo(irisCX, irisCY - 15);
+    ctx.lineTo(irisCX, irisCY + 15);
+    ctx.stroke();
+
+    showDebug({
+      dpr,
+      cardSize: [cardRect.width.toFixed(1), cardRect.height.toFixed(1)],
+      contentW: contentW.toFixed(1),
+      fontSize: fontSize.toFixed(1),
+      emojiCenter: [emojiCX.toFixed(1), emojiCY.toFixed(1)],
+      inkBounds_logical: [(minX/dpr).toFixed(1), (minY/dpr).toFixed(1), (inkW/dpr).toFixed(1), (inkH/dpr).toFixed(1)],
+      irisCenter: [irisCX.toFixed(1), irisCY.toFixed(1)],
+      imgOffset: [imgLeft.toFixed(1), imgTop.toFixed(1)],
+      canvasSize: [canvasLogicalW, canvasLogicalH],
+    });
   }
 
   // Theme opacity
   const theme = document.documentElement.dataset.theme;
   const opacity = theme === 'oled' ? 0.22 : theme === 'dark' ? 0.20 : 0.15;
 
-  // Remove any existing calibrated glyph
+  // Remove any existing
   const existing = card.querySelector('.eye-glyph');
   if (existing) existing.remove();
 
   // Inject positioned image
   const el = document.createElement('div');
   el.className = 'eye-glyph';
+  const debugBorder = isDebug() ? 'border: 2px solid red;' : '';
   el.style.cssText = `
     position: absolute;
     left: ${imgLeft}px;
@@ -124,9 +155,17 @@ function run() {
     height: ${canvasLogicalH}px;
     background-image: url(${canvas.toDataURL()});
     background-size: 100% 100%;
-    opacity: ${opacity};
+    opacity: ${isDebug() ? 0.5 : opacity};
     pointer-events: none;
     z-index: 0;
+    ${debugBorder}
   `;
   card.appendChild(el);
+
+  // Debug: also show a dot at where we think the emoji center is
+  if (isDebug()) {
+    const dot = document.createElement('div');
+    dot.style.cssText = `position:absolute;left:${emojiCX - 5}px;top:${emojiCY - 5}px;width:10px;height:10px;background:#0f0;border-radius:50%;z-index:99;pointer-events:none;`;
+    card.appendChild(dot);
+  }
 }
