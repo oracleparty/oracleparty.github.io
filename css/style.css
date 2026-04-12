@@ -1054,7 +1054,7 @@ body::after {
 /* Per-glyph overrides. font-size in cqi (relative to card content box),
    offsets in cqi or %. Calibrated at 123.5px content box (155.5px card − 32px padding). */
 .category-card[data-hiero="𓋹"]::after { font-size: 109cqi; bottom: 0; }                    /* ankh, centered */
-.category-card[data-hiero="𓂀"]::after { content: none; }                                   /* eye — runtime JS positions a canvas-rendered image instead (see eye-calibrate.js) */
+.category-card[data-hiero="𓂀"]::after { font-size: 93cqi; bottom: 0; }                     /* eye, centered bottom-flush (same pattern as other glyphs) */
 .category-card[data-hiero="𓅃"]::after { font-size: 103cqi; bottom: 0; }                    /* falcon, centered */
 .category-card[data-hiero="𓅝"]::after { font-size: 126cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush, nudged right for beak room */
 .category-card[data-hiero="𓀭"]::after { font-size: 126cqi; bottom: 0; left: auto; right: -4%; transform: none; }  /* pharaoh, right flush */
