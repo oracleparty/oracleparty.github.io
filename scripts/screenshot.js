@@ -135,7 +135,7 @@ async function screenshotPage(browser, port, { page, screen, inject, injectArgs,
     await p.evaluate(inject, injectData);
   }
 
-  await p.waitForTimeout(300);
+  await p.waitForTimeout(800);
   await p.screenshot({ path: outPath, fullPage });
 
   // Run accessibility scan if requested

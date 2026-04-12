@@ -109,17 +109,23 @@ export const STATES = {
     injectArgs: () => CATEGORIES,
     inject: (cats) => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
-      const grid = document.getElementById('category-grid');
-      if (!grid) return;
-      // Tighter cards so all 12 fit in viewport for visual QA
-      grid.style.gap = '0.5rem';
-      grid.innerHTML = cats.map(c => `
-        <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:0.75rem 0.5rem 0.5rem;">
+      const html = cats.map(c => `
+        <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}">
           <div class="category-card__icon-wrap"><span class="category-card__icon">${c.icon}</span></div>
           <div class="category-card__name">${c.label}</div>
           <div class="category-card__count">${c.count} Qs</div>
+          <div class="category-card__plays">0 plays</div>
         </button>
       `).join('');
+      const grid = document.getElementById('category-grid');
+      if (!grid) return;
+      grid.style.gap = '';
+      grid.innerHTML = html;
+      // MutationObserver locks content against host.js async overwrites
+      const obs = new MutationObserver(() => {
+        if (grid.children.length !== cats.length) grid.innerHTML = html;
+      });
+      obs.observe(grid, { childList: true });
     },
   },
 
@@ -132,12 +138,15 @@ export const STATES = {
       function renderAll() {
         const grid = document.getElementById('category-grid');
         if (!grid) return;
-        grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-        grid.style.gap = '0.375rem';
+        // Use real CSS dimensions — no overrides. Cards scroll naturally.
+        grid.style.gridTemplateColumns = '';
+        grid.style.gap = '';
         grid.innerHTML = cats.map(c => `
-          <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}" style="padding:0.625rem 0.375rem 0.375rem;">
+          <button class="category-card" data-category="${c.key}" data-hiero="${c.hiero}">
             <div class="category-card__icon-wrap"><span class="category-card__icon">${c.icon}</span></div>
-            <div class="category-card__name" style="font-size:0.625rem;">${c.label}</div>
+            <div class="category-card__name">${c.label}</div>
+            <div class="category-card__count">${c.count} Qs</div>
+            <div class="category-card__plays">0 plays</div>
           </button>
         `).join('');
       }
