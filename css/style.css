@@ -1053,8 +1053,8 @@ body::after {
 }
 /* Per-glyph overrides. font-size in cqi (relative to card content box),
    offsets in cqi or %. Calibrated at 123.5px content box (155.5px card − 32px padding). */
-.category-card[data-hiero="𓋹"]::after { font-size: 95cqi; bottom: 8cqi; }                   /* ankh — raised so legs fit within card */
-.category-card[data-hiero="𓂀"]::after { font-size: 85cqi; bottom: 16cqi; }                  /* eye — raised so teardrop/curl fit within card */
+.category-card[data-hiero="𓋹"]::after { font-size: 109cqi; bottom: 0; }                    /* ankh, centered flush bottom */
+.category-card[data-hiero="𓂀"]::after { font-size: 85cqi; bottom: 0; }                     /* eye, sized down so teardrop/curl fit within line box descent */
 .category-card[data-hiero="𓅃"]::after { font-size: 103cqi; bottom: 0; }                    /* falcon, centered */
 .category-card[data-hiero="𓅝"]::after { font-size: 126cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush, nudged right for beak room */
 .category-card[data-hiero="𓀭"]::after { font-size: 126cqi; bottom: 0; left: auto; right: -4%; transform: none; }  /* pharaoh, right flush */
