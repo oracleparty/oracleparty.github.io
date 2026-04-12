@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Iris Calibrator</title>
+  <link rel="stylesheet" href="css/style.css?v=20260411b">
+  <style>
+    body { background: #000; color: #fff; font-family: sans-serif; padding: 1rem; overflow-y: auto !important; }
+    .screen { position: static !important; height: auto !important; overflow: visible !important; }
+    #glyph-box { position: relative; margin: 2rem auto; width: 300px; height: 300px; background: #111; border: 1px solid #333; }
+    #glyph-canvas { width: 100%; height: 100%; }
+    #marker { position: absolute; width: 24px; height: 24px; margin-left: -12px; margin-top: -12px; border: 3px solid #00ff00; border-radius: 50%; cursor: move; touch-action: none; background: rgba(0,255,0,0.2); z-index: 10; }
+    #values { font-family: monospace; font-size: 14px; color: #0f0; text-align: center; padding: 1rem; background: rgba(0,255,0,0.05); border: 1px solid #0f0; }
+    button { width: 100%; padding: 1rem; font-size: 16px; margin: 0.5rem 0; background: #0f0; color: #000; border: none; border-radius: 8px; font-weight: bold; }
+    h2, p { text-align: center; }
+  </style>
+</head>
+<body>
+<h2>Eye Iris Calibrator</h2>
+<p>Drag the green circle onto the exact center of the eye's iris (the circular pupil).</p>
+<div id="glyph-box">
+  <canvas id="glyph-canvas" width="600" height="600"></canvas>
+  <div id="marker"></div>
+</div>
+<div id="values">Drag to calibrate...</div>
+
+<script>
+(async () => {
+  // Load font
+  if (!document.fonts.check('16px Hieroglyphs')) {
+    const f = new FontFace('Hieroglyphs', 'url(fonts/hieroglyphs.woff2)');
+    const loaded = await f.load();
+    document.fonts.add(loaded);
+  }
+  await document.fonts.ready;
+
+  const box = document.getElementById('glyph-box');
+  const canvas = document.getElementById('glyph-canvas');
+  const ctx = canvas.getContext('2d');
+  const marker = document.getElementById('marker');
+  const values = document.getElementById('values');
+
+  // Draw eye at large size
+  const canvasSize = 600;
+  const fontSize = 450;
+  ctx.clearRect(0, 0, canvasSize, canvasSize);
+  ctx.font = fontSize + 'px Hieroglyphs';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#C68A2E';
+  ctx.fillText('\u{13080}', 0, 0);
+
+  // Measure ink bounds
+  const imgData = ctx.getImageData(0, 0, canvasSize, canvasSize);
+  const px = imgData.data;
+  let minX = canvasSize, maxX = 0, minY = canvasSize, maxY = 0;
+  for (let y = 0; y < canvasSize; y++) {
+    for (let x = 0; x < canvasSize; x++) {
+      if (px[(y * canvasSize + x) * 4 + 3] > 10) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  const inkW = maxX - minX;
+  const inkH = maxY - minY;
+
+  // Draw ink bounds rectangle (for reference)
+  ctx.strokeStyle = 'rgba(255,0,0,0.5)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(minX, minY, inkW, inkH);
+
+  // Initial marker position: center of canvas
+  let markerX = canvasSize / 2;
+  let markerY = canvasSize / 2;
+
+  // Marker is inside glyph-box (300x300), canvas is 600x600 internal
+  // So marker coords in box = canvas coords * (300/600) = * 0.5
+  function positionMarker() {
+    const boxScale = 300 / canvasSize;
+    marker.style.left = (markerX * boxScale) + 'px';
+    marker.style.top = (markerY * boxScale) + 'px';
+
+    // Compute relX, relY relative to ink bounds
+    const relX = (markerX - minX) / inkW;
+    const relY = (markerY - minY) / inkH;
+    values.innerHTML = `relX = <b>${relX.toFixed(3)}</b><br>relY = <b>${relY.toFixed(3)}</b>`;
+  }
+
+  // Drag handling
+  let dragging = false;
+  function startDrag(e) {
+    dragging = true;
+    e.preventDefault();
+  }
+  function endDrag() { dragging = false; }
+  function onMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const boxRect = box.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    const boxX = t.clientX - boxRect.left;
+    const boxY = t.clientY - boxRect.top;
+    const canvasScale = canvasSize / 300;
+    markerX = Math.max(0, Math.min(canvasSize, boxX * canvasScale));
+    markerY = Math.max(0, Math.min(canvasSize, boxY * canvasScale));
+    positionMarker();
+  }
+
+  marker.addEventListener('mousedown', startDrag);
+  marker.addEventListener('touchstart', startDrag, { passive: false });
+  box.addEventListener('mousedown', (e) => { onMove(e); startDrag(e); });
+  box.addEventListener('touchstart', (e) => { onMove(e); startDrag(e); }, { passive: false });
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('mouseup', endDrag);
+  window.addEventListener('touchend', endDrag);
+
+  positionMarker();
+})();
+</script>
+</body>
+</html>
