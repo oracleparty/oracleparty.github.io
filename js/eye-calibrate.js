@@ -99,9 +99,14 @@ function run() {
     return;
   }
 
+  // Allow URL overrides for iris proportions: ?rx=0.47&ry=0.25
+  const params = new URLSearchParams(location.search);
+  const relX = parseFloat(params.get('rx')) || IRIS_REL_X;
+  const relY = parseFloat(params.get('ry')) || IRIS_REL_Y;
+
   // Iris center in LOGICAL pixels
-  const irisCX = (minX + inkW * IRIS_REL_X) / dpr;
-  const irisCY = (minY + inkH * IRIS_REL_Y) / dpr;
+  const irisCX = (minX + inkW * relX) / dpr;
+  const irisCY = (minY + inkH * relY) / dpr;
 
   const imgLeft = emojiCX - irisCX;
   const imgTop = emojiCY - irisCY;
@@ -124,14 +129,11 @@ function run() {
 
     showDebug({
       dpr,
-      cardSize: [cardRect.width.toFixed(1), cardRect.height.toFixed(1)],
-      contentW: contentW.toFixed(1),
-      fontSize: fontSize.toFixed(1),
+      relX, relY,
       emojiCenter: [emojiCX.toFixed(1), emojiCY.toFixed(1)],
-      inkBounds_logical: [(minX/dpr).toFixed(1), (minY/dpr).toFixed(1), (inkW/dpr).toFixed(1), (inkH/dpr).toFixed(1)],
       irisCenter: [irisCX.toFixed(1), irisCY.toFixed(1)],
       imgOffset: [imgLeft.toFixed(1), imgTop.toFixed(1)],
-      canvasSize: [canvasLogicalW, canvasLogicalH],
+      hint: 'Adjust: ?eye-debug&rx=0.50&ry=0.25',
     });
   }
 
