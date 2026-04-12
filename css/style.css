@@ -1058,7 +1058,7 @@ body::after {
    edge = any descent ink gets clipped. Each glyph's bottom offset must be ≥ its ink descent in cqi. */
 .category-card[data-hiero="𓋹"]::after { font-size: 109cqi; bottom: 3.2cqi; }               /* ankh: ink descent=3.16cqi (flush — no buffer, sub-px aa at 0.15 opacity is invisible) */
 .category-card[data-hiero="𓂀"]::after { font-size: 103cqi; bottom: 22.5cqi; }              /* eye: ink descent=22.43cqi (flush) */
-.category-card[data-hiero="𓅃"]::after { font-size: 103cqi; bottom: 2cqi; }                 /* falcon: ink descent=1.94cqi (flush) */
+.category-card[data-hiero="𓅃"]::after { font-size: 109cqi; bottom: 2.2cqi; }               /* falcon: matched to man ink height (111.6cqi); descent=2.18cqi (flush) */
 .category-card[data-hiero="𓅝"]::after { font-size: 126cqi; bottom: 0; left: -2%; transform: none; }   /* ibis, left flush, nudged right for beak room */
 .category-card[data-hiero="𓀭"]::after { font-size: 126cqi; bottom: 0; left: auto; right: -4%; transform: none; }  /* pharaoh, right flush */
 .category-card[data-hiero="𓇼"]::after { font-size: 106cqi; bottom: 24.3cqi; }              /* star, centered */
