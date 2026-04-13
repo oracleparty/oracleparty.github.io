@@ -177,8 +177,12 @@ export function handleNewMessage(payload) {
     if (dqMatch) {
       const dqQNum = parseInt(dqMatch[1], 10) - 1; // 0-indexed
       state.disqualifiedQuestions.add(dqQNum);
-      // Refund this player's wager for the disqualified round
-      const myAnswer = state.currentAnswers.find(a => a.player_id === state.room.playerId);
+      // Refund this player's wager for the disqualified round.
+      // Filter by question_number to handle late-arriving messages (after currentQuestion advances).
+      const myAnswer = state.currentAnswers.find(a =>
+        String(a.player_id) === String(state.room.playerId) &&
+        a.question_number === dqQNum
+      );
       if (myAnswer?.wager) state.usedWagers.delete(myAnswer.wager);
     }
   } else {
