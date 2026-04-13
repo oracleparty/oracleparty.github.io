@@ -4,11 +4,12 @@
 // ============================================
 
 import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../utils.js';
+import { getStaleKickDecisions } from '../stale-helpers.js';
 import { findNextAvailableWager } from './scoring-helpers.js';
 import { getCountdownElapsed } from './timer-helpers.js';
 import { determineNextHost } from './host-promotion.js';
 import { logger } from '../logger.js';
-import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS } from '../constants.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS } from '../constants.js';
 import {
   updateGameState,
   fetchQuestionsByIds,
@@ -762,37 +763,9 @@ export function handleAnswerChange(payload) {
 
 export async function checkStalePresence() {
   setStaleCheckCount(_staleCheckCount + 1);
-  const now = Date.now();
 
-  for (const p of state.players) {
-    const id = String(p.id);
-    if (id === String(state.room.playerId)) continue;
-
-    const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).getTime() : 0;
-    const silenceMs = now - lastSeen;
-    const hasDisconnected = !!p.disconnected_at;
-
-    // Fast path: beacon fired + heartbeat stopped for 45s → remove
-    // Slow path: no beacon but heartbeat stopped for 3 min → remove
-    const threshold = hasDisconnected ? DISCONNECTED_TIMEOUT_MS : STALE_TIMEOUT_MS;
-    if (silenceMs < threshold) continue;
-
-    if (p.is_host) {
-      // Stale host: earliest connected player kicks them (deterministic)
-      const connected = state.players
-        .filter(pl => {
-          const ls = pl.last_seen_at ? new Date(pl.last_seen_at).getTime() : 0;
-          return (now - ls) < DISCONNECTED_TIMEOUT_MS && !pl.disconnected_at;
-        })
-        .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
-      if (connected[0] && String(connected[0].id) === String(state.room.playerId)) {
-        removePlayer(id);
-      }
-    } else if (state.room.isHost) {
-      // Stale non-host: host kicks them
-      removePlayer(id);
-    }
-  }
+  const toRemove = getStaleKickDecisions(state.players, state.room.playerId, state.room.isHost || state.room.isCohost);
+  for (const id of toRemove) removePlayer(id);
 
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA

@@ -4,6 +4,7 @@
 // ============================================
 
 import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from './utils.js';
+import { getStaleKickDecisions } from './stale-helpers.js';
 import { logger } from './logger.js';
 import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HEARTBEAT_DB_INTERVAL_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS } from './constants.js';
 import {
@@ -1289,36 +1290,8 @@ function handleRoomChange(payload) {
 //   - STALE_TIMEOUT_MS (3 min): player heartbeat stopped (internet loss / crash)
 
 function checkStalePresence() {
-  const now = Date.now();
-  for (const p of players) {
-    const id = String(p.id);
-    if (id === String(room.playerId)) continue; // Don't kick ourselves
-
-    const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).getTime() : 0;
-    const silenceMs = now - lastSeen;
-    const hasDisconnected = !!p.disconnected_at;
-
-    // Fast path: beacon fired (tab close) + heartbeat stopped for 45s → remove
-    // Slow path: no beacon but heartbeat stopped for 3 minutes → remove
-    const threshold = hasDisconnected ? DISCONNECTED_TIMEOUT_MS : STALE_TIMEOUT_MS;
-    if (silenceMs < threshold) continue;
-
-    if (p.is_host) {
-      // Stale host: earliest connected player kicks them (deterministic)
-      const connected = players
-        .filter(pl => {
-          const ls = pl.last_seen_at ? new Date(pl.last_seen_at).getTime() : 0;
-          return (now - ls) < DISCONNECTED_TIMEOUT_MS && !pl.disconnected_at;
-        })
-        .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
-      if (connected[0] && String(connected[0].id) === String(room.playerId)) {
-        removePlayer(id);
-      }
-    } else if (room.isHost) {
-      // Stale non-host: host kicks them
-      removePlayer(id);
-    }
-  }
+  const toRemove = getStaleKickDecisions(players, room.playerId, room.isHost);
+  for (const id of toRemove) removePlayer(id);
 }
 
 // ============================================
