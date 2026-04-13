@@ -517,11 +517,6 @@ function renderFinalWagerPlayers(lockedWagers) {
     `;
   }).join('');
 
-  // Wire honk buttons on final wager player list
-  $('#fw-player-list').addEventListener('click', (e) => {
-    const btn = e.target.closest('.honk-btn');
-    if (btn) sendHonk(btn.dataset.honkTarget);
-  });
 }
 
 export async function updateFinalWagerPlayerList() {

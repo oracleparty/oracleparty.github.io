@@ -283,10 +283,12 @@ async function init() {
     updateHonkBadges();
   });
 
-  // Honk click handler (event delegation on scores + results containers)
+  // Honk click handler (event delegation on scores, results, and final-wager containers)
   // Note: #reveal-answers is NOT included here because renderRevealAnswers()
   // clones the container (destroying this listener). It attaches its own.
-  for (const sel of ['#scores-animated-list', '#results-list']) {
+  // Note: #fw-player-list is included here (not in renderFinalWagerPlayers) to prevent
+  // listener accumulation — renderFinalWagerPlayers is called on every wager lock.
+  for (const sel of ['#scores-animated-list', '#results-list', '#fw-player-list']) {
     const el = document.querySelector(sel);
     if (el) el.addEventListener('click', (e) => {
       const btn = e.target.closest('.honk-btn');
