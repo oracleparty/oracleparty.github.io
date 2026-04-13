@@ -163,9 +163,10 @@ async function init() {
   const roomChannel = subscribeToRoom(room.id, handleRoomChange);
   channels = [playerChannel, messageChannel, roomChannel];
 
-  // Poll players as fallback + check for stale disconnected players
-  playerPollInterval = setInterval(() => {
-    loadPlayers();
+  // Poll players as fallback + check for stale disconnected players.
+  // loadPlayers() is awaited so checkStalePresence() always sees fresh DB data.
+  playerPollInterval = setInterval(async () => {
+    await loadPlayers();
     checkStalePresence();
   }, 8000);
 
@@ -534,6 +535,8 @@ async function handlePlayerChange(payload) {
       }
     } else if (event === 'DELETE' && payload.old) {
       const deletedId = String(payload.old.id);
+      const wasMe = deletedId === String(room.playerId);
+      logger.warn('Lobby', `handlePlayerChange DELETE: id=${deletedId}, wasMe=${wasMe}, myId=${room.playerId}`);
 
       // Remove the player from local list
       players = players.filter(p => String(p.id) !== deletedId);
@@ -787,6 +790,8 @@ async function ensureCurrentPlayer() {
     return;
   }
 
+  logger.warn('Lobby', `ensureCurrentPlayer: player ${room.playerId} not in local list — will re-add. players=[${players.map(p => p.id).join(',')}]`);
+
   // Verify room still exists before re-adding (don't resurrect zombie rooms)
   const { data: roomCheck } = await fetchRoom(room.id);
   if (!roomCheck) {
@@ -817,6 +822,7 @@ async function ensureCurrentPlayer() {
   }
   const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost, rejoinUserId, extras);
   if (rejoinedPlayer) {
+    logger.warn('Lobby', `ensureCurrentPlayer: re-added as new player ${rejoinedPlayer.id} (was ${room.playerId})`);
     room.playerId = rejoinedPlayer.id;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
     await loadPlayers();
@@ -1291,7 +1297,11 @@ function handleRoomChange(payload) {
 
 function checkStalePresence() {
   const toRemove = getStaleKickDecisions(players, room.playerId, room.isHost);
-  for (const id of toRemove) removePlayer(id);
+  for (const id of toRemove) {
+    const p = players.find(pl => String(pl.id) === id);
+    logger.warn('Lobby', `checkStalePresence: removing player ${id} (${p?.display_name}), last_seen_at=${p?.last_seen_at}, disconnected_at=${p?.disconnected_at}, isHost=${room.isHost}`);
+    removePlayer(id);
+  }
 }
 
 // ============================================
