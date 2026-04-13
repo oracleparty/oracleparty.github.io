@@ -1021,17 +1021,21 @@ export async function handlePlayAgain() {
   // Non-host players just navigate directly — they don't broadcast a status change
   // that would force ALL players out of the results screen.
   if (state.room?.isHost) {
-    const doCleanup = () => Promise.all([
-      deleteAnswersByRoom(state.room.id),
-      updateGameState(state.room.id, {
-        game_phase: 'lobby',
-        current_question: 0,
-        question_ids: [],
-        question_started_at: null,
-        countdown_started_at: null
-      }),
-      updateRoomStatus(state.room.id, 'lobby')
-    ]);
+    const doCleanup = async () => {
+      const [r1, r2, r3] = await Promise.all([
+        deleteAnswersByRoom(state.room.id),
+        updateGameState(state.room.id, {
+          game_phase: 'lobby',
+          current_question: 0,
+          question_ids: [],
+          question_started_at: null,
+          countdown_started_at: null
+        }),
+        updateRoomStatus(state.room.id, 'lobby')
+      ]);
+      const firstError = r1?.error || r2?.error || r3?.error;
+      if (firstError) throw firstError;
+    };
     try {
       await doCleanup();
     } catch (err) {

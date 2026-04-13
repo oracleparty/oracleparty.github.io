@@ -5,7 +5,7 @@
 
 import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
          _screenTransitioning, setScreenTransitioning } from './state.js';
-import { $, transitionScreens, fuzzyMatch } from '../utils.js';
+import { $, transitionScreens, fuzzyMatch, showToast } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
 import { updateGameState, submitAnswer, fetchAnswersForQuestion, incrementQuestionsAnswered } from '../supabase.js';
@@ -142,7 +142,12 @@ export function showQuestionScreen() {
       if (state.room.isHost) {
         const startedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
         state.questionStartedAt = startedAt;
-        await updateGameState(state.room.id, { question_started_at: startedAt });
+        const { error: timerErr } = await updateGameState(state.room.id, { question_started_at: startedAt });
+        if (timerErr) {
+          // Retry once — if this also fails, players fall back to local timer
+          await new Promise(r => setTimeout(r, 500));
+          await updateGameState(state.room.id, { question_started_at: startedAt });
+        }
       }
 
       // Reveal everything
@@ -423,7 +428,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   }
   const scoreEarned = computeScoreEarned(isCorrect, wager, state.isFinalWagerRound);
 
-  await submitAnswer({
+  const { error: submitErr } = await submitAnswer({
     roomId: state.room.id,
     playerId: state.room.playerId,
     questionNumber: state.currentQuestion,
@@ -433,6 +438,15 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     isCorrect,
     scoreEarned
   });
+
+  if (submitErr) {
+    // DB write failed — allow the player to retry
+    state.hasSubmitted = false;
+    $('#answer-input').disabled = false;
+    $('#btn-submit-answer').disabled = false;
+    showToast('Failed to submit — please try again', 'error');
+    return;
+  }
 
   // Mark wager as used AFTER DB write succeeds (prevents stale state if submit fails)
   state.usedWagers.set(wager, isCorrect);
