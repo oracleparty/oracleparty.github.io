@@ -10,7 +10,7 @@ import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
  * Add a player to a room.
  */
 export async function addPlayer(roomId, displayName, isHost = false, userId = null, extras = {}) {
-  const payload = { room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString() };
+  const payload = { room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString(), last_seen_at: new Date().toISOString() };
   if (userId) payload.user_id = userId;
   if (extras.avatarColor) payload.avatar_color = extras.avatarColor;
   if (extras.avatarEmoji) payload.avatar_emoji = extras.avatarEmoji;
