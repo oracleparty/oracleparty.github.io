@@ -165,8 +165,12 @@ async function init() {
 
   // Poll players as fallback + check for stale disconnected players.
   // loadPlayers() is awaited so checkStalePresence() always sees fresh DB data.
+  // ensureCurrentPlayer() runs after the fresh fetch to catch cases where our
+  // row was removed and the Realtime DELETE either didn't arrive or arrived
+  // before we could recover.
   playerPollInterval = setInterval(async () => {
     await loadPlayers();
+    await ensureCurrentPlayer();
     checkStalePresence();
   }, 8000);
 
@@ -379,11 +383,6 @@ async function loadPlayers() {
   sortPlayers();
   // Load tier badges for logged-in players (non-blocking)
   _loadPlayerTiers();
-  // After replacing the players array, ensure we're still in the list.
-  // The DB poll can return data without us if our row was removed (stale check,
-  // beacon race) or if the query ran before our INSERT committed. Recovery
-  // must happen before renderPlayers() so there's no visible flash.
-  await ensureCurrentPlayer();
   renderPlayers();
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
