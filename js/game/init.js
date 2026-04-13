@@ -334,7 +334,7 @@ async function initHostGame() {
     // Rebuild used wagers from existing answers (clear first to prevent stale data)
     state.usedWagers = new Map();
     const allAnswers = await fetchAllAnswers(state.room.id);
-    const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+    const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
     for (const a of myAnswers) {
       state.usedWagers.set(a.wager, !!a.is_correct);
     }
@@ -507,7 +507,7 @@ async function applyGameState(roomData) {
   // Rebuild used wagers from existing answers (clear first to prevent stale data)
   state.usedWagers = new Map();
   const allAnswers = await fetchAllAnswers(state.room.id);
-  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+  const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
   for (const a of myAnswers) {
     state.usedWagers.set(a.wager, !!a.is_correct);
   }

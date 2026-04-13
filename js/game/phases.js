@@ -423,7 +423,7 @@ export async function handlePhaseTransition(phase) {
     if (state.questionStartedAt) {
       const qNum = state.currentQuestion;
       fetchAnswersForQuestion(state.room.id, qNum).then(answers => {
-        const myAnswer = answers.find(a => a.player_id === state.room.playerId);
+        const myAnswer = answers.find(a => String(a.player_id) === String(state.room.playerId));
         if (myAnswer) {
           // Already submitted — go straight to reveal
           state.hasSubmitted = true;

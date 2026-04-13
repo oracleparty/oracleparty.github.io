@@ -1065,7 +1065,7 @@ async function handleReviewQuestions() {
 
   // Fetch player answers for the game
   const allAnswers = await fetchAllAnswers(state.room.id);
-  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+  const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
 
   // Build lookup: question_number → answer record
   const answerByQ = {};

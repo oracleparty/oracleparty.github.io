@@ -474,7 +474,7 @@ async function handleDisqualifyRound() {
 
   // Refund wagers — remove from usedWagers so players can reuse them
   for (const answer of state.currentAnswers) {
-    if (answer.wager && answer.player_id === state.room.playerId) {
+    if (answer.wager && String(answer.player_id) === String(state.room.playerId)) {
       state.usedWagers.delete(answer.wager);
     }
   }
