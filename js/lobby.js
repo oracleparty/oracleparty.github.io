@@ -379,6 +379,11 @@ async function loadPlayers() {
   sortPlayers();
   // Load tier badges for logged-in players (non-blocking)
   _loadPlayerTiers();
+  // After replacing the players array, ensure we're still in the list.
+  // The DB poll can return data without us if our row was removed (stale check,
+  // beacon race) or if the query ran before our INSERT committed. Recovery
+  // must happen before renderPlayers() so there's no visible flash.
+  await ensureCurrentPlayer();
   renderPlayers();
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
@@ -547,6 +552,13 @@ async function handlePlayerChange(payload) {
         return;
       }
 
+      // If WE were the deleted player, recover immediately before rendering
+      // so there's no visible flash of absence. ensureCurrentPlayer re-adds
+      // us with a fresh player row.
+      if (wasMe) {
+        await ensureCurrentPlayer();
+      }
+
       // BUG 2 FIX: Don't rely on payload.old.is_host — Supabase default REPLICA
       // IDENTITY only sends the primary key in OLD for DELETE events, so is_host
       // may be undefined. Instead check if any remaining player has is_host=true.
@@ -561,7 +573,7 @@ async function handlePlayerChange(payload) {
       await loadPlayers();
     }
 
-    // If current player was removed (e.g. stale beacon from refresh), re-add
+    // Final safety net: ensure we're still in the list after any event
     await ensureCurrentPlayer();
   } catch (err) {
     logger.error('Lobby', 'handlePlayerChange error', err);
@@ -791,6 +803,8 @@ async function ensureCurrentPlayer() {
   }
 
   logger.warn('Lobby', `ensureCurrentPlayer: player ${room.playerId} not in local list — will re-add. players=[${players.map(p => p.id).join(',')}]`);
+  // Show visible indicator so the issue can be reported without DevTools
+  showToast('⚠ Reconnecting to lobby…', 'error', 3000);
 
   // Verify room still exists before re-adding (don't resurrect zombie rooms)
   const { data: roomCheck } = await fetchRoom(room.id);
