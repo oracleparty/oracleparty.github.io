@@ -307,16 +307,58 @@ async function init() {
   updatePresence({ activity: 'game', roomId: state.room.id, category: state.room.category });
 
   if (state.room.isHost || state.room.isCohost) {
-    await initHostGame();
+    try {
+      await initHostGame();
+    } catch (err) {
+      logger.error('Game', 'initHostGame failed', err);
+      _showInitError('Failed to start game. Tap to return to lobby.');
+      return;
+    }
     if (state.room.isHost) initHostSettingsPanel();
   } else {
-    await initPlayerGame();
+    try {
+      await initPlayerGame();
+    } catch (err) {
+      logger.error('Game', 'initPlayerGame failed', err);
+      _showInitError('Failed to join game. Tap to return to lobby.');
+    }
   }
+}
+
+function _showInitError(msg) {
+  const loadingEl = document.querySelector('#game-loading .game-loading__text');
+  if (!loadingEl) return;
+  loadingEl.textContent = msg;
+  const existing = document.getElementById('init-error-back-btn');
+  if (existing) return;
+  const btn = document.createElement('button');
+  btn.id = 'init-error-back-btn';
+  btn.className = 'btn btn-secondary';
+  btn.textContent = 'Back to Lobby';
+  btn.style.marginTop = 'var(--space-lg)';
+  btn.onclick = () => {
+    setIsLeaving(true);
+    try { cleanup(); } catch (_) {}
+    sessionStorage.setItem('oracle_party_returning_from_game', '1');
+    navigateWithFadeReplace('lobby.html');
+  };
+  loadingEl.after(btn);
 }
 
 async function initHostGame() {
   // Check if there's already a game in progress (host refreshed mid-game)
   const { data: roomData } = await fetchRoom(state.room.id);
+  // Stale-state guard: 'results' phase with questions means a previous game wasn't cleaned
+  // up (e.g., Play Again's updateGameState failed silently). Reset to fresh start.
+  if (roomData?.game_phase === 'results') {
+    logger.warn('Game', 'initHostGame: stale results phase detected — resetting to lobby');
+    await updateGameState(state.room.id, {
+      game_phase: 'lobby', current_question: 0, question_ids: [],
+      question_started_at: null, countdown_started_at: null
+    });
+    // Clear locally so the reconnect guard below doesn't trigger
+    if (roomData) { roomData.game_phase = 'lobby'; roomData.question_ids = []; }
+  }
   if (roomData && roomData.question_ids && roomData.question_ids.length > 0 && roomData.game_phase && roomData.game_phase !== 'lobby') {
     // Reconnect to existing game
     // question_ids has N+1 entries (N regular + 1 final wager)
@@ -449,7 +491,10 @@ async function initPlayerGame() {
       if (data.question_ids && data.question_ids.length > 0 && data.game_phase) {
         clearInterval(state._hotJoinPollId);
         state._hotJoinPollId = null;
-        await applyGameState(data);
+        // Guard: Realtime handleRoomChange may have already set up the game
+        if (state.questions.length === 0) {
+          await applyGameState(data);
+        }
       }
     }, PLAYER_READY_CONFIRM_MS);
     // After 30s still waiting, show a Back to Lobby option
@@ -474,7 +519,10 @@ async function initPlayerGame() {
     return;
   }
 
-  await applyGameState(roomData);
+  // Guard: Realtime handleRoomChange may have loaded questions while we were polling
+  if (state.questions.length === 0) {
+    await applyGameState(roomData);
+  }
 }
 
 /**

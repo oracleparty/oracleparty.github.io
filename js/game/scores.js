@@ -1021,21 +1021,28 @@ export async function handlePlayAgain() {
   // Non-host players just navigate directly — they don't broadcast a status change
   // that would force ALL players out of the results screen.
   if (state.room?.isHost) {
+    const doCleanup = () => Promise.all([
+      deleteAnswersByRoom(state.room.id),
+      updateGameState(state.room.id, {
+        game_phase: 'lobby',
+        current_question: 0,
+        question_ids: [],
+        question_started_at: null,
+        countdown_started_at: null
+      }),
+      updateRoomStatus(state.room.id, 'lobby')
+    ]);
     try {
-      await Promise.all([
-        deleteAnswersByRoom(state.room.id),
-        updateGameState(state.room.id, {
-          game_phase: 'lobby',
-          current_question: 0,
-          question_ids: [],
-          question_started_at: null,
-          countdown_started_at: null
-        }),
-        updateRoomStatus(state.room.id, 'lobby')
-      ]);
+      await doCleanup();
     } catch (err) {
-      logger.error('Game', 'handlePlayAgain host cleanup failed', err);
-      showToast('Error resetting room — retrying...', 'error');
+      logger.error('Game', 'handlePlayAgain host cleanup failed (retrying)', err);
+      try {
+        await new Promise(r => setTimeout(r, 1000));
+        await doCleanup();
+      } catch (err2) {
+        logger.error('Game', 'handlePlayAgain host cleanup retry failed', err2);
+        showToast('Error resetting room — try leaving and rejoining', 'error');
+      }
     }
   }
 
