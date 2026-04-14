@@ -1022,6 +1022,31 @@ export async function handlePlayAgain() {
   setIsLeaving(true); // Player stays in room — prevent handleUnload from removing
   try { if (_cleanup) _cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
 
+  // Reset per-game client state so the next game starts clean.
+  // Q0's handlePhaseTransition('question') resets some of this, but not the
+  // final-wager flags — without this, the second game's final round is broken
+  // (lock button hidden, wager grid bypassed on Q1, old scores carried over).
+  state.finalWagerLocked = false;
+  state.finalWager = 20;
+  state.isFinalWagerRound = false;
+  state.usedWagers = new Map();
+  state.disqualifiedQuestions = new Set();
+  state.scores = {};
+  state.previousScores = {};
+  state.currentAnswers = [];
+  state.currentQuestion = 0;
+  state.questions = [];
+  state.shownQuestionIndices = [];
+  state.wagerExplicitlySelected = false;
+  state.hasSubmitted = false;
+  state.onRevealScreen = false;
+  state.resultsRevealed = false;
+  state.timerExpired = false;
+  state.questionStartedAt = null;
+  state.countdownStartedAt = null;
+  state.votedDifficulty = null;
+  state.difficultyVotes = {};
+
   // Only the host resets the room status to 'lobby'.
   // Non-host players just navigate directly — they don't broadcast a status change
   // that would force ALL players out of the results screen.

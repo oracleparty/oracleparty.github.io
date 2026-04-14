@@ -8,7 +8,7 @@ import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAns
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
-import { updateGameState, submitAnswer, fetchAnswersForQuestion, incrementQuestionsAnswered } from '../supabase.js';
+import { updateGameState, submitAnswer, fetchAnswersForQuestion, fetchAllAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -337,15 +337,33 @@ async function handleTimerExpired() {
     const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
     const q = state.questions[state.currentQuestion];
     if (q) {
+      // Build each missing player's used-wager set from their existing answers
+      // so we don't duplicate a wager they've already used (which would leave
+      // their wager grid in an inconsistent state).
+      let perPlayerUsed = new Map();
+      if (state.players.some(p => !submittedIds.has(String(p.id)))) {
+        try {
+          const allAnswers = await fetchAllAnswers(state.room.id);
+          for (const a of allAnswers) {
+            if (!a.wager || a.question_number === state.currentQuestion) continue;
+            const pid = String(a.player_id);
+            if (!perPlayerUsed.has(pid)) perPlayerUsed.set(pid, new Map());
+            perPlayerUsed.get(pid).set(a.wager, !!a.is_correct);
+          }
+        } catch (_) { /* fall back to wager=1 if fetch fails */ }
+      }
+
       const autoSubmits = [];
       for (const p of state.players) {
         if (!submittedIds.has(String(p.id))) {
+          const used = perPlayerUsed.get(String(p.id)) || new Map();
+          const wager = findNextAvailableWager(used, state.totalQuestions);
           autoSubmits.push(submitAnswer({
             roomId: state.room.id,
             playerId: p.id,
             questionNumber: state.currentQuestion,
             questionId: q.id,
-            wager: 1,
+            wager,
             submittedAnswer: '',
             isCorrect: false,
             scoreEarned: 0

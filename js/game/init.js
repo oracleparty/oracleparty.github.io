@@ -420,6 +420,11 @@ async function initHostGame() {
 }
 
 async function initPlayerGame() {
+  // Show "Waiting for host..." IMMEDIATELY so the player sees visible progress
+  // while the host's question fetch is in flight (can take 1-2s on slow links).
+  const loadingEl = document.querySelector('#game-loading .game-loading__text');
+  if (loadingEl) loadingEl.textContent = 'Waiting for host...';
+
   let roomData = null;
   for (let attempt = 0; attempt < 10; attempt++) {
     const { data } = await fetchRoom(state.room.id);
@@ -431,26 +436,34 @@ async function initPlayerGame() {
   }
 
   if (!roomData || !roomData.question_ids) {
-    const loadingEl = document.querySelector('#game-loading .game-loading__text');
-    if (loadingEl) loadingEl.textContent = 'Waiting for host...';
     // Keep polling — Realtime handleRoomChange may also catch it, but this is a safety net
+    let consecutiveNulls = 0;
     state._hotJoinPollId = setInterval(async () => {
       const { data } = await fetchRoom(state.room.id);
       if (!data) {
-        // Room was deleted — stop polling and go home
-        clearInterval(state._hotJoinPollId);
-        state._hotJoinPollId = null;
-        sessionStorage.removeItem('oracle_party_room');
-        window.location.href = 'index.html';
+        // Treat a single null fetch as transient (network blip / edge). Only
+        // give up after two consecutive nulls to avoid kicking a player home
+        // for a momentary Supabase hiccup.
+        consecutiveNulls++;
+        if (consecutiveNulls >= 2) {
+          clearInterval(state._hotJoinPollId);
+          state._hotJoinPollId = null;
+          sessionStorage.removeItem('oracle_party_room');
+          window.location.href = 'index.html';
+        }
         return;
       }
+      consecutiveNulls = 0;
       if (data.question_ids && data.question_ids.length > 0 && data.game_phase) {
         clearInterval(state._hotJoinPollId);
         state._hotJoinPollId = null;
         await applyGameState(data);
       }
     }, PLAYER_READY_CONFIRM_MS);
-    // After 30s still waiting, show a Back to Lobby option
+
+    // After 10s still waiting, show a Back to Lobby escape hatch. This used to
+    // be 30s, which felt like a hang — 10s is still enough time for a normal
+    // start while not trapping the player if something is actually wrong.
     setTimeout(() => {
       if (state._hotJoinPollId && loadingEl && !document.getElementById('guest-back-btn')) {
         const backBtn = document.createElement('button');
@@ -468,7 +481,7 @@ async function initPlayerGame() {
         };
         loadingEl.after(backBtn);
       }
-    }, 30000);
+    }, 10000);
     return;
   }
 

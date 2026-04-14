@@ -20,6 +20,7 @@ import {
   promoteToHost,
   insertGamePlay,
   demoteCohost,
+  supabase,
 } from '../supabase.js';
 import { getDisplayName } from '../auth.js';
 import {
@@ -402,6 +403,15 @@ export async function handlePhaseTransition(phase) {
       state._cumulativeScoresWritten = false;
       state.usedWagers = new Map();
       state.disqualifiedQuestions = new Set();
+      // Defensive reset: covers non-host players returning from a prior game
+      // without going through handlePlayAgain (e.g. via "Host returned to
+      // lobby" notice). Without this the final-wager flags persist and break
+      // the next game.
+      state.finalWagerLocked = false;
+      state.finalWager = 20;
+      state.isFinalWagerRound = false;
+      state.votedDifficulty = null;
+      state.difficultyVotes = {};
       // Track game play start
       insertGamePlay({
         roomId: state.room.id,
@@ -440,6 +450,16 @@ export async function handlePhaseTransition(phase) {
   }
 
   if (phase === state.gamePhase) return;
+
+  // Leaving final_wager without going through handleRevealFinalQuestion
+  // (e.g. host swap, disconnect recovery). Tear down the broadcast channel
+  // so we don't leak it — handleRevealFinalQuestion has its own cleanup when
+  // it fires first.
+  if (state.gamePhase === 'final_wager' && phase !== 'final_question' && state.difficultyVoteChannel) {
+    try { supabase.removeChannel(state.difficultyVoteChannel); } catch (_) {}
+    state.difficultyVoteChannel = null;
+  }
+
   state.gamePhase = phase;
 
   switch (phase) {
@@ -683,6 +703,21 @@ export function handleAnswerChange(payload) {
       const answer = state.currentAnswers[idx];
       if (String(answer.player_id) === String(state.room.playerId) && answer.wager) {
         state.usedWagers.set(answer.wager, !!answer.is_correct);
+      }
+    }
+    // Detect disqualification (host flipped every answer on this question to
+    // incorrect + score_earned=0). Refund the current player's own wager so
+    // it's available again, and mark the question as disqualified locally.
+    {
+      const qNum = state.currentAnswers[0]?.question_number;
+      const allZeroed = state.currentAnswers.length > 0
+        && state.currentAnswers.every(a => !a.is_correct && (a.score_earned || 0) === 0);
+      if (allZeroed && qNum !== undefined && !state.disqualifiedQuestions.has(qNum)) {
+        state.disqualifiedQuestions.add(qNum);
+        const myAnswer = state.currentAnswers.find(a => String(a.player_id) === String(state.room.playerId));
+        if (myAnswer && myAnswer.wager) {
+          state.usedWagers.delete(myAnswer.wager);
+        }
       }
     }
     // CSS-only patch for judgment changes (host override toggle)

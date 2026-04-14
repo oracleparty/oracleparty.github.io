@@ -472,9 +472,11 @@ async function handleDisqualifyRound() {
   // Mark locally
   state.disqualifiedQuestions.add(qNum);
 
-  // Refund wagers — remove from usedWagers so players can reuse them
+  // Refund host's own wager locally. Non-host clients refund their own wager
+  // via handleAnswerChange's disqualification detection when the Realtime
+  // UPDATEs arrive (score_earned=0 on every answer).
   for (const answer of state.currentAnswers) {
-    if (answer.wager && answer.player_id === state.room.playerId) {
+    if (answer.wager && String(answer.player_id) === String(state.room.playerId)) {
       state.usedWagers.delete(answer.wager);
     }
   }
