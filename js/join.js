@@ -3,7 +3,7 @@
 // ============================================
 
 import { $, $$, escapeHtml, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
-import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } from './supabase.js';
+import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms, fetchRoom } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
@@ -148,8 +148,18 @@ async function joinRoom(code) {
     }));
 
     clearInterval(refreshInterval);
+    // Re-fetch room status: the host may have started the game between our
+    // findRoomByCode and addPlayer calls. Without this, players land on
+    // lobby.html and have to wait for the Realtime 'playing' event to redirect.
+    let latestStatus = room.status;
+    try {
+      const { data: freshRoom } = await fetchRoom(room.id);
+      if (freshRoom?.status) latestStatus = freshRoom.status;
+    } catch (e) {
+      logger.warn('Join', 'Status re-fetch failed, using stale status', e);
+    }
     // If the game is already in progress, go straight to game.html (hot join)
-    navigateWithFade(room.status === 'playing' ? 'game.html' : 'lobby.html');
+    navigateWithFade(latestStatus === 'playing' ? 'game.html' : 'lobby.html');
   } catch (err) {
     logger.error('Join', 'Unexpected error', err);
     joinError.textContent = `Error: ${err.message}`;

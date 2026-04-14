@@ -333,7 +333,25 @@ async function initHostGame() {
     state.usedWagers = new Map();
     const allAnswers = await fetchAllAnswers(state.room.id);
     const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+
+    // Rebuild disqualified questions FIRST so we can skip their wagers below.
+    // A question is disqualified when every answer for it has score_earned=0
+    // AND is_correct=false (the pattern handleDisqualifyRound writes).
+    state.disqualifiedQuestions = new Set();
+    const _answersByQHost = {};
+    for (const a of allAnswers) {
+      if (!_answersByQHost[a.question_number]) _answersByQHost[a.question_number] = [];
+      _answersByQHost[a.question_number].push(a);
+    }
+    for (const [qNum, answers] of Object.entries(_answersByQHost)) {
+      if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
+        state.disqualifiedQuestions.add(parseInt(qNum, 10));
+      }
+    }
+
     for (const a of myAnswers) {
+      // Disqualified questions: don't mark the wager as used — player gets it back
+      if (state.disqualifiedQuestions.has(a.question_number)) continue;
       state.usedWagers.set(a.wager, !!a.is_correct);
     }
     // Recover final wager value if locked in
@@ -502,16 +520,11 @@ async function applyGameState(roomData) {
     state.isFinalWagerRound = true;
   }
 
-  // Rebuild used wagers from existing answers (clear first to prevent stale data)
-  state.usedWagers = new Map();
-  const allAnswers = await fetchAllAnswers(state.room.id);
-  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
-  for (const a of myAnswers) {
-    state.usedWagers.set(a.wager, !!a.is_correct);
-  }
-
-  // Rebuild disqualified questions: detect questions where ALL answers have score_earned=0
+  // Rebuild disqualified questions FIRST: a question is disqualified when every
+  // answer for it has score_earned=0 AND is_correct=false. We need this set
+  // before rebuilding usedWagers so we can skip refunded wagers.
   state.disqualifiedQuestions = new Set();
+  const allAnswers = await fetchAllAnswers(state.room.id);
   const answersByQ = {};
   for (const a of allAnswers) {
     if (!answersByQ[a.question_number]) answersByQ[a.question_number] = [];
@@ -521,6 +534,14 @@ async function applyGameState(roomData) {
     if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
       state.disqualifiedQuestions.add(parseInt(qNum, 10));
     }
+  }
+
+  // Rebuild used wagers — skip disqualified questions so players can reuse them.
+  state.usedWagers = new Map();
+  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+  for (const a of myAnswers) {
+    if (state.disqualifiedQuestions.has(a.question_number)) continue;
+    state.usedWagers.set(a.wager, !!a.is_correct);
   }
 
   // Recover final wager value if locked in
@@ -711,16 +732,8 @@ async function syncToCurrentState() {
       state.wagerExplicitlySelected = false;
       state.previousScores = {};
 
-      // Rebuild usedWagers from DB (host may have auto-submitted wagers
-      // for questions we missed while disconnected)
+      // Rebuild disqualified questions FIRST so we can skip their wagers below.
       const allAnswers = await fetchAllAnswers(state.room.id);
-      const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
-      state.usedWagers = new Map();
-      for (const a of myAnswers) {
-        state.usedWagers.set(a.wager, !!a.is_correct);
-      }
-
-      // Rebuild disqualified questions from answer state
       state.disqualifiedQuestions = new Set();
       const answersByQ = {};
       for (const a of allAnswers) {
@@ -731,6 +744,15 @@ async function syncToCurrentState() {
         if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
           state.disqualifiedQuestions.add(parseInt(qNum, 10));
         }
+      }
+
+      // Rebuild usedWagers from DB (host may have auto-submitted wagers
+      // for questions we missed while disconnected). Skip disqualified questions.
+      const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
+      state.usedWagers = new Map();
+      for (const a of myAnswers) {
+        if (state.disqualifiedQuestions.has(a.question_number)) continue;
+        state.usedWagers.set(a.wager, !!a.is_correct);
       }
 
       // Rebuild question browser indices for missed questions

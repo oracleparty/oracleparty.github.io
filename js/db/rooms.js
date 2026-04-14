@@ -91,7 +91,7 @@ export async function fetchPublicRooms() {
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const { data: rooms, error } = await supabase
     .from('rooms')
-    .select('id, code, host_name, category, who_can_join, questions_per_game, question_timer, status, created_at')
+    .select('id, code, host_name, category, subcategory, who_can_join, questions_per_game, question_timer, status, created_at')
     .in('status', ['lobby', 'playing'])
     .eq('who_can_join', 'anyone')
     .gt('created_at', twoHoursAgo)

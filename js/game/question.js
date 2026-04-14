@@ -8,7 +8,7 @@ import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAns
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
-import { updateGameState, submitAnswer, fetchAnswersForQuestion, incrementQuestionsAnswered } from '../supabase.js';
+import { updateGameState, submitAnswer, fetchAnswersForQuestion, fetchAllAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -337,20 +337,37 @@ async function handleTimerExpired() {
     const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
     const q = state.questions[state.currentQuestion];
     if (q) {
+      // Fetch all answers so we can pick each player's lowest unused wager.
+      // Hardcoding wager=1 corrupts usedWagers when a player already used 1.
+      let allAnswers = [];
+      try { allAnswers = await fetchAllAnswers(state.room.id); }
+      catch (err) { logger.warn('Game', 'fetchAllAnswers failed pre-auto-submit', err); }
+
+      const wagersByPlayer = {};
+      for (const a of allAnswers) {
+        if (!wagersByPlayer[a.player_id]) wagersByPlayer[a.player_id] = new Map();
+        // Skip disqualified questions so those wagers are considered available again
+        if (state.disqualifiedQuestions.has(a.question_number)) continue;
+        wagersByPlayer[a.player_id].set(a.wager, !!a.is_correct);
+      }
+
       const autoSubmits = [];
       for (const p of state.players) {
-        if (!submittedIds.has(String(p.id))) {
-          autoSubmits.push(submitAnswer({
-            roomId: state.room.id,
-            playerId: p.id,
-            questionNumber: state.currentQuestion,
-            questionId: q.id,
-            wager: 1,
-            submittedAnswer: '',
-            isCorrect: false,
-            scoreEarned: 0
-          }));
-        }
+        if (submittedIds.has(String(p.id))) continue;
+        const playerUsed = wagersByPlayer[p.id] || new Map();
+        const wagerForPlayer = state.isFinalWagerRound
+          ? (state.finalWager || 1)
+          : findNextAvailableWager(playerUsed, state.totalQuestions);
+        autoSubmits.push(submitAnswer({
+          roomId: state.room.id,
+          playerId: p.id,
+          questionNumber: state.currentQuestion,
+          questionId: q.id,
+          wager: wagerForPlayer,
+          submittedAnswer: '',
+          isCorrect: false,
+          scoreEarned: 0
+        }));
       }
       if (autoSubmits.length) await Promise.allSettled(autoSubmits);
     }

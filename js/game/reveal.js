@@ -10,8 +10,9 @@ import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAns
 import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
-import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
+import { fetchAnswersForQuestion, fetchAllAnswers, updateAnswerJudgment, updateGameState, submitAnswer,
          upsertQuestionHistory, upsertQuestionFeedback, deleteQuestionFeedback, sendMessage } from '../supabase.js';
+import { findNextAvailableWager } from './scoring-helpers.js';
 import { getDisplayName, getCurrentUser } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
@@ -398,26 +399,58 @@ async function handleRevealResults() {
   }
   state.timerExpired = true;
 
-  // BUG 3 FIX: Submit blank answers for ALL players who haven't answered
+  // BUG 3 FIX: Submit blank answers for ALL players who haven't answered.
+  // Use each player's lowest unused wager — hardcoding wager=1 corrupts their
+  // usedWagers map and can overwrite a correct wager they already used.
   const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
   const q = state.questions[state.currentQuestion];
   if (q) {
+    // Fetch all answers so we can compute per-player used wagers
+    let allAnswers = [];
+    try { allAnswers = await fetchAllAnswers(state.room.id); }
+    catch (err) { logger.warn('Game', 'fetchAllAnswers failed pre-auto-submit', err); }
+
+    const wagersByPlayer = {};
+    for (const a of allAnswers) {
+      if (!wagersByPlayer[a.player_id]) wagersByPlayer[a.player_id] = new Map();
+      // Skip disqualified questions so those wagers are considered available again
+      if (state.disqualifiedQuestions.has(a.question_number)) continue;
+      wagersByPlayer[a.player_id].set(a.wager, !!a.is_correct);
+    }
+
     const autoSubmits = [];
     for (const p of state.players) {
-      if (!submittedIds.has(String(p.id))) {
-        autoSubmits.push(submitAnswer({
-          roomId: state.room.id,
-          playerId: p.id,
-          questionNumber: state.currentQuestion,
-          questionId: q.id,
-          wager: 1,
-          submittedAnswer: '',
-          isCorrect: false,
-          scoreEarned: 0
-        }));
-      }
+      if (submittedIds.has(String(p.id))) continue;
+      const playerUsed = wagersByPlayer[p.id] || new Map();
+      const wagerForPlayer = state.isFinalWagerRound
+        ? (state.finalWager || 1)
+        : findNextAvailableWager(playerUsed, state.totalQuestions);
+      autoSubmits.push(submitAnswer({
+        roomId: state.room.id,
+        playerId: p.id,
+        questionNumber: state.currentQuestion,
+        questionId: q.id,
+        wager: wagerForPlayer,
+        submittedAnswer: '',
+        isCorrect: false,
+        scoreEarned: 0
+      }));
     }
     if (autoSubmits.length) await Promise.allSettled(autoSubmits);
+  }
+
+  // FINAL WAGER PENALTY: Players who locked in a wager but never submitted
+  // an answer are still in currentAnswers (with submitted_answer === '__WAGER_LOCKED__'),
+  // so the auto-submit loop above skipped them. Per spec, an incorrect final
+  // wager must subtract the wagered points — force that penalty here.
+  if (state.isFinalWagerRound) {
+    const penaltyUpdates = [];
+    for (const a of state.currentAnswers) {
+      if (a.submitted_answer === '__WAGER_LOCKED__' && a.id && a.wager) {
+        penaltyUpdates.push(updateAnswerJudgment(a.id, false, -a.wager));
+      }
+    }
+    if (penaltyUpdates.length) await Promise.allSettled(penaltyUpdates);
   }
 
   // Re-fetch all answers (including just-submitted auto-answers) before revealing.
@@ -472,11 +505,26 @@ async function handleDisqualifyRound() {
   // Mark locally
   state.disqualifiedQuestions.add(qNum);
 
-  // Refund wagers — remove from usedWagers so players can reuse them
+  // Refund the host's own wager locally (non-host clients refund theirs when
+  // the system chat message arrives — see chat.js — and again defensively
+  // when the answer UPDATE lands in phases.js handleAnswerChange)
   for (const answer of state.currentAnswers) {
     if (answer.wager && answer.player_id === state.room.playerId) {
       state.usedWagers.delete(answer.wager);
     }
+  }
+
+  // Broadcast the disqualification FIRST so non-host clients add the question
+  // to their disqualifiedQuestions set BEFORE the answer UPDATE events arrive.
+  // This way phases.js handleAnswerChange sees the disqualified flag and
+  // correctly deletes each player's wager from usedWagers rather than
+  // locking it as used/incorrect. A chat failure must not block the DB
+  // updates below — phases.js still falls back to pattern-matching.
+  try {
+    await sendMessage(state.room.id, 'System',
+      `Host disqualified Q${qNum + 1} — no scores affected.`);
+  } catch (err) {
+    logger.warn('Game', 'Disqualify system message failed to send', err);
   }
 
   // Set all answers for this question to score_earned = 0
@@ -514,10 +562,6 @@ async function handleDisqualifyRound() {
 
   // Recalculate scores
   if (_updateScores) await _updateScores();
-
-  // Send system chat message — non-host clients will detect this
-  await sendMessage(state.room.id, 'System',
-    `Host disqualified Q${qNum + 1} — no scores affected.`);
 }
 
 export async function handleNextQuestion() {

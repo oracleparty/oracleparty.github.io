@@ -1342,7 +1342,14 @@ async function handleLeave() {
   if (players.length <= 1) {
     await deleteRoom(room.id);
   } else {
-    await removePlayer(room.playerId);
+    // Retry once on failure — a silent RLS/network hiccup would leave a
+    // ghost player in the room that other clients still see.
+    const { error } = await removePlayer(room.playerId);
+    if (error) {
+      logger.warn('Lobby', 'removePlayer failed, retrying once', error);
+      const { error: retryErr } = await removePlayer(room.playerId);
+      if (retryErr) logger.error('Lobby', 'removePlayer retry failed', retryErr);
+    }
   }
   sessionStorage.removeItem('oracle_party_room');
   // Non-host goes to join page (find another game), host goes home
