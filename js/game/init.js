@@ -32,7 +32,8 @@ import {
   appendUsedQuestionIds,
   fetchAllOpenQuestions,
   fetchExclusiveWildCardQuestions,
-  fetchQuestionFeedback
+  fetchQuestionFeedback,
+  fetchMessages
 } from '../supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from '../auth.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
@@ -312,6 +313,40 @@ async function init() {
   }
 }
 
+/**
+ * Rebuild disqualifiedQuestions from two sources on reconnect:
+ *   1. System chat messages "Host disqualified Q{N}" — authoritative, set by
+ *      handleDisqualifyRound when the host clicks the button.
+ *   2. Fallback pattern: all answers for a question have score=0 and is_correct=false.
+ *      This is lossy (a round where everyone got it wrong looks identical to a
+ *      disqualified round), so it's only used if chat gave us nothing.
+ */
+async function rebuildDisqualifiedQuestions(roomId, allAnswers) {
+  const dq = new Set();
+  try {
+    const msgs = await fetchMessages(roomId);
+    for (const m of msgs) {
+      if (m.player_name !== 'System') continue;
+      const match = /^Host disqualified Q(\d+)/.exec(m.message || '');
+      if (match) dq.add(parseInt(match[1], 10) - 1);
+    }
+  } catch (e) {
+    logger.warn('Game', 'rebuildDisqualifiedQuestions: fetchMessages failed', e);
+  }
+  if (dq.size > 0) return dq;
+  // Pattern fallback — only used when chat lookup yielded nothing
+  const byQ = {};
+  for (const a of allAnswers) {
+    (byQ[a.question_number] = byQ[a.question_number] || []).push(a);
+  }
+  for (const [qNum, answers] of Object.entries(byQ)) {
+    if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
+      dq.add(parseInt(qNum, 10));
+    }
+  }
+  return dq;
+}
+
 async function initHostGame() {
   // Check if there's already a game in progress (host refreshed mid-game)
   const { data: roomData } = await fetchRoom(state.room.id);
@@ -335,19 +370,8 @@ async function initHostGame() {
     const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
 
     // Rebuild disqualified questions FIRST so we can skip their wagers below.
-    // A question is disqualified when every answer for it has score_earned=0
-    // AND is_correct=false (the pattern handleDisqualifyRound writes).
-    state.disqualifiedQuestions = new Set();
-    const _answersByQHost = {};
-    for (const a of allAnswers) {
-      if (!_answersByQHost[a.question_number]) _answersByQHost[a.question_number] = [];
-      _answersByQHost[a.question_number].push(a);
-    }
-    for (const [qNum, answers] of Object.entries(_answersByQHost)) {
-      if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
-        state.disqualifiedQuestions.add(parseInt(qNum, 10));
-      }
-    }
+    // Source of truth: "Host disqualified Q{N}" system chat messages.
+    state.disqualifiedQuestions = await rebuildDisqualifiedQuestions(state.room.id, allAnswers);
 
     for (const a of myAnswers) {
       // Disqualified questions: don't mark the wager as used — player gets it back
@@ -520,21 +544,9 @@ async function applyGameState(roomData) {
     state.isFinalWagerRound = true;
   }
 
-  // Rebuild disqualified questions FIRST: a question is disqualified when every
-  // answer for it has score_earned=0 AND is_correct=false. We need this set
-  // before rebuilding usedWagers so we can skip refunded wagers.
-  state.disqualifiedQuestions = new Set();
+  // Rebuild disqualified questions FIRST (source of truth: system chat messages).
   const allAnswers = await fetchAllAnswers(state.room.id);
-  const answersByQ = {};
-  for (const a of allAnswers) {
-    if (!answersByQ[a.question_number]) answersByQ[a.question_number] = [];
-    answersByQ[a.question_number].push(a);
-  }
-  for (const [qNum, answers] of Object.entries(answersByQ)) {
-    if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
-      state.disqualifiedQuestions.add(parseInt(qNum, 10));
-    }
-  }
+  state.disqualifiedQuestions = await rebuildDisqualifiedQuestions(state.room.id, allAnswers);
 
   // Rebuild used wagers — skip disqualified questions so players can reuse them.
   state.usedWagers = new Map();
@@ -732,19 +744,9 @@ async function syncToCurrentState() {
       state.wagerExplicitlySelected = false;
       state.previousScores = {};
 
-      // Rebuild disqualified questions FIRST so we can skip their wagers below.
+      // Rebuild disqualified questions FIRST (source of truth: system chat messages).
       const allAnswers = await fetchAllAnswers(state.room.id);
-      state.disqualifiedQuestions = new Set();
-      const answersByQ = {};
-      for (const a of allAnswers) {
-        if (!answersByQ[a.question_number]) answersByQ[a.question_number] = [];
-        answersByQ[a.question_number].push(a);
-      }
-      for (const [qNum, answers] of Object.entries(answersByQ)) {
-        if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
-          state.disqualifiedQuestions.add(parseInt(qNum, 10));
-        }
-      }
+      state.disqualifiedQuestions = await rebuildDisqualifiedQuestions(state.room.id, allAnswers);
 
       // Rebuild usedWagers from DB (host may have auto-submitted wagers
       // for questions we missed while disconnected). Skip disqualified questions.

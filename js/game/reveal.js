@@ -422,8 +422,11 @@ async function handleRevealResults() {
     for (const p of state.players) {
       if (submittedIds.has(String(p.id))) continue;
       const playerUsed = wagersByPlayer[p.id] || new Map();
+      // Final wager: if the player never locked in a wager they have no
+      // personal finalWager value — use 0 so the penalty applied below is
+      // 0 (they didn't engage; don't punish them with the host's wager).
       const wagerForPlayer = state.isFinalWagerRound
-        ? (state.finalWager || 1)
+        ? 0
         : findNextAvailableWager(playerUsed, state.totalQuestions);
       autoSubmits.push(submitAnswer({
         roomId: state.room.id,
