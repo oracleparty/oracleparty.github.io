@@ -1,0 +1,44 @@
+name: Live E2E Playthrough
+
+# Runs a real 2-player game against the PR's code + real Supabase.
+# This is the only test that proves the actual gameplay loop works end-to-end.
+#
+# The workflow serves the PR branch's static files from localhost inside the
+# CI runner and points two headless browsers at them. The browsers then talk
+# to the live Supabase backend (zzpqymehapwbjupphxec.supabase.co) — that's
+# the "real" part. No preview deploy required.
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+      - main
+      - master
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  playthrough:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run live playthrough
+        env:
+          HEADLESS: 'true'
+        run: node tests/e2e/live-playthrough.spec.mjs
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-screenshots
+          path: /tmp/e2e-*.png
+          if-no-files-found: ignore
