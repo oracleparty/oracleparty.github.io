@@ -52,7 +52,7 @@ import {
   updateTypingUI,
 } from './chat.js';
 import {
-  initHostSettingsPanel,
+  initHostSettingsPanel, hideHostSettingsGear,
   resetReturnConfirm, registerCleanup as registerHostCleanup,
 } from './host.js';
 import {
