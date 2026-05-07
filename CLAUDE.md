@@ -17,7 +17,6 @@ A mobile-only browser trivia game hosted on GitHub Pages with a Supabase backend
 
 ## Design Philosophy
 - Use the frontend-design skill for all UI work
-- **Aesthetic direction:** Ancient archaeologist meets sci-fi tech. Warm, explorable, feels like a place to hang out. Fusion of parchment/stone/ancient textures with subtle digital/circuit elements.
 - Mobile-first, clean, crisp. No AI slop. No generic purple gradients.
 - Viewport-locked screens (no scroll) except where content requires it (category browsing, lobby player list, chat)
 - Clean typography as primary visual element until real assets are added later
