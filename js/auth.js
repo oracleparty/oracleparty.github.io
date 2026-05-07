@@ -4,7 +4,7 @@
 
 import { $, calculateTitle, escapeHtml } from './utils.js';
 import { FRIEND_REQUEST_TOAST_MS } from './constants.js';
-import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest } from './supabase.js';
+import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest, unsubscribe } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle } from './titles.js';
 import { logger } from './logger.js';
@@ -311,6 +311,15 @@ export async function signOut() {
   _currentProfile = null;
   localStorage.removeItem(PROFILE_CACHE_KEY);
   localStorage.removeItem(STORAGE_KEY);
+  // Tear down the friend-request realtime subscription. Without this, the
+  // channel persists across sign-out and a subsequent sign-in (different user)
+  // would skip re-subscription due to the early-return guard at the top of
+  // _initFriendRequestNotifications — so the new user never gets their own
+  // friend request toasts; the old user's filter is still in effect.
+  if (_friendReqChannel) {
+    try { unsubscribe(_friendReqChannel); } catch (_) {}
+    _friendReqChannel = null;
+  }
 }
 
 /**
