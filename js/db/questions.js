@@ -27,7 +27,13 @@ export async function fetchCategories() {
 
     if (error) {
       logger.error('Supabase', 'Failed to fetch categories', error);
-      return [];
+      // Re-throw so callers can surface the specific reason in the UI
+      // instead of silently rendering an empty grid.
+      const e = new Error(error.message || 'Supabase query failed');
+      e.code = error.code;
+      e.details = error.details;
+      e.hint = error.hint;
+      throw e;
     }
 
     for (const row of (data || [])) {
