@@ -575,6 +575,16 @@ async function handleHostPromotion() {
 
   // Am I the one being promoted?
   if (String(nextHost.id) === String(room.playerId)) {
+    // Cross-client race guard — re-fetch and bail if a host already exists.
+    // Without this, two clients can race-promote themselves, ending up with
+    // two hosts simultaneously.
+    const fresh = await fetchPlayers(room.id);
+    if (fresh.some(p => p.is_host)) {
+      players = fresh;
+      sortPlayers();
+      renderPlayers();
+      return;
+    }
     room.isHost = true;
     room.isCohost = false;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
@@ -984,12 +994,17 @@ async function handleToggleReady() {
 }
 
 // --- Start Game (host) ---
+let _isStarting = false;
 async function handleStartGame() {
+  // Idempotency: rapid double-clicks would otherwise fire updateRoomStatus twice
+  // and queue a second 5s navigation timeout that lands after we've already left.
+  if (_isStarting) return;
   if (players.length < 2) {
     showToast('Need at least 2 players to start!', 'error');
     return;
   }
-
+  _isStarting = true;
+  btnStartGame.disabled = true;
   btnStartGame.classList.add('is-loading');
   btnStartGame.textContent = 'Starting...';
 
@@ -1007,6 +1022,8 @@ async function handleStartGame() {
     }, 5000);
   } catch (err) {
     logger.error('Lobby', 'startGame failed', err);
+    _isStarting = false;
+    btnStartGame.disabled = false;
     btnStartGame.classList.remove('is-loading');
     btnStartGame.textContent = 'Start Game';
   }
