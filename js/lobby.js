@@ -785,9 +785,11 @@ async function ensureCurrentPlayer() {
   // Before creating a new entry, check if a player with the same display name already
   // exists — this handles edge cases where the old player row was legitimately removed
   // (stale timeout, explicit kick) but sessionStorage still references it.
-  const existingByName = players.find(p => p.display_name === displayName);
-  if (existingByName) {
-    room.playerId = existingByName.id;
+  // Only adopt when there's EXACTLY ONE match: with two "Alice" players, name-based
+  // rejoin would silently collide them onto the same id and merge their scores.
+  const sameName = players.filter(p => p.display_name === displayName);
+  if (sameName.length === 1) {
+    room.playerId = sameName[0].id;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
     return;
   }

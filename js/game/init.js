@@ -161,10 +161,12 @@ async function init() {
     // Fall back to re-join logic.
     const displayName = getDisplayName();
 
-    // Check if a player with the same display name exists (beacon race edge case)
-    const existingByName = state.players.find(p => p.display_name === displayName);
-    if (existingByName) {
-      state.room.playerId = existingByName.id;
+    // Check if a player with the same display name exists (beacon race edge case).
+    // Only adopt the existing row when there's EXACTLY ONE match — otherwise
+    // two players sharing a display name would silently collide on the same id.
+    const sameName = state.players.filter(p => p.display_name === displayName);
+    if (sameName.length === 1) {
+      state.room.playerId = sameName[0].id;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
     } else {
       // Create a fresh player row and migrate orphaned answers
