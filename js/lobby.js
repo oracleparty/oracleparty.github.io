@@ -1434,17 +1434,32 @@ function handleUnload() {
 // resets to false; on auto-reconnect subscribe fires again
 // and re-tracks current visibility state (self-healing).
 
-function handleVisibilityChange() {
+async function handleVisibilityChange() {
   if (!presenceChannel) return;
   // Always attempt to track — swallow errors so transient failures
   // don't permanently break away detection.
   presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
     .catch(() => {});
+  if (document.hidden) return;
   // When tab becomes visible, send immediate DB heartbeat so other clients
   // see our last_seen_at refresh instantly (don't wait for the 15s interval).
-  if (!document.hidden) {
-    playerHeartbeat(room.playerId).catch(() => {});
-  }
+  playerHeartbeat(room.playerId).catch(() => {});
+  // Realtime doesn't replay missed events. If the room was deleted while we
+  // were asleep, we'd be staring at a ghost lobby. Re-fetch and bail home if
+  // the room is gone, or follow into game.html if status flipped to 'playing'.
+  try {
+    const { data: r } = await fetchRoom(room.id);
+    if (!r) {
+      isLeaving = true;
+      cleanup();
+      sessionStorage.removeItem('oracle_party_room');
+      window.location.href = 'index.html';
+    } else if (r.status === 'playing' && !isLeaving) {
+      isLeaving = true;
+      cleanup();
+      navigateWithFadeReplace('game.html');
+    }
+  } catch (_) { /* transient — let polling catch it */ }
 }
 
 // ============================================
