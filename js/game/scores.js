@@ -1048,7 +1048,26 @@ export async function handlePlayAgain() {
   navigateWithFadeReplace('lobby.html');
 }
 
+let _quitConfirmTimer = null;
 async function handleQuitGame() {
+  const btn = $('#btn-quit-game');
+  // Tap-again-to-confirm — leaves the room and goes home, no undo.
+  if (_quitConfirmTimer === null) {
+    if (btn) {
+      btn.textContent = 'Tap to confirm';
+      btn.classList.add('btn--confirming');
+    }
+    _quitConfirmTimer = setTimeout(() => {
+      _quitConfirmTimer = null;
+      if (btn) {
+        btn.textContent = 'Quit';
+        btn.classList.remove('btn--confirming');
+      }
+    }, 3000);
+    return;
+  }
+  clearTimeout(_quitConfirmTimer);
+  _quitConfirmTimer = null;
   setIsLeaving(true);
   try { if (_cleanup) _cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
   try {
