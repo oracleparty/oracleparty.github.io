@@ -1996,6 +1996,17 @@ body::after {
 .transfer-host-btn:active {
   background: var(--color-surface-light);
 }
+/* "Tap to confirm" state — danger color so the user can see they're one tap
+   from giving up host. */
+.transfer-host-btn--confirm {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+/* Generic confirm-pending state used by remove-friend, etc. */
+.btn--confirming {
+  border-color: var(--color-danger) !important;
+  color: var(--color-danger) !important;
+}
 
 .cohost-btn {
   background: none;

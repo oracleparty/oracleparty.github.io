@@ -50,6 +50,14 @@ export function showDisplayNameModal() {
         input.focus();
         return;
       }
+      // 'System' is reserved as the sender name for in-game system chat
+      // messages (host transfer, disqualify, etc.). Allowing a player to
+      // claim it would let them spoof those messages.
+      if (name.toLowerCase() === 'system') {
+        if (error) error.textContent = 'That name is reserved — pick another';
+        input.focus();
+        return;
+      }
       setDisplayName(name);
       overlay.classList.remove('active');
       resolve(name);

@@ -38,13 +38,20 @@ async function init() {
     if (publicGamesEmpty) publicGamesEmpty.classList.remove('hidden');
   });
 
-  // Auto-join from URL param (e.g. join.html?code=ABCD from friends list)
-  const urlCode = new URLSearchParams(window.location.search).get('code');
+  // Auto-join from URL param (e.g. join.html?code=ABCD from friends list).
+  // Sanitize: keep only A-Z, max 4 chars. Without this, a malformed link
+  // (?code=abcdef) bypasses the input's maxlength and ends up as 6 chars in
+  // the field, which fails validation with a confusing error.
+  const urlCodeRaw = new URLSearchParams(window.location.search).get('code');
+  const urlCode = urlCodeRaw ? urlCodeRaw.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) : null;
   if (urlCode) {
-    codeInput.value = urlCode.toUpperCase();
+    codeInput.value = urlCode;
     history.replaceState(null, '', window.location.pathname);
-    handleJoinByCode();
-    return;
+    if (urlCode.length === 4) {
+      handleJoinByCode();
+      return;
+    }
+    // Less than 4 chars — let user see the prefilled value and complete it
   }
 
   // Refresh public games every 10s

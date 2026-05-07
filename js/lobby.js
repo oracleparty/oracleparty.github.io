@@ -619,9 +619,42 @@ function deactivateHostUI() {
 }
 
 let _isTransferring = false;
+let _transferConfirmId = null;
+let _transferConfirmTimer = null;
 
 async function handleTransferHost(targetPlayerId, targetDisplayName) {
   if (!room.isHost || _isTransferring) return;
+  // Tap-again-to-confirm. First tap on a Transfer button puts that row's
+  // button into "Tap to confirm" state for 3 seconds; a second tap within
+  // that window actually transfers. Tapping a different player's Transfer
+  // resets to that player's confirm. Avoids one-tap accidental loss-of-host.
+  const btn = document.querySelector(`.transfer-host-btn[data-transfer-id="${targetPlayerId}"]`);
+  if (_transferConfirmId !== String(targetPlayerId)) {
+    // Reset any prior pending confirmation
+    if (_transferConfirmTimer) clearTimeout(_transferConfirmTimer);
+    document.querySelectorAll('.transfer-host-btn').forEach(b => {
+      b.textContent = 'Transfer';
+      b.classList.remove('transfer-host-btn--confirm');
+    });
+    if (btn) {
+      btn.textContent = 'Tap to confirm';
+      btn.classList.add('transfer-host-btn--confirm');
+    }
+    _transferConfirmId = String(targetPlayerId);
+    _transferConfirmTimer = setTimeout(() => {
+      _transferConfirmId = null;
+      _transferConfirmTimer = null;
+      if (btn) {
+        btn.textContent = 'Transfer';
+        btn.classList.remove('transfer-host-btn--confirm');
+      }
+    }, 3000);
+    return;
+  }
+  // Second tap — proceed
+  if (_transferConfirmTimer) clearTimeout(_transferConfirmTimer);
+  _transferConfirmId = null;
+  _transferConfirmTimer = null;
   _isTransferring = true;
   try {
     // Demote self first, then promote target (serialized to avoid brief two-host state)
