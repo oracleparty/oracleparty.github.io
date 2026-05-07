@@ -46,3 +46,44 @@ export function computeScoresFromAnswers(answers, players) {
   }
   return scores;
 }
+
+/**
+ * Detect disqualified questions from answer data.
+ * A question is treated as disqualified when every answer has score_earned=0
+ * AND is_correct=false. Note: this misclassifies "everyone got it wrong"
+ * rounds as disqualified — chat-message replay is the more authoritative
+ * signal during normal play (see chat.js dqMatch handler).
+ */
+export function buildDisqualifiedSet(allAnswers) {
+  const byQ = {};
+  for (const a of allAnswers) {
+    if (!byQ[a.question_number]) byQ[a.question_number] = [];
+    byQ[a.question_number].push(a);
+  }
+  const disq = new Set();
+  for (const [qNum, answers] of Object.entries(byQ)) {
+    if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
+      disq.add(parseInt(qNum, 10));
+    }
+  }
+  return disq;
+}
+
+/**
+ * Reconstruct a player's regular-round usedWagers map from their answers.
+ * Skips:
+ *  - final wager round (question_number >= totalQuestions) — separate wager space (0/10/20)
+ *  - auto-submitted blanks (empty submitted_answer) — host writes wager=1 for non-submitters
+ *  - disqualified questions — wager is refunded
+ */
+export function buildUsedWagersMap(myAnswers, totalQuestions, disqualifiedSet) {
+  const usedWagers = new Map();
+  for (const a of myAnswers) {
+    if (a.question_number >= totalQuestions) continue;
+    const submitted = (a.submitted_answer || '').trim();
+    if (!submitted || submitted === '__WAGER_LOCKED__') continue;
+    if (disqualifiedSet && disqualifiedSet.has(a.question_number)) continue;
+    if (a.wager) usedWagers.set(a.wager, !!a.is_correct);
+  }
+  return usedWagers;
+}

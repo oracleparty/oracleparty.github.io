@@ -678,11 +678,16 @@ export function handleAnswerChange(payload) {
         return;
       }
     }
-    // Update usedWagers if the judgment change affects the current player's wager
+    // Update usedWagers if the judgment change affects the current player's wager.
+    // Disqualified questions refund the wager regardless of UPDATE/chat order.
     if (idx !== -1) {
       const answer = state.currentAnswers[idx];
       if (String(answer.player_id) === String(state.room.playerId) && answer.wager) {
-        state.usedWagers.set(answer.wager, !!answer.is_correct);
+        if (state.disqualifiedQuestions.has(answer.question_number)) {
+          state.usedWagers.delete(answer.wager);
+        } else {
+          state.usedWagers.set(answer.wager, !!answer.is_correct);
+        }
       }
     }
     // CSS-only patch for judgment changes (host override toggle)

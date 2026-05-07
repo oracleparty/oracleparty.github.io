@@ -4,6 +4,8 @@ import {
   findNextAvailableWager,
   tallyDifficultyVotes,
   computeScoresFromAnswers,
+  buildDisqualifiedSet,
+  buildUsedWagersMap,
 } from '../js/game/scoring-helpers.js';
 
 // ============================================
@@ -104,5 +106,87 @@ describe('computeScoresFromAnswers', () => {
     const scores = computeScoresFromAnswers(answers, players);
     expect(scores.p1).toBe(5);
     expect(scores.p_unknown).toBe(3);
+  });
+});
+
+// ============================================
+// buildDisqualifiedSet
+// ============================================
+describe('buildDisqualifiedSet', () => {
+  it('returns empty set when no answers are all-zero', () => {
+    const answers = [
+      { question_number: 0, is_correct: true,  score_earned: 5 },
+      { question_number: 0, is_correct: false, score_earned: 0 },
+    ];
+    expect(buildDisqualifiedSet(answers).size).toBe(0);
+  });
+
+  it('flags a question where every answer has is_correct=false and score=0', () => {
+    const answers = [
+      { question_number: 2, is_correct: false, score_earned: 0 },
+      { question_number: 2, is_correct: false, score_earned: 0 },
+    ];
+    const set = buildDisqualifiedSet(answers);
+    expect(set.has(2)).toBe(true);
+  });
+
+  it('returns numeric question keys (parsed from string)', () => {
+    const answers = [{ question_number: 5, is_correct: false, score_earned: 0 }];
+    const set = buildDisqualifiedSet(answers);
+    expect(set.has(5)).toBe(true);
+    expect(set.has('5')).toBe(false);
+  });
+});
+
+// ============================================
+// buildUsedWagersMap
+// ============================================
+describe('buildUsedWagersMap', () => {
+  it('skips final wager round answers', () => {
+    const answers = [
+      { question_number: 0, wager: 3, is_correct: true,  submitted_answer: 'paris' },
+      { question_number: 5, wager: 20, is_correct: false, submitted_answer: 'rome' }, // final wager
+    ];
+    const map = buildUsedWagersMap(answers, 5, new Set());
+    expect(map.has(3)).toBe(true);
+    expect(map.has(20)).toBe(false);
+  });
+
+  it('skips auto-submitted blanks (empty submitted_answer)', () => {
+    const answers = [
+      { question_number: 0, wager: 1, is_correct: false, submitted_answer: '' },
+      { question_number: 1, wager: 2, is_correct: true,  submitted_answer: 'oslo' },
+    ];
+    const map = buildUsedWagersMap(answers, 5, new Set());
+    expect(map.has(1)).toBe(false);
+    expect(map.has(2)).toBe(true);
+  });
+
+  it('skips disqualified questions', () => {
+    const answers = [
+      { question_number: 0, wager: 1, is_correct: true,  submitted_answer: 'paris' },
+      { question_number: 1, wager: 2, is_correct: false, submitted_answer: 'wrong' },
+    ];
+    const map = buildUsedWagersMap(answers, 5, new Set([1]));
+    expect(map.has(1)).toBe(true);
+    expect(map.has(2)).toBe(false);
+  });
+
+  it('skips __WAGER_LOCKED__ placeholders', () => {
+    const answers = [
+      { question_number: 0, wager: 10, is_correct: false, submitted_answer: '__WAGER_LOCKED__' },
+    ];
+    const map = buildUsedWagersMap(answers, 5, new Set());
+    expect(map.has(10)).toBe(false);
+  });
+
+  it('preserves is_correct flag in the map', () => {
+    const answers = [
+      { question_number: 0, wager: 3, is_correct: true,  submitted_answer: 'paris' },
+      { question_number: 1, wager: 5, is_correct: false, submitted_answer: 'wrong' },
+    ];
+    const map = buildUsedWagersMap(answers, 10, new Set());
+    expect(map.get(3)).toBe(true);
+    expect(map.get(5)).toBe(false);
   });
 });
