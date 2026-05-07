@@ -493,6 +493,12 @@ export async function cancelFriendRequest(requestId) {
  * Enforces canonical ordering: user_a < user_b.
  */
 export async function createFriendship(userIdA, userIdB, source = 'lobby') {
+  // Defensive: prevent self-friendship even if upstream callers pass the same id.
+  // sendFriendRequest already checks, but createFriendship is also called directly
+  // from auto-accept paths and lobby instant-add — belt-and-suspenders.
+  if (!userIdA || !userIdB || userIdA === userIdB) {
+    return { data: null, error: { message: 'Cannot create a friendship with yourself' } };
+  }
   const [user_a, user_b] = [userIdA, userIdB].sort();
   const { data, error } = await supabase
     .from('friendships')
