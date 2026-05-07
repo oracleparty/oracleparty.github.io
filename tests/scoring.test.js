@@ -6,6 +6,8 @@ import {
   computeScoresFromAnswers,
   buildDisqualifiedSet,
   buildUsedWagersMap,
+  modalDifficulty,
+  pickWeightedDifficulty,
 } from '../js/game/scoring-helpers.js';
 
 // ============================================
@@ -188,5 +190,80 @@ describe('buildUsedWagersMap', () => {
     const map = buildUsedWagersMap(answers, 10, new Set());
     expect(map.get(3)).toBe(true);
     expect(map.get(5)).toBe(false);
+  });
+});
+
+// ============================================
+// modalDifficulty
+// ============================================
+describe('modalDifficulty', () => {
+  it('returns null when no votes', () => {
+    expect(modalDifficulty({ easy: 0, medium: 0, hard: 0 })).toBe(null);
+  });
+
+  it('picks the single most-voted', () => {
+    expect(modalDifficulty({ easy: 3, medium: 1, hard: 0 })).toBe('easy');
+    expect(modalDifficulty({ easy: 0, medium: 5, hard: 2 })).toBe('medium');
+    expect(modalDifficulty({ easy: 0, medium: 0, hard: 2 })).toBe('hard');
+  });
+
+  it('breaks ties toward the higher difficulty', () => {
+    expect(modalDifficulty({ easy: 2, medium: 2, hard: 0 })).toBe('medium');
+    expect(modalDifficulty({ easy: 0, medium: 2, hard: 2 })).toBe('hard');
+    expect(modalDifficulty({ easy: 1, medium: 1, hard: 1 })).toBe('hard');
+  });
+});
+
+// ============================================
+// pickWeightedDifficulty (deterministic via injected randFn)
+// ============================================
+describe('pickWeightedDifficulty', () => {
+  // Helper: drive the function with a fixed sequence of "random" values.
+  const fixed = (v) => () => v;
+
+  it('respects the floor — all-Hard never goes Easy or Medium', () => {
+    const tally = { easy: 0, medium: 0, hard: 5 };
+    // No matter what r is, only "hard" should be in the candidate list.
+    expect(pickWeightedDifficulty(tally, fixed(0))).toBe('hard');
+    expect(pickWeightedDifficulty(tally, fixed(0.5))).toBe('hard');
+    expect(pickWeightedDifficulty(tally, fixed(0.999))).toBe('hard');
+  });
+
+  it('respects the floor — all-Medium never goes Easy', () => {
+    const tally = { easy: 0, medium: 4, hard: 0 };
+    // Should be medium (overwhelmingly) or hard (small floor chance), never easy.
+    for (const r of [0, 0.1, 0.5, 0.9, 0.99]) {
+      const result = pickWeightedDifficulty(tally, fixed(r));
+      expect(result === 'medium' || result === 'hard').toBe(true);
+    }
+  });
+
+  it('with no votes, picks uniformly across all three', () => {
+    expect(pickWeightedDifficulty({}, fixed(0))).toBe('easy');
+    expect(pickWeightedDifficulty({}, fixed(0.5))).toBe('medium');
+    expect(pickWeightedDifficulty({}, fixed(0.99))).toBe('hard');
+  });
+
+  it('weights toward the most-voted within allowed levels', () => {
+    // 100 trials, easy:3 should win heavily over the 0.1-floor medium and hard.
+    const tally = { easy: 3, medium: 0, hard: 0 };
+    let easyCount = 0;
+    for (let i = 0; i < 1000; i++) {
+      if (pickWeightedDifficulty(tally) === 'easy') easyCount++;
+    }
+    // Probability ~ 3/3.2 = 93.75% — allow generous noise band
+    expect(easyCount).toBeGreaterThan(850);
+  });
+
+  it('zero-vote levels at-or-above floor still get a small chance', () => {
+    // tally = all medium; over many trials some hard outcomes should occur
+    const tally = { easy: 0, medium: 5, hard: 0 };
+    let hardCount = 0;
+    for (let i = 0; i < 5000; i++) {
+      if (pickWeightedDifficulty(tally) === 'hard') hardCount++;
+    }
+    // Probability ~ 0.1/5.1 ≈ 1.96% — over 5000 trials, expect ~98 hard wins
+    expect(hardCount).toBeGreaterThan(20);
+    expect(hardCount).toBeLessThan(300);
   });
 });

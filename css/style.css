@@ -5883,6 +5883,99 @@ body[style*="opacity: 0"] {
 }
 
 /* --- Reduced Motion Accessibility --- */
+/* --- Difficulty reveal (final wager slot-machine) --- */
+.difficulty-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(28, 25, 23, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+  animation: difficulty-reveal-enter 0.25s var(--ease-out) both;
+}
+.difficulty-reveal.hidden {
+  display: none;
+}
+@keyframes difficulty-reveal-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.difficulty-reveal__title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--color-primary);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 24px var(--color-primary-glow);
+}
+.difficulty-reveal__pills {
+  display: flex;
+  gap: var(--space-md);
+}
+.dr-pill {
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.55);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  transition: transform 80ms ease-out, color 80ms ease-out, background 80ms ease-out, box-shadow 80ms ease-out;
+}
+.dr-pill--active {
+  color: var(--color-primary);
+  background: rgba(217, 163, 64, 0.18);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 20px rgba(217, 163, 64, 0.5), inset 0 0 12px rgba(217, 163, 64, 0.25);
+  transform: scale(1.08);
+}
+.dr-pill--settling {
+  animation: dr-settle 0.8s ease-out;
+}
+@keyframes dr-settle {
+  0%   { transform: scale(1.15); }
+  40%  { transform: scale(0.95); }
+  60%  { transform: scale(1.06); }
+  100% { transform: scale(1.08); }
+}
+/* Comedic last-second jump — quick wobble + flash */
+.dr-pill--gotcha {
+  animation: dr-gotcha 0.6s var(--ease-out);
+}
+@keyframes dr-gotcha {
+  0%   { transform: scale(0.5) rotate(-8deg); box-shadow: 0 0 0 rgba(217, 163, 64, 0); }
+  35%  { transform: scale(1.35) rotate(6deg); box-shadow: 0 0 30px rgba(217, 163, 64, 0.8); }
+  60%  { transform: scale(0.95) rotate(-3deg); }
+  100% { transform: scale(1.08) rotate(0deg); box-shadow: 0 0 20px rgba(217, 163, 64, 0.5), inset 0 0 12px rgba(217, 163, 64, 0.25); }
+}
+.difficulty-reveal__final {
+  font-family: var(--font-display);
+  font-size: var(--text-4xl);
+  font-weight: 800;
+  color: var(--color-primary);
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 32px var(--color-primary-glow), 0 0 60px var(--color-primary-glow);
+  min-height: 1.2em;
+  opacity: 0;
+}
+.difficulty-reveal__final--show {
+  animation: dr-final-pop 0.45s var(--ease-out) both;
+}
+@keyframes dr-final-pop {
+  from { opacity: 0; transform: scale(0.6); filter: blur(4px); }
+  60%  { opacity: 1; transform: scale(1.08); filter: blur(0); }
+  to   { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
