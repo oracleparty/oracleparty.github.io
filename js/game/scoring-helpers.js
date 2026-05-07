@@ -87,3 +87,50 @@ export function buildUsedWagersMap(myAnswers, totalQuestions, disqualifiedSet) {
   }
   return usedWagers;
 }
+
+/**
+ * Compute the displayed "most-voted" difficulty. Ties resolve to the HIGHER
+ * difficulty (e.g. 2 easy + 2 medium → medium). Returns null if no votes.
+ */
+export function modalDifficulty(tally) {
+  const order = ['easy', 'medium', 'hard'];
+  const counts = order.map(d => tally[d] || 0);
+  const max = Math.max(...counts);
+  if (max === 0) return null;
+  let idx = 0;
+  for (let i = 0; i < order.length; i++) if (counts[i] === max) idx = i;
+  return order[idx];
+}
+
+/**
+ * Pick the actual final-question difficulty from a vote tally.
+ *
+ * The vote acts as a FLOOR: the result can never be EASIER than the most-
+ * voted level. (If everyone votes Hard, you get Hard.) Above the floor,
+ * each allowed difficulty's weight is its vote count, with a 0.1 minimum so
+ * unvoted-but-allowed levels keep a small comedic chance of springing up.
+ *
+ *   votes={easy:3,medium:0,hard:0}  → floor=easy → ~94% easy, ~3% medium, ~3% hard
+ *   votes={easy:0,medium:3,hard:0}  → floor=medium → ~97% medium, ~3% hard
+ *   votes={easy:0,medium:0,hard:5}  → floor=hard → 100% hard
+ *   no votes                        → uniform over all three
+ *
+ * Pass `randFn` to make this deterministic in tests.
+ */
+export function pickWeightedDifficulty(tally, randFn = Math.random) {
+  const order = ['easy', 'medium', 'hard'];
+  const counts = order.map(d => tally[d] || 0);
+  const max = Math.max(...counts);
+  if (max === 0) return order[Math.floor(randFn() * 3)];
+  let floorIdx = 0;
+  for (let i = 0; i < order.length; i++) if (counts[i] === max) floorIdx = i;
+  const allowed = order.slice(floorIdx);
+  const weights = allowed.map(d => Math.max(tally[d] || 0, 0.1));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = randFn() * total;
+  for (let i = 0; i < allowed.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return allowed[i];
+  }
+  return allowed[allowed.length - 1];
+}

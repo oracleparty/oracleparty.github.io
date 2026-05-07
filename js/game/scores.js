@@ -36,7 +36,7 @@ import { getDisplayName, getCurrentUser, showSignUpModal } from '../auth.js';
 import { evaluateUnlocks, hasReachedApprentice } from '../titles.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
-import { computeScoresFromAnswers, tallyDifficultyVotes } from './scoring-helpers.js';
+import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty } from './scoring-helpers.js';
 import {
   state, canControlGame, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
@@ -438,6 +438,13 @@ export function showFinalWagerScreen() {
         _renderInlineDvTally();
       }
     })
+    .on('broadcast', { event: 'reveal' }, ({ payload }) => {
+      // Non-host: run the same slot-machine animation locally so all clients
+      // see the dramatic difficulty reveal in sync. Host already triggered
+      // its own animation directly in handleRevealFinalQuestion.
+      if (state.room.isHost) return;
+      playDifficultyRevealAnimation(payload?.mostVoted || null, payload?.winner || 'medium');
+    })
     .subscribe();
 
   // Show initial tally (empty rows with labels)
@@ -560,15 +567,12 @@ function _renderInlineDvTally() {
 }
 
 export async function handleRevealFinalQuestion() {
-  // Tally inline difficulty votes and try to fetch a matching question
+  // Vote acts as a FLOOR: result can be at-or-above the most-voted, never
+  // lower. Unvoted-but-allowed levels keep a 0.1 weight so an all-Easy room
+  // still has a small comedic chance of jumping to Medium or Hard.
   const tally = tallyDifficultyVotes(state.difficultyVotes);
-  const total = tally.easy + tally.medium + tally.hard;
-  const w = total === 0
-    ? { easy: 1, medium: 1, hard: 1 }
-    : { easy: tally.easy || 0.1, medium: tally.medium || 0.1, hard: tally.hard || 0.1 };
-  const wt = w.easy + w.medium + w.hard;
-  const r = Math.random() * wt;
-  const winner = r < w.easy ? 'easy' : r < w.easy + w.medium ? 'medium' : 'hard';
+  const mostVoted = modalDifficulty(tally); // null if no votes
+  const winner = pickWeightedDifficulty(tally);
   state.votedDifficulty = winner;
 
   // Try to fetch a question matching the voted difficulty (optional — pre-fetched is fallback)
@@ -577,6 +581,23 @@ export async function handleRevealFinalQuestion() {
     const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
     if (q) state.questions[state.totalQuestions] = q;
   } catch (e) { /* Use pre-fetched question */ }
+
+  // Broadcast the slot-machine reveal to all clients via the existing vote
+  // channel BEFORE we start the local animation, so non-hosts get the same
+  // (mostVoted, winner) pair and run a synchronized animation.
+  if (state.difficultyVoteChannel) {
+    try {
+      state.difficultyVoteChannel.send({
+        type: 'broadcast',
+        event: 'reveal',
+        payload: { mostVoted, winner }
+      });
+    } catch (_) { /* swallow — animation still runs locally */ }
+  }
+
+  // Animate the dramatic reveal locally (slot-machine cycle, settle on most-
+  // voted, comedic last-second switch if randomness defied the votes).
+  await playDifficultyRevealAnimation(mostVoted, winner);
 
   // Clean up vote channel
   if (state.difficultyVoteChannel) { try { supabase.removeChannel(state.difficultyVoteChannel); } catch (e) {} state.difficultyVoteChannel = null; }
@@ -603,6 +624,76 @@ export async function handleRevealFinalQuestion() {
     game_phase: 'final_question',
     current_question: state.totalQuestions,
     question_ids: questionIds
+  });
+}
+
+/**
+ * Slot-machine difficulty reveal. Non-blocking-ish (resolves when done so
+ * caller can sequence). The animation:
+ *   1. Cycle highlight rapidly through Easy / Medium / Hard (slowing)
+ *   2. Settle on the most-voted (or center if no votes)
+ *   3. If the actual winner is different, "gotcha" jump to it after a beat
+ *   4. Final flourish on the winner, then fade.
+ */
+function playDifficultyRevealAnimation(mostVoted, winner) {
+  return new Promise((resolve) => {
+    const overlay = $('#difficulty-reveal-overlay');
+    if (!overlay) { resolve(); return; }
+    const pills = overlay.querySelectorAll('.dr-pill');
+    const finalEl = overlay.querySelector('.difficulty-reveal__final');
+    const order = ['easy', 'medium', 'hard'];
+    const setActive = (d) => {
+      pills.forEach(p => p.classList.remove('dr-pill--active', 'dr-pill--settling', 'dr-pill--gotcha'));
+      if (d) overlay.querySelector(`.dr-pill[data-difficulty="${d}"]`)?.classList.add('dr-pill--active');
+    };
+
+    overlay.classList.remove('hidden');
+    finalEl.textContent = '';
+    pills.forEach(p => p.classList.remove('dr-pill--active', 'dr-pill--settling', 'dr-pill--gotcha'));
+
+    // The pill we'll appear to "settle on" (visual fakeout). If no votes,
+    // settle on the actual winner (no comedic switch happens).
+    const settleTarget = mostVoted || winner;
+
+    // Phase 1: rapid cycle (~1.4s, decelerating)
+    let i = 0;
+    let speed = 60;  // ms
+    const cycle = () => {
+      setActive(order[i % 3]);
+      i++;
+      speed = Math.min(speed + 8, 220);  // slow down
+      if (i < 22) {
+        setTimeout(cycle, speed);
+      } else {
+        // Phase 2: settle on the "expected" choice
+        setActive(settleTarget);
+        overlay.querySelector(`.dr-pill[data-difficulty="${settleTarget}"]`)?.classList.add('dr-pill--settling');
+        setTimeout(() => {
+          if (settleTarget !== winner) {
+            // Phase 3: comedic last-second switch
+            setActive(null);
+            setTimeout(() => {
+              setActive(winner);
+              overlay.querySelector(`.dr-pill[data-difficulty="${winner}"]`)?.classList.add('dr-pill--gotcha');
+              setTimeout(finalReveal, 700);
+            }, 120);
+          } else {
+            // No switch needed — flow straight to final reveal
+            setTimeout(finalReveal, 400);
+          }
+        }, 800);
+      }
+    };
+    const finalReveal = () => {
+      finalEl.textContent = winner.toUpperCase();
+      finalEl.classList.add('difficulty-reveal__final--show');
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        finalEl.classList.remove('difficulty-reveal__final--show');
+        resolve();
+      }, 1100);
+    };
+    cycle();
   });
 }
 
