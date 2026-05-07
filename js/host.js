@@ -56,6 +56,11 @@ function setCachedCategories(data) {
 
 // --- Init ---
 async function init() {
+  // Tell the boot-guard timer (in host.html <head>) that the JS module chain
+  // loaded. If we never reach this line, the guard renders a connection-error
+  // page instead of an empty grid.
+  window.__appReady = true;
+  if (window.__appBootGuard) clearTimeout(window.__appBootGuard);
   document.body.style.opacity = '1';
 
   // 1) Instant render from cache OR show skeletons

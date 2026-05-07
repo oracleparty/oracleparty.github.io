@@ -10,10 +10,29 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Host Game — Oracle Party</title>
   <script>(function(){var s=localStorage.getItem('oracle_party_theme');if(!s){s=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';localStorage.setItem('oracle_party_theme',s);}if(s!=='light'){document.documentElement.setAttribute('data-theme',s);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[s]||'#F8F7F4';}})();if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
+  <script>
+    // App-init heartbeat. If the JS module chain fails to load (e.g. esm.sh
+    // hiccup blocks the Supabase import), nothing in the page would render
+    // and the user sees a blank screen with no error. This timer fires after
+    // 7s; if the page module never set window.__appReady, we replace the body
+    // with an actionable error instead of leaving it empty. Cleared at the
+    // top of each page's init().
+    window.__appBootGuard = setTimeout(function () {
+      if (window.__appReady) return;
+      document.body.style.opacity = '1';
+      document.body.innerHTML =
+        '<div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;font-family:system-ui,-apple-system,sans-serif;color:#3a3530;background:#F8F7F4;">' +
+        '<div style="font-size:48px;margin-bottom:16px;">📡</div>' +
+        '<h2 style="font-size:22px;margin:0 0 8px;font-weight:600;">Connection issue</h2>' +
+        '<p style="margin:0 0 24px;color:#7a7570;max-width:300px;line-height:1.4;">Couldn\'t reach the app servers. Check your network and try again.</p>' +
+        '<button onclick="location.reload()" style="padding:12px 28px;border-radius:999px;border:none;background:#A87830;color:white;font-size:16px;font-weight:600;cursor:pointer;">Reload</button>' +
+        '</div>';
+    }, 7000);
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260507c">
+  <link rel="stylesheet" href="css/style.css?v=20260507d">
 </head>
 <body style="opacity:0">
 

@@ -86,6 +86,9 @@ let chatEchoPending = 0;
 
 // --- Init ---
 async function init() {
+  // Cancel the boot-guard timer in <head> — JS module chain is alive.
+  window.__appReady = true;
+  if (window.__appBootGuard) clearTimeout(window.__appBootGuard);
   document.body.style.opacity = '1';
   await Promise.all([ensureDisplayName(), initAuth()]);
 
