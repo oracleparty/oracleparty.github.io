@@ -33,12 +33,15 @@ export function registerRevealHelpers(fns) {
 // ============================================
 
 export function showQuestionScreen() {
-  let q = state.questions[state.currentQuestion];
+  const q = state.questions[state.currentQuestion];
   if (!q) {
-    // Question missing — try to use the last available question as fallback
-    logger.warn('Game', 'Question ' + state.currentQuestion + ' missing, using fallback');
-    q = state.questions[state.questions.length - 1];
-    if (!q) return; // Truly no questions at all
+    // Out of bounds — likely a Realtime ordering glitch where currentQuestion
+    // advanced before state.questions caught up. Bail instead of falling back
+    // to the LAST question (which would show a stale, already-answered card);
+    // the periodic syncToCurrentState poll or the next Realtime room update
+    // will refetch and re-call this once questions are aligned.
+    logger.warn('Game', 'Question ' + state.currentQuestion + ' missing — deferring render until sync');
+    return;
   }
 
   $('#question-category').textContent = getCategoryLabel();

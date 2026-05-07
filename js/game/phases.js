@@ -73,8 +73,14 @@ export async function handlePlayerChange(payload) {
     // IDENTITY only sends the primary key in OLD for DELETE events. Instead check
     // if any remaining player has is_host=true. If not, promote the next player.
     const nextHost = determineNextHost(state.players);
-    if (nextHost) {
-      if (String(nextHost.id) === String(state.room.playerId)) {
+    if (nextHost && String(nextHost.id) === String(state.room.playerId)) {
+      // Cross-client race guard — another client may have already promoted
+      // itself before our DELETE event arrived. Re-fetch and bail if a host
+      // already exists. Otherwise we'd both promote and end up with two hosts.
+      const fresh = await fetchPlayers(state.room.id);
+      if (fresh.some(p => p.is_host)) {
+        state.players = fresh;
+      } else {
         state.room.isHost = true;
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
         // Update local player state immediately so host badge renders
@@ -820,22 +826,29 @@ export async function checkStalePresence() {
     }
   }
   const staleNextHost = determineNextHost(state.players);
-  if (staleNextHost) {
-    if (String(staleNextHost.id) === String(state.room.playerId)) {
-      // If we were co-host, clear that flag first
-      if (state.room.isCohost) {
-        state.room.isCohost = false;
-        const localMe = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
-        if (localMe !== -1) state.players[localMe].is_cohost = false;
-        demoteCohost(state.room.playerId).catch(e => logger.warn('Game', 'demoteCohost on promotion failed', e));
-      }
-      state.room.isHost = true;
-      sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-      const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
-      if (localIdx !== -1) state.players[localIdx].is_host = true;
-      await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
-      _activateHostControlsForCurrentPhase();
-      sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
+  if (staleNextHost && String(staleNextHost.id) === String(state.room.playerId)) {
+    // Cross-client race guard: another client may have promoted itself
+    // between our local determineNextHost call and now. Re-fetch and bail
+    // if a host already exists. Without this, two clients can both succeed
+    // at promoteToHost and the room ends up with two hosts.
+    const fresh = await fetchPlayers(state.room.id);
+    if (fresh.some(p => p.is_host)) {
+      state.players = fresh;
+      return;
     }
+    // If we were co-host, clear that flag first
+    if (state.room.isCohost) {
+      state.room.isCohost = false;
+      const localMe = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
+      if (localMe !== -1) state.players[localMe].is_cohost = false;
+      demoteCohost(state.room.playerId).catch(e => logger.warn('Game', 'demoteCohost on promotion failed', e));
+    }
+    state.room.isHost = true;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+    const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
+    if (localIdx !== -1) state.players[localIdx].is_host = true;
+    await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
+    _activateHostControlsForCurrentPhase();
+    sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
   }
 }
