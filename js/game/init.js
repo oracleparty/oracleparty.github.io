@@ -385,10 +385,15 @@ async function initHostGame() {
     questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, subcategory);
   }
 
-  if (questions.length === 0) {
+  // Need at least 2 questions: 1 regular round + 1 final wager round.
+  // With 1 question, the game would start but then ask for state.questions[1]
+  // at the final wager phase and break.
+  if (questions.length < 2) {
     const loadingEl = document.querySelector('#game-loading .game-loading__text');
     if (loadingEl) {
-      loadingEl.textContent = 'No questions found for this category.';
+      loadingEl.textContent = questions.length === 0
+        ? 'No questions found for this category.'
+        : 'Not enough questions in this category — need at least 2.';
       const backBtn = document.createElement('button');
       backBtn.className = 'btn btn-secondary';
       backBtn.textContent = 'Back to Lobby';

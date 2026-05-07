@@ -315,9 +315,24 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
   }
 
   if (removeFriendBtn) {
+    let _confirmTimer = null;
     removeFriendBtn.onclick = async () => {
       const viewer = getCurrentUser();
       if (!viewer) return;
+      // Tap-again-to-confirm: first tap shows "Tap to confirm" for 3s.
+      // Without this, a stray tap silently destroys the friendship.
+      if (!removeFriendBtn.classList.contains('btn--confirming')) {
+        removeFriendBtn.textContent = 'Tap to confirm';
+        removeFriendBtn.classList.add('btn--confirming');
+        _confirmTimer = setTimeout(() => {
+          removeFriendBtn.textContent = 'Remove Friend';
+          removeFriendBtn.classList.remove('btn--confirming');
+          _confirmTimer = null;
+        }, 3000);
+        return;
+      }
+      if (_confirmTimer) { clearTimeout(_confirmTimer); _confirmTimer = null; }
+      removeFriendBtn.classList.remove('btn--confirming');
       removeFriendBtn.disabled = true;
       removeFriendBtn.textContent = 'Removing...';
       await removeFriend(viewer.user.id, userId);
