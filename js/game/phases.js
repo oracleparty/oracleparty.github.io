@@ -660,6 +660,16 @@ export function handleAnswerChange(payload) {
     return;
   }
 
+  // On the results screen, host edits via the Review Questions overlay arrive
+  // as answer UPDATE events. Without this, non-host results scoreboards never
+  // reflect the host's corrections.
+  if (state.gamePhase === 'results') {
+    if (payload.eventType === 'UPDATE' && payload.new) {
+      showResultsScreen();
+    }
+    return;
+  }
+
   if (!state.onRevealScreen) return;
 
   const event = payload.eventType;
