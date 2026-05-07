@@ -84,8 +84,16 @@ async function init() {
   const authUser = getCurrentUser();
   if (authUser?.user?.id) _isLoggedIn = true;
 
+  let categoriesError = null;
   const [freshCategories, playCounts, masteryData] = await Promise.all([
-    fetchCategories().catch(err => { logger.error('Host', 'fetchCategories', err); return null; }),
+    fetchCategories().catch(err => {
+      // Capture the actual error so we can show it in the empty state below
+      // — "Failed to load categories" alone is unactionable for the user.
+      logger.error('Host', 'fetchCategories', err);
+      console.error('[Host] fetchCategories failed:', err);
+      categoriesError = err;
+      return null;
+    }),
     fetchCategoryPlayCounts().catch(e => { logger.warn('Host', 'Could not load play counts', e); return {}; }),
     _isLoggedIn
       ? fetchMasteryCounts(authUser.user.id).catch(e => { logger.warn('Host', 'Could not load mastery', e); return []; })
@@ -108,7 +116,21 @@ async function init() {
     if (categories.length) {
       renderCategories(categories, categoryPlayCounts);
     } else {
-      categoryGrid.innerHTML = '<div class="empty-state"><p class="empty-state__text">Failed to load categories</p><p class="empty-state__subtext">Check your connection and refresh</p></div>';
+      const reason = categoriesError
+        ? `${categoriesError.message || 'Unknown error'}${categoriesError.code ? ' (' + categoriesError.code + ')' : ''}`
+        : 'Empty result from server';
+      // Escape user-facing error text — Supabase error.message is server-controlled
+      const safe = String(reason).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      categoryGrid.innerHTML =
+        '<div class="empty-state">' +
+          '<p class="empty-state__text">Failed to load categories</p>' +
+          '<p class="empty-state__subtext">Check your connection and refresh</p>' +
+          '<details style="margin-top:12px;font-size:12px;color:var(--color-text-muted, #888);text-align:left;max-width:320px;margin-inline:auto;">' +
+            '<summary style="cursor:pointer;text-align:center;">Show details</summary>' +
+            '<code style="display:block;white-space:pre-wrap;word-break:break-word;margin-top:8px;font-family:ui-monospace,monospace;">' + safe + '</code>' +
+          '</details>' +
+          '<button class="btn" style="margin-top:16px;" onclick="location.reload()">Retry</button>' +
+        '</div>';
       showToast('Failed to load categories', 'error');
     }
   } else {

@@ -4,7 +4,7 @@
 // Supabase API calls are always network-only.
 // ============================================
 
-const CACHE_VERSION = 'op-v56';
+const CACHE_VERSION = 'op-v57';
 const APP_SHELL = [
   './',
   './index.html',
@@ -22,11 +22,13 @@ const APP_SHELL = [
   './icons/icon-512.png',
 ];
 
-// Pinned, immutable third-party URLs we treat as part of the app shell.
-// Cache-first: once fetched, we never go back to the network for them
-// (their version is in the URL, so they cannot change underneath us).
+// Third-party module URLs we treat as part of the app shell. These use a
+// major-version tag (e.g. @2) so esm.sh may transparently serve a newer
+// minor over time — but we still want stale-while-revalidate so a temporary
+// CDN outage cannot strand users on a blank page after they've loaded
+// the app once. Match by URL prefix in the fetch handler.
 const PINNED_VENDOR = [
-  'https://esm.sh/@supabase/supabase-js@2.45.4',
+  'https://esm.sh/@supabase/supabase-js@2',
 ];
 
 // Install: cache app shell + pinned vendor. Vendor is fetched with no-cors
@@ -62,20 +64,21 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const href = url.origin + url.pathname + url.search;
 
-  // Pinned vendor (Supabase JS): cache-first. URL has the version in it, so
-  // contents can never change. This is the fix for the "esm.sh is slow/down
-  // → blank app" failure mode we saw in production.
+  // Pinned vendor (Supabase JS): stale-while-revalidate. Serve cached copy
+  // instantly if we have one (so a slow/dead esm.sh can't blank the page
+  // after first load), but kick off a background fetch to refresh the
+  // cache for next time. Floats with esm.sh's resolution of @2.
   if (event.request.method === 'GET' && PINNED_VENDOR.some(u => href.startsWith(u))) {
     event.respondWith(
       caches.match(event.request).then(cached => {
-        if (cached) return cached;
-        return fetch(event.request).then(response => {
+        const fresh = fetch(event.request).then(response => {
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_VERSION).then(cache => cache.put(event.request, clone));
           }
           return response;
         });
+        return cached || fresh;
       })
     );
     return;
