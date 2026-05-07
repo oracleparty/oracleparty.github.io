@@ -131,29 +131,15 @@ async function init() {
     return;
   }
 
-  // If game is already in progress, redirect — BUT if returning from Play Again,
-  // the host may still be resetting the room. Poll with retries before bouncing.
-  if (currentRoom.status === 'playing') {
-    if (sessionStorage.getItem('oracle_party_returning_from_game')) {
-      // Host is likely still running cleanup (now parallelized with Promise.all).
-      // Poll up to 3 times (1s each) as a safety net.
-      let settled = false;
-      for (let i = 0; i < 3; i++) {
-        await new Promise(r => setTimeout(r, HOST_WAIT_TIMEOUT_MS));
-        const { data: recheck } = await fetchRoom(room.id);
-        if (!recheck) { sessionStorage.removeItem('oracle_party_room'); window.location.href = 'index.html'; return; }
-        if (recheck.status !== 'playing') { settled = true; break; }
-      }
-      if (!settled) {
-        // Still playing after 3s — this is a real in-progress game, not a race
-        window.location.replace('game.html');
-        return;
-      }
-      // Status changed to 'lobby' — stay here
-    } else {
-      window.location.replace('game.html');
-      return;
-    }
+  // If we explicitly came from a game ending (Play Again / Quit / "Return to Lobby"
+  // notice), trust the flag over the DB read. The host's lobby-reset write may still
+  // be in flight; bouncing back to game.html when game_phase is already 'lobby' lands
+  // us in a dead game with no recovery (host would inadvertently start a new game,
+  // non-host would hang on the loading screen waiting for question_ids).
+  const isReturningFromGame = !!sessionStorage.getItem('oracle_party_returning_from_game');
+  if (currentRoom.status === 'playing' && !isReturningFromGame) {
+    window.location.replace('game.html');
+    return;
   }
 
   // Subscribe to Realtime (with status monitoring)

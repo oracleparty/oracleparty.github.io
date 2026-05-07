@@ -172,13 +172,17 @@ export function handleNewMessage(payload) {
   // System messages get distinct styling (no avatar, centered, accent color)
   if (player_name === 'System') {
     addGameSystemMessage(message);
-    // Detect disqualify messages from host
+    // Detect disqualify messages from host. Each client refunds its own wager
+    // for the disqualified question. Note: handleAnswerChange also respects
+    // disqualifiedQuestions, so the wager stays refunded even if the answer
+    // UPDATE realtime event arrives after this message.
     const dqMatch = message.match(/^Host disqualified Q(\d+)/);
     if (dqMatch) {
       const dqQNum = parseInt(dqMatch[1], 10) - 1; // 0-indexed
       state.disqualifiedQuestions.add(dqQNum);
-      // Refund this player's wager for the disqualified round
-      const myAnswer = state.currentAnswers.find(a => a.player_id === state.room.playerId);
+      const myAnswer = state.currentAnswers.find(a =>
+        String(a.player_id) === String(state.room.playerId) && a.question_number === dqQNum
+      );
       if (myAnswer?.wager) state.usedWagers.delete(myAnswer.wager);
     }
   } else {
