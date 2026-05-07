@@ -435,7 +435,7 @@ function _injectSignUpModal() {
       <div class="modal">
         <h2 class="modal__title">Create Account</h2>
         <p id="signup-name-display" style="color: var(--color-text-dim); font-size: var(--text-sm); margin-bottom: var(--space-lg);">
-          Playing as: <strong>${getDisplayName() || 'Guest'}</strong>
+          Playing as: <strong>${escapeHtml(getDisplayName() || 'Guest')}</strong>
         </p>
         <input type="email" id="signup-email" class="input" placeholder="Email" autocomplete="email" style="margin-bottom: var(--space-md);">
         <input type="password" id="signup-password" class="input" placeholder="Password" autocomplete="new-password" style="margin-bottom: var(--space-md);">
