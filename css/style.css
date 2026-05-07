@@ -118,6 +118,10 @@
 /* --- Reset --- */
 html, body {
   overflow-x: hidden;
+  /* Prevent iOS Safari pull-to-refresh from yanking the user out mid-flow.
+     Previously only set on lobby/game per-page; now app-wide so a stray
+     downward pull on host/join/profile/leaderboard doesn't lose state. */
+  overscroll-behavior-y: contain;
 }
 
 *,
