@@ -126,19 +126,14 @@ function _activateHostControlsForCurrentPhase() {
   const phase = state.gamePhase;
 
   if (phase === 'reveal' || phase === 'answer_reveal') {
-    // Reveal screen: show Next Question / Reveal Results button
-    const btn = $('#btn-next-question');
-    if (btn) {
-      btn.classList.remove('hidden');
-      if (state.resultsRevealed) {
-        btn.onclick = null; // Will be set by the scores advancement handler
-      }
-    }
-    // Attach judgment override handler to reveal answers container
-    const revealContainer = document.querySelector('#reveal-answers');
-    if (revealContainer) {
-      revealContainer.addEventListener('click', handleJudgmentOverride);
-    }
+    // Use showRevealScreen() to install the correct button handlers based on
+    // current state (handleRevealResults pre-reveal, handleShowScores after
+    // reveal). The previous code nulled the onclick when state.resultsRevealed
+    // was true with a comment saying "Will be set by the scores advancement
+    // handler" — but no later code actually set it, leaving the new host with
+    // a dead button. showRevealScreen short-circuits the screen transition
+    // when we're already on it, so it's safe to re-invoke here.
+    showRevealScreen();
   }
 
   if (phase === 'scores_reveal') {
