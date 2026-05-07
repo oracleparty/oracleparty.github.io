@@ -22,6 +22,9 @@ import { CATEGORY_META } from './categories.js';
 // ============================================
 
 async function init() {
+  // Cancel the boot-guard timer in <head> — JS module chain is alive.
+  window.__appReady = true;
+  if (window.__appBootGuard) clearTimeout(window.__appBootGuard);
   document.body.style.opacity = '1';
   await initAuth();
   initThemeToggle();
