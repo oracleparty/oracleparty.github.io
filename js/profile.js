@@ -1137,13 +1137,19 @@ async function loadFriendsTab(userId) {
     const query = searchInput.value.trim();
     if (query.length < 1) {
       searchResults.innerHTML = '';
+      _searchVersion++;  // invalidate any in-flight search
       return;
     }
     _searchTimeout = setTimeout(() => _runFriendSearch(query, userId, searchResults), 300);
   };
 }
 
+let _searchVersion = 0;
 async function _runFriendSearch(query, userId, resultsEl) {
+  const version = ++_searchVersion;
+  // After every async hop below, check `version === _searchVersion`. If a newer
+  // search has started, abandon this one — otherwise stale slow results would
+  // overwrite the newer ones (or render after the user navigated away).
   let results;
 
   // Parse Name#discriminator format
@@ -1166,6 +1172,7 @@ async function _runFriendSearch(query, userId, resultsEl) {
     results = await searchProfiles(query, userId);
   }
 
+  if (version !== _searchVersion) return; // stale
   if (results.length === 0) {
     resultsEl.innerHTML = '<p class="profile-empty" style="padding: var(--space-sm) 0;">No results found</p>';
     return;
@@ -1173,9 +1180,10 @@ async function _runFriendSearch(query, userId, resultsEl) {
 
   // Check which results are already friends or have pending requests
   const sentRequests = await fetchSentRequests(userId);
+  if (version !== _searchVersion) return; // stale
   const sentSet = new Set(sentRequests.map(r => r.receiver_id));
 
-  resultsEl.innerHTML = (await Promise.all(results.map(async (p) => {
+  const html = (await Promise.all(results.map(async (p) => {
     const avatar = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
     const tag = p.discriminator ? `<span class="search-result-row__tag">#${escapeHtml(p.discriminator)}</span>` : '';
     const titleInfo = calculateTitle([]); // We don't have stats here, show default
@@ -1199,6 +1207,8 @@ async function _runFriendSearch(query, userId, resultsEl) {
       ${actionHtml}
     </div>`;
   }))).join('');
+  if (version !== _searchVersion) return; // stale — abandon render
+  resultsEl.innerHTML = html;
 
   // Wire send request buttons + profile card taps
   resultsEl.onclick = async (e) => {
