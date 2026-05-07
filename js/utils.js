@@ -315,6 +315,12 @@ export function shuffleArray(arr) {
 export function normalizeAnswer(str) {
   if (!str) return '';
   let s = str.toLowerCase().trim();
+  // Unicode normalization: convert accented characters to their base letter
+  // BEFORE the punctuation strip below. Without this, "São Paulo" became
+  // "S Paulo" because ã/ô/ñ aren't in [a-z0-9\s] and got stripped entirely;
+  // a player typing "Sao Paulo" or "Cote d'Ivoire" would never match.
+  // NFD splits accented chars into base + combining mark, then we drop the marks.
+  s = s.normalize('NFD').replace(/[̀-ͯ]/g, '');
   // Strip leading articles
   s = s.replace(/^(the|a|an)\s+/i, '');
   // Remove punctuation (keep alphanumeric and spaces)

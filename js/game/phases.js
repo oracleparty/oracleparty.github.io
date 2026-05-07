@@ -589,6 +589,22 @@ export function showCountdownScreen() {
       setDeferredPhase(null);
       handlePhaseTransition(deferred);
     }
+
+    // Self-healing fallback: if the host quit mid-countdown and the next-host
+    // promotion landed too late to fire the question phase update, the room
+    // would be stuck on 'countdown' forever. After 3s, any connected client
+    // re-checks the DB phase and force-advances. updateGameState is idempotent
+    // (multiple clients writing game_phase='question' converge to same state).
+    setTimeout(async () => {
+      if (_isLeaving || state.gamePhase !== 'countdown') return;
+      try {
+        const { data: r } = await fetchRoom(state.room.id);
+        if (r && r.game_phase === 'countdown') {
+          updateGameState(state.room.id, { game_phase: 'question', current_question: 0 })
+            .catch(e => logger.warn('Game', 'countdown self-heal failed', e));
+        }
+      } catch (_) {}
+    }, 3000);
   }
 
   function tick() {

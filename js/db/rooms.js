@@ -151,15 +151,20 @@ export async function cleanupOrphanedRooms() {
     }
   }
 
-  // Delete all rooms older than 2 hours (stale regardless of player count)
-  const { data: staleRooms } = await supabase
+  // Delete LOBBY rooms older than 2 hours. We deliberately do NOT touch
+  // 'playing' rooms here, even if they're old — a casual game with friends
+  // can easily run 2+ hours (long category, lots of pauses), and a stale-age
+  // sweep that runs every time anyone opens the home page would otherwise
+  // delete the room out from under active players. Empty rooms of any
+  // status are already handled by the per-room player-count check above.
+  const { data: staleLobbies } = await supabase
     .from('rooms')
     .select('id')
-    .in('status', ['lobby', 'playing'])
+    .eq('status', 'lobby')
     .lt('created_at', twoHoursAgo);
 
-  if (staleRooms && staleRooms.length > 0) {
-    for (const room of staleRooms) {
+  if (staleLobbies && staleLobbies.length > 0) {
+    for (const room of staleLobbies) {
       await supabase.from('rooms').delete().eq('id', room.id);
     }
   }

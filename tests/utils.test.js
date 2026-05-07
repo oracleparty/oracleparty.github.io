@@ -43,6 +43,15 @@ describe('normalizeAnswer', () => {
     expect(normalizeAnswer(null)).toBe('');
     expect(normalizeAnswer(undefined)).toBe('');
   });
+
+  it('strips diacritics so accented characters compare to their base letters', () => {
+    expect(normalizeAnswer('São Paulo')).toBe('sao paulo');
+    expect(normalizeAnswer("Côte d'Ivoire")).toBe('cote divoire');
+    expect(normalizeAnswer('niño')).toBe('nino');
+    expect(normalizeAnswer('café')).toBe('cafe');
+    expect(normalizeAnswer('Zürich')).toBe('zurich');
+    expect(normalizeAnswer('Bogotá')).toBe('bogota');
+  });
 });
 
 // ============================================

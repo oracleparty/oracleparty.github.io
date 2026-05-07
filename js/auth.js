@@ -16,14 +16,26 @@ const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
 // DISPLAY NAME (unchanged public API)
 // ============================================
 
+// In-memory fallback when localStorage is blocked (Safari Private Browsing
+// in some configurations, locked-down enterprise browsers, quota exceeded).
+// Without this guard, setDisplayName throws on write and leaves the user
+// stuck on the display-name modal forever.
+let _displayNameMemoryFallback = null;
+
 /** Get stored display name, or null if not set. */
 export function getDisplayName() {
-  return localStorage.getItem(STORAGE_KEY);
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v) return v;
+  } catch (_) { /* fall through to memory */ }
+  return _displayNameMemoryFallback;
 }
 
-/** Save display name to localStorage. */
+/** Save display name (localStorage with in-memory fallback). */
 export function setDisplayName(name) {
-  localStorage.setItem(STORAGE_KEY, name.trim());
+  const trimmed = name.trim();
+  _displayNameMemoryFallback = trimmed;
+  try { localStorage.setItem(STORAGE_KEY, trimmed); } catch (_) { /* keep in memory only */ }
 }
 
 /**

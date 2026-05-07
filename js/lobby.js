@@ -316,9 +316,15 @@ function attachListeners() {
     const heartBtn = e.target.closest('.heart-btn');
     if (!heartBtn) return;
     e.stopPropagation();
+    // Per-button busy guard: rapid double-taps would otherwise fire two
+    // toggleMessageHeart RPCs that race on the same read-then-write and
+    // converge to the WRONG state (final tap intent lost). Lock until the
+    // current RPC resolves.
+    if (heartBtn.dataset.busy === '1') return;
+    heartBtn.dataset.busy = '1';
     const bubble = heartBtn.closest('.chat-bubble');
     const msgId = bubble?.dataset.msgId;
-    if (!msgId) return;
+    if (!msgId) { heartBtn.dataset.busy = '0'; return; }
     // Optimistic toggle
     const iHearted = heartBtn.classList.contains('hearted');
     heartBtn.classList.toggle('hearted', !iHearted);
@@ -328,7 +334,8 @@ function attachListeners() {
     countEl.textContent = count;
     countEl.classList.toggle('hidden', count <= 0);
     // Persist
-    await toggleMessageHeart(msgId, getDisplayName());
+    try { await toggleMessageHeart(msgId, getDisplayName()); }
+    finally { heartBtn.dataset.busy = '0'; }
   });
 
   // Ready toggle (non-host)

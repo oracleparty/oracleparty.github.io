@@ -426,7 +426,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   }
   const scoreEarned = computeScoreEarned(isCorrect, wager, state.isFinalWagerRound);
 
-  await submitAnswer({
+  const submitResult = await submitAnswer({
     roomId: state.room.id,
     playerId: state.room.playerId,
     questionNumber: state.currentQuestion,
@@ -436,6 +436,20 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     isCorrect,
     scoreEarned
   });
+
+  // If the DB write failed (network drop mid-submit), revert local state and
+  // allow retry — without this revert, the player thinks they submitted, gets
+  // shown as "no answer" on reveal (because host's auto-submit pass writes a
+  // blank for them), and silently loses their actual answer.
+  if (submitResult && submitResult.error && !autoSubmit) {
+    state.hasSubmitted = false;
+    $('#answer-input').disabled = false;
+    $('#btn-submit-answer').disabled = false;
+    const errEl = $('#wager-error');
+    if (errEl) errEl.textContent = 'Submit failed — try again';
+    logger.error('Game', 'submitAnswer failed', submitResult.error);
+    return;
+  }
 
   // Mark wager as used AFTER DB write succeeds (prevents stale state if submit fails)
   state.usedWagers.set(wager, isCorrect);
