@@ -3612,29 +3612,19 @@ body::after {
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid;
-  border-image: var(--gold-hairline) 1;
-  border-image-slice: 1;
 }
-.results-row:last-of-type { border-bottom: none; }
 
-/* Place — serif numerals (1st/2nd/3rd) read like dynastic chronology */
 .results-row__place {
-  font-family: var(--font-display);
-  font-size: var(--text-base);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
   font-weight: 700;
-  width: 28px;
+  width: 24px;
   text-align: center;
   flex-shrink: 0;
   color: var(--color-text-dim);
-  letter-spacing: -0.02em;
 }
 
-.results-row__place--1st {
-  color: #C68A2E;
-  font-size: var(--text-lg);
-  text-shadow: 0 0 12px rgba(198, 138, 46, 0.45);
-}
+.results-row__place--1st { color: #d4a017; font-size: var(--text-base); }
 .results-row__place--2nd { color: #8d8d8d; }
 .results-row__place--3rd { color: #a0714f; }
 
@@ -3650,25 +3640,22 @@ body::after {
 }
 
 .results-row__fw-delta {
-  font-family: var(--font-display);
+  font-family: var(--font-heading);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: 600;
   min-width: 32px;
   text-align: right;
   flex-shrink: 0;
 }
 
-/* Score — heavy display serif. The number IS the story. */
 .results-row__score {
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: 800;
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 700;
   color: var(--color-primary);
-  min-width: 48px;
+  min-width: 40px;
   text-align: right;
   flex-shrink: 0;
-  letter-spacing: -0.02em;
-  font-feature-settings: "lnum" 1, "tnum" 1;
 }
 
 .results-footer {
