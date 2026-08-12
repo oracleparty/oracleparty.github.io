@@ -9,7 +9,7 @@
 import { PlaytestTable } from './harness.js';
 
 const CATEGORY = 'history';
-const QUESTIONS = 3;          // + 1 final wager question
+const QUESTIONS = 5;          // + 1 final wager question
 const problems = [];
 const note = m => console.log('   ·', m);
 
@@ -45,7 +45,9 @@ async function answerQuestion(robot, text) {
   try {
     await input.waitFor({ state: 'visible', timeout: 12000 });
   } catch {
-    return false;                     // not on the question screen
+    const screen = await robot.page.evaluate(() => document.querySelector('.screen.active')?.id);
+    note(`${robot.name}: no answer input (on ${screen})`);
+    return false;
   }
   // Pick a wager if one is offered and none is preselected.
   const wager = robot.page.locator('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first();
@@ -53,7 +55,12 @@ async function answerQuestion(robot, text) {
     await wager.click().catch(() => {});
   }
   await input.fill(text).catch(() => {});
-  await robot.page.click('#btn-submit-answer').catch(() => {});
+  const enabled = await robot.page.isEnabled('#btn-submit-answer').catch(() => false);
+  if (!enabled) {
+    note(`${robot.name}: submit still disabled after wager+text`);
+    return false;
+  }
+  await robot.page.click('#btn-submit-answer').catch(e => note(`${robot.name}: submit click failed`));
   return true;
 }
 
@@ -70,6 +77,9 @@ try {
   await host.page.waitForTimeout(800);
   await host.page.click('text=/^All /');
   await host.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
+  // Shortest game available, so a full playthrough stays quick.
+  await host.page.click('[data-setting="questionsPerGame"] [data-value="5"]').catch(() => {});
+  await host.page.waitForTimeout(300);
   await host.page.click('#btn-host-game');
   await host.page.waitForURL('**/lobby.html*', { timeout: 20000 });
   await host.page.waitForTimeout(1200);
@@ -104,49 +114,113 @@ try {
   note('all three reached game.html');
 
   // --- Play the rounds ---
-  for (let round = 0; round < QUESTIONS + 1; round++) {
-    // Everyone answers. Bob deliberately gets it wrong so scores must differ.
-    for (const r of everyone) {
-      const qIndex = round + 1;
-      const text = r.name === 'Bob' ? 'definitely wrong' : `Answer ${qIndex}`;
-      await answerQuestion(r, text);
-    }
-    await host.page.waitForTimeout(1200);
+  //
+  // Driven by whatever screen each robot is actually on, rather than a fixed
+  // sequence of clicks. Phase changes arrive over Realtime and do not land in
+  // lockstep, so a scripted order desynchronises within a round or two and
+  // then reports failures that are only the script's own impatience.
 
-    // Host drives the reveal, then advances.
-    for (let click = 0; click < 2; click++) {
-      const btn = host.page.locator('#btn-next-question');
-      if (await btn.isVisible().catch(() => false) && await btn.isEnabled().catch(() => false)) {
-        await btn.click().catch(() => {});
-        await host.page.waitForTimeout(900);
+  // Pages navigate on their own (results -> lobby, room deleted -> home), so
+  // any read can land mid-navigation. That is normal, not a failure.
+  const activeScreen = r => r.page
+    .evaluate(() => document.querySelector('.screen.active')?.id || '(none)')
+    .catch(() => '(navigating)');
+
+  const clickIfReady = async (r, selector) => {
+    const el = r.page.locator(selector);
+    if (!await el.isVisible().catch(() => false)) return false;
+    if (!await el.isEnabled().catch(() => false)) return false;
+    await el.click().catch(() => {});
+    return true;
+  };
+
+  const answered = new Set();     // "name:round" already submitted
+
+  async function takeTurn(r, roundHint) {
+    const screen = await activeScreen(r);
+
+    if (screen === 'question-screen') {
+      const key = `${r.name}:${roundHint}`;
+      if (answered.has(key)) return screen;
+      const text = r.name === 'Bob' ? 'definitely wrong' : `Answer ${roundHint + 1}`;
+      if (await answerQuestion(r, text)) answered.add(key);
+      return screen;
+    }
+
+    if (screen === 'final-wager-screen') {
+      // A wager amount must be chosen before the lock button does anything.
+      const key = `${r.name}:final`;
+      if (!answered.has(key)) {
+        const opt = r.page.locator('#final-wager-screen [data-wager]').first();
+        if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
+        if (await clickIfReady(r, '#btn-fw-lock')) answered.add(key);
       }
+      if (r === host) await clickIfReady(r, '#btn-fw-reveal');
+      return screen;
     }
-    // Scores screen between rounds.
-    const scoresBtn = host.page.locator('#btn-scores-action');
-    if (await scoresBtn.isVisible().catch(() => false)) {
-      await scoresBtn.click().catch(() => {});
+
+    // Results is the finish line — clicking onit would send the host back to
+    // the lobby and destroy the thing being measured.
+    if (screen === 'results-screen') return screen;
+
+    // Only the host advances reveal and scores.
+    if (r === host) {
+      if (screen === 'reveal-screen') await clickIfReady(r, '#btn-next-question');
+      if (screen === 'scores-screen') await clickIfReady(r, '#btn-scores-action');
     }
-    await host.page.waitForTimeout(900);
+    return screen;
+  }
+
+  let round = 0;
+  let lastQuestionSeen = -1;
+  let reachedResults = false;
+
+  for (let step = 0; step < 160 && !reachedResults; step++) {
+    for (const r of everyone) {
+      await takeTurn(r, round).catch(() => '(navigating)');
+    }
+
+    // Track progress by the room's own state, not one client's screen: clients
+    // reach results at different moments and may navigate away afterwards.
+    const room = table.store.table('rooms')[0];
+    if (room && room.game_phase === 'results') reachedResults = true;
+    if (room && room.current_question !== lastQuestionSeen) {
+      lastQuestionSeen = room.current_question;
+      round = room.current_question ?? round;
+      note(`round ${round} (phase ${room.game_phase})`);
+    }
+    await host.page.waitForTimeout(450);
+  }
+
+  if (!reachedResults) {
+    const room = table.store.table('rooms')[0];
+    problems.push(`game never reached results (stuck on phase ${room?.game_phase}, question ${room?.current_question})`);
+  } else {
+    note(`game completed; ${table.store.table('answers').length} answers recorded`);
   }
 
   await host.page.waitForTimeout(2500);
 
   // --- Where did everyone end up? ---
   for (const r of everyone) {
-    const screen = await r.page.evaluate(() => {
-      const el = document.querySelector('.screen.active');
-      return el ? el.id : '(none)';
-    });
-    note(`${r.name} is on ${screen}`);
+    note(`${r.name} is on ${await activeScreen(r)}`);
   }
 
   // --- Do the clients agree on scores? ---
   const scoreboards = [];
   for (const r of everyone) {
+    // Compare what the game decided, not how it is decorated. Each client
+    // hides its own honk button, so raw row text differs between players even
+    // when every score agrees.
     const board = await r.page.evaluate(() =>
-      [...document.querySelectorAll('#results-list .result-row, #scores-animated-list .score-row')]
-        .map(row => row.textContent.replace(/\s+/g, ' ').trim())
-        .filter(Boolean));
+      [...document.querySelectorAll('#results-list .results-row')]
+        .map(row => {
+          const text = row.textContent.replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
+          const numbers = text.match(/-?\d+/g) || [];
+          const name = (row.querySelector('[class*="name"]')?.textContent || '').trim();
+          return `${name}=${numbers[numbers.length - 1] ?? '?'}`;
+        })
+        .filter(Boolean)).catch(() => []);
     scoreboards.push({ name: r.name, board });
   }
   for (const s of scoreboards) note(`${s.name} scoreboard: ${JSON.stringify(s.board).slice(0, 120)}`);
@@ -166,17 +240,32 @@ try {
   // left a full set subscribed on every exit, so handlers fired once more per
   // game played in a session.
   const beforeLeave = await bob.openChannelCount();
-  await bob.page.click('#btn-quit-game').catch(() => {});
-  await bob.page.waitForTimeout(2500);
-  const afterLeave = await bob.openChannelCount();
-  note(`Bob channels: ${beforeLeave} in game -> ${afterLeave} after leaving`);
-  if (afterLeave >= beforeLeave && beforeLeave > 0) {
-    problems.push(`leaving did not release Realtime channels (${beforeLeave} -> ${afterLeave})`);
+  const quit = bob.page.locator('#btn-quit-game');
+  const canQuit = await quit.isVisible().catch(() => false);
+
+  if (!canQuit) {
+    // Distinguish "cleanup is broken" from "the robot never triggered cleanup".
+    // Reporting the second as the first is how a harness starts lying.
+    note(`Bob could not leave: quit button not visible on ${await activeScreen(bob)} — leak check skipped`);
+  } else {
+    // Quit is tap-again-to-confirm on the same button, not a separate dialog:
+    // the first tap only arms it, and it disarms itself after 3 seconds.
+    await quit.click().catch(() => {});
+    await bob.page.waitForTimeout(400);
+    await quit.click().catch(() => {});
+    await bob.page.waitForTimeout(2500);
+    const afterLeave = await bob.openChannelCount();
+    note(`Bob channels: ${beforeLeave} in game -> ${afterLeave} after leaving`);
+    if (afterLeave >= beforeLeave && beforeLeave > 0) {
+      problems.push(`leaving did not release Realtime channels (${beforeLeave} -> ${afterLeave})`);
+    }
   }
 
   // --- Console errors ---
   for (const r of everyone) {
-    const real = r.consoleErrors.filter(e => !/favicon|net::ERR_/i.test(e));
+    if (r.failedRequests.length) note(`${r.name} failed requests: ${[...new Set(r.failedRequests)].join(', ')}`);
+    const real = r.consoleErrors.filter(e =>
+      !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
 } catch (err) {

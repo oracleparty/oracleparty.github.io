@@ -47,6 +47,7 @@ export class Robot {
     this.page = page;
     this.table = table;
     this.consoleErrors = [];
+    this.failedRequests = [];
   }
 
   async goto(pagePath) {
@@ -118,6 +119,11 @@ export class PlaytestTable {
     page.on('console', msg => {
       if (msg.type() === 'error') robot.consoleErrors.push(msg.text());
     });
+    // A bare "Failed to load resource" says nothing about what failed, so
+    // record the URL separately and make it attributable.
+    page.on('response', res => {
+      if (res.status() >= 400) robot.failedRequests.push(`${res.status()} ${res.url()}`);
+    });
     page.on('pageerror', err => robot.consoleErrors.push(String(err)));
 
     // Bridge: page -> shared store
@@ -156,6 +162,11 @@ export class PlaytestTable {
     // Keep the service worker out of the way; it caches aggressively.
     await context.route('**/sw.js', route =>
       route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+
+    // Browsers request /favicon.ico unprompted; the static server has none, and
+    // the resulting 404 shows up as a console error unrelated to the app.
+    await context.route('**/favicon.ico', route =>
+      route.fulfill({ status: 200, contentType: 'image/x-icon', body: '' }));
 
     // Stub webfonts. Offline they fail, which trips the boot guard in <head>
     // and replaces the page with "Connection issue" — nothing to do with the
