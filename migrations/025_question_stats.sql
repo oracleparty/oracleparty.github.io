@@ -102,6 +102,13 @@ SELECT
   END                                             AS pct_correct,
   COALESCE(f.thumbs_up, 0)                        AS thumbs_up,
   COALESCE(f.thumbs_down, 0)                      AS thumbs_down,
+  COALESCE(f.thumbs_up, 0) + COALESCE(f.thumbs_down, 0) AS total_votes,
+  -- A single percentage is easier to read than two counts, but it hides
+  -- sample size: one thumbs-up is 100%. total_votes is exposed alongside so
+  -- the figure can be judged, and ranking by it requires a minimum sample.
+  CASE WHEN COALESCE(f.thumbs_up, 0) + COALESCE(f.thumbs_down, 0) = 0 THEN NULL
+       ELSE round(100.0 * f.thumbs_up / (f.thumbs_up + f.thumbs_down))
+  END                                             AS pct_liked,
   COALESCE(f.flags, 0)                            AS flags,
   s.last_asked_at
 FROM questions q

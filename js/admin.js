@@ -666,6 +666,8 @@ init();
 // ============================================
 
 const QH_PAGE_SIZE = 25;
+// Minimum plays/votes before a percentage is trustworthy enough to rank by.
+const QH_MIN_SAMPLE = 3;
 let _qhOffset = 0;
 let _qhSort = 'overrides';
 let _qhDir = 'desc';
@@ -676,8 +678,7 @@ const QH_SORTS = {
   overrides:   'times_overridden',
   correct:     'pct_correct',
   flags:       'flags',
-  thumbs_down: 'thumbs_down',
-  thumbs_up:   'thumbs_up',
+  liked:       'pct_liked',
   asked:       'times_asked',
 };
 
@@ -688,9 +689,12 @@ async function fetchQuestionHealth(offset) {
 
   if (_qhSearch) query = query.ilike('question', `%${_qhSearch}%`);
 
-  // Percentages and averages only mean anything once a question has been
-  // played; unplayed rows are NULL and would otherwise dominate the page.
-  if (_qhSort === 'correct') query = query.gt('times_asked', 0);
+  // A percentage from one or two data points is noise: a single thumbs-up is
+  // 100% liked and would outrank 47 likes against 3 dislikes. Ranking by a
+  // percentage therefore requires a minimum sample; the raw count is always
+  // displayed alongside so the number can be judged in context.
+  if (_qhSort === 'correct') query = query.gte('times_asked', QH_MIN_SAMPLE);
+  if (_qhSort === 'liked')   query = query.gte('total_votes', QH_MIN_SAMPLE);
 
   query = query
     .order(column, { ascending, nullsFirst: false })
@@ -727,9 +731,17 @@ function createHealthRow(q) {
   row.className = 'admin-flag-row';
   row.style.cssText = 'padding:var(--space-sm) 0; border-bottom:1px solid var(--color-border);';
 
-  const pct = q.pct_correct == null ? '—' : `${q.pct_correct}%`;
+  const pct = q.pct_correct == null ? '—' : `${q.pct_correct}% (${q.times_asked})`;
   const pctTone = q.pct_correct == null ? null : (q.pct_correct < 25 ? 'bad' : q.pct_correct > 75 ? 'good' : null);
   const alts = Array.isArray(q.acceptable_answers) ? q.acceptable_answers : [];
+
+  // Show the vote count with the percentage — 100% from one vote and 94% from
+  // fifty are not the same claim, and the number alone cannot say which it is.
+  const votes = (q.total_votes ?? ((q.thumbs_up || 0) + (q.thumbs_down || 0)));
+  const likedLabel = votes === 0 ? '—' : `${q.pct_liked}% (${votes})`;
+  const likedTone = votes === 0 ? null
+                  : q.pct_liked < 50 ? 'bad'
+                  : q.pct_liked >= 80 ? 'good' : null;
 
   row.innerHTML = `
     <div class="admin-q-row__text" style="font-weight:500; margin-bottom:4px; cursor:pointer;">
@@ -745,8 +757,7 @@ function createHealthRow(q) {
       ${qhStat('correct', pct, pctTone)}
       ${qhStat('overrides', q.times_overridden, q.times_overridden > 0 ? 'bad' : null)}
       ${qhStat('flags', q.flags, q.flags > 0 ? 'bad' : null)}
-      ${qhStat('👍', q.thumbs_up, q.thumbs_up > 0 ? 'good' : null)}
-      ${qhStat('👎', q.thumbs_down, q.thumbs_down > 0 ? 'bad' : null)}
+      ${qhStat('liked', likedLabel, likedTone)}
     </div>
     <div class="qh-edit" style="display:none; margin-top:var(--space-sm);">
       <label style="display:block; font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:4px;">
