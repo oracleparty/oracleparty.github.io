@@ -1,225 +1,290 @@
 # Oracle Party
 
+> **This file describes the code as it actually is, including what's broken.**
+> The previous version described a smaller, abandoned game and misled every
+> session that read it. If you change the architecture, update this file **in
+> the same commit** — a change that leaves this file stale is not finished.
+>
+> Last verified against the code: 2026-08-12.
+
 ## What This Is
-A mobile-only browser trivia game hosted on GitHub Pages with a Supabase backend. Players are time-traveling archaeologists fighting "The Algorithm" (a rogue AI flooding the world with misinformation). Think Sporcle Party, but better.
+
+A mobile-only browser trivia party game. Players join a room with a 6-digit
+code, answer typed trivia questions, and wager points on their own confidence.
+Built for playing with friends in the same room or over chat.
+
+- **Live site:** https://oracleparty.github.io
+- **Deployment branch:** `claude/setup-oracle-party-PHRgj` — GitHub Pages serves
+  this branch. There is **no `main` or `master` branch** in this repo.
+- **Supabase project:** `zzpqymehapwbjupphxec.supabase.co`
+- **Questions in database:** ~4,859 across 12 categories with subcategories
 
 ## Tech Stack
-- **Frontend:** Vanilla HTML / CSS / JavaScript (no frameworks)
-- **Backend:** Supabase (Postgres + Realtime + Auth)
-- **Hosting:** GitHub Pages
-- **Mobile only:** All screens viewport-locked (100dvh, no scrolling on fixed screens). Design for 375px-430px width.
 
-## Supabase Details
-- **Project URL:** zzpqymehapwbjupphxec.supabase.co
-- Database has 1,732+ curated trivia questions across 12 categories: history, science, nature, arts-literature, culture-society, pop-culture, world-geography, technology, sports, food, logic, wild-card
-- Each question has: question text, correct answer, acceptable alternate answers, category, difficulty
-- Supabase Realtime used for all multiplayer sync (lobby, gameplay, chat)
+- **Frontend:** Vanilla HTML / CSS / JavaScript ES modules. No frameworks.
+- **Backend:** Supabase (Postgres + Realtime + Auth). Supabase JS client is the
+  only runtime dependency, loaded from `esm.sh`.
+- **Hosting:** GitHub Pages, with a service worker (`sw.js`) for offline caching.
+- **Mobile only:** designed for 375px–430px width, viewport-locked (100dvh).
 
-## Design Philosophy
-- Use the frontend-design skill for all UI work
-- Mobile-first, clean, crisp. No AI slop. No generic purple gradients.
-- Viewport-locked screens (no scroll) except where content requires it (category browsing, lobby player list, chat)
-- Clean typography as primary visual element until real assets are added later
+---
 
-## Game Flow (Complete)
+## ⚠️ Critical Architectural Facts
 
-### Host Path
-Splash → Home → Choose Category → Host Settings → Lobby → Gameplay → Final Wager → Results → Back to Lobby
+Read these before proposing any change to gameplay.
 
-### Join Path
-Splash → Home → Join Game (code/friends/public) → Lobby → Gameplay → Final Wager → Results → Back to Lobby
+### 1. There is no game logic on the server
 
-## Screen-by-Screen Spec
+The host's browser writes `game_phase`, `current_question` and
+`question_started_at` into the `rooms` row. Every other client reacts to those
+writes over Realtime. **Answer judging, scoring and timers all run
+independently in each player's browser.** The host's phone is the only referee.
 
-### Screen 1 — Splash
-- Full mobile viewport, centered "Oracle Party" typography
-- Auto-transitions to Home once app initializes
-- Load Supabase connection during this screen
+Consequences that show up as "random" bugs:
+- If the host's phone sleeps, loses signal or quits, the game can stall.
+- Clients can disagree about scores, because each computes its own.
+- Any player can edit any score directly (see #2).
 
-### Screen 2 — Home
-- Viewport-locked, two primary buttons: "Host Game" and "Join Game"
-- Clean, minimal, no bottom nav for v1
+**Migrating this to server authority (Postgres functions owning phase, timer,
+judging and scoring) is the main open work item.**
 
-### Screen 3 — Choose Category (Host)
-- Display 12 database categories as selectable options
-- Community packs section (create/share custom packs — placeholder for v1)
-- Search functionality
-- Back button to Home
+### 2. Database permissions are effectively wide open
 
-### Screen 4 — Host Settings
-- Selected category info displayed
-- "Host Game" button (creates room)
-- Who Can Join: Invite Only / Friends / Anyone (toggle selector)
-- Questions Per Game: 5 / 10 / 15 / 20 (toggle selector)
-- Question Timer: 15s / 30s / 45s / 60s (toggle selector)
+RLS is *enabled*, which makes the Supabase dashboard look secure — but nearly
+every gameplay policy is `USING (true)` / `WITH CHECK (true)`. See
+`migrations/022_atomic_increment_and_rls.sql`. With the publishable key (public
+by necessity, in `js/db/client.js`), anyone can read, update **and delete**
+`rooms`, `players`, `answers` and `chat_messages`.
 
-### Screen 5 — Join Game
-- 6-digit room code entry at top
-- Friends Playing section (expandable, shows active friend lobbies)
-- Public Games section (browsable list: host name, category, room code, player count, game status)
-- Back button to Home
+The one table that *is* locked is `questions` — read-only, no write policy in
+any migration. That protects the question bank but breaks admin editing (#3).
 
-### Screen 6 — Lobby (persistent hub)
-- Share code displayed prominently with copy button
-- Live chat (Supabase Realtime)
-- Player list with display names and ready status
-- Host has "Start Game" button
-- After game ends, everyone returns here. Host can swap category or keep it.
-- No bottom nav — dedicated game flow screen
+### 3. Admin question edits silently do nothing
 
-### Screen 7 — Wager Select
-- Before each question, players assign a point value
-- With N questions, values are 1 through N, each used exactly once
-- Players strategically bet high on confident categories, low on weak ones
+`js/admin.js` tries to update `questions` (mark flagged questions as `removed`,
+or edit text/answers). Because there is no write policy, **RLS discards these
+writes and returns no error and zero rows.** The "Remove" handler doesn't check
+for errors at all and optimistically removes the row from the screen, so it
+looks like it worked. The edit form checks `error`, but an RLS denial isn't an
+error, so it reports "Saved!" while saving nothing.
 
-### Screen 8 — Gameplay Question
-- Timer counting down (based on host setting)
-- Category name + question number ("15 of 20")
-- Question text in a card
-- Text input for typed answer + Submit button
-- Host can skip timer / advance early
+Player-side feedback (thumbs up/down/flag) **does** write correctly. Only the
+admin's response to it is broken.
 
-### Screen 9 — Answer Reveal
-- Correct answer displayed with difficulty level
-- Each player's submitted answer shown with auto-judged green (correct) / red (incorrect)
-- Auto-judging: fuzzy match against correct answer + all acceptable alternates, with typo tolerance
-- Host can override any judgment live (flip red↔green), everyone sees it update in real time
-- Host advances to next question manually (controls pace)
-- Chat available
-- Player scores visible
+### 4. Migrations are applied by hand
 
-### Screen 10 — Final Wager
-- Special last round: players bet up to 20 points
-- This is the ONLY round where incorrect = lose wagered points
-- Shows all players with their wager and current score
+`migrations/*.sql` are pasted into the Supabase SQL Editor manually. Nothing
+records which ones were actually run, so **the live schema is not known with
+certainty from this repo alone.** Run `scripts/inspect-db.sql` in the SQL Editor
+to get the real picture before relying on any table or policy.
 
-### Screen 11 — Results
-- Winner celebration at top (placement badge, display name)
-- Scoreboard: all players ranked with placement (1st/2nd/3rd), points earned, total scores
-- Chat available
-- "Play Again" → returns to Lobby (host can swap category)
-- "Quit" → returns to Home
-
-## Auth & Accounts
-- Display name required to play (instant access, no sign-up needed)
-- Optional account creation (Supabase Auth) unlocks: friends list, persistent stats, profile
-- Guests can do everything except friends list and persistent stats
-
-## Scoring System
-- Wager-based: players assign point values (1-N) to each question, each value used once
-- Correct answer = earn wagered points. Incorrect = earn nothing (no loss).
-- Final wager exception: incorrect = LOSE wagered points
-- Speed does NOT affect scoring
-
-## Answer Judging
-- Database stores correct answer + array of acceptable alternates per question
-- Auto-match with fuzzy tolerance for typos, abbreviations, spacing
-- Host can override any auto-judgment in real time
+---
 
 ## File Structure
+
 ```
-Oracle-Party/
-├── index.html          # Splash + Home
-├── host.html           # Choose Category + Host Settings
-├── join.html           # Join Game screen
-├── lobby.html          # Lobby (persistent hub)
-├── game.html           # Gameplay (wager, question, reveal, final wager, results)
-├── css/
-│   └── style.css       # Global styles + CSS variables
+├── index.html          Splash + Home + display-name entry
+├── host.html           Category browser + host settings
+├── join.html           Room code entry, friends' games, public games
+├── lobby.html          Lobby: chat, player list, ready state, start
+├── game.html           All in-game screens (see below)
+├── profile.html        Player profile, stats, mastery tree
+├── leaderboard.html    Global + per-category rankings
+├── admin.html          Admin dashboard (requires profiles.is_admin)
+├── sw.js               Service worker — CACHE_VERSION must be bumped on deploy
+├── css/style.css       All styles; CSS variables for theming
 ├── js/
-│   ├── supabase.js     # Supabase client init + helpers
-│   ├── auth.js         # Display name / optional account
-│   ├── host.js         # Host flow logic
-│   ├── join.js         # Join flow logic
-│   ├── lobby.js        # Lobby + Realtime chat + player sync
-│   ├── game.js         # Gameplay loop + wager + judging + results
-│   └── utils.js        # Fuzzy matching, shared helpers
-└── CLAUDE.md
+│   ├── db/             Supabase access layer, split by domain
+│   │   ├── client.js       Shared client + credentials
+│   │   ├── rooms.js        Rooms, realtime channel factories
+│   │   ├── players.js      Players, answers, game_plays
+│   │   ├── questions.js    Questions, history, feedback
+│   │   ├── chat.js         Chat messages + archive
+│   │   └── social.js       Profiles, friends, stats, titles, settings
+│   ├── game/           Gameplay engine (the fragile part)
+│   │   ├── init.js         Boot, subscriptions, cleanup
+│   │   ├── phases.js       Phase router, room/player events, countdown
+│   │   ├── question.js     Question screen, wagers, submit, timer
+│   │   ├── reveal.js       Answer reveal, host judgment override, feedback UI
+│   │   ├── scores.js       Scores, final wager, results
+│   │   ├── chat.js         In-game chat
+│   │   ├── host.js         Host settings panel
+│   │   ├── state.js        Shared mutable game state
+│   │   ├── scoring-helpers.js / timer-helpers.js / host-promotion.js
+│   ├── supabase.js     Re-export hub for all db/ modules
+│   ├── auth.js         Display name, optional accounts, session
+│   ├── host.js / join.js / lobby.js / profile.js / leaderboard.js / admin.js
+│   ├── categories.js   CATEGORY_META: icons, labels, subcategories
+│   ├── titles.js       Title unlock rules
+│   ├── utils.js        Fuzzy answer matching, DOM helpers, escaping
+│   ├── honk.js / typing.js / presence.js / theme.js / logger.js
+│   └── constants.js    All timing + threshold values
+├── migrations/         Hand-applied SQL (see #4 above)
+├── scripts/
+│   ├── screenshot.js       Playwright screenshots of mock states
+│   ├── mock-states.js      Fake data for visual review
+│   ├── bump-version.js     Bumps ?v= on assets + sw.js cache key
+│   └── inspect-db.sql      Read-only live schema report
+└── tests/              Vitest unit tests
 ```
 
-## Build Phases
-1. **Foundation + Splash + Home** (project structure, Supabase connection, first two screens)
-2. **Host flow** (category selection, settings, room creation)
-3. **Join flow + Lobby** (code entry, friends, public games, chat, Realtime)
-4. **Gameplay loop** (wagers, questions, answers, timer, host judging, reveal)
-5. **Final wager + Results** (final round, scoreboard, play again → lobby)
+## Screens
+
+**index.html** splash → home
+**host.html** `#category-screen` → `#settings-screen`
+**join.html** `#join-screen`
+**lobby.html** `#lobby-screen`
+**game.html** `#countdown-screen` → `#question-screen` → `#reveal-screen` →
+`#scores-screen` → (repeat) → `#final-wager-screen` → `#results-screen`
+
+## Game Flow
+
+1. **Host** picks a category (and optionally a subcategory), sets who can join,
+   question count and timer, then creates the room.
+2. **Players** join by 6-digit code, from a friend's lobby, or from public games.
+3. **Lobby** — chat, player list, ready status. Host starts.
+4. **Countdown** — synced 3-2-1-GO from a shared server timestamp.
+5. **Each round** — assign a wager, read the question, type an answer, submit.
+   Timer is derived from `question_started_at`, not a local clock.
+6. **Reveal** — correct answer shown with every player's submission, auto-judged
+   green/red. Host can flip any judgment live. Players can rate the question
+   (thumbs up / thumbs down / flag with a reason).
+7. **Scores** — animated scoreboard between rounds.
+8. **Final wager** — bet 0, 10 or 20 points before the last question.
+9. **Results** — final ranking, then back to the lobby or home.
+
+## Scoring
+
+- Each regular question is worth a wager the player assigns.
+- With N questions, wager values 1..N are each used exactly once.
+- Correct = earn the wager. Incorrect = earn nothing. **Never negative.**
+- **Final wager is the exception:** 0, 10 or 20, and an incorrect answer
+  *loses* those points.
+- Speed does not affect scoring.
+- Auto-judging fuzzy-matches against the correct answer plus stored alternates
+  (`FUZZY_MATCH_THRESHOLD` in `constants.js`). Host override is final.
+
+## Categories
+
+`history`, `science`, `nature`, `arts-literature`, `culture-society`,
+`pop-culture`, `world-geography`, `technology`, `sports`, `food`, `logic`,
+`wild-card` — each with subcategories, defined in `js/categories.js`
+(`CATEGORY_META`). Each has a hieroglyph icon and an emoji.
+
+## Other Features
+
+- **Honks** — tap to blast a sound at everyone, throttled by `HONK_THROTTLE`
+- **Chat** — in lobby and in game, with typing indicators and message hearts
+- **Accounts** — optional; guests can play everything except friends and stats
+- **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
+- **Friends** — requests, accept/decline, see friends' active lobbies
+- **Leaderboard** — global and per-category, plus a per-player mastery tree
+- **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`
+- **Co-host** — a second player can share host controls
+- **Presence + heartbeat** — `last_seen_at` drives stale-player cleanup
+
+## Database Tables
+
+`rooms`, `players`, `answers`, `chat_messages`, `chat_archive`, `questions`,
+`question_feedback`, `question_history`, `game_plays`, `game_history`,
+`profiles`, `player_stats`, `friend_requests`, `friendships`, `title_unlocks`,
+`site_settings`, `error_logs`.
+
+---
+
+## Development
+
+```bash
+npm install
+npm test                                   # vitest, all unit tests
+npx vitest run tests/module-integrity.test.js   # import-safety check
+node scripts/screenshot.js --state=<name>  # visual review
+node scripts/screenshot.js --all
+node scripts/bump-version.js               # REQUIRED before deploying
+```
+
+### Deploying
+
+1. `npm test` must pass.
+2. `node scripts/bump-version.js` — **without this the service worker keeps
+   serving the old JS and your change will appear to do nothing.**
+3. Push to `claude/setup-oracle-party-PHRgj`.
+
+### Tests
+
+`tests/module-integrity.test.js` statically verifies that every project function
+a module calls is actually imported there. This exists because three such bugs
+reached production: a missing `fetchRoom` left the countdown self-heal dead
+(host quitting mid-countdown hung the room forever), and a missing
+`hideHostSettingsGear` made `cleanup()` throw before unsubscribing Realtime
+channels — leaking a full set of subscriptions on every game exit, which
+compounds the longer a session runs. Unit tests could not catch these, because
+a `ReferenceError` inside a function body only fires when that line runs.
+
+**Coverage is thin where it matters most.** Unit tests cover leaf helpers
+(scoring math, fuzzy matching, timer math). The multiplayer engine is largely
+untested. Multi-client behaviour cannot be verified by unit tests at all — it
+needs browsers driven in parallel.
+
+---
 
 ## Rules for Claude Code
-- **STOP and ASK** before making architectural decisions not covered in this spec
-- **READ THIS ENTIRE FILE BEFORE DOING ANYTHING.** Every section. Every gotcha. No exceptions. If you skip this and repeat a documented mistake, you are wasting the user's time and money.
-- **MAXIMUM EFFORT ALWAYS.** Never guess when you can investigate. Never deploy without verifying. Never assume cross-browser behavior without testing. Never touch code you haven't read. Never change things that aren't broken.
-- **NEVER GIVE UP OR SUGGEST REVERTING.** When something doesn't work, DIAGNOSE WHY. Read the code, add logging, reproduce the failure, trace the logic. Giving up and suggesting "just revert" is not acceptable. The user is paying for solutions, not surrender. If something is broken, fix it. If you can't fix it in one attempt, try a different approach. Keep going until it works.
-- **ONLY change what was asked.** If asked to fix one glyph, fix ONLY that glyph. Do not "improve" 11 others based on Chromium screenshots. Working code that was calibrated on the actual device must not be touched.
-- Do NOT modify files outside the current phase unless necessary
-- Test each screen on mobile viewport (375px) before moving on
-- Commit after each working milestone
-- Use semantic, readable variable/function names
-- Keep CSS variables for all colors, fonts, spacing — theming comes later
-- No external JS frameworks. Supabase JS client is the only dependency.
-- When in doubt, keep it simple. We can add complexity later.
 
-## Visual Review & Playtesting (MANDATORY)
+### Process
+- **Read this entire file before doing anything.**
+- **STOP and ASK before making decisions not covered here.** Do not guess at
+  product intent. The owner is not a coder and prefers being asked over
+  receiving something built on a wrong assumption.
+- **Only change what was asked.** If asked to fix one thing, fix that one thing.
+  Working code calibrated on a real device must not be "improved" on a hunch.
+- **Never give up or suggest reverting.** Diagnose. Add logging. Reproduce.
+  Trace the logic. If one approach fails, try a different one.
+- Commit after each working milestone, with a message explaining *why*.
+- Update this file in the same commit as any architectural change.
 
-### Screenshot Tool
-```bash
-# Single page/screen
-node scripts/screenshot.js [page] --screen=[id] --theme=[dark|oled]
-# Specific mock state (realistic data)
-node scripts/screenshot.js --state=<name>
-# All mock states at once
-node scripts/screenshot.js --all
-# With accessibility scan
-node scripts/screenshot.js --state=<name> --a11y
-```
-- Output: `/tmp/screenshot-<name>.png` — read with the Read tool to visually inspect
-- Mock states defined in `scripts/mock-states.js` — covers splash, home, category grid, lobby, gameplay, reveal, results, etc.
-- Default viewport: 375×812 (iPhone), 2x device scale. Override with `--width=N --height=N`
+### Measuring, not guessing
+- **STOP EYEBALLING. MEASURE.** When something breaks repeatedly, you are
+  guessing. Write code that reports actual values — pixel bounds, element
+  dimensions, font metrics. Hieroglyph descent clipping was solved in five
+  minutes once ink bounds were measured on canvas, after hours of blind tweaks.
+- **Never guess CSS values.** Measure rendered dimensions with Playwright at
+  **both 375px and 430px** before setting any size or position.
+- **Use red overlay debugging** for positioning: render at high opacity in a
+  contrasting colour and screenshot at multiple widths.
+- **Measure both axes.** A fix to vertical clipping can break horizontal.
+- Regex is not a JavaScript parser. If you need to analyse code structure,
+  narrow the problem until a simple check is provably sound.
 
-### The Process (NON-NEGOTIABLE)
-1. **ALWAYS screenshot before pushing.** Never push UI changes blind.
-2. **Read the screenshot with the Read tool** and critically assess — does it actually look good? Be honest.
-3. **Look closely at every detail.** Check alignment, centering, spacing, overlap, color consistency, icon rendering, text readability. Don't gloss over obvious issues like off-center elements, overlapping content, or broken layouts. If something looks even slightly off, fix it before moving on.
-4. **ZOOM IN to verify.** Overview screenshots are NOT sufficient. For any element that could have clipping, overflow, alignment, or sizing issues, create a zoomed-in test (e.g. 2 cards at 250px height, not 12 cards at 900px) and inspect at close range. Do NOT eyeball small thumbnails and claim they look fine — that is self-deception and wastes everyone's time. If you can't clearly see whether something is clipped or misaligned, you haven't zoomed in enough.
-5. **TEST AT REAL DIMENSIONS.** When creating isolated test pages to verify individual components, use the EXACT same dimensions as the real page (same grid settings, same padding, NO min-height overrides, NO artificially tall containers). Testing at fake dimensions and then claiming things look fine is the single biggest recurring mistake — it has wasted literal hours. If the real cards are ~120px tall in a 2-column grid, test at that height. Never add `min-height: 140px` or similar to "see more detail" — you're seeing a lie.
-6. **Fix issues, re-screenshot, repeat** until genuinely confident. Not "good enough" — actually good.
-7. **Check all three themes** (light, dark, OLED) for any visual change.
-8. **Compare against the vision** — does every element earn its place? Does anything look cheap, generic, or like a developer placeholder?
-9. **Playtest gameplay changes** — use mock states or manual browser testing to verify the actual game flow works, not just static visuals.
-10. **Never claim something looks good when it doesn't.** Be the harshest critic before the user has to be. Fuzzy eyeballing is not review — it is self-deception that wastes hours of the user's time.
+### Visual review
+- **Always screenshot before pushing UI changes**, then read the screenshot and
+  assess it honestly.
+- **Zoom in.** Overview thumbnails hide clipping and misalignment.
+- **Test at real dimensions** — same grid, same padding, no `min-height`
+  overrides to "see more detail". Testing at fake dimensions and declaring
+  success is the single most costly recurring mistake in this project.
+- Check light, dark and OLED themes for any visual change.
 
-## Gotchas — Common Mistakes to Avoid
-- **STOP EYEBALLING. MEASURE.** When something keeps breaking despite repeated attempts, you are guessing instead of diagnosing. Stop tweaking numbers blindly. Write code to measure the actual values (pixel bounds, element dimensions, font metrics). You can solve ANY recurring issue if you actually investigate the root cause instead of cargo-culting CSS values. Hieroglyph descent clipping was solved in 5 minutes once we measured ink bounds via canvas — after wasting hours of the user's time on blind guesses.
-- **NEVER GUESS CSS VALUES. NEVER.** Write Playwright scripts to measure actual rendered dimensions at multiple viewport widths (375px AND 430px minimum) before setting any position/size value. Verify the result matches at both widths BEFORE deploying. If you can't measure it, you can't fix it. Guessing and deploying wastes the user's time and money. This is a zero-tolerance rule.
-- **USE RED OVERLAY DEBUGGING.** When positioning glyphs or aligning elements, render them at high opacity (0.7) in a contrasting color (red) and screenshot at multiple viewport widths. This is the ONLY way to see what's actually happening. Do this BEFORE deploying, not after the user reports it's broken.
-- **Test at REAL card dimensions.** Mock states must include all 12 categories with real names (including multi-line names like "Arts & Literature") so grid-auto-rows: 1fr produces the correct card height. Never test with reduced content or overridden padding — you'll get fake dimensions that don't match the live site. **TEST AT REAL DIMENSIONS.** When creating isolated test pages to verify individual components, use the EXACT same dimensions as the real page (same grid settings, same padding, NO min-height overrides, NO artificially tall containers). Testing at fake dimensions and then claiming things look fine is the single biggest recurring mistake — it has wasted literal hours. If the real cards are ~120px tall in a 2-column grid, test at that height. Never add `min-height: 140px` or similar to "see more detail" — you're seeing a lie.
-- **Responsive glyphs: cqi is relative to the CONTENT BOX** (excluding padding), not the total element width. Always account for padding when calculating cqi values. For elements that must align with fixed-position content (like emoji bubbles positioned by fixed padding), use transform: translateY(-N%) where N% references the element's own size — this scales universally.
-- **Never ignore a recurring mystery.** If something keeps going wrong, it means you don't understand the system. Stop and figure out WHY before trying another fix. The answer is always findable.
-- **The ankh-encircling-emoji attempt failed after 20+ iterations.** Do NOT attempt to make a hieroglyph glyph precisely encircle the emoji bubble — Chromium and Safari render the font at different proportions and there is no universal solution for pixel-perfect glyph-to-element alignment. Keep hieroglyphs as simple centered watermarks.
-- **Use the live glyph tuner for cross-browser calibration.** When Chromium screenshots can't be trusted (e.g. hieroglyph positioning), use `host.html?tune=𓂀` (pass any hiero character) to get live sliders on the REAL page. The user adjusts size, bottom, left, and opacity on their actual device, screenshots the values, done. This is the precision tool — no separate test pages, no dimension mismatches. Works for ANY glyph, not just the eye.
-- **Deployment branch is `claude/setup-oracle-party-PHRgj`.** Always push to this branch to deploy to GitHub Pages. The live site URL is `riskyquiznesshq.github.io/Oracle-Party/`. Do NOT guess deployment branches — this has been confirmed.
-- **Do NOT change working glyphs to fix one broken glyph.** If one hieroglyph needs adjustment, change ONLY that one. The others were calibrated on the actual target device and should not be touched based on Chromium-only testing.
-- **Always use maximum effort.** Never guess when you can investigate. Never deploy without verifying. Never assume cross-browser behavior without testing.
-- **NEVER deploy without checking with red overlay first.** Every single CSS change must be screenshotted and visually verified before committing. No exceptions.
-- **Measure ALL dimensions, not just the one you're focused on.** When told to fix vertical clipping, also check horizontal. When told to flush to the right, also verify the left isn't clipped. A fix to one axis can reveal or cause issues on the other axis. Always measure both width AND height ink bounds, and verify the glyph fits the card in BOTH dimensions simultaneously. Include border-radius safe zones in calculations.
-- NEVER show internal state markers (like `__WAGER_LOCKED__`) to players
-- Always fully reset game state when returning to lobby via Play Again
-- Score should never go negative on regular rounds — only final wager
-- Always verify changes didn't break existing functionality before committing
-- When fixing a bug, check if the same pattern exists elsewhere in the codebase
-- Test at 375px mobile viewport before committing any UI changes
-- Clear all previous round data before rendering a new question
-- Use `/clear` between unrelated tasks to prevent context pollution
-- Date questions should ask for the YEAR only, not exact dates, unless the date is very famous (e.g. 1776, 9/11)
-- Number questions should accept reasonable ranges or rounded values — don't expect exact figures for obscure stats
-- When importing new questions, flag any that expect exact dates or very specific numbers
-- NEVER show internal state markers (like `__WAGER_LOCKED__`) to players
-- Always fully reset game state when returning to lobby via Play Again
-- Score should never go negative on regular rounds — only final wager
-- Always verify changes didn't break existing functionality before committing
-- When fixing a bug, check if the same pattern exists elsewhere in the codebase
-- Test at 375px mobile viewport before committing any UI changes
-- Clear all previous round data before rendering a new question
-- Use `/clear` between unrelated tasks to prevent context pollution
-- Date questions should ask for the YEAR only, not exact dates, unless the date is very famous (e.g. 1776, 9/11)
-- Number questions should accept reasonable ranges or rounded values — don't expect exact figures for obscure stats
-- When importing new questions, flag any that expect exact dates or very specific numbers
+### Gameplay
+- Never show internal state markers (e.g. `__WAGER_LOCKED__`) to players.
+- Fully reset game state when returning to the lobby via Play Again.
+- Scores must never go negative on regular rounds — only the final wager.
+- Clear all previous round data before rendering a new question.
+- When fixing a bug, check whether the same pattern exists elsewhere.
+
+### Content
+- Date questions should ask for the **year** only, unless the exact date is
+  famous (1776, 9/11).
+- Number questions should accept ranges or rounded values — never demand exact
+  figures for obscure stats.
+- Flag any imported question that expects an exact date or a very specific
+  number.
+
+### Known cul-de-sacs
+- **Do not attempt to make a hieroglyph precisely encircle the emoji bubble.**
+  This failed after 20+ iterations; Chromium and Safari render the font at
+  different proportions. Keep hieroglyphs as simple centred watermarks.
+- `cqi` units are relative to the **content box**, excluding padding. Account
+  for padding, or use `transform: translateY(-N%)` which scales universally.
+- Use the live glyph tuner (`host.html?tune=𓂀`) for cross-browser calibration
+  when Chromium screenshots can't be trusted.
+- Do not change working glyphs to fix one broken glyph.
