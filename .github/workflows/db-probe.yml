@@ -1,0 +1,22 @@
+# Reports what is actually in the live Supabase project.
+#
+# Development sessions run firewalled and cannot reach Supabase, so this runs
+# on GitHub's machines instead. It needs no secrets: it uses the publishable
+# key already present in js/db/client.js, so it sees exactly what any visitor
+# sees. It is read-only — permission checks are shaped to match zero rows.
+#
+# Run it from the repo's Actions tab -> "DB Probe" -> "Run workflow".
+name: DB Probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/probe-db.mjs
