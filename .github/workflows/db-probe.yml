@@ -10,6 +10,12 @@ name: DB Probe
 
 on:
   workflow_dispatch:
+  # Also runs whenever the probe itself changes, so results can be collected
+  # without needing permission to dispatch a workflow run by hand.
+  push:
+    paths:
+      - 'scripts/probe-db.mjs'
+      - '.github/workflows/db-probe.yml'
 
 jobs:
   probe:
