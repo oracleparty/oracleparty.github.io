@@ -34,12 +34,24 @@ COMMENT ON COLUMN questions.acceptable_answers IS
 -- --------------------------------------------
 -- 2. CATEGORY PLAY COUNTS
 --
--- get_category_play_counts() returns 404 on the live project — it was never
--- installed, which is why every category card shows "0 plays".
+-- Two separate faults, both confirmed against the live database:
+--
+--   a) game_plays had no `subcategory` column, but insertGamePlay() adds that
+--      field whenever a subcategory is chosen (js/db/players.js). Postgres
+--      rejects the whole INSERT for an unknown column, and the failure is only
+--      logged, never surfaced. So every game played with a subcategory
+--      selected recorded nothing at all — which is why play counts worked
+--      once and then silently stopped.
+--
+--   b) get_category_play_counts() returned 404 — never installed — so the
+--      category cards had nothing to read even for games that did record.
 --
 -- SECURITY DEFINER so it can aggregate game_plays without exposing individual
 -- rows to clients.
 -- --------------------------------------------
+
+ALTER TABLE game_plays
+  ADD COLUMN IF NOT EXISTS subcategory text;
 
 CREATE OR REPLACE FUNCTION get_category_play_counts()
 RETURNS TABLE (category text, subcategory text, play_count bigint)
