@@ -1,0 +1,190 @@
+// Scenario: three robots play a complete game, then leave.
+//
+// Checks the things that only break with several players at once:
+//   * every client agrees on the final scores
+//   * Realtime channels are actually released on exit (the cleanup() leak)
+//   * nobody's console throws along the way
+//
+// Run: node tests/harness/scenario-fullgame.mjs
+import { PlaytestTable } from './harness.js';
+
+const CATEGORY = 'history';
+const QUESTIONS = 3;          // + 1 final wager question
+const problems = [];
+const note = m => console.log('   ·', m);
+
+function seedQuestions(store, n = 40) {
+  const rows = [];
+  for (let i = 1; i <= n; i++) {
+    rows.push({
+      id: `q${i}`,
+      question: `Test question ${i}?`,
+      correct_answer: `Answer ${i}`,
+      acceptable_answers: [],
+      categories: [CATEGORY],
+      subcategory: null,
+      difficulty: 'medium',
+      format: 'open',
+      fun_fact: null,
+      discarded: false,
+    });
+  }
+  store.seed('questions', rows);
+}
+
+async function seatWithName(table, name) {
+  const r = await table.seat(name);
+  await r.page.addInitScript(n =>
+    localStorage.setItem('oracle_party_display_name', n), name);
+  return r;
+}
+
+/** Answer the current question, if the question screen is showing. */
+async function answerQuestion(robot, text) {
+  const input = robot.page.locator('#answer-input');
+  try {
+    await input.waitFor({ state: 'visible', timeout: 12000 });
+  } catch {
+    return false;                     // not on the question screen
+  }
+  // Pick a wager if one is offered and none is preselected.
+  const wager = robot.page.locator('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first();
+  if (await wager.count() > 0 && await wager.isVisible().catch(() => false)) {
+    await wager.click().catch(() => {});
+  }
+  await input.fill(text).catch(() => {});
+  await robot.page.click('#btn-submit-answer').catch(() => {});
+  return true;
+}
+
+const table = await PlaytestTable.open();
+
+try {
+  seedQuestions(table.store);
+
+  // --- Set up the room ---
+  const host = await seatWithName(table, 'Alice');
+  await host.goto('host.html');
+  await host.page.waitForSelector('.category-card', { timeout: 20000 });
+  await host.page.click(`.category-card[data-category="${CATEGORY}"]`);
+  await host.page.waitForTimeout(800);
+  await host.page.click('text=/^All /');
+  await host.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
+  await host.page.click('#btn-host-game');
+  await host.page.waitForURL('**/lobby.html*', { timeout: 20000 });
+  await host.page.waitForTimeout(1200);
+
+  const code = await host.textOf('#lobby-code');
+  note(`room ${code}`);
+
+  const bob = await seatWithName(table, 'Bob');
+  const carol = await seatWithName(table, 'Carol');
+  for (const r of [bob, carol]) {
+    await r.goto('join.html');
+    await r.page.waitForSelector('#code-input', { timeout: 15000 });
+    await r.page.fill('#code-input', code);
+    await r.page.click('#btn-join');
+    await r.page.waitForURL('**/lobby.html*', { timeout: 20000 });
+  }
+  await host.page.waitForTimeout(1500);
+
+  const everyone = [host, bob, carol];
+
+  // Channels held during a normal game — the baseline for the leak check.
+  const channelsInLobby = await host.openChannelCount();
+  note(`host holds ${channelsInLobby} realtime channels in the lobby`);
+
+  // --- Start the game ---
+  await host.page.click('#btn-start-game').catch(() => {});
+  await host.page.waitForURL('**/game.html*', { timeout: 25000 });
+  for (const r of [bob, carol]) {
+    await r.page.waitForURL('**/game.html*', { timeout: 25000 })
+      .catch(() => problems.push(`${r.name} never reached the game screen`));
+  }
+  note('all three reached game.html');
+
+  // --- Play the rounds ---
+  for (let round = 0; round < QUESTIONS + 1; round++) {
+    // Everyone answers. Bob deliberately gets it wrong so scores must differ.
+    for (const r of everyone) {
+      const qIndex = round + 1;
+      const text = r.name === 'Bob' ? 'definitely wrong' : `Answer ${qIndex}`;
+      await answerQuestion(r, text);
+    }
+    await host.page.waitForTimeout(1200);
+
+    // Host drives the reveal, then advances.
+    for (let click = 0; click < 2; click++) {
+      const btn = host.page.locator('#btn-next-question');
+      if (await btn.isVisible().catch(() => false) && await btn.isEnabled().catch(() => false)) {
+        await btn.click().catch(() => {});
+        await host.page.waitForTimeout(900);
+      }
+    }
+    // Scores screen between rounds.
+    const scoresBtn = host.page.locator('#btn-scores-action');
+    if (await scoresBtn.isVisible().catch(() => false)) {
+      await scoresBtn.click().catch(() => {});
+    }
+    await host.page.waitForTimeout(900);
+  }
+
+  await host.page.waitForTimeout(2500);
+
+  // --- Where did everyone end up? ---
+  for (const r of everyone) {
+    const screen = await r.page.evaluate(() => {
+      const el = document.querySelector('.screen.active');
+      return el ? el.id : '(none)';
+    });
+    note(`${r.name} is on ${screen}`);
+  }
+
+  // --- Do the clients agree on scores? ---
+  const scoreboards = [];
+  for (const r of everyone) {
+    const board = await r.page.evaluate(() =>
+      [...document.querySelectorAll('#results-list .result-row, #scores-animated-list .score-row')]
+        .map(row => row.textContent.replace(/\s+/g, ' ').trim())
+        .filter(Boolean));
+    scoreboards.push({ name: r.name, board });
+  }
+  for (const s of scoreboards) note(`${s.name} scoreboard: ${JSON.stringify(s.board).slice(0, 120)}`);
+
+  const nonEmpty = scoreboards.filter(s => s.board.length > 0);
+  if (nonEmpty.length > 1) {
+    const first = JSON.stringify(nonEmpty[0].board);
+    for (const s of nonEmpty.slice(1)) {
+      if (JSON.stringify(s.board) !== first) {
+        problems.push(`scoreboards disagree: ${nonEmpty[0].name} vs ${s.name}`);
+      }
+    }
+  }
+
+  // --- THE LEAK CHECK ---
+  // Leaving must release every Realtime channel. Before the cleanup() fix this
+  // left a full set subscribed on every exit, so handlers fired once more per
+  // game played in a session.
+  const beforeLeave = await bob.openChannelCount();
+  await bob.page.click('#btn-quit-game').catch(() => {});
+  await bob.page.waitForTimeout(2500);
+  const afterLeave = await bob.openChannelCount();
+  note(`Bob channels: ${beforeLeave} in game -> ${afterLeave} after leaving`);
+  if (afterLeave >= beforeLeave && beforeLeave > 0) {
+    problems.push(`leaving did not release Realtime channels (${beforeLeave} -> ${afterLeave})`);
+  }
+
+  // --- Console errors ---
+  for (const r of everyone) {
+    const real = r.consoleErrors.filter(e => !/favicon|net::ERR_/i.test(e));
+    if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
+  }
+} catch (err) {
+  problems.push(`threw: ${err.message.split('\n')[0]}`);
+} finally {
+  await table.close();
+}
+
+console.log('\n' + (problems.length ? '✗ PROBLEMS:' : '✓ full game passed'));
+for (const p of problems) console.log('  -', p);
+process.exit(problems.length ? 1 : 0);

@@ -131,11 +131,69 @@ function calledProjectExports(src) {
   return hits;
 }
 
+/**
+ * Names each module imports from another *project* module, paired with the
+ * file those names must come from. External imports (esm.sh) are skipped.
+ */
+function projectImports(src, fromFile) {
+  const found = [];
+  for (const m of src.matchAll(/import\s+([^;]+?)\s+from\s+['"]([^'"]+)['"]/gs)) {
+    const spec = m[2];
+    if (!spec.startsWith('.')) continue;
+    const target = path.resolve(path.dirname(fromFile), spec);
+    for (const braced of m[1].matchAll(/\{([^}]*)\}/gs)) {
+      for (const part of braced[1].split(',')) {
+        const t = part.trim();
+        if (!t) continue;
+        found.push({ name: t.split(/\s+as\s+/)[0].trim(), target });
+      }
+    }
+  }
+  return found;
+}
+
+/** Names a given file exports, including re-exports from other modules. */
+function exportsOf(src) {
+  const names = new Set();
+  for (const m of src.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+  for (const m of src.matchAll(/export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+  for (const m of src.matchAll(/export\s+class\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+  for (const m of src.matchAll(/export\s*\{([^}]*)\}/gs)) {
+    for (const part of m[1].split(',')) {
+      const t = part.trim();
+      if (!t) continue;
+      const halves = t.split(/\s+as\s+/);
+      names.add((halves[1] || halves[0]).trim());
+    }
+  }
+  return names;
+}
+
 describe('module integrity', () => {
   it('discovers the project source files and their exports', () => {
     expect(FILES.length).toBeGreaterThan(20);
     expect(PROJECT_EXPORTS.size).toBeGreaterThan(50);
   });
+
+  // Importing a name a module does not export is a SyntaxError that kills the
+  // whole page, not just the feature. Renaming a function and missing one call
+  // site shipped exactly this and took game.html down completely.
+  it.each(FILES.map(f => [path.relative(JS_DIR, f), f]))(
+    'js/%s imports only names that its targets actually export',
+    (_label, file) => {
+      const broken = [];
+      for (const { name, target } of projectImports(SOURCES.get(file), file)) {
+        const targetFile = SOURCES.has(target) ? target
+                         : SOURCES.has(`${target}.js`) ? `${target}.js`
+                         : null;
+        if (!targetFile) continue;               // not a project module
+        if (!exportsOf(SOURCES.get(targetFile)).has(name)) {
+          broken.push(`  ${name} is imported from ${path.relative(JS_DIR, targetFile)}, which does not export it`);
+        }
+      }
+      expect(broken.join('\n'), `\n${broken.join('\n')}\n`).toBe('');
+    }
+  );
 
   it.each(FILES.map(f => [path.relative(JS_DIR, f), f]))(
     'js/%s imports every project function it calls',

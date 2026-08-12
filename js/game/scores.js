@@ -30,9 +30,9 @@ import {
   upsertTitleUnlock,
   fetchQuestionFeedback,
   upsertQuestionFeedback,
-  deleteQuestionFeedback,
+  deleteQuestionFeedbackByVoter,
 } from '../supabase.js';
-import { getDisplayName, getCurrentUser, showSignUpModal } from '../auth.js';
+import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../auth.js';
 import { evaluateUnlocks, hasReachedApprentice } from '../titles.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
@@ -1289,7 +1289,7 @@ async function handleReviewQuestions() {
           else btn.insertAdjacentHTML('afterend', '<span class="review-item__flag-reason">Flagged: other</span>');
         } else {
           _qbFeedback[qid] = null;
-          deleteQuestionFeedback({ questionId: qid, roomId: state.room.id, playerName: getDisplayName() });
+          deleteQuestionFeedbackByVoter({ questionId: qid, voterId: getVoterId() });
           if (reasonLabel) reasonLabel.remove();
         }
         // Update flagged highlight
@@ -1318,7 +1318,7 @@ async function handleReviewQuestions() {
         });
       } else {
         _qbFeedback[qid] = null;
-        deleteQuestionFeedback({ questionId: qid, roomId: state.room.id, playerName: getDisplayName() });
+        deleteQuestionFeedbackByVoter({ questionId: qid, voterId: getVoterId() });
       }
       // Update flagged highlight
       const fbObj = _qbFeedback[qid];
