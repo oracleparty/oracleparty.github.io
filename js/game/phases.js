@@ -14,6 +14,7 @@ import {
   fetchQuestionsByIds,
   fetchAnswersForQuestion,
   fetchPlayers,
+  fetchRoom,
   sendMessage,
   removePlayer,
   deleteRoom,

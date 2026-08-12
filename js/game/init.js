@@ -53,7 +53,7 @@ import {
   updateTypingUI,
 } from './chat.js';
 import {
-  initHostSettingsPanel,
+  initHostSettingsPanel, hideHostSettingsGear,
   resetReturnConfirm, registerCleanup as registerHostCleanup,
 } from './host.js';
 import {
@@ -74,7 +74,7 @@ import {
 } from './scores.js';
 import {
   handlePhaseTransition, handleRoomChange, handlePlayerChange,
-  handleAnswerChange, checkStalePresence,
+  handleAnswerChange, checkStalePresence, showCountdownScreen,
   registerCleanup as registerPhasesCleanup,
 } from './phases.js';
 

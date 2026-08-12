@@ -1,10 +1,11 @@
 name: CI
 
+# Runs on every branch. The previous config listed only [main, master], neither
+# of which exists in this repository, so CI had never executed a single time.
 on:
   push:
-    branches: [main, master]
   pull_request:
-    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   test:
