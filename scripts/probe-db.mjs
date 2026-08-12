@@ -52,7 +52,8 @@ for (const t of TABLES) {
   const r = await req(`${t}?select=*&limit=1`, { headers: { Prefer: 'count=exact', Range: '0-0' } });
   const range = r.headers.get('content-range');
   const count = range ? range.split('/')[1] : '?';
-  if (r.status === 200) {
+  // 206 Partial Content is success for a Range request, not a refusal.
+  if (r.status === 200 || r.status === 206) {
     present.push(t);
     console.log(`  ${t.padEnd(20)} readable    rows=${count}`);
   } else if (r.status === 404) {
