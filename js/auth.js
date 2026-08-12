@@ -11,6 +11,7 @@ import { logger } from './logger.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
 const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
+const DEVICE_ID_KEY = 'oracle_party_device_id';
 
 // ============================================
 // DISPLAY NAME (unchanged public API)
@@ -636,4 +637,43 @@ function _showFriendRequestToast(senderName, requestId) {
   };
 
   setTimeout(() => { if (toast.parentNode) toast.remove(); }, FRIEND_REQUEST_TOAST_MS);
+}
+
+/**
+ * A stable, random, anonymous id for this browser.
+ *
+ * Question feedback used to be keyed on (room, display name), which meant a
+ * player could re-rate the same question in every new game — each one counted
+ * — and two guests both called "New Player" silently overwrote each other.
+ *
+ * This gives guests a durable identity so a vote sticks across games and shows
+ * as already-cast on return, without requiring an account. It identifies a
+ * browser, not a person, and is used only to deduplicate feedback.
+ */
+export function getDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = (crypto.randomUUID && crypto.randomUUID()) ||
+           `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch (_) {
+    // Private browsing with storage blocked: fall back to a per-session id so
+    // voting still works, it just will not persist past this tab.
+    if (!window.__deviceIdFallback) {
+      window.__deviceIdFallback = `tmp-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    return window.__deviceIdFallback;
+  }
+}
+
+/**
+ * Who is casting a vote: the account if signed in, otherwise this device.
+ * Account wins so feedback follows the person across their devices.
+ */
+export function getVoterId() {
+  const user = getCurrentUser();
+  return user?.user?.id ? `user:${user.user.id}` : `device:${getDeviceId()}`;
 }

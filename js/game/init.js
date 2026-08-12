@@ -34,7 +34,7 @@ import {
   fetchExclusiveWildCardQuestions,
   fetchQuestionFeedback
 } from '../supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from '../auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getVoterId } from '../auth.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
 import { updatePresence } from '../presence.js';
@@ -85,7 +85,7 @@ import {
 /** Load any previous feedback this player gave on these questions. */
 async function prefetchFeedback() {
   try {
-    const ratings = await fetchQuestionFeedback(state.room.id, getDisplayName());
+    const ratings = await fetchQuestionFeedback(getVoterId());
     for (const r of ratings) {
       _qbFeedback[r.question_id] = {
         type: r.feedback_type,

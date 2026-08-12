@@ -32,7 +32,7 @@ export {
   fetchAllOpenQuestionCount, fetchExclusiveWildCardCount,
   fetchQuestionHistoryForUsers, fetchQuestionByDifficulty, fetchQuestionsByIds,
   upsertQuestionHistory, fetchMasteryCounts,
-  upsertQuestionFeedback, deleteQuestionFeedback, fetchQuestionFeedback,
+  upsertQuestionFeedback, deleteQuestionFeedbackByVoter, fetchQuestionFeedback,
   fetchCategoryPlayCounts, recordQuestionOutcome,
 } from './db/questions.js';
 

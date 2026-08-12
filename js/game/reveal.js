@@ -11,10 +11,10 @@ import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
-         upsertQuestionHistory, upsertQuestionFeedback, deleteQuestionFeedback, sendMessage,
+         upsertQuestionHistory, upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
   recordQuestionOutcome,
 } from '../supabase.js';
-import { getDisplayName, getCurrentUser } from '../auth.js';
+import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
 import { showChatBar } from './chat.js';
@@ -647,13 +647,14 @@ export function initFeedbackListeners() {
         btn.classList.remove('feedback-btn--active');
         if (q) {
           _qbFeedback[q.id] = null;
-          deleteQuestionFeedback({ questionId: q.id, roomId: state.room.id, playerName: getDisplayName() });
+          deleteQuestionFeedbackByVoter({ questionId: q.id, voterId: getVoterId() });
         }
       } else {
         btn.classList.add('feedback-btn--active');
         if (q) {
           _qbFeedback[q.id] = { type, reason: null };
           upsertQuestionFeedback({
+            voterId: getVoterId(),
             questionId: q.id,
             roomId: state.room.id,
             playerName: getDisplayName(),
@@ -698,6 +699,7 @@ export function initFeedbackListeners() {
       if (q) {
         _qbFeedback[q.id] = { type: 'flag', reason };
         upsertQuestionFeedback({
+          voterId: getVoterId(),
           questionId: q.id,
           roomId: state.room.id,
           playerName: getDisplayName(),
