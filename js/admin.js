@@ -822,9 +822,21 @@ async function loadQuestionHealth() {
   const summary = $('#qh-summary');
   if (summary) {
     const played = rows.filter(r => r.times_asked > 0).length;
-    summary.textContent = played === 0
+    const parts = [];
+
+    // State the minimum out loud. A hidden threshold silently drops rows and
+    // is impossible to question later without reading the source.
+    if (_qhSort === 'correct') {
+      parts.push(`Showing questions played at least ${QH_MIN_SAMPLE}× (percentages below that are noise).`);
+    } else if (_qhSort === 'liked') {
+      parts.push(`Showing questions with at least ${QH_MIN_SAMPLE} votes (percentages below that are noise).`);
+    }
+
+    parts.push(played === 0
       ? 'No play data yet — stats appear once games are played.'
-      : `${played} of ${rows.length} shown have been played.`;
+      : `${played} of ${rows.length} shown have been played.`);
+
+    summary.textContent = parts.join(' ');
   }
 
   const more = $('#qh-load-more');
