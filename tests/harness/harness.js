@@ -1,0 +1,178 @@
+// ============================================
+// Robot playtest harness.
+//
+// Serves the real site over HTTP, launches one browser page per robot, and
+// swaps the Supabase library for the fake client shim. The robots then play
+// the actual game through the actual UI.
+//
+// Nothing here ever contacts the real Supabase project, so no test data can
+// reach the production database.
+// ============================================
+
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+import { FakeStore } from './store.js';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(HERE, '..', '..');
+const SHIM = fs.readFileSync(path.join(HERE, 'client-shim.js'), 'utf8');
+
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2',
+  '.mp3': 'audio/mpeg', '.svg': 'image/svg+xml',
+};
+
+function startServer() {
+  const server = http.createServer((req, res) => {
+    const urlPath = decodeURIComponent(req.url.split('?')[0]);
+    const filePath = path.join(ROOT, urlPath === '/' ? 'index.html' : urlPath);
+    if (!filePath.startsWith(ROOT) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+      res.writeHead(404); res.end('not found'); return;
+    }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' });
+    fs.createReadStream(filePath).pipe(res);
+  });
+  return new Promise(resolve => {
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+export class Robot {
+  constructor(name, page, table) {
+    this.name = name;
+    this.page = page;
+    this.table = table;
+    this.consoleErrors = [];
+  }
+
+  async goto(pagePath) {
+    await this.page.goto(`${this.table.baseUrl}/${pagePath}`, { waitUntil: 'domcontentloaded' });
+  }
+
+  /** Live count of Realtime channels this robot still holds open. */
+  async openChannelCount() {
+    return this.page.evaluate(() => (window.__fakeChannels || []).length);
+  }
+
+  async setDisplayName(name) {
+    await this.page.evaluate(n => {
+      localStorage.setItem('oracle_party_display_name', n);
+    }, name);
+  }
+
+  async click(selector) {
+    await this.page.click(selector, { timeout: 10000 });
+  }
+
+  async type(selector, text) {
+    await this.page.fill(selector, text);
+  }
+
+  async textOf(selector) {
+    return (await this.page.textContent(selector))?.trim() ?? null;
+  }
+
+  async isVisible(selector) {
+    return this.page.isVisible(selector).catch(() => false);
+  }
+
+  /** Simulate the phone dying: no beacon, no cleanup — the nastiest real case. */
+  async killAbruptly() {
+    await this.page.context().close();
+    this.dead = true;
+  }
+}
+
+export class PlaytestTable {
+  constructor() {
+    this.store = new FakeStore();
+    this.robots = [];
+  }
+
+  static async open({ headless = true } = {}) {
+    const table = new PlaytestTable();
+    const { server, port } = await startServer();
+    table.server = server;
+    table.baseUrl = `http://127.0.0.1:${port}`;
+    table.browser = await chromium.launch({
+      headless,
+      executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined,
+    });
+    return table;
+  }
+
+  /** Seat a new robot: its own browser context, its own session, shared store. */
+  async seat(name) {
+    const context = await this.browser.newContext({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    const page = await context.newPage();
+    const robot = new Robot(name, page, this);
+
+    page.on('console', msg => {
+      if (msg.type() === 'error') robot.consoleErrors.push(msg.text());
+    });
+    page.on('pageerror', err => robot.consoleErrors.push(String(err)));
+
+    // Bridge: page -> shared store
+    await context.exposeFunction('__dbOp', op => this.store.execute(op));
+    await context.exposeFunction('__dbSubscribe', cfg => {
+      let subId;
+      subId = this.store.subscribe({
+        table: cfg.table,
+        filter: cfg.filter,
+        events: cfg.events,
+        deliver: payload => {
+          // subId is assigned before any event can fire. Page may have
+          // navigated or closed, in which case dropping the event is correct.
+          page.evaluate(
+            ([id, p]) => window.__rtDispatch && window.__rtDispatch(id, p),
+            [subId, payload]
+          ).catch(() => {});
+        },
+      });
+      return subId;
+    });
+    await context.exposeFunction('__dbUnsubscribe', id => { this.store.unsubscribe(id); });
+    await context.exposeFunction('__dbBroadcast', async (topic, event, payload) => {
+      for (const r of this.robots) {
+        await r.page.evaluate(
+          ([t, e, p]) => window.__fakeBroadcast && window.__fakeBroadcast(t, e, p),
+          [topic, event, payload]
+        ).catch(() => {});
+      }
+    });
+
+    // Serve the fake Supabase library in place of the real one.
+    await context.route('**/esm.sh/**', route =>
+      route.fulfill({ status: 200, contentType: 'text/javascript', body: SHIM }));
+
+    // Keep the service worker out of the way; it caches aggressively.
+    await context.route('**/sw.js', route =>
+      route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+
+    // Stub webfonts. Offline they fail, which trips the boot guard in <head>
+    // and replaces the page with "Connection issue" — nothing to do with the
+    // app logic under test.
+    await context.route('**/fonts.googleapis.com/**', route =>
+      route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+    await context.route('**/fonts.gstatic.com/**', route =>
+      route.fulfill({ status: 200, contentType: 'font/woff2', body: '' }));
+
+    await page.addInitScript(n => { window.__robotId = n; }, name);
+
+    this.robots.push(robot);
+    return robot;
+  }
+
+  async close() {
+    await this.browser?.close().catch(() => {});
+    await new Promise(r => this.server ? this.server.close(r) : r());
+  }
+}

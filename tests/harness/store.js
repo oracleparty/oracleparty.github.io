@@ -1,0 +1,247 @@
+// ============================================
+// Fake Supabase — shared in-memory store (Node side)
+//
+// Backs the browser-side client shim. One store is shared by every robot's
+// browser page, which is what makes them see each other.
+//
+// Faithfulness notes (these matter — the real bugs live in these details):
+//   * DELETE events carry ONLY the primary key in `old`. Postgres' default
+//     REPLICA IDENTITY sends nothing else, and js/game/phases.js explicitly
+//     works around this. A fake that sent the whole row would let broken code
+//     pass here and fail in production.
+//   * Events are delivered asynchronously, never inside the caller's own
+//     await. Synchronous delivery would hide ordering races.
+//   * A client receives events for its OWN writes, exactly like Realtime.
+// ============================================
+
+let nextId = 1;
+const uuid = () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`;
+
+export class FakeStore {
+  constructor() {
+    this.tables = new Map();       // name -> array of row objects
+    this.subscribers = [];         // { id, table, filter, events, deliver }
+    this.log = [];                 // every operation, for assertions
+    this.latencyMs = 0;            // artificial delay, set per scenario
+    this.eventDelayMs = 0;         // artificial realtime lag
+  }
+
+  table(name) {
+    if (!this.tables.has(name)) this.tables.set(name, []);
+    return this.tables.get(name);
+  }
+
+  seed(name, rows) {
+    this.table(name).push(...rows.map(r => ({ ...r })));
+  }
+
+  // --- subscriptions ---------------------------------------------------
+
+  subscribe({ table, filter, events, deliver }) {
+    const id = `sub_${this.subscribers.length + 1}`;
+    this.subscribers.push({ id, table, filter, events, deliver, active: true });
+    return id;
+  }
+
+  unsubscribe(id) {
+    const sub = this.subscribers.find(s => s.id === id);
+    if (sub) sub.active = false;
+  }
+
+  /** Subscriptions still live — the leak detector reads this. */
+  activeSubscriptions() {
+    return this.subscribers.filter(s => s.active);
+  }
+
+  _matchesFilter(row, filter) {
+    if (!filter) return true;
+    // Realtime filters look like "room_id=eq.<uuid>"
+    const m = /^(\w+)=eq\.(.*)$/.exec(filter);
+    if (!m) return true;
+    return String(row?.[m[1]]) === String(m[2]);
+  }
+
+  _broadcast(eventType, table, newRow, oldRow) {
+    // Postgres sends only the primary key for DELETE (default REPLICA IDENTITY).
+    const payloadOld = eventType === 'DELETE' && oldRow ? { id: oldRow.id } : oldRow;
+    const targets = this.subscribers.filter(s =>
+      s.active &&
+      s.table === table &&
+      (s.events.includes('*') || s.events.includes(eventType))
+    );
+    for (const sub of targets) {
+      // DELETE filters cannot match, because the payload has no columns beyond
+      // the primary key — the real service behaves the same way, which is why
+      // the app needs its fallback polling.
+      const rowForFilter = eventType === 'DELETE' ? null : (newRow || oldRow);
+      if (eventType !== 'DELETE' && !this._matchesFilter(rowForFilter, sub.filter)) continue;
+      const payload = {
+        eventType,
+        new: newRow ? { ...newRow } : null,
+        old: payloadOld ? { ...payloadOld } : null,
+        table,
+      };
+      setTimeout(() => { if (sub.active) sub.deliver(payload); }, this.eventDelayMs);
+    }
+  }
+
+  // --- query execution -------------------------------------------------
+
+  _applyFilters(rows, filters) {
+    return rows.filter(row => filters.every(f => {
+      const val = row[f.column];
+      switch (f.op) {
+        case 'eq':  return String(val) === String(f.value);
+        case 'neq': return String(val) !== String(f.value);
+        case 'gt':  return val > f.value;
+        case 'gte': return val >= f.value;
+        case 'lt':  return val < f.value;
+        case 'lte': return val <= f.value;
+        case 'is':  return f.value === null ? (val === null || val === undefined) : val === f.value;
+        case 'in':  return f.value.map(String).includes(String(val));
+        case 'contains':
+          return Array.isArray(val) && f.value.every(v => val.includes(v));
+        case 'overlaps':
+          return Array.isArray(val) && f.value.some(v => val.includes(v));
+        case 'like':
+        case 'ilike': {
+          const rx = new RegExp(
+            '^' + String(f.value)
+              .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+              .replace(/%/g, '.*')
+              .replace(/_/g, '.') + '$',
+            f.op === 'ilike' ? 'i' : ''
+          );
+          return rx.test(String(val ?? ''));
+        }
+        case 'or': {
+          // "a.eq.1,b.eq.2"
+          return f.value.split(',').some(clause => {
+            const [col, op, ...rest] = clause.split('.');
+            const target = rest.join('.');
+            if (op === 'eq') return String(row[col]) === target;
+            return false;
+          });
+        }
+        default: return true;
+      }
+    }));
+  }
+
+  async execute(op) {
+    if (this.latencyMs) await new Promise(r => setTimeout(r, this.latencyMs));
+    this.log.push(op);
+
+    const { table, action, payload, filters = [], modifiers = {} } = op;
+    const rows = this.table(table);
+
+    try {
+      if (action === 'select') {
+        let result = this._applyFilters(rows, filters).map(r => ({ ...r }));
+        if (modifiers.order) {
+          const { column, ascending } = modifiers.order;
+          result.sort((a, b) => {
+            if (a[column] === b[column]) return 0;
+            const cmp = a[column] > b[column] ? 1 : -1;
+            return ascending === false ? -cmp : cmp;
+          });
+        }
+        if (modifiers.range) result = result.slice(modifiers.range[0], modifiers.range[1] + 1);
+        if (modifiers.limit != null) result = result.slice(0, modifiers.limit);
+        if (modifiers.single) {
+          if (result.length !== 1) {
+            return { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } };
+          }
+          return { data: result[0], error: null };
+        }
+        if (modifiers.maybeSingle) return { data: result[0] ?? null, error: null };
+        return { data: result, error: null, count: result.length };
+      }
+
+      if (action === 'insert') {
+        const incoming = Array.isArray(payload) ? payload : [payload];
+        const created = [];
+        for (const item of incoming) {
+          // Unique room codes, so the app's 23505 retry path stays reachable.
+          if (table === 'rooms' && item.code && rows.some(r => r.code === item.code)) {
+            return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+          }
+          const row = { id: uuid(), created_at: new Date().toISOString(), ...item };
+          rows.push(row);
+          created.push(row);
+          this._broadcast('INSERT', table, row, null);
+        }
+        if (modifiers.single) return { data: { ...created[0] }, error: null };
+        return { data: created.map(r => ({ ...r })), error: null };
+      }
+
+      if (action === 'update') {
+        const targets = this._applyFilters(rows, filters);
+        const updated = [];
+        for (const row of targets) {
+          const before = { ...row };
+          Object.assign(row, payload);
+          updated.push({ ...row });
+          this._broadcast('UPDATE', table, { ...row }, before);
+        }
+        if (modifiers.single) {
+          if (updated.length !== 1) return { data: null, error: { message: 'no rows', code: 'PGRST116' } };
+          return { data: updated[0], error: null };
+        }
+        return { data: updated, error: null };
+      }
+
+      if (action === 'upsert') {
+        const incoming = Array.isArray(payload) ? payload : [payload];
+        const keys = (modifiers.onConflict || 'id').split(',').map(s => s.trim());
+        const result = [];
+        for (const item of incoming) {
+          const existing = rows.find(r => keys.every(k => String(r[k]) === String(item[k])));
+          if (existing) {
+            const before = { ...existing };
+            Object.assign(existing, item);
+            result.push({ ...existing });
+            this._broadcast('UPDATE', table, { ...existing }, before);
+          } else {
+            const row = { id: uuid(), created_at: new Date().toISOString(), ...item };
+            rows.push(row);
+            result.push({ ...row });
+            this._broadcast('INSERT', table, row, null);
+          }
+        }
+        if (modifiers.single) return { data: result[0], error: null };
+        return { data: result, error: null };
+      }
+
+      if (action === 'delete') {
+        const targets = this._applyFilters(rows, filters);
+        for (const row of targets) {
+          const idx = rows.indexOf(row);
+          if (idx !== -1) rows.splice(idx, 1);
+          this._broadcast('DELETE', table, null, row);
+        }
+        return { data: targets.map(r => ({ ...r })), error: null };
+      }
+
+      if (action === 'rpc') {
+        return { data: this._rpc(table, payload), error: null };
+      }
+
+      return { data: null, error: { message: `unsupported action ${action}` } };
+    } catch (err) {
+      return { data: null, error: { message: err.message } };
+    }
+  }
+
+  _rpc(name, args) {
+    if (name === 'increment_questions_answered') {
+      const row = this.table('game_plays').find(r =>
+        String(r.room_id) === String(args.p_room_id) &&
+        String(r.player_id) === String(args.p_player_id));
+      if (row) row.questions_answered = (row.questions_answered || 0) + 1;
+      return null;
+    }
+    if (name === 'get_category_play_counts') return [];
+    return null;
+  }
+}
