@@ -11,7 +11,9 @@ import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
-         upsertQuestionHistory, upsertQuestionFeedback, deleteQuestionFeedback, sendMessage } from '../supabase.js';
+         upsertQuestionHistory, upsertQuestionFeedback, deleteQuestionFeedback, sendMessage,
+  recordQuestionOutcome,
+} from '../supabase.js';
 import { getDisplayName, getCurrentUser } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
@@ -520,7 +522,34 @@ async function handleDisqualifyRound() {
     `Host disqualified Q${qNum + 1} — no scores affected.`);
 }
 
+/**
+ * Send one outcome row per player for the question just revealed, so the admin
+ * Question Health page has durable per-question performance data.
+ *
+ * Host/co-host only: every device runs this same code, and recording from all
+ * of them would multiply every count by the number of players.
+ *
+ * `overridden` compares the host's final judgement against auto_correct, the
+ * verdict fuzzy matching reached at submit time. A mismatch means a human
+ * decided the answer key was wrong, which is the signal worth surfacing.
+ */
+function recordCurrentQuestionOutcomes() {
+  if (!canControlGame()) return;
+  const question = state.questions[state.currentQuestion];
+  if (!question) return;
+  for (const answer of state.currentAnswers || []) {
+    if (answer.submitted_answer === '__WAGER_LOCKED__') continue;
+    const overridden = answer.auto_correct != null
+      && !!answer.auto_correct !== !!answer.is_correct;
+    recordQuestionOutcome(question.id, answer.is_correct, overridden);
+  }
+}
+
 export async function handleNextQuestion() {
+  // Record how this question performed before moving on. Host only, so counts
+  // are not multiplied by the number of devices in the room.
+  recordCurrentQuestionOutcomes();
+
   const isLastQuestion = state.currentQuestion >= state.totalQuestions - 1;
 
   if (isLastQuestion) {

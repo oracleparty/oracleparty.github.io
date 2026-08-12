@@ -269,6 +269,10 @@ export async function submitAnswer({ roomId, playerId, questionNumber, questionI
       wager,
       submitted_answer: submittedAnswer || '',
       is_correct: isCorrect,
+      // The machine's verdict, kept separate because is_correct is overwritten
+      // in place when a host flips a judgement. Comparing the two is how a bad
+      // answer key gets detected later.
+      auto_correct: isCorrect,
       score_earned: scoreEarned
     }, { onConflict: 'room_id,player_id,question_number' })
     .select()

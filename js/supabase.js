@@ -33,7 +33,7 @@ export {
   fetchQuestionHistoryForUsers, fetchQuestionByDifficulty, fetchQuestionsByIds,
   upsertQuestionHistory, fetchMasteryCounts,
   upsertQuestionFeedback, deleteQuestionFeedback, fetchQuestionFeedback,
-  fetchCategoryPlayCounts,
+  fetchCategoryPlayCounts, recordQuestionOutcome,
 } from './db/questions.js';
 
 // --- Chat ---

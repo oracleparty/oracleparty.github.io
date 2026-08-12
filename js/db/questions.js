@@ -639,3 +639,27 @@ export async function fetchCategoryPlayCounts() {
   }
   return counts;
 }
+
+/**
+ * Record how one player did on one question, for the admin Question Health
+ * page. Guests included — this is the only durable, complete source of
+ * per-question performance:
+ *   - `answers` is deleted when a room is cleaned up
+ *   - `question_history` is keyed on user_id, so guests record nothing
+ *
+ * `overridden` means the host disagreed with the automatic judgement, which is
+ * the strongest signal that a question's acceptable_answers list is missing a
+ * valid answer.
+ *
+ * Called by the host only, once per question, so counts are not multiplied by
+ * the number of devices in the room.
+ */
+export async function recordQuestionOutcome(questionId, isCorrect, overridden) {
+  if (!questionId) return;
+  const { error } = await supabase.rpc('record_question_outcome', {
+    p_question_id: questionId,
+    p_is_correct: !!isCorrect,
+    p_overridden: !!overridden,
+  });
+  if (error) logger.error('Supabase', 'recordQuestionOutcome failed', error);
+}
