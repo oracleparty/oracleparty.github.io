@@ -35,12 +35,14 @@ async function init() {
     loadAnnouncement(),
     loadFeatureFlags(),
     loadFlaggedQueue(),
+    loadQuestionHealth(),
     loadRecentGames(),
     loadChatArchive(),
     loadErrorLogs()
   ]);
 
   attachListeners();
+  attachQuestionHealthListeners();
 }
 
 // ============================================
@@ -207,7 +209,18 @@ async function loadFlaggedQueue() {
     }
     if (removeBtn) {
       const qId = removeBtn.dataset.remove;
-      await supabase.from('questions').update({ format: 'removed' }).eq('id', qId);
+      // Previously this ignored the result entirely and removed the row from
+      // the screen regardless, so an RLS refusal looked like success and the
+      // question came back next game.
+      const { data: removed, error } = await supabase
+        .from('questions').update({ format: 'removed' }).eq('id', qId).select();
+
+      if (error || !removed || removed.length === 0) {
+        removeBtn.textContent = error ? 'Failed' : 'Permission denied';
+        removeBtn.disabled = true;
+        logger.error('Admin', 'question remove affected zero rows', { id: qId, error });
+        return;
+      }
       await supabase.from('question_feedback').delete().eq('question_id', qId).eq('feedback_type', 'flag');
       removeBtn.closest('.admin-flag-row').remove();
     }
@@ -447,7 +460,9 @@ async function loadMoreQuestions() {
 async function fetchQuestions(search, category, format, offset) {
   let query = supabase.from('questions').select('*');
 
-  if (search) query = query.ilike('question_text', `%${search}%`);
+  // Live column is `question`. Searching `question_text` errored out and
+  // returned nothing, so admin search never found anything.
+  if (search) query = query.ilike('question', `%${search}%`);
   if (category) query = query.contains('categories', [category]);
   if (format) query = query.eq('format', format);
 
@@ -544,9 +559,23 @@ function createQuestionRow(q) {
       difficulty: newDifficulty
     };
 
-    const { error } = await supabase.from('questions').update(updates).eq('id', q.id);
-    statusEl.textContent = error ? `Error: ${error.message}` : 'Saved!';
-    if (!error) {
+    // .select() so we can count what was actually written. An RLS refusal
+    // updates zero rows and returns NO error, so checking `error` alone
+    // reported "Saved!" while saving nothing.
+    const { data: saved, error } = await supabase
+      .from('questions').update(updates).eq('id', q.id).select();
+
+    if (error) {
+      statusEl.textContent = `Error: ${error.message}`;
+      return;
+    }
+    if (!saved || saved.length === 0) {
+      statusEl.textContent = 'Not saved — permission denied. Are you signed in as an admin?';
+      logger.error('Admin', 'question update affected zero rows (RLS)', { id: q.id });
+      return;
+    }
+    statusEl.textContent = 'Saved!';
+    {
       // Update the summary text
       row.querySelector('.admin-q-row__text').textContent = newText.length > 80 ? newText.slice(0, 80) + '\u2026' : newText;
       setTimeout(() => { statusEl.textContent = ''; }, ADMIN_STATUS_FADE_MS);
@@ -623,3 +652,192 @@ function escapeText(str) {
 
 // --- Start ---
 init();
+
+// ============================================
+// QUESTION HEALTH
+//
+// Reads the question_health view (migration 025): per-question performance
+// joined with feedback tallies.
+//
+// The default sort is "most overridden" on purpose. A host flipping a
+// judgement is a human stating that a valid answer was rejected, which is the
+// most reliable evidence that acceptable_answers is incomplete — more reliable
+// than flags, because it needs no player to bother reporting anything.
+// ============================================
+
+const QH_PAGE_SIZE = 25;
+let _qhOffset = 0;
+let _qhSort = 'overrides';
+let _qhSearch = '';
+
+const QH_SORTS = {
+  overrides:   { column: 'times_overridden', ascending: false },
+  worst:       { column: 'pct_correct',      ascending: true  },
+  flags:       { column: 'flags',            ascending: false },
+  thumbs_down: { column: 'thumbs_down',      ascending: false },
+  ratio:       { column: 'thumbs_up',        ascending: false },
+  asked:       { column: 'times_asked',      ascending: false },
+};
+
+async function fetchQuestionHealth(offset) {
+  const sort = QH_SORTS[_qhSort] || QH_SORTS.overrides;
+  let query = supabase.from('question_health').select('*');
+
+  if (_qhSearch) query = query.ilike('question', `%${_qhSearch}%`);
+
+  // "Lowest % correct" is only meaningful for questions that have been played;
+  // unplayed ones have a NULL percentage and would otherwise fill the page.
+  if (_qhSort === 'worst' || _qhSort === 'ratio') query = query.gt('times_asked', 0);
+
+  query = query
+    .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
+    .range(offset, offset + QH_PAGE_SIZE - 1);
+
+  const { data, error } = await query;
+  if (error) {
+    logger.error('Admin', 'fetchQuestionHealth failed', error);
+    const list = $('#qh-list');
+    if (list) {
+      list.innerHTML = `<p style="color:var(--color-error, #c33); font-size:var(--text-sm);">
+        Couldn't load: ${escapeText(error.message)}<br>
+        <span style="color:var(--color-text-muted);">If this mentions "question_health", migration 025 hasn't been run yet.</span>
+      </p>`;
+    }
+    return null;
+  }
+  return data || [];
+}
+
+function qhStat(label, value, tone) {
+  const color = tone === 'bad'  ? 'var(--color-error, #c33)'
+              : tone === 'good' ? 'var(--color-success, #2a7)'
+              : 'var(--color-text-muted)';
+  return `<span style="font-size:var(--text-xs); color:${color}; margin-right:var(--space-sm);">
+            ${escapeText(label)} <strong>${escapeText(String(value))}</strong>
+          </span>`;
+}
+
+function createHealthRow(q) {
+  const row = document.createElement('div');
+  row.className = 'admin-flag-row';
+  row.style.cssText = 'padding:var(--space-sm) 0; border-bottom:1px solid var(--color-border);';
+
+  const pct = q.pct_correct == null ? '—' : `${q.pct_correct}%`;
+  const pctTone = q.pct_correct == null ? null : (q.pct_correct < 25 ? 'bad' : q.pct_correct > 75 ? 'good' : null);
+  const alts = Array.isArray(q.acceptable_answers) ? q.acceptable_answers : [];
+
+  row.innerHTML = `
+    <div class="admin-q-row__text" style="font-weight:500; margin-bottom:4px; cursor:pointer;">
+      ${escapeText(q.question || '(no text)')}
+    </div>
+    <div style="margin-bottom:6px;">
+      <span style="font-size:var(--text-xs); color:var(--color-text-muted);">
+        Answer: <strong>${escapeText(q.correct_answer || '?')}</strong>
+      </span>
+    </div>
+    <div>
+      ${qhStat('played', q.times_asked)}
+      ${qhStat('correct', pct, pctTone)}
+      ${qhStat('overrides', q.times_overridden, q.times_overridden > 0 ? 'bad' : null)}
+      ${qhStat('flags', q.flags, q.flags > 0 ? 'bad' : null)}
+      ${qhStat('👍', q.thumbs_up, q.thumbs_up > 0 ? 'good' : null)}
+      ${qhStat('👎', q.thumbs_down, q.thumbs_down > 0 ? 'bad' : null)}
+    </div>
+    <div class="qh-edit" style="display:none; margin-top:var(--space-sm);">
+      <label style="display:block; font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:4px;">
+        Also accept these answers (one per line)
+      </label>
+      <textarea class="input qh-alts" rows="3"
+        placeholder="JFK&#10;Kennedy">${escapeText(alts.join('\n'))}</textarea>
+      <div style="display:flex; gap:var(--space-xs); align-items:center; margin-top:var(--space-xs);">
+        <button class="btn btn-primary qh-save">Save</button>
+        <span class="qh-status" style="font-size:var(--text-xs);"></span>
+      </div>
+    </div>
+  `;
+
+  row.querySelector('.admin-q-row__text').onclick = () => {
+    const edit = row.querySelector('.qh-edit');
+    edit.style.display = edit.style.display === 'none' ? '' : 'none';
+  };
+
+  row.querySelector('.qh-save').onclick = async () => {
+    const statusEl = row.querySelector('.qh-status');
+    statusEl.textContent = 'Saving...';
+    const newAlts = row.querySelector('.qh-alts').value
+      .split('\n').map(s => s.trim()).filter(Boolean);
+
+    // .select() so a silent RLS refusal (zero rows, no error) is caught rather
+    // than reported as success.
+    const { data: saved, error } = await supabase
+      .from('questions')
+      .update({ acceptable_answers: newAlts })
+      .eq('id', q.id)
+      .select();
+
+    if (error) { statusEl.textContent = `Error: ${error.message}`; return; }
+    if (!saved || saved.length === 0) {
+      statusEl.textContent = 'Not saved — permission denied. Signed in as an admin?';
+      logger.error('Admin', 'alternates update affected zero rows (RLS)', { id: q.id });
+      return;
+    }
+    statusEl.textContent = `Saved — ${newAlts.length} alternate${newAlts.length === 1 ? '' : 's'}`;
+    setTimeout(() => { statusEl.textContent = ''; }, ADMIN_STATUS_FADE_MS);
+  };
+
+  return row;
+}
+
+async function loadQuestionHealth() {
+  _qhOffset = 0;
+  const list = $('#qh-list');
+  if (!list) return;
+  list.innerHTML = '<p style="color:var(--color-text-muted); font-size:var(--text-sm);">Loading...</p>';
+
+  const rows = await fetchQuestionHealth(0);
+  if (rows === null) return;           // error already rendered
+
+  list.innerHTML = '';
+  if (!rows.length) {
+    list.innerHTML = '<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No questions match.</p>';
+  }
+  for (const q of rows) list.appendChild(createHealthRow(q));
+
+  const summary = $('#qh-summary');
+  if (summary) {
+    const played = rows.filter(r => r.times_asked > 0).length;
+    summary.textContent = played === 0
+      ? 'No play data yet — stats appear once games are played.'
+      : `${played} of ${rows.length} shown have been played.`;
+  }
+
+  const more = $('#qh-load-more');
+  if (more) more.style.display = rows.length >= QH_PAGE_SIZE ? '' : 'none';
+}
+
+async function loadMoreQuestionHealth() {
+  _qhOffset += QH_PAGE_SIZE;
+  const rows = await fetchQuestionHealth(_qhOffset);
+  if (!rows) return;
+  const list = $('#qh-list');
+  for (const q of rows) list.appendChild(createHealthRow(q));
+  const more = $('#qh-load-more');
+  if (more) more.style.display = rows.length >= QH_PAGE_SIZE ? '' : 'none';
+}
+
+function attachQuestionHealthListeners() {
+  const sortEl = $('#qh-sort');
+  if (sortEl) sortEl.onchange = () => { _qhSort = sortEl.value; loadQuestionHealth(); };
+
+  const searchEl = $('#qh-search');
+  if (searchEl) {
+    let t = null;
+    searchEl.oninput = () => {
+      clearTimeout(t);
+      t = setTimeout(() => { _qhSearch = searchEl.value.trim(); loadQuestionHealth(); }, 300);
+    };
+  }
+
+  const more = $('#qh-load-more');
+  if (more) more.onclick = loadMoreQuestionHealth;
+}
