@@ -30,7 +30,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260812b">
+  <link rel="stylesheet" href="css/style.css?v=20260812c">
 </head>
 <body style="opacity:0">
 
@@ -76,13 +76,17 @@
       <div class="admin-section">
         <h2 class="admin-section__title">Question Health</h2>
         <div class="admin-qh__controls" style="display:flex; gap:var(--space-xs); flex-wrap:wrap; margin-bottom:var(--space-sm);">
-          <select id="qh-sort" class="input" style="flex:1; min-width:170px;">
-            <option value="overrides">Most overridden (worst answer keys)</option>
-            <option value="worst">Lowest % correct</option>
-            <option value="flags">Most flagged</option>
-            <option value="thumbs_down">Most disliked</option>
-            <option value="ratio">Best liked (% up)</option>
-            <option value="asked">Most played</option>
+          <select id="qh-sort" class="input" style="flex:1; min-width:150px;">
+            <option value="overrides">Overrides</option>
+            <option value="correct">% correct</option>
+            <option value="flags">Flags</option>
+            <option value="thumbs_down">Dislikes</option>
+            <option value="thumbs_up">Likes</option>
+            <option value="asked">Times played</option>
+          </select>
+          <select id="qh-dir" class="input" style="flex:0 0 auto; min-width:110px;">
+            <option value="desc">Most first</option>
+            <option value="asc">Least first</option>
           </select>
           <input id="qh-search" class="input" placeholder="Search questions..." style="flex:1; min-width:150px;">
         </div>
@@ -169,7 +173,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=20260812b"></script>
+  <script type="module" src="js/admin.js?v=20260812c"></script>
 
 </body>
 </html>

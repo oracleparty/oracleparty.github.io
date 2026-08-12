@@ -668,29 +668,32 @@ init();
 const QH_PAGE_SIZE = 25;
 let _qhOffset = 0;
 let _qhSort = 'overrides';
+let _qhDir = 'desc';
 let _qhSearch = '';
 
+// Neutral field names; direction is chosen separately by the user.
 const QH_SORTS = {
-  overrides:   { column: 'times_overridden', ascending: false },
-  worst:       { column: 'pct_correct',      ascending: true  },
-  flags:       { column: 'flags',            ascending: false },
-  thumbs_down: { column: 'thumbs_down',      ascending: false },
-  ratio:       { column: 'thumbs_up',        ascending: false },
-  asked:       { column: 'times_asked',      ascending: false },
+  overrides:   'times_overridden',
+  correct:     'pct_correct',
+  flags:       'flags',
+  thumbs_down: 'thumbs_down',
+  thumbs_up:   'thumbs_up',
+  asked:       'times_asked',
 };
 
 async function fetchQuestionHealth(offset) {
-  const sort = QH_SORTS[_qhSort] || QH_SORTS.overrides;
+  const column = QH_SORTS[_qhSort] || QH_SORTS.overrides;
+  const ascending = _qhDir === 'asc';
   let query = supabase.from('question_health').select('*');
 
   if (_qhSearch) query = query.ilike('question', `%${_qhSearch}%`);
 
-  // "Lowest % correct" is only meaningful for questions that have been played;
-  // unplayed ones have a NULL percentage and would otherwise fill the page.
-  if (_qhSort === 'worst' || _qhSort === 'ratio') query = query.gt('times_asked', 0);
+  // Percentages and averages only mean anything once a question has been
+  // played; unplayed rows are NULL and would otherwise dominate the page.
+  if (_qhSort === 'correct') query = query.gt('times_asked', 0);
 
   query = query
-    .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
+    .order(column, { ascending, nullsFirst: false })
     .range(offset, offset + QH_PAGE_SIZE - 1);
 
   const { data, error } = await query;
@@ -698,9 +701,11 @@ async function fetchQuestionHealth(offset) {
     logger.error('Admin', 'fetchQuestionHealth failed', error);
     const list = $('#qh-list');
     if (list) {
+      const missingView = /question_health/i.test(error.message || '');
       list.innerHTML = `<p style="color:var(--color-error, #c33); font-size:var(--text-sm);">
-        Couldn't load: ${escapeText(error.message)}<br>
-        <span style="color:var(--color-text-muted);">If this mentions "question_health", migration 025 hasn't been run yet.</span>
+        Couldn't load: ${escapeText(error.message)}${missingView
+          ? '<br><span style="color:var(--color-text-muted);">The question_health view is missing — run the view section of migration 025.</span>'
+          : ''}
       </p>`;
     }
     return null;
@@ -828,6 +833,9 @@ async function loadMoreQuestionHealth() {
 function attachQuestionHealthListeners() {
   const sortEl = $('#qh-sort');
   if (sortEl) sortEl.onchange = () => { _qhSort = sortEl.value; loadQuestionHealth(); };
+
+  const dirEl = $('#qh-dir');
+  if (dirEl) dirEl.onchange = () => { _qhDir = dirEl.value; loadQuestionHealth(); };
 
   const searchEl = $('#qh-search');
   if (searchEl) {
