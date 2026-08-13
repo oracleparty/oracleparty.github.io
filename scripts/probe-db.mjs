@@ -153,19 +153,37 @@ console.log('='.repeat(70));
 const REQUIRED = {
   players: ['id', 'room_id', 'display_name', 'is_host', 'is_cohost', 'score',
             'last_seen_at', 'disconnected_at', 'joined_at', 'user_id',
-            'avatar_color', 'avatar_emoji', 'title', 'is_ready'],
-  rooms:   ['id', 'code', 'host_name', 'category', 'subcategory', 'status',
+            'avatar_color', 'avatar_emoji', 'title', 'is_ready', 'score'],
+  rooms:   ['id', 'code', 'host_name', 'category', 'subcategory', 'status', 'used_question_ids',
             'game_phase', 'current_question', 'question_ids', 'question_started_at',
             'countdown_started_at', 'questions_per_game', 'question_timer',
             'auto_proceed', 'who_can_join', 'used_question_ids'],
   answers: ['id', 'room_id', 'player_id', 'question_number', 'question_id',
             'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned'],
-  game_plays: ['id', 'room_id', 'player_id', 'category', 'subcategory',
+  game_plays: ['id', 'room_id', 'player_id', 'category', 'subcategory', 'completed_at',
                'total_questions', 'questions_answered', 'final_score', 'completed'],
   question_feedback: ['id', 'question_id', 'voter_id', 'room_id', 'player_name',
                       'feedback_type', 'flag_reason'],
   questions: ['id', 'question', 'correct_answer', 'acceptable_answers',
               'categories', 'subcategory', 'difficulty', 'format', 'fun_fact'],
+  // Everything else the app writes anywhere, gathered by scanning every
+  // .insert/.update/.upsert call. One unknown column rejects the whole
+  // statement, so an unchecked write is a feature that can die silently.
+  profiles:         ['user_id', 'display_name', 'is_admin', 'title_builder_unlocked',
+                     'avatar_color', 'avatar_emoji', 'discriminator'],
+  question_history: ['user_id', 'question_id', 'times_seen', 'times_correct',
+                     'last_correct', 'last_seen_at'],
+  title_unlocks:    ['user_id', 'word_id', 'unlocked_at'],
+  chat_messages:    ['room_id', 'player_name', 'message'],
+  chat_archive:     ['room_code', 'host_name', 'category', 'player_count',
+                     'game_started_at', 'archived_at'],
+  friend_requests:  ['sender_id', 'receiver_id', 'status'],
+  friendships:      ['user_id', 'friend_id'],
+  error_logs:       ['timestamp', 'url', 'user_agent', 'message', 'severity'],
+  site_settings:    ['key', 'value', 'updated_at'],
+  player_stats:     ['user_id'],
+  game_history:     ['user_id', 'played_at'],
+  question_stats:   ['question_id', 'times_asked', 'times_correct', 'times_overridden'],
 };
 
 console.log('\n--- COLUMNS THE APP DEPENDS ON ---');
