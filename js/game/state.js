@@ -61,6 +61,10 @@ export const state = {
   isDeputy: false
 };
 
+// Exposed for the robot harness so a failing scenario can report why, rather
+// than only that. Read-only diagnostics; nothing in the app reads it back.
+if (typeof window !== 'undefined') window.__state = state;
+
 // --- Module-level guards (shared) ---
 export let _flagMenuCloseHandler = null;
 export function setFlagMenuCloseHandler(fn) { _flagMenuCloseHandler = fn; }

@@ -846,15 +846,18 @@ export async function checkStalePresence() {
     }
   }
 
-  // Fallback host promotion: Supabase Realtime DELETE events may not arrive
-  // because the room_id filter can't match DELETE payloads (default REPLICA
-  // IDENTITY only sends the primary key). Re-fetch players every 3rd call
-  // to reduce DB load while still catching missed events.
-  if (_staleCheckCount % 3 === 0) {
-    const freshPlayers = await fetchPlayers(state.room.id);
-    if (freshPlayers.length > 0) {
-      state.players = freshPlayers;
-    }
+  // Re-fetch on every check. Realtime DELETE events can be missed entirely —
+  // the room_id filter cannot match a DELETE payload, because default REPLICA
+  // IDENTITY sends only the primary key — so this poll is the reliable source
+  // of who is still here.
+  //
+  // This previously ran every third call to save queries. That made the local
+  // view of last_seen_at up to 90 seconds out of date, so absence was noticed
+  // three times slower than intended and HOST_HANDOVER_MS could not do its
+  // job. One small query every 30 seconds is not worth that.
+  const freshPlayers = await fetchPlayers(state.room.id);
+  if (freshPlayers.length > 0) {
+    state.players = freshPlayers;
   }
   // While the host is merely ABSENT, deputise rather than replace. Taking the
   // role from someone who glanced at a notification means they return to find
@@ -909,5 +912,4 @@ export async function checkStalePresence() {
     _activateHostControlsForCurrentPhase();
     sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
   }
-}
 }

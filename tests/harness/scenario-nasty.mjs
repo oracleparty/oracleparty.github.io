@@ -105,10 +105,12 @@ async function hostDisappearsMidQuestion() {
     // actually leaderless, so the dead host must be excluded explicitly.
     const deadHostName = host.name;
 
-    // Takeover is gated on the stale threshold (3 minutes when no goodbye
-    // beacon was sent). Waiting that out would make this scenario useless, so
-    // age the dead host's heartbeat directly and let the survivors notice.
-    const staleAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    // Age the dead host past HOST_HANDOVER_MS (30s) but well short of
+    // STALE_TIMEOUT_MS (120s), so this exercises the deputy path rather than
+    // removal-and-promotion. Backdating by ten minutes tested the old
+    // behaviour instead: the host was removed outright and someone inherited
+    // the role, which is a different code path entirely.
+    const staleAt = new Date(Date.now() - 60 * 1000).toISOString();
     const fresh = new Date().toISOString();
     for (const row of table.store.table('players')) {
       row.last_seen_at = row.display_name === deadHostName ? staleAt : fresh;
@@ -125,21 +127,52 @@ async function hostDisappearsMidQuestion() {
     const remaining = table.store.table('players');
     note(`players left: ${remaining.map(p => `${p.display_name}${p.is_host ? '*' : ''}`).join(', ')}`);
 
-    const liveHosts = remaining.filter(p => p.is_host && p.display_name !== deadHostName);
-    const deadStillHost = remaining.some(p => p.display_name === deadHostName && p.is_host);
-
-    if (liveHosts.length === 0) {
-      problems.push(deadStillHost
-        ? 'host died and was never replaced — their row still holds the host flag, so the room cannot advance'
-        : 'host died and nobody was promoted — the room cannot advance');
-    } else if (liveHosts.length > 1) {
-      problems.push(`host died and ${liveHosts.length} players promoted themselves — duplicate hosts`);
+    // Design: while the host is merely ABSENT the crown stays with them and
+    // someone else is deputised to advance. What matters is that a live player
+    // CAN move the game on, not who holds the title.
+    // The absent host should still hold the crown and still be in the room:
+    // they are away, not gone, and must get their game back on return.
+    const stillSeated = remaining.some(p => p.display_name === deadHostName);
+    const stillHost = remaining.some(p => p.display_name === deadHostName && p.is_host);
+    if (!stillSeated) {
+      problems.push('host was removed after only 60s away — should keep their seat until the removal threshold');
+    } else if (!stillHost) {
+      problems.push('host lost the crown after only 60s away — should be deputised, not replaced');
     } else {
-      note(`promoted: ${liveHosts[0].display_name}`);
+      note('absent host kept their seat and the crown');
     }
 
-    // Whoever took over must actually be able to drive the game.
-    const newHostRobot = [bob, carol].find(r => liveHosts.some(h => h.display_name === r.name));
+    const liveHosts = remaining.filter(p => p.is_host && p.display_name !== deadHostName);
+    if (liveHosts.length > 0) {
+      problems.push(`${liveHosts.map(h => h.display_name).join(', ')} took the crown instead of deputising`);
+    }
+
+    const deputies = [];
+    for (const r of [bob, carol]) {
+      const can = await r.page.evaluate(() => {
+        for (const sel of ['#btn-next-question', '#btn-scores-action', '#btn-fw-reveal']) {
+          const el = document.querySelector(sel);
+          if (el && el.offsetParent !== null) return true;
+        }
+        return false;
+      }).catch(() => false);
+      if (can) deputies.push(r.name);
+    }
+    for (const r of [bob, carol]) {
+      const diag = await r.page.evaluate(() => ({
+        deputy: window.__state?.isDeputy,
+        isHost: window.__state?.room?.isHost,
+        phase: window.__state?.gamePhase,
+        players: (window.__state?.players || []).map(p => `${p.display_name}:host=${!!p.is_host}:seen=${p.last_seen_at ? 'y' : 'n'}`),
+      })).catch(e => ({ err: String(e).slice(0, 80) }));
+      note(`${r.name} diag: ${JSON.stringify(diag)}`);
+    }
+    note(`can advance the game: ${deputies.join(', ') || 'NOBODY'}`);
+    if (deputies.length === 0) {
+      problems.push('host went away and nobody can advance — the room is stuck');
+    }
+
+    const newHostRobot = [bob, carol].find(r => deputies.includes(r.name));
     if (newHostRobot) {
       // Check each control separately: .first() returns the first match in DOM
       // order, which is often a hidden button from another screen, and would

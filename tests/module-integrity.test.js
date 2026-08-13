@@ -27,6 +27,8 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 
 const JS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js');
 
@@ -170,6 +172,34 @@ function exportsOf(src) {
 }
 
 describe('module integrity', () => {
+  // A syntax error takes the whole page down, but the rest of the suite stays
+  // green because it only imports leaf helpers. A stray brace in phases.js
+  // shipped exactly that: 307 tests passed while the game would not load.
+  //
+  // `node --check` parses a module without executing it or resolving its
+  // imports. Importing the module instead does not work: these files pull the
+  // Supabase client from esm.sh, and that resolution fails first, masking the
+  // syntax error behind an unrelated one.
+  it.each(FILES.map(f => [path.relative(JS_DIR, f), f]))(
+    'js/%s is syntactically valid',
+    (_label, file) => {
+      // --check infers CommonJS from .js and rejects `import`, so parse a copy
+      // named .mjs.
+      const tmp = path.join(os.tmpdir(), `op-syntax-${path.basename(file)}.mjs`);
+      fs.writeFileSync(tmp, SOURCES.get(file));
+      let error = null;
+      try {
+        execFileSync(process.execPath, ['--check', tmp], { stdio: 'pipe' });
+      } catch (err) {
+        error = (err.stderr?.toString() || err.message)
+          .split('\n').filter(l => /SyntaxError|Error:/.test(l))[0] || 'parse failed';
+      } finally {
+        fs.rmSync(tmp, { force: true });
+      }
+      expect(error, `\n  ${path.relative(JS_DIR, file)}: ${error}\n`).toBe(null);
+    }
+  );
+
   it('discovers the project source files and their exports', () => {
     expect(FILES.length).toBeGreaterThan(20);
     expect(PROJECT_EXPORTS.size).toBeGreaterThan(50);
