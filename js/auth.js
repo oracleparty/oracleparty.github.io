@@ -677,3 +677,29 @@ export function getVoterId() {
   const user = getCurrentUser();
   return user?.user?.id ? `user:${user.user.id}` : `device:${getDeviceId()}`;
 }
+
+/**
+ * Remember which seat this browser held in a given room.
+ *
+ * Rejoin used to recover a player's answers from sessionStorage, which dies
+ * with the tab. So history survived a refresh but not an actual return: close
+ * the browser, come back, and every answer you had already given was orphaned
+ * on a player row that no longer exists.
+ *
+ * localStorage survives the browser closing, so the returning player can
+ * reclaim what they scored.
+ */
+export function rememberSeat(roomId, playerId) {
+  if (!roomId || !playerId) return;
+  try { localStorage.setItem(`oracle_party_seat_${roomId}`, String(playerId)); } catch (_) {}
+}
+
+export function recallSeat(roomId) {
+  if (!roomId) return null;
+  try { return localStorage.getItem(`oracle_party_seat_${roomId}`); } catch (_) { return null; }
+}
+
+export function forgetSeat(roomId) {
+  if (!roomId) return;
+  try { localStorage.removeItem(`oracle_party_seat_${roomId}`); } catch (_) {}
+}

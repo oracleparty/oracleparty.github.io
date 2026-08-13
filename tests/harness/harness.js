@@ -107,11 +107,15 @@ export class PlaytestTable {
   }
 
   /** Seat a new robot: its own browser context, its own session, shared store. */
-  async seat(name) {
+  async seat(name, { storageState } = {}) {
+    // storageState lets a robot come back as the SAME browser rather than a
+    // fresh one. Without it, "rejoining" silently tests a different device,
+    // because localStorage — where a player's seat is remembered — starts empty.
     const context = await this.browser.newContext({
       viewport: { width: 390, height: 844 },
       isMobile: true,
       hasTouch: true,
+      ...(storageState ? { storageState } : {}),
     });
     const page = await context.newPage();
     const robot = new Robot(name, page, this);

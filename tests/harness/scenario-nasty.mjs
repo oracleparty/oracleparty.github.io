@@ -37,8 +37,8 @@ function seedQuestions(store, n = 40) {
   store.seed('questions', rows);
 }
 
-async function seatWithName(table, name) {
-  const r = await table.seat(name);
+async function seatWithName(table, name, opts) {
+  const r = await table.seat(name, opts);
   await r.page.addInitScript(n =>
     localStorage.setItem('oracle_party_display_name', n), name);
   return r;
@@ -318,7 +318,88 @@ async function simultaneousAnswers() {
   }
 }
 
+// ============================================================
+// 4. SEAT RELEASED, THEN REJOIN
+// ============================================================
+async function rejoinAfterSeatReleased() {
+  heading('player rejoins after their seat was released');
+  const table = await PlaytestTable.open();
+  try {
+    seedQuestions(table.store);
+    const { host, code } = await openRoom(table);
+    const bob = await joinRoom(table, 'Bob', code);
+    await host.page.waitForTimeout(1500);
+
+    await host.page.click('#btn-start-game').catch(() => {});
+    await bob.page.waitForURL('**/game.html*', { timeout: 25000 }).catch(() => {});
+    await host.page.waitForTimeout(6000);
+
+    // Bob answers the first question correctly, so there is history to lose.
+    const answer = async (r, text) => {
+      const input = r.page.locator('#answer-input');
+      await input.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
+      const w = r.page.locator('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first();
+      if (await w.isVisible().catch(() => false)) await w.click().catch(() => {});
+      await input.fill(text).catch(() => {});
+      await r.page.click('#btn-submit-answer').catch(() => {});
+    };
+    await answer(host, 'Answer 1');
+    await answer(bob, 'Answer 1');
+    await host.page.waitForTimeout(2000);
+
+    const bobRowBefore = table.store.table('players').find(p => p.display_name === 'Bob');
+    const answersBefore = table.store.table('answers')
+      .filter(a => String(a.player_id) === String(bobRowBefore?.id));
+    note(`Bob answered ${answersBefore.length} question(s) before dropping`);
+    if (answersBefore.length === 0) {
+      problems.push('setup failed: Bob never recorded an answer, so rejoin cannot be judged');
+      return;
+    }
+
+    // Keep the browser's storage: this is the same person reopening the app,
+    // not someone arriving on a new device.
+    const bobStorage = await bob.page.context().storageState();
+    await bob.page.context().close();
+    const removed = table.store.table('players').findIndex(p => p.display_name === 'Bob');
+    if (removed !== -1) table.store.table('players').splice(removed, 1);
+    note('Bob removed from the room entirely');
+    await host.page.waitForTimeout(2000);
+
+    // He comes back with the same display name.
+    const bobAgain = await seatWithName(table, 'Bob', { storageState: bobStorage });
+    await bobAgain.goto('join.html');
+    await bobAgain.page.waitForSelector('#code-input', { timeout: 15000 });
+    await bobAgain.page.fill('#code-input', code);
+    await bobAgain.page.click('#btn-join');
+    await bobAgain.page.waitForTimeout(6000);
+
+    const bobRows = table.store.table('players').filter(p => p.display_name === 'Bob');
+    note(`after rejoin: ${table.store.table('players').map(p => p.display_name).join(', ')}`);
+    if (bobRows.length === 0) {
+      problems.push('player could not rejoin after their seat was released');
+      return;
+    }
+    if (bobRows.length > 1) {
+      problems.push(`rejoining created ${bobRows.length} rows for the same player`);
+    }
+
+    // The point of holding history: his earlier answers must follow him to the
+    // new seat, or he returns with his score wiped.
+    const newId = String(bobRows[0].id);
+    const carried = table.store.table('answers').filter(a => String(a.player_id) === newId);
+    note(`answers now attached to Bob's new seat: ${carried.length} of ${answersBefore.length}`);
+    if (carried.length < answersBefore.length) {
+      problems.push(`rejoin lost history: ${answersBefore.length} answers before, ${carried.length} after`);
+    }
+  } catch (err) {
+    problems.push(`rejoin-after-removal scenario threw: ${err.message.split('\n')[0]}`);
+  } finally {
+    await table.close();
+  }
+}
+
 await hostDisappearsMidQuestion();
+await rejoinAfterSeatReleased();
 await playerDropsAndRejoins();
 await simultaneousAnswers();
 

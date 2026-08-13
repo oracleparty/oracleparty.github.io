@@ -34,7 +34,8 @@ import {
   fetchExclusiveWildCardQuestions,
   fetchQuestionFeedback
 } from '../supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getVoterId } from '../auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getVoterId,
+         rememberSeat, recallSeat } from '../auth.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
 import { updatePresence } from '../presence.js';
@@ -173,7 +174,9 @@ async function init() {
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
     } else {
       // Create a fresh player row and migrate orphaned answers
-      const prevPlayerId = state.room.playerId;
+      // Fall back to the durable record: sessionStorage is gone if the
+      // browser was closed rather than refreshed.
+      const prevPlayerId = state.room.playerId || recallSeat(state.room.id);
       const authUser = getCurrentUser();
       const rejoinUserId = authUser?.user?.id || null;
       const extras = {};
@@ -315,6 +318,23 @@ async function init() {
     const el = document.querySelector(sel);
     if (el) attachProfileCardHandler(el, () => state.players, state.room.id);
   }
+
+  // Reclaim a previous seat in this room, whatever route brought us back.
+  //
+  // The rejoin branch above only fires when our own player row is missing. A
+  // player who returns through the join screen arrives with a brand new row
+  // already created, so that branch is skipped and every answer they had
+  // given stays orphaned on the seat they lost. Reconciling here covers both
+  // routes.
+  const priorSeat = recallSeat(state.room.id);
+  if (priorSeat && String(priorSeat) !== String(state.room.playerId)) {
+    const stillThere = state.players.some(p => String(p.id) === String(priorSeat));
+    if (!stillThere) {
+      await reassignPlayerAnswers(state.room.id, priorSeat, state.room.playerId);
+      logger.info('Init', 'reclaimed answers from a previous seat in this room');
+    }
+  }
+  rememberSeat(state.room.id, state.room.playerId);
 
   // Track presence as "in game"
   updatePresence({ activity: 'game', roomId: state.room.id, category: state.room.category });
