@@ -136,3 +136,46 @@ for (const fn of ['get_category_play_counts', 'increment_questions_answered']) {
 console.log('\n' + '='.repeat(70));
 console.log('Probe complete. Nothing was created, modified or deleted.');
 console.log('='.repeat(70));
+
+// ============================================
+// COLUMN EXISTENCE
+//
+// The tables above are mostly empty, so sampling a row reveals nothing about
+// their shape. PostgREST names a missing column in its error, which makes a
+// targeted select a definitive existence test.
+//
+// This matters because the app writes columns that may never have been
+// created: an absent last_seen_at makes checkStalePresence() read every
+// player as silent since epoch, and the host then kicks everyone roughly 30
+// seconds after they join.
+// ============================================
+
+const REQUIRED = {
+  players: ['id', 'room_id', 'display_name', 'is_host', 'is_cohost', 'score',
+            'last_seen_at', 'disconnected_at', 'joined_at', 'user_id',
+            'avatar_color', 'avatar_emoji', 'title', 'is_ready'],
+  rooms:   ['id', 'code', 'host_name', 'category', 'subcategory', 'status',
+            'game_phase', 'current_question', 'question_ids', 'question_started_at',
+            'countdown_started_at', 'questions_per_game', 'question_timer',
+            'auto_proceed', 'who_can_join', 'used_question_ids'],
+  answers: ['id', 'room_id', 'player_id', 'question_number', 'question_id',
+            'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned'],
+  game_plays: ['id', 'room_id', 'player_id', 'category', 'subcategory',
+               'total_questions', 'questions_answered', 'final_score', 'completed'],
+  question_feedback: ['id', 'question_id', 'voter_id', 'room_id', 'player_name',
+                      'feedback_type', 'flag_reason'],
+  questions: ['id', 'question', 'correct_answer', 'acceptable_answers',
+              'categories', 'subcategory', 'difficulty', 'format', 'fun_fact'],
+};
+
+console.log('\n--- COLUMNS THE APP DEPENDS ON ---');
+for (const [tbl, cols] of Object.entries(REQUIRED)) {
+  const missing = [];
+  for (const col of cols) {
+    const r = await req(`${tbl}?select=${col}&limit=1`);
+    if (r.status === 400 && /does not exist|could not find/i.test(r.body || '')) missing.push(col);
+  }
+  console.log(missing.length
+    ? `  ${tbl.padEnd(20)} *** MISSING: ${missing.join(', ')} ***`
+    : `  ${tbl.padEnd(20)} all present`);
+}
