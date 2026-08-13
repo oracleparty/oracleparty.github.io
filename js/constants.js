@@ -74,6 +74,10 @@ export const NIGHT_OWL_START_HOUR = 2;
 export const NIGHT_OWL_END_HOUR = 5;
 
 // === STALE PRESENCE ===
+// A host who goes quiet for this long hands the role over. Deliberately far
+// shorter than STALE_TIMEOUT_MS: their row is kept so they can rejoin
+// seamlessly, but the game must not sit frozen waiting for one phone.
+export const HOST_HANDOVER_MS = 30000;
 export const STALE_TIMEOUT_MS = 180000;          // 3 minutes — grace period for internet loss / screen off
 export const DISCONNECTED_TIMEOUT_MS = 45000;     // 45 seconds — faster cleanup after beacon (tab close)
 export const HEARTBEAT_DB_INTERVAL_MS = 15000;    // 15 seconds — DB heartbeat (last_seen_at update)

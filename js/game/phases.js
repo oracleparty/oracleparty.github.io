@@ -6,9 +6,9 @@
 import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../utils.js';
 import { findNextAvailableWager } from './scoring-helpers.js';
 import { getCountdownElapsed } from './timer-helpers.js';
-import { determineNextHost } from './host-promotion.js';
+import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
 import { logger } from '../logger.js';
-import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS } from '../constants.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS } from '../constants.js';
 import {
   updateGameState,
   fetchQuestionsByIds,
@@ -21,6 +21,7 @@ import {
   promoteToHost,
   insertGamePlay,
   demoteCohost,
+  demoteHost,
 } from '../supabase.js';
 import { getDisplayName } from '../auth.js';
 import {
@@ -73,7 +74,7 @@ export async function handlePlayerChange(payload) {
     // BUG 2 FIX: Don't rely on payload.old.is_host — Supabase default REPLICA
     // IDENTITY only sends the primary key in OLD for DELETE events. Instead check
     // if any remaining player has is_host=true. If not, promote the next player.
-    const nextHost = determineNextHost(state.players);
+    const nextHost = determineNextHost(state.players, findAbsentPlayers(state.players, HOST_HANDOVER_MS));
     if (nextHost && String(nextHost.id) === String(state.room.playerId)) {
       // Cross-client race guard — another client may have already promoted
       // itself before our DELETE event arrived. Re-fetch and bail if a host
@@ -855,16 +856,25 @@ export async function checkStalePresence() {
       state.players = freshPlayers;
     }
   }
-  const staleNextHost = determineNextHost(state.players);
+  const staleNextHost = determineNextHost(state.players, findAbsentPlayers(state.players, HOST_HANDOVER_MS));
   if (staleNextHost && String(staleNextHost.id) === String(state.room.playerId)) {
     // Cross-client race guard: another client may have promoted itself
     // between our local determineNextHost call and now. Re-fetch and bail
     // if a host already exists. Without this, two clients can both succeed
     // at promoteToHost and the room ends up with two hosts.
     const fresh = await fetchPlayers(state.room.id);
-    if (fresh.some(p => p.is_host)) {
+    // Only a PRESENT host blocks the takeover. A dead host's row keeps its
+    // flag until removal, which is three minutes away.
+    const freshAbsent = findAbsentPlayers(fresh, HOST_HANDOVER_MS);
+    if (fresh.some(p => p.is_host && !freshAbsent.has(String(p.id)))) {
       state.players = fresh;
       return;
+    }
+    // Stand the absent host down so the room never shows two hosts.
+    for (const old of fresh) {
+      if (old.is_host && freshAbsent.has(String(old.id))) {
+        demoteHost(old.id).catch(e => logger.warn('Game', 'demote absent host failed', e));
+      }
     }
     // If we were co-host, clear that flag first
     if (state.room.isCohost) {

@@ -4,7 +4,7 @@
 // Supabase API calls are always network-only.
 // ============================================
 
-const CACHE_VERSION = 'op-v20260813b';
+const CACHE_VERSION = 'op-v20260813c';
 const APP_SHELL = [
   './',
   './index.html',

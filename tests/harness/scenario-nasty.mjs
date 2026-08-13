@@ -118,7 +118,7 @@ async function hostDisappearsMidQuestion() {
     // Survivors re-check every STALE_CHECK_INTERVAL (30s) but only refetch
     // players from the database every third check, so a change made here can
     // take up to 90 seconds to be noticed. Wait long enough to cover that.
-    await bob.page.waitForTimeout(100000);
+    await bob.page.waitForTimeout(40000);
 
     note(`after: Bob on ${await activeScreen(bob)}, Carol on ${await activeScreen(carol)}`);
 
@@ -141,9 +141,16 @@ async function hostDisappearsMidQuestion() {
     // Whoever took over must actually be able to drive the game.
     const newHostRobot = [bob, carol].find(r => liveHosts.some(h => h.display_name === r.name));
     if (newHostRobot) {
-      const canAdvance = await newHostRobot.page
-        .locator('#btn-next-question, #btn-submit-answer, #btn-scores-action')
-        .first().isVisible().catch(() => false);
+      // Check each control separately: .first() returns the first match in DOM
+      // order, which is often a hidden button from another screen, and would
+      // report "no controls" while a working one sits right there.
+      const controls = ['#btn-next-question', '#btn-scores-action', '#btn-submit-answer', '#btn-fw-reveal'];
+      const visible = [];
+      for (const sel of controls) {
+        if (await newHostRobot.page.locator(sel).isVisible().catch(() => false)) visible.push(sel);
+      }
+      const canAdvance = visible.length > 0;
+      note(`${newHostRobot.name} visible controls: ${visible.join(', ') || 'none'}`);
       if (!canAdvance) {
         problems.push(`${newHostRobot.name} was promoted but has no control visible on ${await activeScreen(newHostRobot)}`);
       } else {
