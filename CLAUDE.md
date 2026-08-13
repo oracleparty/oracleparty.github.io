@@ -239,14 +239,22 @@ The agreed model — implemented except where marked:
 - **Succession order: co-host first** (designated heir, can already advance),
   then longest-present. Absent players can neither hold nor inherit the role.
 
-**Intended, not yet built:** at 30s the host should *keep the crown* and the
-co-host / longest-present player should be **temporarily deputised** to
-advance. Transferring the role outright means a host who glances at a
-notification loses control of their own game. The crown should only move
-permanently on real departure.
+**Deputising, not replacement.** At `HOST_HANDOVER_MS` the host *keeps the
+crown* and the next in line is granted advance rights via `state.isDeputy`
+(`canControlGame()` honours it). Taking the role outright meant a host who
+glanced at a notification returned to find they no longer ran their own game.
+The role moves permanently only on real departure, which arrives as a DELETE.
 
-**Unverified:** rejoining after the seat has actually been released. Refresh
-and rejoin is covered by the robot tests; full removal then return is not.
+**Rejoin keeps your history.** The seat is recorded in `localStorage`
+(`rememberSeat` / `recallSeat` in `auth.js`) and reclaimed on arrival by any
+route. sessionStorage was used before, which dies with the tab: history
+survived a refresh but not an actual return. Reclaiming also has to run
+outside the missing-row branch, because a player returning through the join
+screen arrives with a freshly created row and would skip it.
+
+`checkStalePresence` re-fetches players on **every** call. It used to do so
+every third call, leaving the local view of `last_seen_at` up to 90s stale, so
+absence was noticed three times slower than intended.
 
 ## Question Feedback and Health
 
@@ -285,6 +293,18 @@ sequence.** Phases arrive over Realtime and never land in lockstep, so a
 scripted order desynchronises and then reports the script's own impatience as
 a bug.
 
+**The harness has misreported more often than the app has misbehaved.** Every
+one of these looked like a real finding:
+
+- seating a returning player in a fresh browser context — tests "same person,
+  different device", where nothing can be recovered, while claiming to test
+  rejoin. Carry `storageState` across the gap.
+- backdating an absent host past the removal threshold — exercises
+  removal-and-promotion while claiming to test deputising.
+- counting host rows after killing the host — a dead browser leaves its row
+  with the flag set, so "exactly one host" reads as success on a leaderless
+  room.
+
 **Most early failures were the harness misreading the app.** Quit is
 tap-again-to-confirm on one button, not a dialog. The final wager needs an
 amount chosen before it can lock. `.first()` on a multi-selector returns the
@@ -313,7 +333,8 @@ node scripts/bump-version.js               # REQUIRED before deploying
 
 ### Tests
 
-`tests/module-integrity.test.js` statically verifies that every project function
+`tests/module-integrity.test.js` runs `node --check` over every module and
+statically verifies that every project function
 a module calls is actually imported there. This exists because three such bugs
 reached production: a missing `fetchRoom` left the countdown self-heal dead
 (host quitting mid-countdown hung the room forever), and a missing
@@ -321,6 +342,12 @@ reached production: a missing `fetchRoom` left the countdown self-heal dead
 channels — leaking a full set of subscriptions on every game exit, which
 compounds the longer a session runs. Unit tests could not catch these, because
 a `ReferenceError` inside a function body only fires when that line runs.
+
+The syntax check exists because a stray brace left `phases.js` unparseable and
+`game.html` would not load at all, while 307 tests stayed green — nothing
+imports `phases.js`. Importing each module to catch this does **not** work:
+these files pull the Supabase client from `esm.sh`, and that resolution fails
+first, masking the syntax error behind an unrelated one.
 
 **Coverage is thin where it matters most.** Unit tests cover leaf helpers
 (scoring math, fuzzy matching, timer math). The multiplayer engine is largely
