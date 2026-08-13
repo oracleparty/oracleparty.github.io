@@ -1338,11 +1338,30 @@ function handleRoomChange(payload) {
 
 function checkStalePresence() {
   const now = Date.now();
+
+  // The whole mechanism rests on last_seen_at being refreshed by the heartbeat
+  // every 15 seconds. If not one player has that column, the heartbeat is not
+  // working at all (on the live database the column did not exist), and every
+  // timestamp we could fall back to is frozen at join time — so everyone would
+  // be judged stale a few minutes in and kicked while sitting there healthy.
+  //
+  // Removing players is destructive and cannot be undone by the player, so
+  // when the evidence is unavailable the correct action is none.
+  const heartbeatWorking = players.some(p => p.last_seen_at);
+  if (!heartbeatWorking) return;
+
   for (const p of players) {
     const id = String(p.id);
     if (id === String(room.playerId)) continue; // Don't kick ourselves
 
-    const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).getTime() : 0;
+    // A missing timestamp means "we cannot tell", not "silent since 1970".
+    // last_seen_at did not exist on the live players table, so this read as
+    // undefined, silence computed as the whole Unix epoch, and the host kicked
+    // every player on the first presence sync after they joined. Absence of
+    // evidence must never be treated as evidence of absence.
+    const lastSeenRaw = p.last_seen_at || p.joined_at;
+    const lastSeen = lastSeenRaw ? new Date(lastSeenRaw).getTime() : 0;
+    if (!lastSeen) continue;
     const silenceMs = now - lastSeen;
     const hasDisconnected = !!p.disconnected_at;
 
@@ -1355,7 +1374,11 @@ function checkStalePresence() {
       // Stale host: earliest connected player kicks them (deterministic)
       const connected = players
         .filter(pl => {
-          const ls = pl.last_seen_at ? new Date(pl.last_seen_at).getTime() : 0;
+          const raw = pl.last_seen_at || pl.joined_at;
+          const ls = raw ? new Date(raw).getTime() : 0;
+          // No timestamp: treat as connected rather than silently excluding them
+          // from the promotion ballot, which would leave the room hostless.
+          if (!ls) return true;
           return (now - ls) < DISCONNECTED_TIMEOUT_MS && !pl.disconnected_at;
         })
         .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));

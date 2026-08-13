@@ -10,6 +10,12 @@ import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
  * Add a player to a room.
  */
 export async function addPlayer(roomId, displayName, isHost = false, userId = null, extras = {}) {
+  // Deliberately does NOT set last_seen_at. That column is missing from the
+  // live players table, and Postgres rejects an entire INSERT for an unknown
+  // column — writing it here would stop anyone joining at all, exactly as the
+  // same mistake silently killed every game_plays insert. The staleness check
+  // falls back to joined_at instead, so a missing column cannot get anyone
+  // kicked. Add it here once migration 027 is confirmed applied.
   const payload = { room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString() };
   if (userId) payload.user_id = userId;
   if (extras.avatarColor) payload.avatar_color = extras.avatarColor;
