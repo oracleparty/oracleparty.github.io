@@ -5,7 +5,11 @@
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-12.
+> Last verified against the code: 2026-08-13.
+>
+> The live database was verified directly on 2026-08-13 via
+> `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
+> applied — several were never run.
 
 ## What This Is
 
@@ -59,7 +63,33 @@ by necessity, in `js/db/client.js`), anyone can read, update **and delete**
 The one table that *is* locked is `questions` — read-only, no write policy in
 any migration. That protects the question bank but breaks admin editing (#3).
 
-### 3. Admin question edits silently do nothing
+### 3. Schema drift is the single biggest source of "impossible" bugs
+
+Migrations are hand-applied, and several were never run. Every bug of this
+shape presented as something else entirely:
+
+| Missing thing | How it looked |
+|---|---|
+| `players.last_seen_at` | Players kicked from the lobby seconds after joining |
+| `players.is_cohost` | Co-host silently did nothing, for months |
+| `game_plays.subcategory` | Play counts "mysteriously" stopped recording |
+| `get_category_play_counts()` | Every category showed 0 plays |
+| `questions.acceptable_answers` | Correct answers judged wrong |
+| `rooms.auto_proceed` | Host setting silently ignored |
+
+Postgres rejects an **entire INSERT** for one unknown column, and the app only
+logs the failure. So one missing column silently kills a whole feature.
+
+**Run `scripts/probe-db.mjs` before believing anything about the schema.** It
+runs on GitHub Actions (dev sessions are firewalled from Supabase), needs no
+secret, and reports which columns exist and what any visitor is permitted to
+do. `.github/workflows/db-probe.yml` triggers it on push.
+
+**Before adding a column to any INSERT, confirm it exists.** Writing
+`last_seen_at` in `addPlayer` before the column existed would have stopped
+anyone joining at all.
+
+### 4. Admin question edits silently do nothing
 
 `js/admin.js` tries to update `questions` (mark flagged questions as `removed`,
 or edit text/answers). Because there is no write policy, **RLS discards these
@@ -71,7 +101,7 @@ error, so it reports "Saved!" while saving nothing.
 Player-side feedback (thumbs up/down/flag) **does** write correctly. Only the
 admin's response to it is broken.
 
-### 4. Migrations are applied by hand
+### 5. Migrations are applied by hand
 
 `migrations/*.sql` are pasted into the Supabase SQL Editor manually. Nothing
 records which ones were actually run, so **the live schema is not known with
@@ -192,6 +222,75 @@ to get the real picture before relying on any table or policy.
 
 ---
 
+## Presence, Away and Host Handover
+
+The agreed model — implemented except where marked:
+
+- **Away** is shown as soon as presence reports it: the player fades to 40%
+  opacity in lobby, reveal, scores, results and final wager. The game never
+  waits on an away player.
+- **A missed question scores 0 and burns the player's lowest unused wager**
+  (`findNextAvailableWager`). This is deliberately identical to being present,
+  wagering 1 and getting it wrong — so vanishing is neither rewarded nor
+  punished beyond the loss itself.
+- **`HOST_HANDOVER_MS` (30s)** — the game must not stall behind one phone.
+- **`STALE_TIMEOUT_MS`** — the seat is released. Rejoining reassigns previous
+  answers to the new player row, so score and history survive.
+- **Succession order: co-host first** (designated heir, can already advance),
+  then longest-present. Absent players can neither hold nor inherit the role.
+
+**Intended, not yet built:** at 30s the host should *keep the crown* and the
+co-host / longest-present player should be **temporarily deputised** to
+advance. Transferring the role outright means a host who glances at a
+notification loses control of their own game. The crown should only move
+permanently on real departure.
+
+**Unverified:** rejoining after the seat has actually been released. Refresh
+and rejoin is covered by the robot tests; full removal then return is not.
+
+## Question Feedback and Health
+
+- Feedback is keyed on **`voter_id`** — `user:<uuid>` signed in, otherwise
+  `device:<uuid>` from localStorage. One vote per person per question, ever.
+  Guests included: gating this behind sign-up would mean most questions are
+  never rated, which defeats the point.
+- **`question_stats`** records per-question performance for every player,
+  guests included. Neither `answers` (deleted with the room) nor
+  `question_history` (logged-in users only) could do this.
+- **`times_overridden` is the most valuable column.** A host flipping a
+  judgement is a human stating a valid answer was rejected — better evidence
+  of a bad answer key than a flag, and it costs players no effort.
+- The admin **Question Health** section sorts on any of these and edits
+  `acceptable_answers` inline.
+- **Never auto-generate acceptable answers.** The question bank's value is
+  that it is not model-generated. The owner adds alternates by hand.
+
+## Robot Playtesting
+
+`tests/harness/` drives real browsers through the real UI with the Supabase
+library swapped for an in-memory stand-in. **No test data ever reaches the
+production database and no robot ever appears in a real lobby.**
+
+```bash
+node tests/harness/scenario-lobby.mjs      # host + 2 players see each other
+node tests/harness/scenario-fullgame.mjs   # full game, score agreement, channel cleanup
+node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous answers
+```
+
+**What it cannot catch:** schema drift. The fake store accepts any column, so
+a missing column is invisible to it. That is what `probe-db.mjs` is for.
+
+**Drive robots from whatever screen they are on, never a fixed click
+sequence.** Phases arrive over Realtime and never land in lockstep, so a
+scripted order desynchronises and then reports the script's own impatience as
+a bug.
+
+**Most early failures were the harness misreading the app.** Quit is
+tap-again-to-confirm on one button, not a dialog. The final wager needs an
+amount chosen before it can lock. `.first()` on a multi-selector returns the
+first match in DOM order, usually a hidden button from another screen. Verify
+a failure is real before reporting it as one.
+
 ## Development
 
 ```bash
@@ -201,6 +300,8 @@ npx vitest run tests/module-integrity.test.js   # import-safety check
 node scripts/screenshot.js --state=<name>  # visual review
 node scripts/screenshot.js --all
 node scripts/bump-version.js               # REQUIRED before deploying
+# bump-version derives its tag from the date, so running it twice in one day
+# is a no-op. Pass an explicit suffix (e.g. 20260813b) for a same-day redeploy.
 ```
 
 ### Deploying

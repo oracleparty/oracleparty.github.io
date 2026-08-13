@@ -56,7 +56,9 @@ export const state = {
   _syncIntervalId: null,
   disqualifiedQuestions: new Set(),
   autoProceedTimerId: null,
-  autoProceedSeconds: 0
+  autoProceedSeconds: 0,
+  // Set while the host is away: grants advance rights without moving the role.
+  isDeputy: false
 };
 
 // --- Module-level guards (shared) ---
@@ -106,9 +108,17 @@ export function getAlternates(q) { return q[FIELD_MAP.alternates] || []; }
 export function getDifficulty(q) { return q[FIELD_MAP.difficulty] || 'medium'; }
 export function getFunFact(q) { return q[FIELD_MAP.fun_fact] || ''; }
 
-/** Host OR co-host — can control game flow (reveal, advance, judge) */
+/**
+ * Host, co-host, or a temporarily deputised player.
+ *
+ * When the host goes away the game must not stall, but transferring the role
+ * outright means someone who glanced at a notification comes back to find they
+ * no longer run their own game. So the crown stays put and the next in line
+ * (co-host, else longest-present) is deputised to advance until the host
+ * returns. The role itself only moves on real departure.
+ */
 export function canControlGame() {
-  return state.room?.isHost || state.room?.isCohost;
+  return state.room?.isHost || state.room?.isCohost || state.isDeputy === true;
 }
 
 export function getCategoryLabel() {

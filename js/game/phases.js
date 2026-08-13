@@ -856,33 +856,51 @@ export async function checkStalePresence() {
       state.players = freshPlayers;
     }
   }
-  const staleNextHost = determineNextHost(state.players, findAbsentPlayers(state.players, HOST_HANDOVER_MS));
+  // While the host is merely ABSENT, deputise rather than replace. Taking the
+  // role from someone who glanced at a notification means they return to find
+  // they no longer run their own game. The crown moves only when they actually
+  // leave — which arrives as a DELETE and is handled in handlePlayerChange.
+  const absent = findAbsentPlayers(state.players, HOST_HANDOVER_MS);
+  const hostRow = state.players.find(p => p.is_host);
+  const hostAbsent = hostRow && absent.has(String(hostRow.id));
+
+  if (hostRow && !hostAbsent) {
+    // Host is back: stand any deputy down.
+    if (state.isDeputy) {
+      state.isDeputy = false;
+      logger.info('Game', 'host returned — deputy stood down');
+    }
+    return;
+  }
+
+  if (hostAbsent) {
+    const deputy = determineNextHost(state.players, absent);
+    const iAmDeputy = deputy && String(deputy.id) === String(state.room.playerId);
+    if (iAmDeputy && !state.isDeputy) {
+      state.isDeputy = true;
+      logger.info('Game', 'host away — deputised to advance the game');
+      _activateHostControlsForCurrentPhase();
+      sendMessage(state.room.id, 'System', `${getDisplayName()} can advance while the host is away`);
+    }
+    return;
+  }
+
+  // No host row at all (they left for good) — promote properly.
+  const staleNextHost = determineNextHost(state.players, absent);
   if (staleNextHost && String(staleNextHost.id) === String(state.room.playerId)) {
-    // Cross-client race guard: another client may have promoted itself
-    // between our local determineNextHost call and now. Re-fetch and bail
-    // if a host already exists. Without this, two clients can both succeed
-    // at promoteToHost and the room ends up with two hosts.
     const fresh = await fetchPlayers(state.room.id);
-    // Only a PRESENT host blocks the takeover. A dead host's row keeps its
-    // flag until removal, which is three minutes away.
     const freshAbsent = findAbsentPlayers(fresh, HOST_HANDOVER_MS);
     if (fresh.some(p => p.is_host && !freshAbsent.has(String(p.id)))) {
       state.players = fresh;
       return;
     }
-    // Stand the absent host down so the room never shows two hosts.
-    for (const old of fresh) {
-      if (old.is_host && freshAbsent.has(String(old.id))) {
-        demoteHost(old.id).catch(e => logger.warn('Game', 'demote absent host failed', e));
-      }
-    }
-    // If we were co-host, clear that flag first
     if (state.room.isCohost) {
       state.room.isCohost = false;
       const localMe = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
       if (localMe !== -1) state.players[localMe].is_cohost = false;
       demoteCohost(state.room.playerId).catch(e => logger.warn('Game', 'demoteCohost on promotion failed', e));
     }
+    state.isDeputy = false;          // the real thing now, not a stand-in
     state.room.isHost = true;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
     const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
@@ -891,4 +909,5 @@ export async function checkStalePresence() {
     _activateHostControlsForCurrentPhase();
     sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
   }
+}
 }
