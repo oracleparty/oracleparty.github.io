@@ -1,0 +1,39 @@
+# Robot playtests — real browsers playing the real game on every push.
+#
+# These never contact Supabase: the client library is swapped for an in-memory
+# stand-in, so no test data can reach the production database and no robot can
+# appear in a real lobby.
+#
+# Kept separate from ci.yml because it needs a browser download and takes
+# minutes rather than seconds. Unit tests stay fast and run on everything.
+name: Robot Playtests
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  playtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Only Chromium: the game is mobile-only and every scenario emulates a
+      # phone viewport.
+      - run: npx playwright install --with-deps chromium
+
+      - name: Lobby — host and two players see each other
+        run: node tests/harness/scenario-lobby.mjs
+
+      - name: Full game — completion, score agreement, channel cleanup
+        run: node tests/harness/scenario-fullgame.mjs
+
+      - name: Nasty — host away, rejoin, simultaneous answers
+        run: node tests/harness/scenario-nasty.mjs

@@ -285,6 +285,10 @@ node tests/harness/scenario-fullgame.mjs   # full game, score agreement, channel
 node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous answers
 ```
 
+They run automatically on every push via `.github/workflows/robots.yml`, kept
+separate from `ci.yml` because they need a browser download and take minutes
+rather than seconds.
+
 **What it cannot catch:** schema drift. The fake store accepts any column, so
 a missing column is invisible to it. That is what `probe-db.mjs` is for.
 
