@@ -22,6 +22,8 @@ export class FakeStore {
     this.tables = new Map();       // name -> array of row objects
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
+    this.presence = new Map();     // topic -> Map(robotId -> state)
+    this.presenceWatchers = [];    // { topic, deliver }
     this.latencyMs = 0;            // artificial delay, set per scenario
     this.eventDelayMs = 0;         // artificial realtime lag
   }
@@ -82,6 +84,40 @@ export class FakeStore {
         table,
       };
       setTimeout(() => { if (sub.active) sub.deliver(payload); }, this.eventDelayMs);
+    }
+  }
+
+  // --- presence ---------------------------------------------------------
+  //
+  // Presence must be shared across pages or every client sees only itself,
+  // which silently disables anything driven by it — the away indicator and the
+  // staleness check both read it.
+
+  presenceTrack(topic, robotId, state) {
+    if (!this.presence.has(topic)) this.presence.set(topic, new Map());
+    this.presence.get(topic).set(robotId, state);
+    this._presenceSync(topic);
+  }
+
+  presenceLeave(topic, robotId) {
+    this.presence.get(topic)?.delete(robotId);
+    this._presenceSync(topic);
+  }
+
+  presenceState(topic) {
+    const out = {};
+    for (const [id, st] of (this.presence.get(topic) || new Map())) out[id] = [st];
+    return out;
+  }
+
+  watchPresence(topic, deliver) {
+    this.presenceWatchers.push({ topic, deliver, active: true });
+  }
+
+  _presenceSync(topic) {
+    const snapshot = this.presenceState(topic);
+    for (const w of this.presenceWatchers) {
+      if (w.active && w.topic === topic) setTimeout(() => w.deliver(snapshot), this.eventDelayMs);
     }
   }
 

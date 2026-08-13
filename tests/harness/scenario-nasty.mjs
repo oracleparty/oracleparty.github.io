@@ -398,6 +398,58 @@ async function rejoinAfterSeatReleased() {
   }
 }
 
+// ============================================================
+// 5. AWAY IS VISIBLE TO EVERYONE ELSE
+// ============================================================
+async function awayIsVisible() {
+  heading('a player who switches away is shown as away');
+  const table = await PlaytestTable.open();
+  try {
+    seedQuestions(table.store);
+    const { host, code } = await openRoom(table);
+    const bob = await joinRoom(table, 'Bob', code);
+    await host.page.waitForTimeout(2500);
+
+    const bobFadedFor = async () => host.page.evaluate(() => {
+      for (const el of document.querySelectorAll('.player-item')) {
+        if (!el.textContent.includes('Bob')) continue;
+        const faded = el.classList.contains('player-item--away') ||
+                      parseFloat(getComputedStyle(el).opacity) < 0.9;
+        return faded;
+      }
+      return null;   // Bob not rendered at all
+    }).catch(() => null);
+
+    const before = await bobFadedFor();
+    note(`before switching away, host sees Bob faded: ${before}`);
+    if (before === null) {
+      problems.push('host cannot see Bob in the lobby at all');
+      return;
+    }
+    if (before === true) {
+      problems.push('Bob shows as away while he is present — the indicator is meaningless');
+    }
+
+    // Switching tab/app is what presence reports as away.
+    await bob.page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }).catch(() => {});
+    await host.page.waitForTimeout(6000);
+
+    const after = await bobFadedFor();
+    note(`after switching away, host sees Bob faded: ${after}`);
+    if (after !== true) {
+      problems.push('a player who switched away is not shown as away to anyone else');
+    }
+  } catch (err) {
+    problems.push(`away-visibility scenario threw: ${err.message.split('\n')[0]}`);
+  } finally {
+    await table.close();
+  }
+}
+
+await awayIsVisible();
 await hostDisappearsMidQuestion();
 await rejoinAfterSeatReleased();
 await playerDropsAndRejoins();

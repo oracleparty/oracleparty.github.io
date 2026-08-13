@@ -150,6 +150,20 @@ export class PlaytestTable {
       return subId;
     });
     await context.exposeFunction('__dbUnsubscribe', id => { this.store.unsubscribe(id); });
+    await context.exposeFunction('__presenceTrack', (topic, id, st) => {
+      this.store.presenceTrack(topic, id, st);
+    });
+    await context.exposeFunction('__presenceLeave', (topic, id) => {
+      this.store.presenceLeave(topic, id);
+    });
+    await context.exposeFunction('__presenceWatch', topic => {
+      this.store.watchPresence(topic, snapshot => {
+        page.evaluate(
+          ([t, s]) => window.__presenceSync && window.__presenceSync(t, s),
+          [topic, snapshot]
+        ).catch(() => {});
+      });
+    });
     await context.exposeFunction('__dbBroadcast', async (topic, event, payload) => {
       for (const r of this.robots) {
         await r.page.evaluate(

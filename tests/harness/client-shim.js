@@ -18,6 +18,15 @@ window.__rtDispatch = (subId, payload) => {
   const handler = subHandlers.get(subId);
   if (handler) handler(payload);
 };
+window.__presenceSync = (topic, snapshot) => {
+  for (const ch of channels) {
+    if (ch.topic !== topic) continue;
+    ch._presence = snapshot;
+    for (const h of ch._presenceHandlers) {
+      if (h.event === 'sync' || !h.event) h.cb();
+    }
+  }
+};
 window.__fakeBroadcast = (channelName, event, payload) => {
   for (const ch of channels) {
     if (ch.topic !== channelName || ch.state !== 'joined') continue;
@@ -106,17 +115,20 @@ class FakeChannel {
           subHandlers.set(subId, payload => h.cb(payload));
         });
     }
+    window.__presenceWatch(this.topic);
     if (cb) setTimeout(() => cb('SUBSCRIBED'), 0);
     return this;
   }
   async track(state) {
-    this._presence[window.__robotId || 'self'] = [state];
-    for (const h of this._presenceHandlers) {
-      if (h.event === 'sync') setTimeout(() => h.cb(), 0);
-    }
+    // Goes through the shared store: a per-page object would mean every client
+    // only ever sees itself present.
+    await window.__presenceTrack(this.topic, window.__robotId || 'self', state);
     return 'ok';
   }
-  async untrack() { return 'ok'; }
+  async untrack() {
+    await window.__presenceLeave(this.topic, window.__robotId || 'self');
+    return 'ok';
+  }
   presenceState() { return this._presence; }
   async send(msg) {
     await window.__dbBroadcast(this.topic, msg.event, msg.payload);
