@@ -103,8 +103,75 @@ try {
   const beforeAnswers = table.store.table('answers').length;
   note(`answers before the timer expires: ${beforeAnswers}`);
 
-  // Deliberately submit nothing. A 15s timer plus grace.
+  // Bob types an answer and never presses submit. It must survive the expiry.
+  //
+  // This is a real bug from a live game: the host fills blanks for everyone who
+  // has not answered, and that fill used to MERGE on conflict. Both devices act
+  // on the same grace period, so the player's auto-submit and the host's blank
+  // race — and from a snapshot taken microseconds earlier the host still saw
+  // the player as missing and wrote a blank over their typed answer.
+  //
+  // Deliberately wrong, so the scoring assertions below still describe a missed
+  // question. What is being tested is that the TEXT survives.
+  const TYPED = 'bob typed this but never pressed submit';
+  const bobInput = bob.page.locator('#answer-input');
+  if (await bobInput.isVisible().catch(() => false)) {
+    await bobInput.fill(TYPED).catch(() => {});
+    note(`Bob typed ${JSON.stringify(TYPED)} and did not submit`);
+  } else {
+    problems.push('Bob had no answer input to type into');
+  }
+
+  // A 15s timer plus grace.
   await host.page.waitForTimeout(20000);
+
+  const bobPlayerId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
+  const bobAnswer = table.store.table('answers')
+    .find(a => String(a.player_id) === String(bobPlayerId) && a.question_number === 0);
+  note(`Bob's stored answer: ${JSON.stringify(bobAnswer?.submitted_answer)}`);
+  if (!bobAnswer) {
+    problems.push('the player who typed without submitting got no answer row at all');
+  } else if (bobAnswer.submitted_answer !== TYPED) {
+    problems.push(`a typed-but-unsubmitted answer was lost — stored ${JSON.stringify(bobAnswer.submitted_answer)} instead of the typed text`);
+  }
+
+  // The check above does NOT prove the fix on its own: whether the host's blank
+  // lands before or after the player's answer is a matter of timing, and in the
+  // harness the player happens to win. Verified by removing the fix — the
+  // scenario still passed. So force the losing order explicitly.
+  //
+  // This is the host acting on a snapshot taken microseconds before the
+  // player's answer arrived: it fills a blank for a player who, by then,
+  // already has a real answer. It must leave that answer alone.
+  if (bobAnswer) {
+    const roomId = table.store.table('rooms')[0]?.id;
+    const qId = table.store.table('answers').find(a => a.question_number === 0)?.question_id;
+    const evalErr = await host.page.evaluate(async ({ roomId, playerId, qId }) => {
+      try {
+        const m = await import('/js/supabase.js');
+        if (typeof m.insertBlankAnswers !== 'function') return 'insertBlankAnswers is not exported';
+        await m.insertBlankAnswers([{
+          roomId, playerId, questionNumber: 0, questionId: qId, wager: 4
+        }]);
+        return null;
+      } catch (e) { return e.message; }
+    }, { roomId, playerId: bobPlayerId, qId }).catch(e => e.message);
+
+    if (evalErr) {
+      problems.push(`could not exercise the late blank-fill: ${evalErr}`);
+    } else {
+      await host.page.waitForTimeout(600);
+      const after = table.store.table('answers')
+        .find(a => String(a.player_id) === String(bobPlayerId) && a.question_number === 0);
+      note(`Bob's answer after a late blank-fill: ${JSON.stringify(after?.submitted_answer)} wager=${after?.wager}`);
+      if (after?.submitted_answer !== TYPED) {
+        problems.push(`the host's late blank-fill destroyed a real answer — ${JSON.stringify(after?.submitted_answer)} replaced the player's typed text`);
+      }
+      if (after && after.wager !== bobAnswer.wager) {
+        problems.push(`the host's late blank-fill changed the player's wager from ${bobAnswer.wager} to ${after.wager}`);
+      }
+    }
+  }
 
   const expiredAnswers = table.store.table('answers');
   note(`answers after expiry: ${expiredAnswers.length}`);

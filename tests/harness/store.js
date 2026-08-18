@@ -233,6 +233,11 @@ export class FakeStore {
         const result = [];
         for (const item of incoming) {
           const existing = rows.find(r => keys.every(k => String(r[k]) === String(item[k])));
+          if (existing && modifiers.ignoreDuplicates) {
+            // ON CONFLICT DO NOTHING — leave the existing row untouched and
+            // emit nothing, exactly as Postgres does.
+            continue;
+          }
           if (existing) {
             const before = { ...existing };
             Object.assign(existing, item);

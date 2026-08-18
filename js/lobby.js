@@ -427,21 +427,41 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
     if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
     if (p.is_cohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
   }
-  const tier = _playerTiers[p.user_id];
-  if (tier) {
-    const color = TIER_COLORS[tier] || '#999';
-    badges.push(`<span class="badge badge--tier" style="color:${color};">${tier}</span>`);
-  }
-  if (p.is_ready) {
+  // Ready state is lobby state, and it is meaningless for the people who run
+  // the lobby — "Not Ready" was already suppressed for them, so showing them
+  // "Ready" was inconsistent as well as wasteful.
+  if (p.is_ready && !p.is_host && !p.is_cohost) {
     badges.push('<span class="badge badge--ready">Ready</span>');
-  } else if (!p.is_host && !p.is_cohost) {
+  } else if (!p.is_ready && !p.is_host && !p.is_cohost) {
     badges.push('<span class="badge badge--not-ready">Not Ready</span>');
   }
   const isMe = String(p.id) === String(room.playerId);
   const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (You)' : '');
 
   const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-  const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
+
+  // Tier and title sit UNDER the name, not in the badge strip.
+  //
+  // Measured at 375px: a signed-in player promoted to co-host while ready
+  // carried three badges — Co-Host 75px, tier 66px, Ready 54px — and the badge
+  // strip is `flex: 0 0 auto` while .name-stack has a hard 72px floor, so
+  // nothing in the row could absorb the shortfall. The row overflowed by 56px
+  // and the whole page became draggable sideways on a phone. Guests have no
+  // tier, which is why the robot playtests never saw it and a real signed-in
+  // game always did.
+  //
+  // Down here both can truncate with an ellipsis instead, and the badge strip
+  // is bounded to one role badge or one ready badge.
+  const tier = _playerTiers[p.user_id];
+  const tierHtml = tier
+    ? `<span class="player-tier" style="color:${TIER_COLORS[tier] || '#999'};">${escapeHtml(tier)}</span>`
+    : '';
+  const titleText = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
+  // Always rendered, even when empty. A signed-in player has a tier and a
+  // guest does not, so rows would otherwise be 44px or 50px depending on who
+  // was in them and the list would look ragged. The empty span reserves the
+  // second line so every row is the same height.
+  const titleHtml = `<span class="name-substack">${tierHtml}${titleText}</span>`;
   const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
   const isAway = awayTimestamps.has(String(p.id));
   const honks = getHonkCount(p.id);
@@ -966,10 +986,10 @@ function addSystemMessage(text) {
 }
 
 function scrollChatToBottom() {
-  const scrollParent = chatMessagesEl.closest('.lobby-scroll');
-  if (scrollParent) {
-    scrollParent.scrollTop = scrollParent.scrollHeight;
-  }
+  // Scroll the chat pane, NOT the lobby. This used to walk up to .lobby-scroll
+  // and scroll the whole page, so every message dragged the room card, the
+  // player list and the Start button up out of view.
+  if (chatMessagesEl) chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
 }
 
 function updateHeartDisplay(bubble, hearts) {

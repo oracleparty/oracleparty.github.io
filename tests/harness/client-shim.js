@@ -52,6 +52,10 @@ class QueryBuilder {
     this.op.action = 'upsert';
     this.op.payload = payload;
     if (opts?.onConflict) this.op.modifiers.onConflict = opts.onConflict;
+    // ON CONFLICT DO NOTHING. The host's blank answer-fill depends on this to
+    // avoid overwriting an answer a player submitted at the same moment, so a
+    // store that merged regardless would test the opposite of the real client.
+    if (opts?.ignoreDuplicates) this.op.modifiers.ignoreDuplicates = true;
     return this;
   }
   eq(c, v)   { this.op.filters.push({ column: c, op: 'eq',  value: v }); return this; }

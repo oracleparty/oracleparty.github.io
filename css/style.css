@@ -1956,6 +1956,15 @@ body::after {
   box-sizing: border-box;
 }
 
+/* Backstop. Whatever a row ends up containing, it must never be able to make
+   the page draggable sideways on a phone — that bug reached a real playtest
+   twice. Clipping one badge is a far smaller failure than a scrollable page,
+   so this stays even though the content above is now bounded. */
+.lobby-hosts,
+.lobby-players {
+  overflow-x: hidden;
+}
+
 /* "Not Ready" broke onto two lines once the icons freed up space, making that
  * player's row taller than everyone else's — the same unevenness the icons
  * were meant to remove. Badges stay on one line. */
@@ -2468,8 +2477,22 @@ body::after {
   margin-bottom: 2px;
 }
 
+/* The chat scrolls inside itself instead of growing the page.
+ *
+ * With no height of its own it grew without bound, so a long chat pushed the
+ * room card and player list off-screen, and scrollChatToBottom() — which
+ * scrolled the whole .lobby-scroll area — dragged the entire lobby down to the
+ * newest message. Returning to the lobby after a game landed you at the bottom
+ * of the transcript with the Start button somewhere above.
+ *
+ * overscroll-behavior stops a flick inside the chat from chaining out and
+ * scrolling the lobby behind it once it hits the end. */
 .lobby-chat__messages {
   min-height: 32px;
+  max-height: 34vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .lobby-chat__messages:empty::after {
@@ -4206,6 +4229,33 @@ body::after {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
+}
+
+/* Tier + title share the line under the name, and truncate together rather
+   than widening the row. See the note in _renderPlayerItem: as badges they
+   could not shrink, and a signed-in co-host overflowed the row by 56px at
+   375px, which is what made the whole page draggable sideways on a phone. */
+.name-substack {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  /* Reserve the line whether or not there is anything on it, so a signed-in
+     player (who has a tier) and a guest (who does not) get identical rows. */
+  font-size: var(--text-xs);
+  min-height: 1.2em;
+}
+.name-substack .player-title { flex: 0 1 auto; }
+.player-tier {
+  flex: 0 0 auto;
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 /* ============================================

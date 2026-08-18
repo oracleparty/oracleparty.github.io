@@ -680,8 +680,24 @@ export function showCountdownScreen() {
 // ============================================
 
 export function handleAnswerChange(payload) {
-  // Ignore answer changes on the scores screen
-  if (state.gamePhase === 'scores_reveal') return;
+  // On the scores screen, ignore answers arriving (INSERT) — that is just the
+  // next round's submissions landing behind the scoreboard, and re-rendering on
+  // each one made the animation stutter.
+  //
+  // A host's retroactive correction is an UPDATE, though, and it was being
+  // swallowed by the same guard. The host saw their own edit because they
+  // re-render locally; nobody else's scoreboard ever moved, so the room walked
+  // away disagreeing about the score. Same fault the results screen already had
+  // fixed below.
+  if (state.gamePhase === 'scores_reveal') {
+    if (payload.eventType === 'UPDATE' && payload.new) {
+      updateScores().then(() => {
+        setLastScoresRendered(-1);
+        showScoresScreen();
+      }).catch(err => logger.error('Game', 'Failed to apply score correction', err));
+    }
+    return;
+  }
 
   // During final wager screen, update the player wager list
   if (state.gamePhase === 'final_wager') {

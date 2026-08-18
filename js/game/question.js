@@ -8,7 +8,7 @@ import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAns
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
-import { updateGameState, submitAnswer, fetchAnswersForQuestion, incrementQuestionsAnswered } from '../supabase.js';
+import { updateGameState, submitAnswer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -340,22 +340,32 @@ async function handleTimerExpired() {
     const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
     const q = state.questions[state.currentQuestion];
     if (q) {
-      const autoSubmits = [];
-      for (const p of state.players) {
-        if (!submittedIds.has(String(p.id))) {
-          autoSubmits.push(submitAnswer({
-            roomId: state.room.id,
-            playerId: p.id,
-            questionNumber: state.currentQuestion,
-            questionId: q.id,
-            wager: 1,
-            submittedAnswer: '',
-            isCorrect: false,
-            scoreEarned: 0
-          }));
-        }
+      // Each absent player burns their OWN lowest unused wager, not a hardcoded
+      // 1. Writing 1 for everyone gave a player two answers at wager 1 whenever
+      // they had already spent it, breaking the rule that values 1..N are each
+      // used exactly once.
+      const allAnswers = await fetchAllAnswers(state.room.id);
+      const wagersByPlayer = new Map();
+      for (const a of allAnswers) {
+        const key = String(a.player_id);
+        if (!wagersByPlayer.has(key)) wagersByPlayer.set(key, new Set());
+        if (a.wager != null) wagersByPlayer.get(key).add(a.wager);
       }
-      if (autoSubmits.length) await Promise.allSettled(autoSubmits);
+
+      const blanks = [];
+      for (const p of state.players) {
+        if (submittedIds.has(String(p.id))) continue;
+        const used = wagersByPlayer.get(String(p.id)) || new Set();
+        blanks.push({
+          roomId: state.room.id,
+          playerId: p.id,
+          questionNumber: state.currentQuestion,
+          questionId: q.id,
+          wager: findNextAvailableWager(used, state.totalQuestions)
+        });
+      }
+      // Never overwrites a real answer — see insertBlankAnswers.
+      if (blanks.length) await insertBlankAnswers(blanks);
     }
     // Broadcast reveal phase so all clients transition
     updateGameState(state.room.id, { game_phase: 'reveal' })

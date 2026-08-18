@@ -316,6 +316,50 @@ to get the real picture before relying on any table or policy.
 - Auto-judging fuzzy-matches against the correct answer plus stored alternates
   (`FUZZY_MATCH_THRESHOLD` in `constants.js`). Host override is final.
 
+## Fixed in the 2026-08-18 playtest
+
+Five bugs from one real game with two people. Recorded because each explains a
+class of mistake, and because four of them were invisible to the robots.
+
+**The lobby row could not fit its own contents.** Promoting a signed-in player
+to co-host gave their row three badges — Co-Host, tier, Ready — totalling 195px
+of a 327px row, while the buttons took 116px and `.name-stack` had a hard 72px
+floor. Nothing could shrink, so the row overflowed by up to 71px and the whole
+page became draggable sideways. Tier and title now sit under the name where
+they truncate; ready state is suppressed for host and co-host, which the
+"Not Ready" branch already did; `.lobby-hosts/.lobby-players` carry
+`overflow-x: hidden` as a backstop. Measured at 375px and 430px across nine
+content combinations, all rows uniform. **The previous fix — icon buttons and
+the 72px floor — is what converted "the name disappears" into "the page
+overflows".** A floor that cannot yield has to overflow somewhere.
+
+**The host destroyed answers players had typed.** On timer expiry the host
+fills blank answers for anyone who has not submitted, and that fill merged on
+conflict. Both devices act on the same grace period, so a player's auto-submit
+and the host's blank race: from a snapshot taken microseconds earlier the host
+still saw them as missing and wrote a blank over their real answer. It is
+`insertBlankAnswers` now, with `ignoreDuplicates` — `ON CONFLICT DO NOTHING` —
+so neither order can lose. The blank also burns each player's own lowest unused
+wager instead of a hardcoded 1, which had let one player spend wager 1 twice.
+
+**Score corrections never left the host's phone.** `handleAnswerChange` bailed
+out early on the scores screen to keep the scoreboard animation from stuttering
+as the next round's answers arrived. Retroactive judgment flips are UPDATEs and
+were swallowed by the same guard, so the host saw their correction and nobody
+else did — the room finished disagreeing about the score. UPDATEs now
+re-render; INSERTs are still ignored.
+
+**Chat grew the page instead of scrolling.** `.lobby-chat__messages` had no
+height, and `scrollChatToBottom()` scrolled `.lobby-scroll` — the whole lobby.
+Every message dragged the room card, player list and Start button out of view,
+and returning from a game landed you at the bottom of the transcript. The pane
+is now `max-height: 34vh` with its own scroll, and scrolls itself.
+
+**The difficulty wheel teased options nobody picked.** It cycled all three
+levels regardless of votes. It now cycles only voted ones, sent over the wire
+with the reveal so every client spins the same wheel. The final result can
+still be an unvoted level — that is the deliberate last-second switch.
+
 ## Categories
 
 `history`, `science`, `nature`, `arts-literature`, `culture-society`,
@@ -334,6 +378,16 @@ to get the real picture before relying on any table or policy.
 - **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`
 - **Co-host** — a second player can share host controls
 - **Presence + heartbeat** — `last_seen_at` drives stale-player cleanup
+
+### Wanted, not built
+
+- **Sound.** The honk is the only sound in the game, which the owner finds dry
+  in play. Candidates: countdown ticks, timer running out, correct/incorrect on
+  reveal, the scoreboard animation, the difficulty wheel. Must be mutable, and
+  must not fire on a phone whose ringer is off.
+- **General UI polish.** Raised after the 2026-08-18 playtest without specific
+  targets. Ask for a screen before working on this — it is not a licence to
+  restyle working screens on a hunch.
 
 ## Database Tables
 
@@ -450,6 +504,21 @@ one of these looked like a real finding:
 - counting host rows after killing the host — a dead browser leaves its row
   with the flag set, so "exactly one host" reads as success on a leaderless
   room.
+
+**A scenario that passes proves nothing until you have watched it fail.** The
+regression test for the lost-answer race (below) passed on the first run — and
+passed just as happily with the fix removed, because the harness happened to
+schedule the player's write before the host's. It was measuring nothing. The
+race only became testable once the losing order was forced explicitly, by
+calling the host's blank-fill *after* the player's answer was already stored.
+Break the fix, watch the test go red, then put it back. Anything less and you
+have written a test that agrees with you.
+
+**Guests are not players.** Robots sign in as nobody, so they have no tier, no
+title and no stats. The lobby row overflow that made the whole page draggable
+sideways on a phone needed a tier badge to reproduce, so every scenario passed
+while a real signed-in game broke. When a bug is reported that the robots
+cannot see, ask what a real account has that a robot does not.
 
 **Most early failures were the harness misreading the app.** Quit is
 tap-again-to-confirm on one button, not a dialog. The final wager needs an

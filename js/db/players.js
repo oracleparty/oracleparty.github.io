@@ -290,6 +290,43 @@ export async function submitAnswer({ roomId, playerId, questionNumber, questionI
 }
 
 /**
+ * Insert blank answers for players who never submitted, WITHOUT overwriting
+ * anyone who did.
+ *
+ * The host fills these in when the timer expires so absent players still score
+ * zero. It used to go through submitAnswer(), whose upsert MERGES on conflict —
+ * so a player who typed an answer and let the timer run out could have it
+ * destroyed by the host's blank. Both devices act at the same moment, on the
+ * same grace period: the player submits their typed text while the host, from a
+ * snapshot taken microseconds earlier, still sees them as missing and writes a
+ * blank over the top. The player's answer vanished and they scored zero on
+ * something they had actually typed.
+ *
+ * ignoreDuplicates makes this ON CONFLICT DO NOTHING, so the race cannot be
+ * lost in either order: if the real answer lands first the blank does nothing,
+ * and if the blank lands first the real answer merges over it.
+ */
+export async function insertBlankAnswers(rows) {
+  if (!rows || rows.length === 0) return { error: null };
+  const { error } = await supabase
+    .from('answers')
+    .upsert(rows.map(r => ({
+      room_id: r.roomId,
+      player_id: r.playerId,
+      question_number: r.questionNumber,
+      question_id: r.questionId,
+      wager: r.wager,
+      submitted_answer: '',
+      is_correct: false,
+      auto_correct: false,
+      score_earned: 0
+    })), { onConflict: 'room_id,player_id,question_number', ignoreDuplicates: true });
+
+  if (error) logger.error('Supabase', 'insertBlankAnswers failed', error);
+  return { error };
+}
+
+/**
  * Fetch all answers for a specific question in a room.
  */
 export async function fetchAnswersForQuestion(roomId, questionNumber) {

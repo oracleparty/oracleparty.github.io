@@ -3,11 +3,11 @@
 // Unlisted page, gated by is_admin on profiles.
 // ============================================
 
-import { $ } from './utils.js';
+import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
 import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
-import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS } from './constants.js';
+import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS } from './constants.js';
 
 // ============================================
 // INIT
@@ -50,24 +50,50 @@ async function init() {
 // ============================================
 
 async function loadDashboardStats() {
-  // Players online: count players in active rooms
-  const { count: onlineCount } = await supabase
-    .from('players')
-    .select('id', { count: 'exact', head: true });
-  $('#stat-online').textContent = onlineCount ?? '-';
-
-  // Games in progress
-  const { count: gamesCount } = await supabase
+  // Players online.
+  //
+  // This counted EVERY row in `players`, with no filter at all, despite the
+  // comment claiming it counted active rooms. Player rows outlive their games —
+  // a tab closed without a clean exit leaves one behind, and cleanup only runs
+  // when somebody happens to open the home page — so the number drifted upward
+  // forever and bore no relation to who was actually playing.
+  //
+  // Online now means: in a room that still exists, and seen within the same
+  // window the game itself uses to decide someone has gone.
+  const seenSince = new Date(Date.now() - STALE_TIMEOUT_MS).toISOString();
+  const { data: liveRooms, error: roomsErr } = await supabase
     .from('rooms')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'playing');
-  $('#stat-games').textContent = gamesCount ?? '-';
+    .select('id, status')
+    .in('status', ['lobby', 'playing']);
 
-  // Total accounts
-  const { count: accountCount } = await supabase
+  if (roomsErr) {
+    logger.error('Admin', 'loadDashboardStats rooms query failed', roomsErr);
+    $('#stat-online').textContent = '?';
+    $('#stat-games').textContent = '?';
+  } else {
+    const roomIds = (liveRooms || []).map(r => r.id);
+    if (roomIds.length === 0) {
+      $('#stat-online').textContent = '0';
+    } else {
+      const { count: onlineCount, error: onlineErr } = await supabase
+        .from('players')
+        .select('id', { count: 'exact', head: true })
+        .in('room_id', roomIds)
+        .gt('last_seen_at', seenSince);
+      if (onlineErr) logger.error('Admin', 'loadDashboardStats players query failed', onlineErr);
+      $('#stat-online').textContent = onlineErr ? '?' : (onlineCount ?? 0);
+    }
+    // Counted from the same snapshot, so the two numbers always agree.
+    $('#stat-games').textContent = (liveRooms || []).filter(r => r.status === 'playing').length;
+  }
+
+  // Total accounts, excluding ones that were deleted.
+  const { count: accountCount, error: accErr } = await supabase
     .from('profiles')
-    .select('user_id', { count: 'exact', head: true });
-  $('#stat-accounts').textContent = accountCount ?? '-';
+    .select('user_id', { count: 'exact', head: true })
+    .is('deleted_at', null);
+  if (accErr) logger.error('Admin', 'loadDashboardStats profiles query failed', accErr);
+  $('#stat-accounts').textContent = accErr ? '?' : (accountCount ?? '-');
 
   // Games played today
   const todayStart = new Date();
@@ -149,7 +175,16 @@ async function loadFlaggedQueue() {
     .select('question_id, feedback_type, flag_reason, player_name')
     .eq('feedback_type', 'flag');
 
-  if (error || !flags || flags.length === 0) {
+  // A failed query and an empty queue used to render the same reassuring
+  // sentence, so "No flagged questions." could mean the flags were unreachable.
+  // On a page whose whole job is surfacing player reports, that is the worst
+  // possible thing to be vague about.
+  if (error) {
+    logger.error('Admin', 'loadFlaggedQueue failed', error);
+    container.innerHTML = `<p style="color:var(--color-danger); font-size:var(--text-sm);">Couldn't load flags: ${escapeHtml(error.message || String(error))}</p>`;
+    return;
+  }
+  if (!flags || flags.length === 0) {
     container.innerHTML = '<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No flagged questions.</p>';
     return;
   }
@@ -835,6 +870,20 @@ async function loadQuestionHealth() {
     parts.push(played === 0
       ? 'No play data yet — stats appear once games are played.'
       : `${played} of ${rows.length} shown have been played.`);
+
+    // Say when the chosen ordering has nothing to order by. question_stats
+    // only started filling recently, so times_overridden — the default sort —
+    // is zero for all 4,859 questions, and the page silently showed 25
+    // arbitrary ones. Flagged questions were in the bank the whole time and
+    // simply never rose to the top, because nothing did.
+    const sortCol = QH_SORTS[_qhSort] || QH_SORTS.overrides;
+    const SORT_LABEL = {
+      times_overridden: 'host overrides', pct_correct: 'play data',
+      flags: 'flags', pct_liked: 'votes', times_asked: 'plays',
+    };
+    if (rows.length && !rows.some(r => Number(r[sortCol]) > 0)) {
+      parts.push(`Nothing shown has any ${SORT_LABEL[sortCol] || sortCol} yet, so this ordering is arbitrary — sort by something with data to see it.`);
+    }
 
     summary.textContent = parts.join(' ');
   }

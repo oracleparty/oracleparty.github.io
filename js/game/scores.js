@@ -443,7 +443,10 @@ export function showFinalWagerScreen() {
       // see the dramatic difficulty reveal in sync. Host already triggered
       // its own animation directly in handleRevealFinalQuestion.
       if (state.room.isHost) return;
-      playDifficultyRevealAnimation(payload?.mostVoted || null, payload?.winner || 'medium');
+      // voted comes over the wire so every client spins through the same
+      // options. Deriving it locally would let a client whose vote state was
+      // incomplete animate a different wheel from everyone else's.
+      playDifficultyRevealAnimation(payload?.mostVoted || null, payload?.winner || 'medium', payload?.voted || null);
     })
     .subscribe();
 
@@ -573,6 +576,10 @@ export async function handleRevealFinalQuestion() {
   const tally = tallyDifficultyVotes(state.difficultyVotes);
   const mostVoted = modalDifficulty(tally); // null if no votes
   const winner = pickWeightedDifficulty(tally);
+  // Only difficulties somebody actually chose. The wheel teasing a level
+  // nobody picked reads as broken — it looks like it might land there when it
+  // never could have been the front-runner.
+  const voted = ['easy', 'medium', 'hard'].filter(d => (tally[d] || 0) > 0);
   state.votedDifficulty = winner;
 
   // Try to fetch a question matching the voted difficulty (optional — pre-fetched is fallback)
@@ -590,14 +597,14 @@ export async function handleRevealFinalQuestion() {
       state.difficultyVoteChannel.send({
         type: 'broadcast',
         event: 'reveal',
-        payload: { mostVoted, winner }
+        payload: { mostVoted, winner, voted }
       });
     } catch (_) { /* swallow — animation still runs locally */ }
   }
 
   // Animate the dramatic reveal locally (slot-machine cycle, settle on most-
   // voted, comedic last-second switch if randomness defied the votes).
-  await playDifficultyRevealAnimation(mostVoted, winner);
+  await playDifficultyRevealAnimation(mostVoted, winner, voted);
 
   // Clean up vote channel
   if (state.difficultyVoteChannel) { try { supabase.removeChannel(state.difficultyVoteChannel); } catch (e) {} state.difficultyVoteChannel = null; }
@@ -630,18 +637,27 @@ export async function handleRevealFinalQuestion() {
 /**
  * Slot-machine difficulty reveal. Non-blocking-ish (resolves when done so
  * caller can sequence). The animation:
- *   1. Cycle highlight rapidly through Easy / Medium / Hard (slowing)
+ *   1. Cycle highlight rapidly through the VOTED difficulties only (slowing)
  *   2. Settle on the most-voted (or center if no votes)
  *   3. If the actual winner is different, "gotcha" jump to it after a beat
  *   4. Final flourish on the winner, then fade.
  */
-function playDifficultyRevealAnimation(mostVoted, winner) {
+function playDifficultyRevealAnimation(mostVoted, winner, voted = null) {
   return new Promise((resolve) => {
     const overlay = $('#difficulty-reveal-overlay');
     if (!overlay) { resolve(); return; }
     const pills = overlay.querySelectorAll('.dr-pill');
     const finalEl = overlay.querySelector('.difficulty-reveal__final');
-    const order = ['easy', 'medium', 'hard'];
+    const ALL = ['easy', 'medium', 'hard'];
+
+    // The wheel only visits difficulties somebody chose. It used to cycle all
+    // three every time, so in a room where nobody picked Easy the pill still
+    // lit up on the way past and looked like a live possibility.
+    //
+    // The FINAL result can still be an unvoted level — that is the deliberate
+    // last-second switch, and it stays. What changes is that the wheel no
+    // longer teases options that were never in contention.
+    const order = (Array.isArray(voted) && voted.length) ? voted : ALL;
     const setActive = (d) => {
       pills.forEach(p => p.classList.remove('dr-pill--active', 'dr-pill--settling', 'dr-pill--gotcha'));
       if (d) overlay.querySelector(`.dr-pill[data-difficulty="${d}"]`)?.classList.add('dr-pill--active');
@@ -655,14 +671,22 @@ function playDifficultyRevealAnimation(mostVoted, winner) {
     // settle on the actual winner (no comedic switch happens).
     const settleTarget = mostVoted || winner;
 
-    // Phase 1: rapid cycle (~1.4s, decelerating)
+    // Phase 1: rapid cycle (~1.4s, decelerating).
+    //
+    // The modulo follows the cycle set, not a hardcoded 3 — with two voted
+    // options a fixed 3 would have indexed off the end and blanked the wheel
+    // every third tick. When only one difficulty was voted there is nothing to
+    // cycle through, so it holds on that one and settles sooner rather than
+    // strobing a single pill.
+    const soleChoice = order.length === 1;
+    const ticks = soleChoice ? 6 : 22;
     let i = 0;
-    let speed = 60;  // ms
+    let speed = soleChoice ? 140 : 60;  // ms
     const cycle = () => {
-      setActive(order[i % 3]);
+      setActive(order[i % order.length]);
       i++;
       speed = Math.min(speed + 8, 220);  // slow down
-      if (i < 22) {
+      if (i < ticks) {
         setTimeout(cycle, speed);
       } else {
         // Phase 2: settle on the "expected" choice

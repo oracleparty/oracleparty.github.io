@@ -22,7 +22,7 @@ export {
   fetchPlayers, toggleReady,
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
-  fetchAllAnswers, deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
+  fetchAllAnswers, insertBlankAnswers, deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
 } from './db/players.js';
 
 // --- Questions ---
