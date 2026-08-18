@@ -27,6 +27,10 @@ const TABLES = [
 
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 
+// Deliberately not a uuid. PostgREST casts arguments before a function body
+// runs, so this proves a function exists without letting it write anything.
+const NOT_A_UUID = 'probe-not-a-uuid';
+
 async function req(path, init = {}) {
   const res = await fetch(`${URL_BASE}/rest/v1/${path}`, {
     ...init,
@@ -42,7 +46,10 @@ console.log('ORACLE PARTY — LIVE DATABASE PROBE (read-only)');
 console.log('Using the publishable key from js/db/client.js — visitor-level access.');
 console.log('='.repeat(70));
 
-console.log('\n--- TABLE EXISTS / READABLE / ROW COUNT ---');
+// "rows" is what a VISITOR can see, not what the table holds. A restrictive
+// SELECT policy filters rows out rather than refusing the request, so an
+// admin-only table like error_logs reads as empty no matter how much is in it.
+console.log('\n--- TABLE EXISTS / READABLE / ROWS VISIBLE TO A VISITOR ---');
 const present = [];
 for (const t of TABLES) {
   const r = await req(`${t}?select=*&limit=1`, { headers: { Prefer: 'count=exact', Range: '0-0' } });
@@ -215,30 +222,40 @@ if (fb.status === 200) {
 // migrations/, because a migration proves nothing about what was applied.
 // ============================================
 
-console.log('\n--- RPC FUNCTIONS (from the API description; nothing is called) ---');
-const CALLED_RPCS = [
-  'get_category_play_counts',   // js/db/questions.js — category browser play counts
-  'get_mastery_counts',         // js/db/questions.js — profile mastery tree
-  'record_question_outcome',    // js/db/questions.js — fills question_stats
-  'increment_questions_answered', // js/db/players.js — game_plays progress
+// Each entry is called with the exact argument names js/ uses, and with a
+// value that cannot be cast to uuid. PostgREST resolves the function and casts
+// the arguments before the body runs, so an unparseable uuid proves the
+// function exists without executing it — which matters for
+// record_question_outcome, whose body writes a row.
+//
+// Passing the real argument names also tests the signature. A function that
+// exists under a different signature is as dead to the app as a missing one:
+// PostgREST answers 404 either way, and the app's error handler cannot tell.
+const RPC_PROBES = [
+  // no arguments, and read-only, so this one really is called
+  ['get_category_play_counts', null],
+  ['get_mastery_counts', { p_user_id: NOT_A_UUID }],
+  ['record_question_outcome', { p_question_id: NOT_A_UUID, p_is_correct: true, p_overridden: false }],
+  ['increment_questions_answered', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID }],
 ];
-const spec = await req('');
-let exposed = null;
-try {
-  const paths = JSON.parse(spec.body || '{}').paths || {};
-  exposed = new Set(Object.keys(paths)
-    .filter(p => p.startsWith('/rpc/'))
-    .map(p => p.slice(5)));
-} catch { /* fall through to the warning below */ }
 
-if (!exposed) {
-  console.log(`  could not read the API description (HTTP ${spec.status}) — RPC state unknown`);
-} else {
-  for (const fn of CALLED_RPCS) {
-    console.log(`  ${fn.padEnd(34)} ${exposed.has(fn) ? 'installed' : '*** NOT INSTALLED ***'}`);
+console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
+for (const [fn, args] of RPC_PROBES) {
+  const r = await req(`rpc/${fn}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args ?? {}),
+  });
+  const code = pgCode(r.body);
+  let state;
+  if (r.status === 404) {
+    state = '*** NOT INSTALLED (or a different signature) ***';
+  } else if (code === '22P02' || (r.status >= 200 && r.status < 300)) {
+    state = 'installed';
+  } else {
+    state = `installed — HTTP ${r.status}${code ? ` / ${code}` : ''}`;
   }
-  const unused = [...exposed].filter(f => !CALLED_RPCS.includes(f));
-  if (unused.length) console.log(`  (also exposed, uncalled: ${unused.join(', ')})`);
+  console.log(`  ${fn.padEnd(34)} ${state}`);
 }
 
 console.log('\n' + '='.repeat(70));
