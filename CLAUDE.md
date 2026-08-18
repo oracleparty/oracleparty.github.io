@@ -284,6 +284,7 @@ node tests/harness/scenario-lobby.mjs      # host + 2 players see each other
 node tests/harness/scenario-fullgame.mjs   # full game, score agreement, channel cleanup
 node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous answers
 node tests/harness/scenario-playagain.mjs # second game, room reset, no leakage
+node tests/harness/scenario-social.mjs    # chat, honks, score editing, review
 ```
 
 **Robots must never reach the real project.** Three beacons

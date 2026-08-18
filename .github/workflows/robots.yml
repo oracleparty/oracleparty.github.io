@@ -40,3 +40,6 @@ jobs:
 
       - name: Play Again — second game, room reset, no state leakage
         run: node tests/harness/scenario-playagain.mjs
+
+      - name: Social — chat, honks, score editing, question review
+        run: node tests/harness/scenario-social.mjs
