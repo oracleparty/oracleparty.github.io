@@ -217,8 +217,16 @@ async function init() {
     renderPlayers();
   });
 
-  // Honk click handler (event delegation)
-  playerListEl.addEventListener('click', (e) => {
+  // Honk / transfer / co-host click handling (event delegation).
+  //
+  // Attached to BOTH lists. renderPlayers() puts hosts and co-hosts in
+  // hostListEl and everyone else in playerListEl, so a player moves between
+  // containers the moment they are promoted. With the listener only on
+  // playerListEl, the Demote button — which by definition only ever appears in
+  // hostListEl — was never wired to anything, and neither were a co-host's
+  // honk and transfer-host buttons. Promoting worked once and demoting was
+  // impossible.
+  const handlePlayerListClick = (e) => {
     const honkBtn = e.target.closest('.honk-btn');
     if (honkBtn) {
       sendHonk(honkBtn.dataset.honkTarget);
@@ -233,10 +241,13 @@ async function init() {
     if (cohostBtn) {
       handleCohostToggle(cohostBtn.dataset.cohostId, cohostBtn.dataset.cohostName, cohostBtn.classList.contains('cohost-btn--demote'));
     }
-  });
+  };
+  playerListEl.addEventListener('click', handlePlayerListClick);
+  hostListEl.addEventListener('click', handlePlayerListClick);
 
   // Profile card on player tap (pass roomId for instant-add)
   attachProfileCardHandler(playerListEl, () => players, room.id);
+  attachProfileCardHandler(hostListEl, () => players, room.id);
 
   // Track presence as "in lobby"
   updatePresence({ activity: 'lobby', roomId: room.id, roomCode: room.code, category: room.category });

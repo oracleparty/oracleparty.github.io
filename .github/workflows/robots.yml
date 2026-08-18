@@ -49,3 +49,6 @@ jobs:
 
       - name: Feedback — votes, flags, and timer expiry scoring
         run: node tests/harness/scenario-feedback.mjs
+
+      - name: Co-host — promote, demote, and gated controls
+        run: node tests/harness/scenario-cohost.mjs

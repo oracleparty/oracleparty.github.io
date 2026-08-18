@@ -290,6 +290,7 @@ node tests/harness/scenario-playagain.mjs # second game, room reset, no leakage
 node tests/harness/scenario-social.mjs    # chat, honks, score editing, review
 node tests/harness/scenario-join.mjs      # public listing, privacy, hot join
 node tests/harness/scenario-feedback.mjs  # votes, flags, timer-expiry scoring
+node tests/harness/scenario-cohost.mjs    # promote, demote, gated controls
 ```
 
 **Robots must never reach the real project.** Three beacons
