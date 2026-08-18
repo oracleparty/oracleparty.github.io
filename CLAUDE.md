@@ -265,6 +265,9 @@ absence was noticed three times slower than intended.
 - **`question_stats`** records per-question performance for every player,
   guests included. Neither `answers` (deleted with the room) nor
   `question_history` (logged-in users only) could do this.
+- Feedback only appears **after the answer is revealed** — `showFeedbackUI()`
+  runs inside `doReveal()`. Rating a question you have not seen the answer to
+  would be meaningless.
 - **`times_overridden` is the most valuable column.** A host flipping a
   judgement is a human stating a valid answer was rejected — better evidence
   of a bad answer key than a flag, and it costs players no effort.
@@ -286,6 +289,7 @@ node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous an
 node tests/harness/scenario-playagain.mjs # second game, room reset, no leakage
 node tests/harness/scenario-social.mjs    # chat, honks, score editing, review
 node tests/harness/scenario-join.mjs      # public listing, privacy, hot join
+node tests/harness/scenario-feedback.mjs  # votes, flags, timer-expiry scoring
 ```
 
 **Robots must never reach the real project.** Three beacons

@@ -46,3 +46,6 @@ jobs:
 
       - name: Join — public listing, privacy, hot join, bad codes
         run: node tests/harness/scenario-join.mjs
+
+      - name: Feedback — votes, flags, and timer expiry scoring
+        run: node tests/harness/scenario-feedback.mjs
