@@ -214,7 +214,16 @@ export async function initAuth() {
   } else if (!_currentProfile) {
     // Session exists but no profile — retry creation (handles partial signup)
     try {
-      const displayName = getDisplayName() || session.user.user_metadata?.display_name;
+      // A player who signed in with Google may never have typed a name here,
+      // so fall back to the one Google supplies before giving up. Without this
+      // a brand-new Google account gets no profile row at all, and every
+      // account-only feature silently does nothing for them.
+      const meta = session.user.user_metadata || {};
+      const displayName = getDisplayName()
+        || meta.display_name
+        || meta.full_name
+        || meta.name
+        || (session.user.email ? session.user.email.split('@')[0] : null);
       if (displayName) {
         const disc = await generateDiscriminator(displayName);
         if (disc) {
@@ -229,6 +238,32 @@ export async function initAuth() {
       logger.warn('Auth', 'Profile creation retry failed', err);
     }
   }
+}
+
+/**
+ * Sign in with Google.
+ *
+ * This leaves the page: Supabase redirects to Google, Google redirects back,
+ * and supabase-js reads the session out of the returned URL on load — which is
+ * why initAuth() picks it up with no extra work here. Nothing after the call
+ * runs on success, so the only thing to handle is the failure to leave at all.
+ *
+ * redirectTo is the current page minus any hash, so a player signing in from
+ * their profile comes back to their profile rather than the home screen. The
+ * Supabase dashboard has to allow these URLs; a wildcard on the site covers
+ * every page at once.
+ */
+export async function signInWithGoogle() {
+  const redirectTo = window.location.href.split('#')[0];
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  });
+  if (error) {
+    logger.error('Auth', 'signInWithGoogle failed', error);
+    return { error };
+  }
+  return { error: null };
 }
 
 /**
@@ -403,6 +438,21 @@ export function showSignUpModal() {
       resolve(null);
     };
 
+    const googleBtn = $('#signup-google');
+    if (googleBtn) {
+      googleBtn.onclick = async () => {
+        errorEl.textContent = '';
+        googleBtn.disabled = true;
+        const { error } = await signInWithGoogle();
+        // On success the browser has already left for Google, so anything
+        // running here means it did not.
+        if (error) {
+          errorEl.textContent = "Couldn't reach Google — try email instead";
+          googleBtn.disabled = false;
+        }
+      };
+    }
+
     submitBtn.onclick = async () => {
       errorEl.textContent = '';
       const email = emailInput.value.trim();
@@ -467,6 +517,11 @@ function _injectSignUpModal() {
         <p id="signup-name-display" style="color: var(--color-text-dim); font-size: var(--text-sm); margin-bottom: var(--space-lg);">
           Playing as: <strong>${escapeHtml(getDisplayName() || 'Guest')}</strong>
         </p>
+        <button class="btn btn-google btn-block" id="signup-google">
+          <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.1 5.3-4.6 6.9l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16.4z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.4s.3-3 .8-4.4l-7.8-6.1C1 16.9 0 20.3 0 24s1 7.1 2.6 10.2l7.8-5.5z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.3 0-11.7-3.7-13.6-9.3l-7.8 5.5C6.5 42.6 14.6 48 24 48z"/></svg>
+          Continue with Google
+        </button>
+        <div class="auth-divider"><span>or</span></div>
         <input type="email" id="signup-email" class="input" placeholder="Email" autocomplete="email" style="margin-bottom: var(--space-md);">
         <input type="password" id="signup-password" class="input" placeholder="Password" autocomplete="new-password" style="margin-bottom: var(--space-md);">
         <input type="password" id="signup-confirm" class="input" placeholder="Confirm password" autocomplete="new-password">
@@ -514,6 +569,19 @@ export function showSignInModal() {
     submitBtn.textContent = 'Sign In';
     overlay.classList.add('active');
     emailInput.focus();
+
+    const googleBtn = $('#signin-google');
+    if (googleBtn) {
+      googleBtn.onclick = async () => {
+        errorEl.textContent = '';
+        googleBtn.disabled = true;
+        const { error } = await signInWithGoogle();
+        if (error) {
+          errorEl.textContent = "Couldn't reach Google — try email instead";
+          googleBtn.disabled = false;
+        }
+      };
+    }
 
     dismissBtn.onclick = () => {
       overlay.classList.remove('active');
@@ -572,6 +640,11 @@ function _injectSignInModal() {
     <div id="signin-modal" class="modal-overlay">
       <div class="modal">
         <h2 class="modal__title">Sign In</h2>
+        <button class="btn btn-google btn-block" id="signin-google">
+          <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.1 5.3-4.6 6.9l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16.4z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.4s.3-3 .8-4.4l-7.8-6.1C1 16.9 0 20.3 0 24s1 7.1 2.6 10.2l7.8-5.5z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.3 0-11.7-3.7-13.6-9.3l-7.8 5.5C6.5 42.6 14.6 48 24 48z"/></svg>
+          Continue with Google
+        </button>
+        <div class="auth-divider"><span>or</span></div>
         <input type="email" id="signin-email" class="input" placeholder="Email" autocomplete="email" style="margin-bottom: var(--space-md);">
         <input type="password" id="signin-password" class="input" placeholder="Password" autocomplete="current-password">
         <p id="signin-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>

@@ -390,7 +390,16 @@ still be an unvoted level — that is the deliberate last-second switch.
 
 - **Honks** — tap to blast a sound at everyone, throttled by `HONK_THROTTLE`
 - **Chat** — in lobby and in game, with typing indicators and message hearts
-- **Accounts** — optional; guests can play everything except friends and stats
+- **Accounts** — optional; guests can play everything except friends and stats.
+  Email/password, or **Continue with Google** (`signInWithGoogle()` in
+  `auth.js`). Google needs credentials pasted into the Supabase dashboard
+  before it works — see `docs/GOOGLE_SIGNIN_SETUP.md`. Until then the button
+  reports "Couldn't reach Google" and email sign-up is unaffected. A Google
+  user arrives with no local display name, so profile creation falls back to
+  the name Google supplies; without that fallback they get no profile row and
+  every account-only feature silently does nothing for them.
+  **Signing in does not make the database safer** — guests still play, so the
+  publishable key must still be accepted from anyone (#2).
 - **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
 - **Friends** — requests, accept/decline, see friends' active lobbies
 - **Leaderboard** — global and per-category, plus a per-player mastery tree

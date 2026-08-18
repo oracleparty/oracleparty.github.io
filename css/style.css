@@ -6153,3 +6153,54 @@ body[style*="opacity: 0"] {
   }
 }
 
+
+
+/* ============================================
+   GOOGLE SIGN-IN
+   ============================================ */
+
+/* Google's brand guidelines require their mark on a white or black surface
+   with the wordmark unaltered, so this button deliberately does NOT follow the
+   app's palette. It stays white in every theme, with a border dark enough to
+   separate it from the modal behind it. */
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  background: #FFFFFF;
+  color: #1F1F1F;
+  border: 1px solid #DADCE0;
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+.btn-google:active { background: #F1F3F4; }
+.btn-google:disabled { opacity: 0.6; }
+.btn-google svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+[data-theme="dark"] .btn-google,
+[data-theme="oled"] .btn-google {
+  border-color: #5F6368;
+}
+
+/* "or" rule between Google and the email fields. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-surface-light);
+}

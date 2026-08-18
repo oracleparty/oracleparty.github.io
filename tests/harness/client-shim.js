@@ -167,6 +167,10 @@ export function createClient(_url, _key) {
       getUser:    async () => ({ data: { user: window.__fakeSession?.user || null }, error: null }),
       signUp:     async () => ({ data: { user: null, session: null }, error: { message: 'not supported in tests' } }),
       signInWithPassword: async () => ({ data: { user: null, session: null }, error: { message: 'not supported in tests' } }),
+      // Real OAuth leaves the page for Google, which a robot cannot follow.
+      // Returning an error keeps the button's failure path honest rather than
+      // throwing "signInWithOAuth is not a function" and looking like a crash.
+      signInWithOAuth: async () => ({ data: { provider: 'google', url: null }, error: { message: 'OAuth not supported in tests' } }),
       signOut:    async () => ({ error: null }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     },
