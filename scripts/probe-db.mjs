@@ -175,6 +175,61 @@ for (const t of present) {
   console.log(`  ${t.padEnd(20)} INSERT: ${ins.padEnd(24)} UPDATE: ${upd}`);
 }
 
+// ============================================
+// UPSERT CONFLICT TARGETS
+//
+// `.upsert(row, { onConflict: 'a,b' })` compiles to ON CONFLICT (a, b), and
+// Postgres needs a unique index on exactly those columns to infer an arbiter.
+// Without one it raises 42P10 and rejects the statement — every time, for
+// every caller. The app only logs that, so the feature just stops existing.
+//
+// This is worth its own check because three of the four conflict targets the
+// app relies on point at tables holding zero rows: question_feedback,
+// game_plays and answers. game_plays is created by no migration at all, so
+// its constraints are whatever was clicked together in the dashboard.
+//
+// Safe to run: ON CONFLICT inference happens during planning, while casting
+// the payload happens during execution. A missing constraint therefore answers
+// 42P10 before an unparseable uuid can answer 22P02, and neither outcome
+// writes a row. site_settings is left out — its target is the primary key,
+// which has a unique index by definition.
+// ============================================
+
+const UPSERT_TARGETS = [
+  ['question_feedback', 'question_id,voter_id',
+    { question_id: NOT_A_UUID, voter_id: 'probe' }],
+  ['game_plays', 'room_id,player_id',
+    { room_id: NOT_A_UUID, player_id: NOT_A_UUID }],
+  ['answers', 'room_id,player_id,question_number',
+    { room_id: NOT_A_UUID, player_id: NOT_A_UUID, question_number: 1 }],
+];
+
+console.log('\n--- UPSERT CONFLICT TARGETS (nothing is written) ---');
+for (const [t, cols, payload] of UPSERT_TARGETS) {
+  const r = await req(`${t}?on_conflict=${encodeURIComponent(cols)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(payload),
+  });
+  const code = pgCode(r.body);
+  let state;
+  if (code === '42P10') {
+    state = `*** NO UNIQUE CONSTRAINT ON (${cols}) — EVERY UPSERT FAILS ***`;
+  } else if (code === '22P02') {
+    state = 'constraint present';
+  } else if (code === '42501') {
+    state = 'RLS refused before the constraint could be tested';
+  } else if (r.status >= 200 && r.status < 300) {
+    state = '*** SUCCEEDED — A ROW WAS WRITTEN, REMOVE IT ***';
+  } else {
+    state = `unclear (HTTP ${r.status}${code ? ` / ${code}` : ''})`;
+  }
+  console.log(`  ${t.padEnd(20)} ${state}`);
+}
+
 console.log('\n--- QUESTION BANK SHAPE ---');
 const q = await req('questions?select=*&limit=1');
 try {
