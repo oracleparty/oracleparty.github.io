@@ -31,7 +31,7 @@ import {
 import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
-import { logger } from './logger.js';
+import { logger, reportWriteFailure } from './logger.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode } from './categories.js';
 
@@ -520,7 +520,13 @@ export async function initProfilePage() {
   headerAvatar.onclick = async () => {
     const result = await showAvatarPicker(profile.avatar_color, profile.avatar_emoji);
     if (result) {
-      await updateProfile(userId, { avatar_color: result.color, avatar_emoji: result.emoji });
+      // Every profile save below used to discard the result and update the
+      // screen anyway, so a refused write left the player looking at a change
+      // that did not exist until they reloaded. updateProfile() uses
+      // .single(), which turns the zero-row RLS refusal into a real error, so
+      // there is something to check.
+      const { error: avatarErr } = await updateProfile(userId, { avatar_color: result.color, avatar_emoji: result.emoji });
+      if (reportWriteFailure('Save avatar', avatarErr, "Couldn't save your avatar")) return;
       profile.avatar_color = result.color;
       profile.avatar_emoji = result.emoji;
       headerAvatar.innerHTML = renderAvatar({
@@ -682,8 +688,9 @@ export async function initProfilePage() {
     bioEl.oninput = () => {
       const text = bioEl.textContent.trim().slice(0, 50);
       clearTimeout(bioSaveTimeout);
-      bioSaveTimeout = setTimeout(() => {
-        updateProfile(userId, { bio: text });
+      bioSaveTimeout = setTimeout(async () => {
+        const { error } = await updateProfile(userId, { bio: text });
+        if (reportWriteFailure('Save bio', error, "Couldn't save your bio")) return;
         profile.bio = text;
       }, 800);
     };
@@ -814,7 +821,14 @@ export async function initProfilePage() {
       if (!btn) return;
       const cat = btn.dataset.cat;
       $$('.profile-fav-cat', favCatEl).forEach(b => b.classList.toggle('selected', b.dataset.cat === cat));
-      await updateProfile(userId, { favorite_category: cat });
+      const { error: favErr } = await updateProfile(userId, { favorite_category: cat });
+      if (reportWriteFailure('Save favourite category', favErr, "Couldn't save that")) {
+        // Put the selection back where it was, rather than leaving the player
+        // looking at a choice the database never accepted.
+        $$('.profile-fav-cat', favCatEl).forEach(b =>
+          b.classList.toggle('selected', b.dataset.cat === profile.favorite_category));
+        return;
+      }
       profile.favorite_category = cat;
     };
   }
@@ -848,7 +862,11 @@ export async function initProfilePage() {
     if (onlineToggle) {
       onlineToggle.onchange = async () => {
         const showOnline = onlineToggle.checked;
-        await updateProfile(userId, { show_online_status: showOnline });
+        const { error: onlineErr } = await updateProfile(userId, { show_online_status: showOnline });
+        if (reportWriteFailure('Save visibility', onlineErr, "Couldn't change your online status")) {
+          onlineToggle.checked = !showOnline;   // a switch that lies is worse than one that refuses
+          return;
+        }
         profile.show_online_status = showOnline;
         if (!showOnline) {
           destroyGlobalPresence();
@@ -1371,11 +1389,16 @@ async function renderTitleWheel(userId, profile, stats) {
     saveBtn.onclick = async () => {
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
-      await updateProfile(userId, {
+      const { error: titleErr } = await updateProfile(userId, {
         title_slot1: selectedWords[1],
         title_slot2: selectedWords[2],
         title_slot3: selectedWords[3]
       });
+      if (reportWriteFailure('Save title', titleErr, "Couldn't save your title")) {
+        saveBtn.textContent = 'Not saved';
+        setTimeout(() => { saveBtn.textContent = 'Save Title'; saveBtn.disabled = false; }, 2000);
+        return;
+      }
       profile.title_slot1 = selectedWords[1];
       profile.title_slot2 = selectedWords[2];
       profile.title_slot3 = selectedWords[3];

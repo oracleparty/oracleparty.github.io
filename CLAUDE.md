@@ -175,6 +175,17 @@ correctly denied either way.
 Player-side feedback (thumbs up/down/flag) **does** write correctly. Only the
 admin's response to it was broken.
 
+**The same shape was in the profile page.** Five of its six saves — avatar,
+bio, favourite category, online visibility, title — discarded the result and
+updated the screen anyway, so a refused write left the player looking at a
+change that did not exist until they reloaded. A switch that shows the value
+the database rejected is worse than one that refuses to move. All five now
+check, surface a toast, and put the control back. `scenario-account.mjs`
+proves it with `store.denyWrites('profiles')`.
+
+**When you write a save handler, the question is not "did it error" but "is
+the screen now telling the truth".**
+
 ### 6. A measurement can lie, and a confident one lies hardest
 
 `scripts/probe-db.mjs` is the tool this file tells you to trust over

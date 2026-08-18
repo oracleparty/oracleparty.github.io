@@ -252,9 +252,68 @@ try {
     }
   }
 
+  // ============================================================
+  // 7. PROFILE SAVES MUST NOT LIE
+  //
+  // Five of the six profile writes discarded their result and updated the
+  // screen anyway, so a refused write left the player looking at a change that
+  // did not exist until they reloaded — the same shape as the admin page
+  // reporting "Saved!" for months while RLS threw every write away.
+  // ============================================================
+  heading('a profile save the database refuses');
+  await alice.goto('profile.html');
+  await alice.page.waitForTimeout(2500);
+
+  table.store.denyWrites('profiles');
+
+  const favBtns = alice.page.locator('.profile-fav-cat');
+  const favCount = await favBtns.count().catch(() => 0);
+  note(`favourite-category buttons: ${favCount}`);
+  if (favCount < 2) {
+    problems.push('the profile page offers no favourite-category buttons to exercise a save with');
+  } else {
+    // Pick one that is not already selected.
+    let target = null;
+    for (let i = 0; i < favCount; i++) {
+      const b = favBtns.nth(i);
+      if (!(await b.evaluate(el => el.classList.contains('selected')).catch(() => true))) { target = b; break; }
+    }
+    if (!target) {
+      note('every category already selected; skipped');
+    } else {
+      const cat = await target.getAttribute('data-cat').catch(() => null);
+      await target.click().catch(() => {});
+      await alice.page.waitForTimeout(2000);
+
+      const stuckSelected = await target.evaluate(el => el.classList.contains('selected')).catch(() => false);
+      note(`after a refused save, "${cat}" still shows as selected: ${stuckSelected}`);
+      if (stuckSelected) {
+        problems.push('a refused save left the choice highlighted — the page shows a selection the database never accepted');
+      }
+
+      const toastText = await alice.page.evaluate(() =>
+        [...document.querySelectorAll('[class*="toast"]')]
+          .map(t => (t.textContent || '').trim()).filter(Boolean).join(' | ')).catch(() => '');
+      note(`toast after refusal: ${JSON.stringify(toastText.slice(0, 80))}`);
+      if (!toastText) {
+        problems.push('a refused profile save told the player nothing at all');
+      }
+
+      const stored = table.store.table('profiles').find(p => p.user_id === alice.userId);
+      if (stored?.favorite_category === cat) {
+        problems.push('a refused write changed the stored profile anyway');
+      }
+    }
+  }
+
+  table.store.allowWrites('profiles');
+
   for (const r of [alice, bob, carol]) {
+    // PGRST116 from updateProfile is provoked on purpose by the refusal check
+    // above — logging it is the correct behaviour being tested, not a fault.
     const real = r.consoleErrors.filter(e =>
-      !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
+      !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e)
+      && !/updateProfile failed|PGRST116/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
 } catch (err) {
