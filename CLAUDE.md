@@ -5,11 +5,15 @@
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-13.
+> Last verified against the code: 2026-08-18.
 >
-> The live database was verified directly on 2026-08-13 via
+> The live database was verified directly on 2026-08-18 via
 > `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
 > applied — several were never run.
+>
+> **A probe result is only as good as the probe.** Two sections of that script
+> were reporting confident nonsense; see #6. Facts below that came from it have
+> been re-measured since it was fixed.
 
 ## What This Is
 
@@ -54,14 +58,31 @@ judging and scoring) is the main open work item.**
 
 ### 2. Database permissions are effectively wide open
 
-RLS is *enabled*, which makes the Supabase dashboard look secure — but nearly
-every gameplay policy is `USING (true)` / `WITH CHECK (true)`. See
+RLS is *enabled*, which makes the Supabase dashboard look secure — but the
+gameplay policies are `USING (true)` / `WITH CHECK (true)`. See
 `migrations/022_atomic_increment_and_rls.sql`. With the publishable key (public
-by necessity, in `js/db/client.js`), anyone can read, update **and delete**
-`rooms`, `players`, `answers` and `chat_messages`.
+by necessity, in `js/db/client.js`), anyone can read, write **and delete**
+`rooms`, `players`, `answers`, `chat_messages` and `chat_archive`. Anyone can
+therefore delete a room out from under a game in progress, or edit any score.
 
-The one table that *is* locked is `questions` — read-only, no write policy in
-any migration. That protects the question bank but breaks admin editing (#3).
+Measured on 2026-08-18, not inferred from migrations:
+
+| Open to any visitor | Locked |
+|---|---|
+| `rooms`, `players`, `chat_messages`, `chat_archive` | `questions`, `question_history`, `game_history`, `profiles`, `player_stats`, `site_settings` |
+
+`answers`, `question_feedback` and `game_plays` were empty at probe time, so
+they could not be tested without writing to them — migration 022 makes them
+permissive, and nothing since has changed that.
+
+**The question bank is safe.** 4,859 questions, and a visitor can neither edit
+nor delete one. That is worth stating plainly, because an earlier version of
+the probe claimed the opposite (#6), and because the bank is the one asset here
+that could not be rebuilt.
+
+Locking the rest is deliberately deferred: with judging and scoring running in
+the players' browsers, the clients *need* those write rights. The lockdown
+comes free with server authority (#1), and is wasted effort before it.
 
 ### 3. Schema drift is the single biggest source of "impossible" bugs
 
@@ -79,6 +100,12 @@ shape presented as something else entirely:
 
 Postgres rejects an **entire INSERT** for one unknown column, and the app only
 logs the failure. So one missing column silently kills a whole feature.
+
+**Every column in that table now exists** — migrations 024–027 were run, and
+the probe confirms all 18 tables have every column `js/` writes. Treat the
+table above as a catalogue of how this failure *presents*, not as an open bug
+list. The one thing still missing is the `get_mastery_counts` RPC, which has a
+client-side fallback and so has never been noticed (#6).
 
 **Run `scripts/probe-db.mjs` before believing anything about the schema.** It
 runs on GitHub Actions (dev sessions are firewalled from Supabase), needs no
@@ -109,17 +136,84 @@ noise, and noise is how real warnings get ignored.
 
 ### 5. Admin question edits silently do nothing
 
-`js/admin.js` tries to update `questions` (mark flagged questions as `removed`,
-or edit text/answers). Because there is no write policy, **RLS discards these
-writes and returns no error and zero rows.** The "Remove" handler doesn't check
-for errors at all and optimistically removes the row from the screen, so it
-looks like it worked. The edit form checks `error`, but an RLS denial isn't an
-error, so it reports "Saved!" while saving nothing.
+`js/admin.js` updates `questions` in three places: marking a flagged question
+`removed`, editing text and answers, and editing `acceptable_answers` inline.
+All three were discarded by RLS, which returns **no error and zero rows**, and
+all three reported success.
+
+Two separate faults, fixed separately:
+
+**The reporting** is fixed. All three paths now `.select()` and check the row
+count, so a refusal shows as "Permission denied" instead of "Saved!". This is
+what `writeSucceeded()` in `js/logger.js` exists for (#4).
+
+**The permission** needed migration 028, and this is worth reading closely,
+because the first attempt to fix it looked like it worked and did not.
+Migration 024 added an admin UPDATE policy whose predicate was
+`profiles.id = auth.uid()`. `profiles` has **both** an `id` and a `user_id`,
+and it is `user_id` that holds the auth user's id — every other policy in the
+repo and every query in `js/` uses `user_id`. So the policy matched no row, for
+anybody. It was created successfully, the dashboard listed it, and it granted
+nothing. `migrations/028_fix_admin_question_policy.sql` repairs it; 024 is
+corrected in place so a replay from zero is right.
+
+`tests/migration-policies.test.js` now fails on any migration comparing
+`auth.uid()` to `profiles.id`. Nothing else could have caught this: the unit
+tests never touch SQL, and the live probe runs as an anonymous visitor, who is
+correctly denied either way.
 
 Player-side feedback (thumbs up/down/flag) **does** write correctly. Only the
-admin's response to it is broken.
+admin's response to it was broken.
 
-### 6. Migrations are applied by hand
+### 6. A measurement can lie, and a confident one lies hardest
+
+`scripts/probe-db.mjs` is the tool this file tells you to trust over
+`migrations/`. On 2026-08-18 two of its sections were found to be reporting
+confident nonsense, and both had been quoted as fact.
+
+**Write permissions.** It aimed an UPDATE and a DELETE at an id that cannot
+exist and read the HTTP status. That can never work: Postgres applies a
+policy's `USING` clause as an extra `WHERE` condition, so a statement matching
+zero rows succeeds whether or not the policy would have allowed it. Every table
+came back `*** ALLOWED ***`, including `questions`, which no visitor can write
+to at all. The one section describing the security posture described its
+opposite.
+
+It now posts an **existing primary key**. RLS's `WITH CHECK` is evaluated in
+`ExecInsert` *before* `ExecConstraints`, so a refusal arrives as `42501` and
+permission arrives as the duplicate-key violation the existing key guarantees.
+Different answers, and neither writes a row. UPDATE sets one real row's key to
+another real row's: hidden by `USING` means zero rows back, visible means the
+statement aborts on the duplicate. DELETE is reported as **not probed**, because
+establishing it means deleting something real — an honest gap beats a guess.
+
+**RPC functions.** POSTing `{}` to a function that takes arguments returns the
+same 404 as one that was never created, so `increment_questions_answered` was
+reported NOT INSTALLED without that ever having been established. Reading the
+OpenAPI description instead was worse: it lists no functions at all, and the
+empty result was read as an empty database — so *all four* came back missing,
+including one that had answered HTTP 200 five days earlier.
+
+Each is now called with the exact argument names `js/` uses and an unparseable
+uuid. PostgREST resolves and casts before the body runs, so 404 means missing,
+`22P02` means present, and `record_question_outcome` never gets to write. The
+real argument names also test the **signature** — a function that exists under
+a different one answers 404 too, and is just as dead to the app.
+
+Truth as of 2026-08-18: `get_category_play_counts`, `record_question_outcome`
+and `increment_questions_answered` are installed. `get_mastery_counts` is not,
+and `fetchMasteryCounts` has always fallen back to a client-side query, so the
+mastery tree works — slowly — and nobody noticed.
+
+**Row counts in the probe are rows a *visitor* can see.** A restrictive SELECT
+policy filters rows out rather than refusing the request, so `error_logs` reads
+as empty no matter how much it holds.
+
+The lesson generalises past this script: **when a check reports that everything
+is fine, or that everything is broken, suspect the check.** Both are shapes a
+broken measurement makes far more readily than a real system does.
+
+### 7. Migrations are applied by hand
 
 `migrations/*.sql` are pasted into the Supabase SQL Editor manually. Nothing
 records which ones were actually run, so **the live schema is not known with
@@ -167,7 +261,7 @@ to get the real picture before relying on any table or policy.
 │   ├── utils.js        Fuzzy answer matching, DOM helpers, escaping
 │   ├── honk.js / typing.js / presence.js / theme.js / logger.js
 │   └── constants.js    All timing + threshold values
-├── migrations/         Hand-applied SQL (see #4 above)
+├── migrations/         Hand-applied SQL (see #7 above)
 ├── scripts/
 │   ├── screenshot.js       Playwright screenshots of mock states
 │   ├── mock-states.js      Fake data for visual review
@@ -385,6 +479,13 @@ The syntax check exists because a stray brace left `phases.js` unparseable and
 imports `phases.js`. Importing each module to catch this does **not** work:
 these files pull the Supabase client from `esm.sh`, and that resolution fails
 first, masking the syntax error behind an unrelated one.
+
+`tests/migration-policies.test.js` fails on any migration comparing
+`auth.uid()` to `profiles.id` instead of `profiles.user_id` — the mistake that
+made migration 024's admin policy grant nothing while looking installed (#5).
+It is a lint, not a SQL parser: it resolves the alias bound to `profiles` in
+each `FROM` clause and looks only for that alias comparing `.id` to
+`auth.uid()`, which is narrow enough to be provably sound.
 
 **Coverage is thin where it matters most.** Unit tests cover leaf helpers
 (scoring math, fuzzy matching, timer math). The multiplayer engine is largely

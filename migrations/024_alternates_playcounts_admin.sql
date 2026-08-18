@@ -88,6 +88,13 @@ GRANT EXECUTE ON FUNCTION get_category_play_counts() TO anon, authenticated;
 -- UI then reports "Saved!" while saving nothing.
 --
 -- This grants UPDATE only to signed-in admins. Players still cannot write.
+--
+-- CORRECTED AFTER THE FACT. This policy originally matched auth.uid() against
+-- profiles.id. profiles has both an id and a user_id, and it is user_id that
+-- holds the auth user's id, so the predicate matched no row and the policy
+-- granted nothing -- leaving the very bug described above in place. Fixed here
+-- so a replay from zero is correct; migration 028 repairs any database that
+-- already ran the original.
 -- --------------------------------------------
 
 DROP POLICY IF EXISTS "Questions: admins can update" ON questions;
@@ -96,13 +103,13 @@ CREATE POLICY "Questions: admins can update"
   USING (
     EXISTS (
       SELECT 1 FROM profiles p
-       WHERE p.id = auth.uid() AND p.is_admin = true
+       WHERE p.user_id = auth.uid() AND p.is_admin = true
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM profiles p
-       WHERE p.id = auth.uid() AND p.is_admin = true
+       WHERE p.user_id = auth.uid() AND p.is_admin = true
     )
   );
 
