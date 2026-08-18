@@ -473,6 +473,7 @@ node tests/harness/scenario-join.mjs      # public listing, privacy, hot join
 node tests/harness/scenario-feedback.mjs  # votes, flags, timer-expiry scoring
 node tests/harness/scenario-cohost.mjs    # promote, demote, gated controls
 node tests/harness/scenario-account.mjs  # profile, leaderboard, friends, signed-in lobby
+node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused writes
 ```
 
 **Robots must never reach the real project.** Three beacons
@@ -530,6 +531,14 @@ never sign in, and both kinds share a lobby.
 
 **When a bug is reported that the robots cannot see, ask what a real account
 has that a robot does not.**
+
+**`store.denyWrites(table)` simulates an RLS refusal** — zero rows, no error,
+exactly as Postgres behaves when a policy denies a write. This is the most
+misleading thing the database does and the direct cause of #4 and #5, so it is
+now testable rather than only describable. `scenario-admin.mjs` uses it to prove
+the admin page says "Not saved — permission denied" instead of "Saved!";
+removing the zero-row check makes that test report the silent-failure bug by
+name. Use it on any new write path whose failure the player must notice.
 
 **Writing that scenario produced four "bugs", and three were mine.** Worth
 reading, because each looked completely convincing:

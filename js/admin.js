@@ -45,6 +45,28 @@ async function init() {
   attachQuestionHealthListeners();
 }
 
+
+// Show a status message that clears itself, cancelling any pending clear first.
+//
+// Both callers used a bare setTimeout, so the timer from an EARLIER save wiped
+// the message from a LATER one: save something successfully, edit again within
+// two seconds, and "Not saved — permission denied" vanished half a second after
+// appearing. The one message an admin most needs to see was the one most likely
+// to be erased, because it only appears on a second attempt.
+const _statusTimers = new WeakMap();
+function setStatus(el, text, { sticky = false } = {}) {
+  if (!el) return;
+  clearTimeout(_statusTimers.get(el));
+  _statusTimers.delete(el);
+  el.textContent = text;
+  if (!sticky && text) {
+    _statusTimers.set(el, setTimeout(() => {
+      el.textContent = '';
+      _statusTimers.delete(el);
+    }, ADMIN_STATUS_FADE_MS));
+  }
+}
+
 // ============================================
 // DASHBOARD STATS
 // ============================================
@@ -572,7 +594,7 @@ function createQuestionRow(q) {
   // Save handler
   row.querySelector('.admin-q-edit__save').onclick = async () => {
     const statusEl = row.querySelector('.admin-q-edit__status');
-    statusEl.textContent = 'Saving...';
+    setStatus(statusEl, 'Saving...', { sticky: true });
 
     const newText = row.querySelector('.admin-q-edit__text').value.trim();
     const newAnswer = row.querySelector('.admin-q-edit__answer').value.trim();
@@ -600,21 +622,19 @@ function createQuestionRow(q) {
     const { data: saved, error } = await supabase
       .from('questions').update(updates).eq('id', q.id).select();
 
+    // Failures stay on screen; only success fades.
     if (error) {
-      statusEl.textContent = `Error: ${error.message}`;
+      setStatus(statusEl, `Error: ${error.message}`, { sticky: true });
       return;
     }
     if (!saved || saved.length === 0) {
-      statusEl.textContent = 'Not saved — permission denied. Are you signed in as an admin?';
+      setStatus(statusEl, 'Not saved — permission denied. Are you signed in as an admin?', { sticky: true });
       logger.error('Admin', 'question update affected zero rows (RLS)', { id: q.id });
       return;
     }
-    statusEl.textContent = 'Saved!';
-    {
-      // Update the summary text
-      row.querySelector('.admin-q-row__text').textContent = newText.length > 80 ? newText.slice(0, 80) + '\u2026' : newText;
-      setTimeout(() => { statusEl.textContent = ''; }, ADMIN_STATUS_FADE_MS);
-    }
+    // Update the summary text
+    row.querySelector('.admin-q-row__text').textContent = newText.length > 80 ? newText.slice(0, 80) + '\u2026' : newText;
+    setStatus(statusEl, 'Saved!');
   };
 
   return row;
@@ -820,7 +840,7 @@ function createHealthRow(q) {
 
   row.querySelector('.qh-save').onclick = async () => {
     const statusEl = row.querySelector('.qh-status');
-    statusEl.textContent = 'Saving...';
+    setStatus(statusEl, 'Saving...', { sticky: true });
     const newAlts = row.querySelector('.qh-alts').value
       .split('\n').map(s => s.trim()).filter(Boolean);
 
@@ -832,14 +852,16 @@ function createHealthRow(q) {
       .eq('id', q.id)
       .select();
 
-    if (error) { statusEl.textContent = `Error: ${error.message}`; return; }
+    // Failures stay on screen. A message the admin has to catch within two
+    // seconds is a message they will miss, and this one tells them their edit
+    // did not happen.
+    if (error) { setStatus(statusEl, `Error: ${error.message}`, { sticky: true }); return; }
     if (!saved || saved.length === 0) {
-      statusEl.textContent = 'Not saved — permission denied. Signed in as an admin?';
+      setStatus(statusEl, 'Not saved — permission denied. Signed in as an admin?', { sticky: true });
       logger.error('Admin', 'alternates update affected zero rows (RLS)', { id: q.id });
       return;
     }
-    statusEl.textContent = `Saved — ${newAlts.length} alternate${newAlts.length === 1 ? '' : 's'}`;
-    setTimeout(() => { statusEl.textContent = ''; }, ADMIN_STATUS_FADE_MS);
+    setStatus(statusEl, `Saved — ${newAlts.length} alternate${newAlts.length === 1 ? '' : 's'}`);
   };
 
   return row;

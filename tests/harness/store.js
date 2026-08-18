@@ -29,6 +29,7 @@ const newId = table => (INTEGER_PK.has(table) ? nextIntId++ : uuid());
 export class FakeStore {
   constructor() {
     this.tables = new Map();       // name -> array of row objects
+    this._denied = new Set();      // tables whose writes are refused, RLS-style
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
     this.presence = new Map();     // topic -> Map(robotId -> state)
@@ -41,6 +42,11 @@ export class FakeStore {
     if (!this.tables.has(name)) this.tables.set(name, []);
     return this.tables.get(name);
   }
+
+  /** Refuse every write to `table`, the way an RLS policy does: zero rows, no error. */
+  denyWrites(table) { this._denied.add(table); }
+  /** Undo denyWrites. */
+  allowWrites(table) { this._denied.delete(table); }
 
   seed(name, rows) {
     this.table(name).push(...rows.map(r => ({ ...r })));
@@ -179,6 +185,20 @@ export class FakeStore {
 
     const { table, action, payload, filters = [], modifiers = {} } = op;
     const rows = this.table(table);
+
+    // Simulate an RLS refusal, which is the single most misleading thing this
+    // database does: a policy that denies a write does NOT return an error. The
+    // statement succeeds and affects zero rows, so `if (error)` is false and the
+    // caller reports success while nothing was saved. That is how the admin page
+    // said "Saved!" for months without saving anything.
+    //
+    // denyWrites('questions') makes this store behave the same way, so the code
+    // paths that are supposed to notice can actually be tested.
+    if (this._denied.has(table) && action !== 'select') {
+      return modifiers.single
+        ? { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } }
+        : { data: [], error: null, count: 0 };
+    }
 
     try {
       if (action === 'select') {

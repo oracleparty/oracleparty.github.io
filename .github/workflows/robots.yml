@@ -60,6 +60,13 @@ jobs:
       - name: Accounts — profile, leaderboard, friends, signed-in lobby
         run: node tests/harness/scenario-account.mjs
 
+      # The admin dashboard, gated on is_admin and unreachable until the
+      # harness could sign in. Includes the check that matters most in this
+      # project: when the database refuses a write it returns NO error, and the
+      # page must say so rather than report success.
+      - name: Admin — gate, counts, flags, and refused writes
+        run: node tests/harness/scenario-admin.mjs
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.
