@@ -173,6 +173,24 @@ export class PlaytestTable {
       }
     });
 
+    // HARD BLOCK on the real Supabase project.
+    //
+    // Three beacons (removePlayerBeacon, markDisconnectedBeacon,
+    // deleteRoomBeacon) call fetch() against SUPABASE_URL directly rather than
+    // going through the client, so swapping the library is not enough to keep
+    // robots away from production. This sandbox happens to be firewalled, but
+    // the robot workflow runs on GitHub runners where Supabase is reachable —
+    // a robot leaving a room would have issued a real DELETE.
+    //
+    // Anything addressed to the live project is answered locally instead.
+    await context.route('**://*.supabase.co/**', route => {
+      const method = route.request().method();
+      if (method !== 'GET') {
+        return route.fulfill({ status: 204, contentType: 'application/json', body: '' });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+
     // Serve the fake Supabase library in place of the real one.
     await context.route('**/esm.sh/**', route =>
       route.fulfill({ status: 200, contentType: 'text/javascript', body: SHIM }));

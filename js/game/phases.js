@@ -204,9 +204,21 @@ export function handleRoomChange(payload) {
     return;
   }
 
-  // When host starts a NEW game while this player is still on results,
+  // When the host starts a NEW game while this player is still on results,
   // show a notification instead of auto-pulling them in.
-  if (status === 'playing' && state.gamePhase === 'results') {
+  //
+  // A new game means the room moved to some phase OTHER than results. Testing
+  // only our own gamePhase caught the host's own write: handleShowResults sets
+  // state.gamePhase = 'results' before writing game_phase = 'results', so the
+  // echo of that write matched this condition, was mistaken for a new game,
+  // and — because showResultsScreen() is still awaiting network calls, leaving
+  // #results-screen hidden — _showNewGameNotice() navigated the host straight
+  // to the lobby.
+  //
+  // The host therefore never saw their own results, and never pressed "Back to
+  // Lobby", which is the only thing that clears answers and returns the room to
+  // lobby. Every room was left holding a finished game's state.
+  if (status === 'playing' && state.gamePhase === 'results' && game_phase && game_phase !== 'results') {
     _showNewGameNotice();
     return;
   }

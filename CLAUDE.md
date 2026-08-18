@@ -283,7 +283,15 @@ production database and no robot ever appears in a real lobby.**
 node tests/harness/scenario-lobby.mjs      # host + 2 players see each other
 node tests/harness/scenario-fullgame.mjs   # full game, score agreement, channel cleanup
 node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous answers
+node tests/harness/scenario-playagain.mjs # second game, room reset, no leakage
 ```
+
+**Robots must never reach the real project.** Three beacons
+(`removePlayerBeacon`, `markDisconnectedBeacon`, `deleteRoomBeacon`) call
+`fetch()` against `SUPABASE_URL` directly rather than through the client, so
+swapping the library is not enough — the harness also routes every request to
+`*.supabase.co` to a local stub. Without that, robots on GitHub runners (which
+are not firewalled) would issue real DELETEs.
 
 They run automatically on every push via `.github/workflows/robots.yml`, kept
 separate from `ci.yml` because they need a browser download and take minutes

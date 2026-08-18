@@ -1052,6 +1052,17 @@ async function handleStartGame() {
   btnStartGame.textContent = 'Starting...';
 
   try {
+    // Clear any state left by a previous game before flipping the room to
+    // playing, so the room is never simultaneously "playing" and phase
+    // "lobby". The host's game init writes question_ids and the countdown
+    // immediately after this.
+    await updateGameState(room.id, {
+      game_phase: null,
+      current_question: 0,
+      question_ids: [],
+      question_started_at: null,
+      countdown_started_at: null
+    });
     await updateRoomStatus(room.id, 'playing');
     // Realtime subscription triggers navigation for everyone including host.
     // Safety fallback: if Realtime doesn't fire within 5s, navigate directly.

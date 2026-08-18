@@ -37,3 +37,6 @@ jobs:
 
       - name: Nasty — host away, rejoin, simultaneous answers
         run: node tests/harness/scenario-nasty.mjs
+
+      - name: Play Again — second game, room reset, no state leakage
+        run: node tests/harness/scenario-playagain.mjs

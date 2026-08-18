@@ -146,7 +146,19 @@ async function init() {
   // to game.html), redirect to lobby. Without this, the host would inadvertently
   // start a new game, and non-hosts would hang on the loading screen waiting for
   // question_ids that were just cleared by the lobby reset.
-  if (roomCheck.status === 'lobby' || roomCheck.game_phase === 'lobby') {
+  // Guard on status only. status is the authoritative "is a game running"
+  // flag; game_phase lags behind it.
+  //
+  // Play Again sets game_phase to 'lobby', and starting the next game flips
+  // status to 'playing' without clearing that. Including game_phase here
+  // therefore bounced everyone straight back to the lobby on the second game
+  // of any session — the most common thing players do — and no second game
+  // could ever begin.
+  //
+  // The case this guard exists for (the host hits Play Again while we are
+  // still navigating to game.html) sets BOTH fields, so status alone still
+  // catches it.
+  if (roomCheck.status === 'lobby') {
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
     window.location.replace('lobby.html');
     return;

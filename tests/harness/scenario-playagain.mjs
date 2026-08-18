@@ -96,7 +96,18 @@ try {
   /** Drive a whole game from whatever screen each robot is on. */
   async function playAGame(label) {
     heading(label);
-    await host.page.click('#btn-start-game').catch(() => {});
+    // Wait for the lobby to be ready rather than clicking blind: after Play
+    // Again the page has only just loaded, and a click that lands too early
+    // does nothing while looking like a failure to start.
+    await host.page.waitForSelector('#btn-start-game', { state: 'visible', timeout: 20000 }).catch(() => {});
+    let started = false;
+    for (let attempt = 0; attempt < 12 && !started; attempt++) {
+      await clickIfReady(host, '#btn-start-game');
+      await host.page.waitForTimeout(700);
+      const room = table.store.table('rooms')[0];
+      started = room?.status === 'playing' || (room?.question_ids || []).length > 0;
+    }
+    if (!started) problems.push(`${label}: Start Game never took effect`);
     for (const r of everyone) {
       await r.page.waitForURL('**/game.html*', { timeout: 25000 })
         .catch(() => problems.push(`${label}: ${r.name} never reached the game`));
