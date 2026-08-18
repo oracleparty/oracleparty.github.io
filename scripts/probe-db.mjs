@@ -13,13 +13,16 @@
 
 const URL_BASE = 'https://zzpqymehapwbjupphxec.supabase.co';
 const KEY = 'sb_publishable_UJtIRllW5SWhMbqynb-3QQ_HWIV2OSd';
-const IMPOSSIBLE_ID = '00000000-0000-4000-8000-000000000000';
 
 const TABLES = [
   'rooms', 'players', 'answers', 'chat_messages', 'chat_archive', 'questions',
   'question_feedback', 'question_history', 'game_plays', 'game_history',
   'profiles', 'player_stats', 'friend_requests', 'friendships', 'title_unlocks',
   'site_settings', 'error_logs',
+  // Added by migrations 025: the Question Health feature reads the view and
+  // the RPC writes the table. Both were absent from this list, so the feature
+  // the admin page is built on was never checked here at all.
+  'question_stats', 'question_health',
 ];
 
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
@@ -32,13 +35,6 @@ async function req(path, init = {}) {
   let body = null;
   try { body = await res.text(); } catch { /* ignore */ }
   return { status: res.status, body, headers: res.headers };
-}
-
-function verdict(status) {
-  if (status === 401 || status === 403) return 'BLOCKED (good)';
-  if (status >= 200 && status < 300)    return '*** ALLOWED ***';
-  if (status === 404)                   return 'table not found';
-  return `unclear (HTTP ${status})`;
 }
 
 console.log('='.repeat(70));
@@ -74,19 +70,102 @@ for (const t of present) {
   }
 }
 
-console.log('\n--- WRITE PERMISSIONS (zero-row probes — nothing is modified) ---');
-console.log('    "ALLOWED" means any visitor could do this to real rows.\n');
-for (const t of present) {
-  const upd = await req(`${t}?id=eq.${IMPOSSIBLE_ID}`, {
-    method: 'PATCH',
+// ============================================
+// WRITE PERMISSIONS
+//
+// The obvious probe — aim an UPDATE or DELETE at an id that cannot exist and
+// read the status — is WRONG, and this file shipped it for days. Postgres
+// applies an RLS policy's USING clause as an extra WHERE condition, so a
+// statement matching zero rows succeeds whether the policy would have allowed
+// it or not. Every table therefore came back "*** ALLOWED ***", including
+// `questions`, which has no write policy for visitors at all. It reported a
+// wide-open door on a table that is locked, so the one section meant to
+// describe the security posture described the opposite of it.
+//
+// What follows distinguishes the two properly, and still never commits
+// anything:
+//
+//   INSERT — post an existing primary key. RLS's WITH CHECK is evaluated in
+//     ExecInsert *before* ExecConstraints, so a refusal surfaces as 42501
+//     while permission surfaces as the duplicate-key violation that the
+//     existing key guarantees. Denied and allowed look different, and neither
+//     writes a row.
+//
+//   UPDATE — set one real row's primary key to another real row's. If the
+//     USING clause hides the row, zero rows come back; if it does not, the
+//     statement aborts on the duplicate key. Denied returns [], allowed
+//     returns 23505, and the abort means nothing is modified.
+//
+//   DELETE — cannot be established without deleting something real, so it is
+//     not guessed at. Every gameplay policy here is written FOR ALL, so the
+//     UPDATE verdict is the honest read on DELETE too.
+// ============================================
+
+const PK = {
+  profiles: 'user_id', site_settings: 'key', question_stats: 'question_id',
+  question_health: 'question_id',
+};
+const pkOf = t => PK[t] || 'id';
+
+function pgCode(body) {
+  try { return JSON.parse(body || '{}').code || null; } catch { return null; }
+}
+
+async function samplePks(t, n = 2) {
+  const pk = pkOf(t);
+  const r = await req(`${t}?select=${pk}&limit=${n}`);
+  if (r.status !== 200) return [];
+  try { return JSON.parse(r.body || '[]').map(row => row[pk]).filter(v => v != null); }
+  catch { return []; }
+}
+
+async function probeInsert(t, existingPk) {
+  if (existingPk == null) return 'no rows to probe with';
+  const r = await req(t, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify({ id: IMPOSSIBLE_ID }),
+    body: JSON.stringify({ [pkOf(t)]: existingPk }),
   });
-  const del = await req(`${t}?id=eq.${IMPOSSIBLE_ID}`, {
-    method: 'DELETE',
-    headers: { Prefer: 'return=minimal' },
+  const code = pgCode(r.body);
+  if (r.status === 401 || r.status === 403 || code === '42501') return 'BLOCKED (good)';
+  // 23505 duplicate key, 23502 not-null, 23503 foreign key: all mean the row
+  // got past RLS and died on a constraint instead.
+  if (['23505', '23502', '23503', '23514'].includes(code)) return '*** ALLOWED ***';
+  if (r.status >= 200 && r.status < 300) return '*** ALLOWED — AND A ROW WAS WRITTEN ***';
+  return `unclear (HTTP ${r.status}${code ? ` / ${code}` : ''})`;
+}
+
+async function probeUpdate(t, pks) {
+  if (pks.length < 2) return 'needs 2 rows to probe safely';
+  const pk = pkOf(t);
+  const r = await req(`${t}?${pk}=eq.${encodeURIComponent(pks[0])}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify({ [pk]: pks[1] }),
   });
-  console.log(`  ${t.padEnd(20)} UPDATE: ${verdict(upd.status).padEnd(16)} DELETE: ${verdict(del.status)}`);
+  const code = pgCode(r.body);
+  if (r.status === 401 || r.status === 403 || code === '42501') return 'BLOCKED (good)';
+  if (code === '23505') return '*** ALLOWED ***';
+  if (r.status >= 200 && r.status < 300) {
+    try {
+      const rows = JSON.parse(r.body || '[]');
+      // Zero rows returned by a targeted UPDATE means the USING clause hid the
+      // row from us — that is the refusal.
+      if (Array.isArray(rows) && rows.length === 0) return 'BLOCKED (good)';
+      return '*** ALLOWED — AND A ROW WAS CHANGED ***';
+    } catch { /* fall through */ }
+  }
+  return `unclear (HTTP ${r.status}${code ? ` / ${code}` : ''})`;
+}
+
+console.log('\n--- WRITE PERMISSIONS (nothing is created, changed or removed) ---');
+console.log('    "ALLOWED" means any visitor could do this to real rows.');
+console.log('    DELETE is not probed: it cannot be tested without deleting.\n');
+for (const t of present) {
+  const pks = await samplePks(t);
+  const ins = await probeInsert(t, pks[0]);
+  const upd = await probeUpdate(t, pks);
+  console.log(`  ${t.padEnd(20)} INSERT: ${ins.padEnd(24)} UPDATE: ${upd}`);
 }
 
 console.log('\n--- QUESTION BANK SHAPE ---');
@@ -123,14 +202,43 @@ if (fb.status === 200) {
   console.log(`  question_feedback not readable (HTTP ${fb.status}) — migration 020 may never have been run`);
 }
 
-console.log('\n--- RPC FUNCTIONS ---');
-for (const fn of ['get_category_play_counts', 'increment_questions_answered']) {
-  const r = await req(`rpc/${fn}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
-  });
-  console.log(`  ${fn.padEnd(34)} HTTP ${r.status} ${r.status === 404 ? '(NOT INSTALLED)' : ''}`);
+// ============================================
+// RPC FUNCTIONS
+//
+// Read from the OpenAPI description rather than by calling them. POSTing `{}`
+// to a function that takes arguments returns the same 404/PGRST202 as one that
+// was never created, so the previous version of this check reported
+// increment_questions_answered as NOT INSTALLED without that being established.
+// Calling record_question_outcome for real would also have written a row.
+//
+// The list below is every function the app calls — gathered from js/, not from
+// migrations/, because a migration proves nothing about what was applied.
+// ============================================
+
+console.log('\n--- RPC FUNCTIONS (from the API description; nothing is called) ---');
+const CALLED_RPCS = [
+  'get_category_play_counts',   // js/db/questions.js — category browser play counts
+  'get_mastery_counts',         // js/db/questions.js — profile mastery tree
+  'record_question_outcome',    // js/db/questions.js — fills question_stats
+  'increment_questions_answered', // js/db/players.js — game_plays progress
+];
+const spec = await req('');
+let exposed = null;
+try {
+  const paths = JSON.parse(spec.body || '{}').paths || {};
+  exposed = new Set(Object.keys(paths)
+    .filter(p => p.startsWith('/rpc/'))
+    .map(p => p.slice(5)));
+} catch { /* fall through to the warning below */ }
+
+if (!exposed) {
+  console.log(`  could not read the API description (HTTP ${spec.status}) — RPC state unknown`);
+} else {
+  for (const fn of CALLED_RPCS) {
+    console.log(`  ${fn.padEnd(34)} ${exposed.has(fn) ? 'installed' : '*** NOT INSTALLED ***'}`);
+  }
+  const unused = [...exposed].filter(f => !CALLED_RPCS.includes(f));
+  if (unused.length) console.log(`  (also exposed, uncalled: ${unused.join(', ')})`);
 }
 
 console.log('\n' + '='.repeat(70));
