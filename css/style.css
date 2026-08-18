@@ -1930,6 +1930,73 @@ body::after {
   transition: opacity 0.3s ease;
 }
 
+/* Keep the player's name readable, and every row the same height.
+ *
+ * Measured at 375px with a host viewing another player: the word buttons
+ * ("Co-Host" 65px, "Transfer" 73px) plus the honk button and a status badge
+ * consumed 239px of a 327px row. Because .name-stack is `flex: 1; min-width: 0`
+ * it absorbed the shortfall and collapsed to ZERO — the name was invisible.
+ * That is what "the UI goes too wide" looked like.
+ *
+ * Wrapping the buttons onto a second line fixed the name but made promoted
+ * players taller than everyone else, so the list stopped looking even. The
+ * host actions are icons instead: one line, one height, name always readable. */
+.lobby-hosts .player-item .name-stack,
+.lobby-players .player-item .name-stack {
+  min-width: 72px;
+}
+
+/* One fixed height for every row, whatever it contains. Left to the content,
+ * rows measured 41 / 42 / 44px depending on whether a player had icon buttons
+ * or a status badge, and the list looked subtly ragged. 44px is also the
+ * minimum comfortable touch target. */
+.lobby-hosts .player-item,
+.lobby-players .player-item {
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+/* "Not Ready" broke onto two lines once the icons freed up space, making that
+ * player's row taller than everyone else's — the same unevenness the icons
+ * were meant to remove. Badges stay on one line. */
+.lobby-hosts .badge,
+.lobby-players .badge,
+.player-item__badges .badge {
+  white-space: nowrap;
+}
+
+.player-item__badges {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.icon-btn:active {
+  transform: scale(0.92);
+}
+
+.cohost-btn--demote {
+  border-color: var(--color-accent, currentColor);
+}
+
 .player-item:last-child {
   border-bottom: none;
 }

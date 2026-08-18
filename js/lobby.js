@@ -447,13 +447,20 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const honks = getHonkCount(p.id);
   const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
   const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
-  const transferBtn = (room.isHost && !isMe && !p.is_host) ? `<button class="transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}">Transfer</button>` : '';
+  // Host actions are icons, not words. Measured at 375px, the word buttons
+  // ("Co-Host" 65px + "Transfer" 73px) plus the honk button and a status badge
+  // left ZERO pixels for the player's name, which collapsed to nothing. Icons
+  // keep every row on one line and the same height, so the list stays even.
+  // aria-label carries the meaning for screen readers.
+  const transferBtn = (room.isHost && !isMe && !p.is_host)
+    ? `<button class="icon-btn transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}" aria-label="Make ${escapeHtml(p.display_name)} the host" title="Make host">&#x1F451;</button>`
+    : '';
   let cohostBtn = '';
   if (room.isHost && !isMe && !p.is_host) {
     if (p.is_cohost) {
-      cohostBtn = `<button class="cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Demote</button>`;
+      cohostBtn = `<button class="icon-btn cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}" aria-label="Remove ${escapeHtml(p.display_name)} as co-host" title="Remove co-host">&#x2605;</button>`;
     } else {
-      cohostBtn = `<button class="cohost-btn" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}">Co-Host</button>`;
+      cohostBtn = `<button class="icon-btn cohost-btn" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}" aria-label="Make ${escapeHtml(p.display_name)} co-host" title="Make co-host">&#x2606;</button>`;
     }
   }
 
