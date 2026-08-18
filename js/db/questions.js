@@ -3,7 +3,7 @@
 // ============================================
 
 import { supabase } from './client.js';
-import { logger } from '../logger.js';
+import { logger, reportWriteFailure } from '../logger.js';
 import { CATEGORY_PAGE_SIZE, QUESTION_POOL_SIZE, WILDCARD_LIMIT, DIFFICULTY_QUESTION_LIMIT, TITLE_BATCH_SIZE } from '../constants.js';
 
 /**
@@ -551,7 +551,7 @@ export async function upsertQuestionFeedback({ questionId, roomId, playerName, f
       flag_reason: flagReason || null
     }, { onConflict: 'question_id,voter_id' });
 
-  if (error) logger.error('Supabase', 'upsertQuestionFeedback failed', error);
+  reportWriteFailure('Save feedback', error, "Couldn't save your rating");
   return { error };
 }
 

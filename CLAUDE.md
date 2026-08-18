@@ -89,7 +89,25 @@ do. `.github/workflows/db-probe.yml` triggers it on push.
 `last_seen_at` in `addPlayer` before the column existed would have stopped
 anyone joining at all.
 
-### 4. Admin question edits silently do nothing
+### 4. Failures are logged, not shown
+
+The deepest recurring fault in this codebase. On 2026-08-13 there were **94
+places that log a Supabase error and 14 that tell the player anything**. Every
+bug found that day was invisible for that reason: a player vanished from a
+lobby, co-host did nothing, play counts stopped, the admin page reported
+"Saved!" while saving nothing. All of them reached a log and stopped there.
+
+`reportWriteFailure(where, error, playerMessage)` in `js/logger.js` logs AND
+surfaces a toast; `writeSucceeded(where, result, playerMessage)` also catches
+the zero-rows case, because **an RLS refusal returns no error** — it updates
+nothing and reports success.
+
+Use them for writes whose failure changes what the player experiences
+(submitting an answer, joining, starting, changing a role). Do **not** use them
+for background chatter like heartbeats: a toast on every dropped heartbeat is
+noise, and noise is how real warnings get ignored.
+
+### 5. Admin question edits silently do nothing
 
 `js/admin.js` tries to update `questions` (mark flagged questions as `removed`,
 or edit text/answers). Because there is no write policy, **RLS discards these
@@ -101,7 +119,7 @@ error, so it reports "Saved!" while saving nothing.
 Player-side feedback (thumbs up/down/flag) **does** write correctly. Only the
 admin's response to it is broken.
 
-### 5. Migrations are applied by hand
+### 6. Migrations are applied by hand
 
 `migrations/*.sql` are pasted into the Supabase SQL Editor manually. Nothing
 records which ones were actually run, so **the live schema is not known with

@@ -3,7 +3,7 @@
 // ============================================
 
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './client.js';
-import { logger } from '../logger.js';
+import { logger, reportWriteFailure } from '../logger.js';
 import { PUBLIC_ROOMS_LIMIT } from '../constants.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
@@ -229,7 +229,7 @@ export async function updateRoomStatus(roomId, status) {
     .update({ status })
     .eq('id', roomId);
 
-  if (error) logger.error('Supabase', 'updateRoomStatus failed', error);
+  reportWriteFailure('Update room', error, "Couldn't start the game — check your connection");
   return { error };
 }
 
@@ -243,7 +243,7 @@ export async function updateGameState(roomId, updates) {
     .update(updates)
     .eq('id', roomId);
 
-  if (error) logger.error('Supabase', 'updateGameState failed', error);
+  reportWriteFailure('Advance game', error, "Couldn't move the game on — check your connection");
   return { error };
 }
 

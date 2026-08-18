@@ -1,5 +1,5 @@
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './client.js';
-import { logger } from '../logger.js';
+import { logger, reportWriteFailure } from '../logger.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
 // ============================================
@@ -27,8 +27,7 @@ export async function addPlayer(roomId, displayName, isHost = false, userId = nu
     .select()
     .single();
 
-  if (error) {
-    logger.error('Supabase', 'addPlayer failed', error);
+  if (reportWriteFailure('Join room', error, "Couldn't join the room — check your connection and try again")) {
     return { data: null, error };
   }
   return { data, error: null };
@@ -59,7 +58,7 @@ export async function demoteHost(playerId) {
  */
 export async function promoteToCohost(playerId) {
   const { error } = await supabase.from('players').update({ is_cohost: true }).eq('id', playerId);
-  if (error) logger.error('Supabase', 'promoteToCohost failed', error);
+  reportWriteFailure('Promote co-host', error, "Couldn't make them co-host");
 }
 
 /**
@@ -67,7 +66,7 @@ export async function promoteToCohost(playerId) {
  */
 export async function demoteCohost(playerId) {
   const { error } = await supabase.from('players').update({ is_cohost: false }).eq('id', playerId);
-  if (error) logger.error('Supabase', 'demoteCohost failed', error);
+  reportWriteFailure('Demote co-host', error, "Couldn't remove co-host");
 }
 
 /**
@@ -159,7 +158,7 @@ export async function toggleReady(playerId, isReady) {
     .update({ is_ready: isReady })
     .eq('id', playerId);
 
-  if (error) logger.error('Supabase', 'toggleReady failed', error);
+  reportWriteFailure('Ready toggle', error, "Couldn't update your ready status");
   return { error };
 }
 
@@ -284,8 +283,7 @@ export async function submitAnswer({ roomId, playerId, questionNumber, questionI
     .select()
     .single();
 
-  if (error) {
-    logger.error('Supabase', 'submitAnswer failed', error);
+  if (reportWriteFailure('Submit answer', error, "Your answer didn't save — check your connection and try again")) {
     return { data: null, error };
   }
   return { data, error: null };

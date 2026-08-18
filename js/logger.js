@@ -91,3 +91,56 @@ import('./db/client.js').then(({ supabase }) => {
 }).catch(() => {
   initErrorTracking(null);
 });
+
+/**
+ * Report a database write that failed in a way the player will actually feel.
+ *
+ * The whole app logs failures and tells nobody: 94 places record a Supabase
+ * error, 14 say anything to the player. Every bug found on 2026-08-13 was
+ * invisible for exactly that reason — a player vanished from a lobby, co-host
+ * did nothing, play counts stopped, and each one only ever reached a log.
+ *
+ * Use this for writes whose failure changes what the player experiences
+ * (submitting an answer, joining, starting, changing a role). Do NOT use it for
+ * background chatter like heartbeats — a toast on every dropped heartbeat is
+ * noise, and noise is how real warnings get ignored.
+ *
+ * @param where   short context, e.g. 'Submit answer'
+ * @param error   the Supabase error object
+ * @param player  message to show. Omit to log only.
+ * @returns true when there was an error, so callers can `if (reportWriteFailure(...)) return;`
+ */
+export function reportWriteFailure(where, error, player) {
+  if (!error) return false;
+  logger.error('Supabase', `${where} failed`, error);
+  if (player) {
+    import('./utils.js')
+      .then(({ showToast }) => showToast(player, 'error'))
+      .catch(() => { /* a failed toast must never break the caller */ });
+  }
+  return true;
+}
+
+/**
+ * A write that RLS refused updates zero rows and returns NO error, so checking
+ * `error` alone reports success. This catches that case too.
+ *
+ * The admin question editor said "Saved!" for months while saving nothing,
+ * because a refusal is not an error.
+ *
+ * @param result  the { data, error } from a write that used .select()
+ */
+export function writeSucceeded(where, result, player) {
+  if (reportWriteFailure(where, result?.error, player)) return false;
+  const rows = result?.data;
+  if (Array.isArray(rows) && rows.length === 0) {
+    logger.error('Supabase', `${where} affected zero rows — permission denied?`, { where });
+    if (player) {
+      import('./utils.js')
+        .then(({ showToast }) => showToast(player, 'error'))
+        .catch(() => {});
+    }
+    return false;
+  }
+  return true;
+}
