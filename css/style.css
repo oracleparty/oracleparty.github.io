@@ -3650,6 +3650,12 @@ body::after {
   font-size: var(--text-4xl);
   margin-bottom: var(--space-xs);
   animation: trophy-bounce 0.6s var(--ease-out) both;
+  /* A full-width block scaled to 1.2 at the peak of the bounce reached 397px
+     inside a 375px viewport — 11px past each edge. Shrinking the box to the
+     trophy means the scale applies to the emoji rather than to the width of
+     the screen. Measured at 375px and 430px. */
+  width: fit-content;
+  margin-inline: auto;
 }
 
 @keyframes trophy-bounce {

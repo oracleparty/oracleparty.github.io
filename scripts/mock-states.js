@@ -262,22 +262,71 @@ export const STATES = {
       const sb = document.getElementById('btn-settings');
       if (sb) sb.classList.remove('hidden');
 
-      document.getElementById('host-list').innerHTML = `
-        <div class="player-row"><div class="avatar-wrap">${av(P[0])}</div><span class="player-row__name">${P[0].name}</span><span class="badge badge--host">Host</span></div>
-        <div class="player-row"><div class="avatar-wrap">${av(P[1])}</div><span class="player-row__name">${P[1].name}</span><span class="badge badge--cohost">Co-host</span></div>
-      `;
+      // Mirrors _renderPlayerItem() in js/lobby.js exactly.
+      //
+      // This used to emit `.player-row` / `.player-row__name`, which appear in
+      // neither the app nor the stylesheet — so every lobby screenshot showed
+      // unstyled markup that has never shipped. A row that overflowed by 71px
+      // in a real game reviewed as perfect here, because this was not a lobby.
+      // If _renderPlayerItem changes, change this in the same commit.
+      function row(p, opts) {
+        opts = opts || {};
+        const badges = [];
+        if (opts.roleBadge && p.isHost) badges.push('<span class="badge badge--host">Host</span>');
+        if (opts.roleBadge && p.isCohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
+        // Ready state is suppressed for host and co-host, as in the app.
+        if (!p.isHost && !p.isCohost) {
+          badges.push(opts.ready
+            ? '<span class="badge badge--ready">Ready</span>'
+            : '<span class="badge badge--not-ready">Not Ready</span>');
+        }
+        const sub = (p.tier ? '<span class="player-tier" style="color:#A78BFA;">' + p.tier + '</span>' : '')
+                  + (p.title ? '<span class="player-title">' + p.title + '</span>' : '');
+        // The host sees action buttons on everyone but themselves.
+        const actions = p.isHost ? '' :
+          '<button class="honk-btn" aria-label="Quack">\u{1F986}</button>'
+          + '<button class="icon-btn cohost-btn' + (p.isCohost ? ' cohost-btn--demote' : '') + '" aria-label="Co-host">'
+          + (p.isCohost ? '★' : '☆') + '</button>'
+          + '<button class="icon-btn transfer-host-btn" aria-label="Make host">\u{1F451}</button>';
+        return '<div class="player-item">'
+          + '<div class="avatar-wrap">' + av(p) + '</div>'
+          + '<div class="name-stack"><span class="player-item__name">' + p.name + '</span>'
+          + '<span class="name-substack">' + sub + '</span></div>'
+          + actions
+          + '<span class="player-item__badges">' + badges.join('') + '</span>'
+          + '</div>';
+      }
 
-      document.getElementById('player-list').innerHTML = P.slice(2).map(p => `
-        <div class="player-row"><div class="avatar-wrap">${av(p)}</div><span class="player-row__name">${p.name}</span></div>
-      `).join('');
+      // A signed-in player carries a tier; a guest does not. That difference is
+      // what the robot playtests cannot represent and what broke the real row,
+      // so the mock deliberately mixes both.
+      const host = { ...P[0], isHost: true, tier: 'Oracle', title: 'Keeper of Secrets' };
+      const cohost = { ...P[1], isCohost: true, tier: 'Scholar' };
+      document.getElementById('host-list').innerHTML =
+        row(host, { roleBadge: true }) + row(cohost, { roleBadge: true });
+
+      document.getElementById('player-list').innerHTML = [
+        { ...P[2], tier: 'Apprentice' },
+        { ...P[3] },
+        { ...P[4], tier: 'Novice', title: 'Student of the Ages' },
+        { ...P[5] },
+      ].map(p => row(p, { ready: false })).join('');
 
       const chat = document.getElementById('chat-drawer-messages');
       if (chat) {
-        chat.innerHTML = `
-          <div class="chat-row"><div class="avatar-wrap">${av(P[2],' avatar--chat')}</div><div class="chat-bubble"><strong>${P[2].name}</strong> Ready to go! 🎉</div></div>
-          <div class="chat-row"><div class="avatar-wrap">${av(P[0],' avatar--chat')}</div><div class="chat-bubble"><strong>${P[0].name}</strong> Waiting for one more...</div></div>
-          <div class="chat-row"><div class="avatar-wrap">${av(P[5],' avatar--chat')}</div><div class="chat-bubble"><strong>${P[5].name}</strong> Let's do this! 💪</div></div>
-        `;
+        // Mirrors appendChatMessage() in js/lobby.js.
+        function bubble(p, text, hearts) {
+          return '<div class="chat-bubble">'
+            + '<div class="chat-bubble__header">' + av(p, ' avatar--chat')
+            + '<div class="chat-bubble__name">' + p.name + '</div></div>'
+            + '<div class="chat-bubble__body"><div class="chat-bubble__text">' + text + '</div>'
+            + '<div class="chat-bubble__hearts"><button class="heart-btn" aria-label="Heart">&hearts;</button>'
+            + '<span class="heart-count' + (hearts ? '' : ' hidden') + '">' + (hearts || 0) + '</span>'
+            + '</div></div></div>';
+        }
+        chat.innerHTML = bubble(P[2], 'Ready to go! 🎉', 2)
+          + bubble(P[0], 'Waiting for one more...', 0)
+          + bubble(P[5], "Let's do this! 💪", 1);
       }
 
       const startBtn = document.getElementById('btn-start-game');
@@ -290,13 +339,15 @@ export const STATES = {
     screen: 'lobby-screen',
     inherits: 'lobby-waiting',
     inject: () => {
-      document.querySelectorAll('.player-row').forEach(row => {
-        const existing = row.querySelector('.badge--ready');
-        if (!existing) {
-          const badge = document.createElement('span');
-          badge.className = 'badge badge--ready';
-          badge.textContent = 'Ready';
-          row.appendChild(badge);
+      // Flip "Not Ready" to "Ready" in place, in the badge strip where the app
+      // puts it. Appending to .player-row did nothing once the rows became
+      // .player-item, and appending to the row rather than its badge strip
+      // would have put the badge outside the container that bounds it.
+      document.querySelectorAll('#player-list .player-item__badges').forEach(strip => {
+        const notReady = strip.querySelector('.badge--not-ready');
+        if (notReady) {
+          notReady.className = 'badge badge--ready';
+          notReady.textContent = 'Ready';
         }
       });
     },
@@ -409,7 +460,10 @@ export const STATES = {
       document.getElementById('reveal-question-text').textContent = 'What ancient wonder was located in the city of Babylon?';
       document.getElementById('reveal-answer').textContent = 'Hanging Gardens';
       document.getElementById('reveal-difficulty').textContent = 'Medium';
-      document.getElementById('reveal-difficulty').className = 'reveal__difficulty reveal__difficulty--medium';
+      // Base class only. `reveal__difficulty--medium` was invented here and
+      // exists in neither the app nor the stylesheet — reveal.js in fact hides
+      // this element outright.
+      document.getElementById('reveal-difficulty').className = 'reveal__difficulty';
       const fb = document.getElementById('reveal-feedback');
       if (fb) fb.style.display = '';
 
@@ -600,11 +654,19 @@ export const STATES = {
         { p: P[4], score: 22, rank: '6th' },
       ];
 
-      document.getElementById('results-list').innerHTML = scores.map(s =>
-        '<div class="score-anim-row"><span class="results-rank">' + s.rank + '</span>' +
+      // Mirrors renderResultsList() in js/game/scores.js. The old markup put a
+      // `.results-rank` span first — a class that exists nowhere in the app or
+      // the stylesheet — and omitted the name-stack the real row is built on,
+      // so this preview never showed the layout it claimed to.
+      const PLACE = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
+      const PLACE_CLASS = ['results-row__place--1st', 'results-row__place--2nd', 'results-row__place--3rd'];
+      document.getElementById('results-list').innerHTML = scores.map((s, i) =>
+        '<div class="results-row">' +
+        '<span class="results-row__place ' + (PLACE_CLASS[i] || '') + '">' + PLACE[i] + '</span>' +
         '<div class="avatar-wrap">' + av(s.p) + '</div>' +
-        '<span class="score-anim-row__name">' + s.p.name + '</span>' +
-        '<span class="score-anim-row__score">' + s.score + '</span></div>'
+        '<div class="name-stack"><span class="results-row__name">' + s.p.name +
+        (s.p.isHost ? ' <span class="badge badge--host">Host</span>' : '') + '</span></div>' +
+        '<span class="results-row__score">' + s.score + '</span></div>'
       ).join('');
     },
   },

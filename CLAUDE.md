@@ -606,6 +606,33 @@ needs browsers driven in parallel.
   narrow the problem until a simple check is provably sound.
 
 ### Visual review
+
+**`node scripts/layout-sweep.mjs` before any UI change.** It renders every mock
+state at 375px and 430px and reports what an eye misses: elements past the
+viewport, containers that can be dragged sideways, rows in one list that
+disagree about their height, and classes rendered with no CSS rule anywhere.
+`--stress` re-runs it with the longest plausible names and titles, on the
+principle that a layout which only fits its mock data is one real display name
+away from breaking. Both run in CI.
+
+It exists because the co-host row overflowed by 71px in a live game while every
+existing check passed. Two reasons it got through, both worth remembering:
+
+1. **The robots sign in as nobody.** No tier badge, no title, no stats. The row
+   needed a tier badge to break, so no scenario could ever see it.
+2. **`scripts/mock-states.js` had drifted into fiction.** It rendered
+   `.player-row` and `.chat-row` for the lobby — classes in neither the app nor
+   the stylesheet — so `screenshot.js`, the tool this file tells you to trust,
+   was reviewing unstyled markup that has never shipped. The lobby previewed
+   perfectly because the preview was not a lobby.
+
+**If you change how a screen renders, change its mock in the same commit.** The
+sweep's unstyled-class check is what catches this now, but only if you read it.
+
+Known and deliberate: `.feedback-btn--flag` has no rule (the flag button falls
+back to the shared `.feedback-btn` look), and `watermark-all` is excluded — it
+is a glyph-calibration state whose cards differ by design.
+
 - **Always screenshot before pushing UI changes**, then read the screenshot and
   assess it honestly.
 - **Zoom in.** Overview thumbnails hide clipping and misalignment.
