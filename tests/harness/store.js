@@ -17,6 +17,15 @@
 let nextId = 1;
 const uuid = () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`;
 
+// Tables whose real primary key is BIGINT GENERATED ALWAYS AS IDENTITY, not a
+// uuid. Handing these a uuid is not a harmless difference: profile.js accepts a
+// friend request with parseInt(btn.dataset.accept, 10), which turns a uuid into
+// NaN, so accepting silently matched no row. The app was right and this store
+// was wrong, and it would have been reported as a bug in the friends feature.
+const INTEGER_PK = new Set(['friend_requests']);
+let nextIntId = 1;
+const newId = table => (INTEGER_PK.has(table) ? nextIntId++ : uuid());
+
 export class FakeStore {
   constructor() {
     this.tables = new Map();       // name -> array of row objects
@@ -202,7 +211,7 @@ export class FakeStore {
           if (table === 'rooms' && item.code && rows.some(r => r.code === item.code)) {
             return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
           }
-          const row = { id: uuid(), created_at: new Date().toISOString(), ...item };
+          const row = { id: newId(table), created_at: new Date().toISOString(), ...item };
           rows.push(row);
           created.push(row);
           this._broadcast('INSERT', table, row, null);
@@ -244,7 +253,7 @@ export class FakeStore {
             result.push({ ...existing });
             this._broadcast('UPDATE', table, { ...existing }, before);
           } else {
-            const row = { id: uuid(), created_at: new Date().toISOString(), ...item };
+            const row = { id: newId(table), created_at: new Date().toISOString(), ...item };
             rows.push(row);
             result.push({ ...row });
             this._broadcast('INSERT', table, row, null);

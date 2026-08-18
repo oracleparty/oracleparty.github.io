@@ -704,7 +704,13 @@ const QH_PAGE_SIZE = 25;
 // Minimum plays/votes before a percentage is trustworthy enough to rank by.
 const QH_MIN_SAMPLE = 3;
 let _qhOffset = 0;
-let _qhSort = 'overrides';
+// Flags first. Overrides are the better long-term evidence that an answer key
+// is wrong — a host flipping a judgement is a human saying so, and it costs the
+// player nothing — but question_stats only started filling recently, so ordering
+// by overrides meant every question tied at zero and the page showed 25
+// arbitrary ones. Real flags sat invisible behind 4,859 ties. Flags are the
+// signal that exists today; switch the control to overrides once it has data.
+let _qhSort = 'flags';
 let _qhDir = 'desc';
 let _qhSearch = '';
 

@@ -472,6 +472,7 @@ node tests/harness/scenario-social.mjs    # chat, honks, score editing, review
 node tests/harness/scenario-join.mjs      # public listing, privacy, hot join
 node tests/harness/scenario-feedback.mjs  # votes, flags, timer-expiry scoring
 node tests/harness/scenario-cohost.mjs    # promote, demote, gated controls
+node tests/harness/scenario-account.mjs  # profile, leaderboard, friends, signed-in lobby
 ```
 
 **Robots must never reach the real project.** Three beacons
@@ -514,11 +515,38 @@ calling the host's blank-fill *after* the player's answer was already stored.
 Break the fix, watch the test go red, then put it back. Anything less and you
 have written a test that agrees with you.
 
-**Guests are not players.** Robots sign in as nobody, so they have no tier, no
-title and no stats. The lobby row overflow that made the whole page draggable
-sideways on a phone needed a tier badge to reproduce, so every scenario passed
-while a real signed-in game broke. When a bug is reported that the robots
-cannot see, ask what a real account has that a robot does not.
+**Robots can sign in now** — `table.seatSignedIn(name, { tier, title, isAdmin })`.
+It writes a `profiles` row and injects a session the shim serves from
+`window.__fakeSession`, which is what `initAuth()` reads, so the app cannot tell
+it from a real login.
+
+This mattered because guests are not players. A guest has no tier, no title and
+no stats, and the lobby row overflow that made the whole page draggable
+sideways needed a tier badge to reproduce — so every scenario passed while a
+real signed-in game broke. `scenario-account.mjs` now plays a lobby of
+signed-in players and fails by 55px if that regression returns (verified by
+reintroducing it). Guests remain the default elsewhere: plenty of real players
+never sign in, and both kinds share a lobby.
+
+**When a bug is reported that the robots cannot see, ask what a real account
+has that a robot does not.**
+
+**Writing that scenario produced four "bugs", and three were mine.** Worth
+reading, because each looked completely convincing:
+
+- an empty leaderboard — it reads `player_stats_computed`, a view, not the
+  `player_stats` table the scenario seeded;
+- accepting a friend request doing nothing — `friend_requests.id` is a BIGINT
+  and `profile.js` calls `parseInt` on it, while the fake store handed out a
+  uuid that `parseInt` turned into `NaN`. The store now issues integer ids for
+  integer-PK tables;
+- a signed-in player unable to host — `seatSignedIn` set no display name, so
+  the name modal opened and `ensureDisplayName()` never resolved, stopping
+  `init()` before it fetched anything. An empty grid with no error.
+
+Only the fourth was in the app. **Prove the mechanism before reporting a bug**;
+"the page is empty and there are no console errors" almost always means
+something upstream never resolved.
 
 **Most early failures were the harness misreading the app.** Quit is
 tap-again-to-confirm on one button, not a dialog. The final wager needs an

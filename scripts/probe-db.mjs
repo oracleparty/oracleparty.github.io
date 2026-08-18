@@ -23,6 +23,10 @@ const TABLES = [
   // the RPC writes the table. Both were absent from this list, so the feature
   // the admin page is built on was never checked here at all.
   'question_stats', 'question_health',
+  // The leaderboard reads player_stats_computed (a view, migration 017), not
+  // player_stats. It was absent from this list, so nothing here would have
+  // noticed the leaderboard silently returning an empty list.
+  'player_stats_computed',
 ];
 
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
@@ -364,6 +368,8 @@ const REQUIRED = {
   player_stats:     ['user_id'],
   game_history:     ['user_id', 'played_at'],
   question_stats:   ['question_id', 'times_asked', 'times_correct', 'times_overridden'],
+  player_stats_computed: ['user_id', 'category', 'subcategory', 'questions_answered',
+                          'correct_answers', 'games_played', 'wins'],
 };
 
 console.log('\n--- COLUMNS THE APP DEPENDS ON ---');

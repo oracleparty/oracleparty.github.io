@@ -107,7 +107,62 @@ export class PlaytestTable {
   }
 
   /** Seat a new robot: its own browser context, its own session, shared store. */
-  async seat(name, { storageState } = {}) {
+  /**
+   * Seat a robot that is SIGNED IN, with a real profile row behind it.
+   *
+   * Every robot before this played as a guest, and that blind spot cost a live
+   * game: a signed-in player carries a tier badge, and the lobby row overflowed
+   * by 71px only when one was present. No scenario could see it, because no
+   * scenario could sign in.
+   *
+   * The app decides who you are from supabase.auth.getSession(), which the
+   * shim reads off window.__fakeSession, so a session set before navigation is
+   * indistinguishable from a real one. The profile and stats rows go into the
+   * same fake store the page talks to.
+   *
+   * Guests remain the default — plenty of real players never sign in, and both
+   * kinds share a lobby.
+   */
+  async seatSignedIn(name, { tier = 'Scholar', title = null, isAdmin = false, storageState } = {}) {
+    const userId = `user-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    this.store.table('profiles').push({
+      id: `profile-${userId}`,
+      user_id: userId,
+      display_name: name,
+      discriminator: String(1000 + this.store.table('profiles').length),
+      avatar_color: '#7C5CC2',
+      avatar_emoji: '🦊',
+      bio: null,
+      favorite_category: null,
+      visibility: 'public',
+      show_online_status: true,
+      honks_received: 0,
+      honks_given: 0,
+      questions_flagged: 0,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+      title_slot1: title, title_slot2: null, title_slot3: null,
+      title_builder_unlocked: false,
+      is_admin: isAdmin,
+    });
+
+    const robot = await this.seat(name, { storageState, session: { userId, name } });
+
+    // Without this the display-name modal opens and ensureDisplayName() never
+    // resolves, so init() stops before it fetches anything — the host page sat
+    // on an empty category grid with no error, which reads exactly like "a
+    // signed-in player cannot host a game". The modal is correct behaviour on a
+    // device that has not been used before; the robot simply never answered it.
+    await robot.page.addInitScript(n => {
+      localStorage.setItem('oracle_party_display_name', n);
+    }, name);
+
+    robot.userId = userId;
+    robot.tier = tier;
+    return robot;
+  }
+
+  async seat(name, { storageState, session } = {}) {
     // storageState lets a robot come back as the SAME browser rather than a
     // fresh one. Without it, "rejoining" silently tests a different device,
     // because localStorage — where a player's seat is remembered — starts empty.
@@ -213,6 +268,18 @@ export class PlaytestTable {
       route.fulfill({ status: 200, contentType: 'font/woff2', body: '' }));
 
     await page.addInitScript(n => { window.__robotId = n; }, name);
+
+    // Set before any navigation, so initAuth() sees a session on first load.
+    // The shape matches what supabase-js hands back: the app only reads
+    // session.user.id and session.user.email.
+    if (session) {
+      await page.addInitScript(s => {
+        window.__fakeSession = {
+          access_token: 'fake-token',
+          user: { id: s.userId, email: `${s.name.toLowerCase()}@example.test`, user_metadata: {} },
+        };
+      }, session);
+    }
 
     this.robots.push(robot);
     return robot;
