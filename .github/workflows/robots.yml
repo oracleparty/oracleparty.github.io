@@ -43,3 +43,6 @@ jobs:
 
       - name: Social — chat, honks, score editing, question review
         run: node tests/harness/scenario-social.mjs
+
+      - name: Join — public listing, privacy, hot join, bad codes
+        run: node tests/harness/scenario-join.mjs

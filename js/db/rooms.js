@@ -78,6 +78,11 @@ export async function findRoomByCode(code) {
     .single();
 
   if (error) {
+    // PGRST116 is .single() finding no row — a mistyped code, which is an
+    // ordinary thing for a player to do, not a fault. Logging it as an error
+    // wrote a row to error_logs on every typo and buried the real failures
+    // among them.
+    if (error.code === 'PGRST116') return { data: null, error: null };
     logger.error('Supabase', 'findRoomByCode failed', error);
     return { data: null, error };
   }

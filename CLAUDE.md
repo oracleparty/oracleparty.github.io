@@ -285,6 +285,7 @@ node tests/harness/scenario-fullgame.mjs   # full game, score agreement, channel
 node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous answers
 node tests/harness/scenario-playagain.mjs # second game, room reset, no leakage
 node tests/harness/scenario-social.mjs    # chat, honks, score editing, review
+node tests/harness/scenario-join.mjs      # public listing, privacy, hot join
 ```
 
 **Robots must never reach the real project.** Three beacons

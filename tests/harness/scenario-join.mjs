@@ -1,0 +1,208 @@
+// Scenario: the ways players get into a game, other than being handed a code.
+//
+//   1. A public game appears in the public list for a stranger.
+//   2. An invite-only game does NOT appear there. (Privacy: a leak here means
+//      private games are listed to everyone.)
+//   3. Tapping a public game actually gets you in.
+//   4. Hot join — joining a room whose game is already running lands you in
+//      the game rather than the lobby, and you can still play.
+//   5. A wrong room code is refused with a visible message rather than
+//      silently doing nothing.
+//
+// Run: node tests/harness/scenario-join.mjs
+import { PlaytestTable } from './harness.js';
+
+const CATEGORY = 'history';
+const problems = [];
+const note = m => console.log('   ·', m);
+const heading = m => console.log(`\n=== ${m} ===`);
+
+function seedQuestions(store, n = 40) {
+  const rows = [];
+  for (let i = 1; i <= n; i++) {
+    rows.push({
+      id: `q${i}`,
+      question: `Test question ${i}?`,
+      correct_answer: `Answer ${i}`,
+      acceptable_answers: [],
+      categories: [CATEGORY],
+      subcategory: null,
+      difficulty: 'medium',
+      format: 'open',
+      fun_fact: null,
+      discarded: false,
+    });
+  }
+  store.seed('questions', rows);
+}
+
+const activeScreen = r => r.page
+  .evaluate(() => document.querySelector('.screen.active')?.id || '(none)')
+  .catch(() => '(navigating)');
+
+const clickIfReady = async (r, sel) => {
+  const el = r.page.locator(sel).first();
+  if (!await el.isVisible().catch(() => false)) return false;
+  if (!await el.isEnabled().catch(() => false)) return false;
+  await el.click().catch(() => {});
+  return true;
+};
+
+const table = await PlaytestTable.open();
+
+try {
+  seedQuestions(table.store);
+
+  async function seat(name) {
+    const r = await table.seat(name);
+    await r.page.addInitScript(n =>
+      localStorage.setItem('oracle_party_display_name', n), name);
+    return r;
+  }
+
+  /** Host a room with a given visibility, returning its code. */
+  async function hostRoom(robot, whoCanJoin) {
+    await robot.goto('host.html');
+    await robot.page.waitForSelector('.category-card', { timeout: 20000 });
+    await robot.page.click(`.category-card[data-category="${CATEGORY}"]`);
+    await robot.page.waitForTimeout(800);
+    await robot.page.click('text=/^All /');
+    await robot.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
+    await robot.page.click('[data-setting="questionsPerGame"] [data-value="5"]').catch(() => {});
+    // Visibility is a labelled toggle group rather than an id.
+    const label = whoCanJoin === 'anyone' ? 'Anyone' : 'Invite Only';
+    await robot.page.locator(`button:has-text("${label}")`).first().click().catch(() => {});
+    await robot.page.waitForTimeout(400);
+    await robot.page.click('#btn-host-game');
+    await robot.page.waitForURL('**/lobby.html*', { timeout: 20000 });
+    await robot.page.waitForTimeout(1200);
+    return robot.textOf('#lobby-code');
+  }
+
+  // ---- one public room, one private room ----
+  const publicHost = await seat('Alice');
+  const publicCode = await hostRoom(publicHost, 'anyone');
+  const privateHost = await seat('Dave');
+  const privateCode = await hostRoom(privateHost, 'invite');
+
+  const rooms = table.store.table('rooms');
+  note(`rooms: ${rooms.map(r => `${r.code}=${r.who_can_join}`).join(', ')}`);
+
+  const publicRoom = rooms.find(r => r.code === publicCode);
+  const privateRoom = rooms.find(r => r.code === privateCode);
+  if (publicRoom?.who_can_join !== 'anyone') {
+    problems.push(`the "Anyone" setting stored who_can_join="${publicRoom?.who_can_join}"`);
+  }
+  if (privateRoom?.who_can_join === 'anyone') {
+    problems.push('an invite-only room was stored as public');
+  }
+
+  // ============================================================
+  // 1 + 2. PUBLIC LISTING, AND PRIVACY
+  // ============================================================
+  heading('public games list');
+  const stranger = await seat('Erin');
+  await stranger.goto('join.html');
+  await stranger.page.waitForSelector('#code-input', { timeout: 15000 });
+  await stranger.page.waitForTimeout(3000);
+
+  const listed = await stranger.page.evaluate(() =>
+    [...document.querySelectorAll('#public-games .public-game-row')]
+      .map(el => el.textContent.replace(/\s+/g, ' ').trim())).catch(() => []);
+  note(`stranger sees ${listed.length} public game(s)`);
+  for (const l of listed) note(`   ${l.slice(0, 80)}`);
+
+  const showsPublic = listed.some(t => t.includes(publicCode));
+  const showsPrivate = listed.some(t => t.includes(privateCode));
+  if (!showsPublic) problems.push('a public game did not appear in the public games list');
+  if (showsPrivate) problems.push('AN INVITE-ONLY GAME WAS LISTED PUBLICLY — private rooms are exposed');
+
+  // ============================================================
+  // 3. JOINING FROM THE LIST
+  // ============================================================
+  heading('joining from the public list');
+  if (!showsPublic) {
+    note('skipped — nothing public to tap');
+  } else {
+    const row = stranger.page.locator('#public-games .public-game-row').first();
+    await row.click().catch(() => {});
+    const arrived = await stranger.page.waitForURL('**/lobby.html*', { timeout: 20000 })
+      .then(() => true).catch(() => false);
+    note(`stranger reached the lobby by tapping the listing: ${arrived}`);
+    if (!arrived) {
+      problems.push(`tapping a public game did not join it (still on ${stranger.page.url().split('/').pop()})`);
+    } else {
+      await publicHost.page.waitForTimeout(2500);
+      const hostSees = await publicHost.page.evaluate(() =>
+        document.body.innerText.includes('Erin')).catch(() => false);
+      note(`host sees the new player: ${hostSees}`);
+      if (!hostSees) problems.push('a player who joined from the public list is invisible to the host');
+    }
+  }
+
+  // ============================================================
+  // 4. HOT JOIN — a game already in progress
+  // ============================================================
+  heading('joining a game already in progress');
+  await publicHost.page.waitForSelector('#btn-start-game', { state: 'visible', timeout: 20000 }).catch(() => {});
+  for (let i = 0; i < 12; i++) {
+    await clickIfReady(publicHost, '#btn-start-game');
+    await publicHost.page.waitForTimeout(700);
+    if (table.store.table('rooms').find(r => r.code === publicCode)?.status === 'playing') break;
+  }
+  await publicHost.page.waitForURL('**/game.html*', { timeout: 25000 }).catch(() => {});
+  await publicHost.page.waitForTimeout(6500);
+  note(`game running: room status=${table.store.table('rooms').find(r => r.code === publicCode)?.status}`);
+
+  const latecomer = await seat('Frank');
+  await latecomer.goto('join.html');
+  await latecomer.page.waitForSelector('#code-input', { timeout: 15000 });
+  await latecomer.page.fill('#code-input', publicCode);
+  await latecomer.page.click('#btn-join');
+  await latecomer.page.waitForTimeout(9000);
+
+  const where = latecomer.page.url().split('/').pop();
+  note(`latecomer landed on ${where} / ${await activeScreen(latecomer)}`);
+  if (where !== 'game.html') {
+    problems.push(`joining a running game landed on ${where} instead of the game`);
+  } else {
+    const stuck = await activeScreen(latecomer);
+    if (stuck === 'game-loading' || stuck === '(none)') {
+      problems.push(`a player joining mid-game is stuck on "${stuck}"`);
+    }
+    const inRoom = table.store.table('players').some(p => p.display_name === 'Frank');
+    if (!inRoom) problems.push('a player who joined mid-game was never added to the room');
+  }
+
+  // ============================================================
+  // 5. A WRONG CODE IS REFUSED VISIBLY
+  // ============================================================
+  heading('wrong room code');
+  const lost = await seat('Gina');
+  await lost.goto('join.html');
+  await lost.page.waitForSelector('#code-input', { timeout: 15000 });
+  await lost.page.fill('#code-input', 'ZZZZ');
+  await lost.page.click('#btn-join');
+  await lost.page.waitForTimeout(3000);
+
+  const stillOnJoin = lost.page.url().includes('join.html');
+  const errorText = await lost.page.evaluate(() =>
+    (document.querySelector('#join-error')?.textContent || '').trim()).catch(() => '');
+  note(`stayed on join page: ${stillOnJoin}, error shown: "${errorText}"`);
+  if (!stillOnJoin) problems.push('a wrong room code navigated away instead of being refused');
+  if (!errorText) problems.push('a wrong room code produced no visible error — it just looks broken');
+
+  for (const r of [publicHost, privateHost, stranger, latecomer, lost]) {
+    const real = r.consoleErrors.filter(e =>
+      !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
+    if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
+  }
+} catch (err) {
+  problems.push(`threw: ${err.message.split('\n')[0]}`);
+} finally {
+  await table.close();
+}
+
+console.log('\n' + (problems.length ? '✗ PROBLEMS:' : '✓ join scenario passed'));
+for (const p of problems) console.log('  -', p);
+process.exit(problems.length ? 1 : 0);
