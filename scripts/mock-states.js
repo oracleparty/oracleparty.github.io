@@ -280,7 +280,7 @@ export const STATES = {
             ? '<span class="badge badge--ready">Ready</span>'
             : '<span class="badge badge--not-ready">Not Ready</span>');
         }
-        const sub = (p.tier ? '<span class="player-tier" style="color:#A78BFA;">' + p.tier + '</span>' : '')
+        const sub = (p.tier ? '<span class="player-tier" data-tier="' + p.tier.toLowerCase() + '">' + p.tier + '</span>' : '')
                   + (p.title ? '<span class="player-title">' + p.title + '</span>' : '');
         // The host sees action buttons on everyone but themselves.
         const actions = p.isHost ? '' :

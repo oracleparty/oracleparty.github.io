@@ -333,6 +333,14 @@ content combinations, all rows uniform. **The previous fix — icon buttons and
 the 72px floor — is what converted "the name disappears" into "the page
 overflows".** A floor that cannot yield has to overflow somewhere.
 
+That move had a cost of its own, found later by the contrast sweep: as badges
+the tier colours sat on a badge background, and as bare text they measured
+2.5:1 against the light theme. They come from CSS via `data-tier` now, with
+separate values per theme, because an inline colour cannot answer to three
+palettes. **Every fix is a change, and a change can break something the
+original never did** — measure the thing you just touched, not only the thing
+you set out to fix.
+
 **The host destroyed answers players had typed.** On timer expiry the host
 fills blank answers for anyone who has not submitted, and that fill merged on
 conflict. Both devices act on the same grace period, so a player's auto-submit
@@ -651,6 +659,12 @@ disagree about their height, and classes rendered with no CSS rule anywhere.
 `--stress` re-runs it with the longest plausible names and titles, on the
 principle that a layout which only fits its mock data is one real display name
 away from breaking. Both run in CI.
+
+Every state runs in **all three themes**, and reports text below 3:1 contrast
+against what it actually sits on. This project has always required checking
+light, dark and OLED and nothing enforced it — a colour survives on white and
+vanishes on black. It immediately found the tier labels at 2.5:1 (see below),
+the co-host button, the Ready badge and the first-place label.
 
 It exists because the co-host row overflowed by 71px in a live game while every
 existing check passed. Two reasons it got through, both worth remembering:

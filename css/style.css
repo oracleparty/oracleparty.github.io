@@ -1891,7 +1891,16 @@ body::after {
 
 .badge--ready {
   background: rgba(46, 122, 66, 0.1);
-  color: #267035;
+  /* Measured at 2.80:1 against its own tint. Same green, darkened until it
+     clears 4:1 — a status badge is information, not decoration.
+     The badge tint is only 10% opaque, so what this sits on is the surface
+     behind it, which the theme changes: darkening alone made it WORSE in dark
+     and OLED (1.90:1), so each side gets its own value. */
+  color: #1B5427;
+}
+[data-theme="dark"] .badge--ready,
+[data-theme="oled"] .badge--ready {
+  color: #7BE0A4;
 }
 .badge--tier {
   background: transparent;
@@ -2090,18 +2099,26 @@ body::after {
 
 .cohost-btn {
   background: none;
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  /* #A78BFA measured 2.54:1 on the light theme. This is the control for making
+     someone co-host, so it has to be legible before it is pretty; the dark
+     themes keep the lighter purple, which reads correctly there. */
+  border: 1px solid rgba(109, 40, 217, 0.35);
   border-radius: var(--radius-sm);
   padding: 2px 8px;
   font-size: 0.6rem;
   font-family: var(--font-heading);
   font-weight: 600;
-  color: #A78BFA;
+  color: #6D28D9;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   cursor: pointer;
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
+}
+[data-theme="dark"] .cohost-btn,
+[data-theme="oled"] .cohost-btn {
+  color: #A78BFA;
+  border-color: rgba(167, 139, 250, 0.3);
 }
 .cohost-btn:active {
   background: rgba(167, 139, 250, 0.1);
@@ -3705,7 +3722,11 @@ body::after {
   color: var(--color-text-dim);
 }
 
-.results-row__place--1st { color: #d4a017; font-size: var(--text-base); }
+/* #d4a017 measured 2.22:1 on the light theme. Darkened here, and the original
+   gold kept for the dark themes where it reads well. */
+.results-row__place--1st { color: #8A6100; font-size: var(--text-base); }
+[data-theme="dark"] .results-row__place--1st,
+[data-theme="oled"] .results-row__place--1st { color: #E3B341; }
 .results-row__place--2nd { color: #8d8d8d; }
 .results-row__place--3rd { color: #a0714f; }
 
@@ -4262,7 +4283,32 @@ body::after {
   text-transform: uppercase;
   line-height: 1.2;
   white-space: nowrap;
+  color: var(--color-text-muted);
 }
+
+/* Tier colours, per theme.
+ *
+ * These began as badge colours sitting on a badge's own background. As bare
+ * text under the player's name they measured 2.5:1 against the light theme —
+ * fine on a desk, not on a phone outdoors. Each value below clears 4:1 on the
+ * background it actually sits on, measured, and stays recognisably the same
+ * hue so the tiers still read as a progression. */
+.player-tier[data-tier="novice"]     { color: #6B6B6B; }
+.player-tier[data-tier="apprentice"] { color: #2E7D32; }
+.player-tier[data-tier="scholar"]    { color: #1D4ED8; }
+.player-tier[data-tier="master"]     { color: #6D28D9; }
+.player-tier[data-tier="oracle"]     { color: #8A6100; }
+
+[data-theme="dark"] .player-tier[data-tier="novice"],
+[data-theme="oled"] .player-tier[data-tier="novice"]     { color: #A8A8A8; }
+[data-theme="dark"] .player-tier[data-tier="apprentice"],
+[data-theme="oled"] .player-tier[data-tier="apprentice"] { color: #6EE7A0; }
+[data-theme="dark"] .player-tier[data-tier="scholar"],
+[data-theme="oled"] .player-tier[data-tier="scholar"]    { color: #7DB3FF; }
+[data-theme="dark"] .player-tier[data-tier="master"],
+[data-theme="oled"] .player-tier[data-tier="master"]     { color: #C4B5FD; }
+[data-theme="dark"] .player-tier[data-tier="oracle"],
+[data-theme="oled"] .player-tier[data-tier="oracle"]     { color: #E3B341; }
 
 /* ============================================
    THEME TOGGLE

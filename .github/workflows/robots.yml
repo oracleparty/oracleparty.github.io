@@ -75,5 +75,8 @@ jobs:
 
       # Same screens with the longest plausible names and titles. A layout that
       # only fits its mock data is one real display name away from breaking.
+      #
+      # One theme only: stress is about how long text is, themes are about what
+      # colour it is, and running the cross-product triples the time for nothing.
       - name: Layout under stress — long names and titles
-        run: node scripts/layout-sweep.mjs --stress
+        run: node scripts/layout-sweep.mjs --stress --themes=light

@@ -418,8 +418,13 @@ async function _loadPlayerTiers() {
   } catch (e) { /* non-critical */ }
 }
 
-// Tier colors for lobby badges
-const TIER_COLORS = { Novice: '#999', Apprentice: '#4ADE80', Scholar: '#60A5FA', Master: '#A78BFA', Oracle: '#C68A2E' };
+// Tier colour now comes from CSS via data-tier, not an inline style.
+//
+// These were badge colours, chosen to sit on a badge's own background. Moving
+// the tier under the player's name turned them into bare text on the row, and
+// measured against the light theme they came out at 2.5:1 — legible on a
+// desk, not on a phone in daylight. An inline style also cannot respond to the
+// theme, so one value had to serve white, dark grey and black backgrounds.
 
 function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const badges = [];
@@ -454,7 +459,7 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // is bounded to one role badge or one ready badge.
   const tier = _playerTiers[p.user_id];
   const tierHtml = tier
-    ? `<span class="player-tier" style="color:${TIER_COLORS[tier] || '#999'};">${escapeHtml(tier)}</span>`
+    ? `<span class="player-tier" data-tier="${escapeHtml(String(tier).toLowerCase())}">${escapeHtml(tier)}</span>`
     : '';
   const titleText = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
   // Always rendered, even when empty. A signed-in player has a tier and a
