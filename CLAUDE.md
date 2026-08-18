@@ -69,11 +69,21 @@ Measured on 2026-08-18, not inferred from migrations:
 
 | Open to any visitor | Locked |
 |---|---|
-| `rooms`, `players`, `chat_messages`, `chat_archive` | `questions`, `question_history`, `game_history`, `profiles`, `player_stats`, `site_settings` |
+| `rooms`, `players`, `chat_messages`, `chat_archive`, `question_feedback`, `game_plays` | `questions`, `question_history`, `game_history`, `profiles`, `player_stats`, `site_settings`, `question_stats` |
 
-`answers`, `question_feedback` and `game_plays` were empty at probe time, so
-they could not be tested without writing to them — migration 022 makes them
-permissive, and nothing since has changed that.
+`answers` was empty at probe time and could not be tested without writing to
+it; migration 022 makes it permissive and nothing since has changed that.
+`question_stats` is locked deliberately — every write goes through the
+`record_question_outcome` SECURITY DEFINER function (migration 025), so a
+player cannot forge question performance.
+
+**The upsert conflict targets are sound.** `question_feedback
+(question_id, voter_id)`, `game_plays (room_id, player_id)` and `answers
+(room_id, player_id, question_number)` each have the unique index their
+`onConflict` needs. This was checked because a missing one raises 42P10 and
+kills *every* write through that path, which would have looked exactly like
+the schema-drift bugs in #3 — it is not what is happening, so don't
+re-investigate it.
 
 **The question bank is safe.** 4,859 questions, and a visitor can neither edit
 nor delete one. That is worth stating plainly, because an earlier version of
@@ -369,6 +379,11 @@ every third call, leaving the local view of `last_seen_at` up to 90s stale, so
 absence was noticed three times slower than intended.
 
 ## Question Feedback and Health
+
+**Confirmed working against the live database on 2026-08-18**: `question_feedback`
+holds real rows written by real play (3 flags, 2 thumbs-down). This was the
+feature most worth verifying and it is not broken. What was broken is the
+admin's ability to *act* on it — see #5.
 
 - Feedback is keyed on **`voter_id`** — `user:<uuid>` signed in, otherwise
   `device:<uuid>` from localStorage. One vote per person per question, ever.
