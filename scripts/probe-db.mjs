@@ -254,6 +254,28 @@ try {
   console.log(`\n  format values in first 1000: ${JSON.stringify(counts)}`);
 } catch { /* ignore */ }
 
+// How many questions carry plausible WRONG answers already.
+//
+// These came from opentdb as multiple-choice distractors and survived the
+// conversion to open format, where nothing reads them any more. They are
+// hand-made wrong answers for specific questions — exactly what a bot needs to
+// answer a question wrongly but believably, with no generated content and no
+// risk of inventing something false. Whether the bots idea is cheap or
+// expensive turns entirely on how many questions have them.
+const wrong = await req('questions?select=incorrect_answers,format&limit=1000');
+try {
+  const rows = JSON.parse(wrong.body || '[]');
+  let withDistractors = 0, total = 0, distractorCount = 0;
+  for (const r of rows) {
+    total++;
+    const arr = Array.isArray(r.incorrect_answers) ? r.incorrect_answers.filter(Boolean) : [];
+    if (arr.length) { withDistractors++; distractorCount += arr.length; }
+  }
+  const pct = total ? Math.round((withDistractors / total) * 100) : 0;
+  console.log(`  questions with stored wrong answers: ${withDistractors}/${total} (${pct}%), ` +
+              `${total ? (distractorCount / Math.max(withDistractors, 1)).toFixed(1) : 0} each on average`);
+} catch { /* ignore */ }
+
 console.log('\n--- FEEDBACK TABLE (the broken loop) ---');
 const fb = await req('question_feedback?select=feedback_type,flag_reason&limit=1000');
 if (fb.status === 200) {
