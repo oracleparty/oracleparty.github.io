@@ -71,6 +71,22 @@ game.
 written by `record_question_outcome` once per question per game. That is the
 real difficulty: how often people actually get it right.
 
+**The bands, agreed with the owner.** Four, and the percentages are the
+owner's — given as centres, written here as the edges between them:
+
+| Band | Roughly | Boundary |
+|---|---|---|
+| Easy | 75% get it right | 63% and above |
+| Medium | 50% | 38–63% |
+| Difficult | 25% | 18–38% |
+| Very difficult | 10% | below 18% |
+
+**Bots do not use the bands.** They use the raw correct-rate, because a band
+covering 18–38% would make a bot treat a 19% question and a 37% one
+identically. The bands exist for the admin page — for a person scanning a list.
+Where `botAccuracy()` currently shifts by the imported easy/medium/hard label,
+it should shift continuously by the measured rate once there is one.
+
 The plan, when it is built:
 
 1. **Blend, do not switch.** A threshold ("override after 20 plays") has a
@@ -137,6 +153,29 @@ normal room code — no separate mode, no new machinery.
 This is worth more than it looks: today the game cannot be tested at all
 without finding a second human, which has blocked every playtest. Bots end
 that.
+
+## The wheel malfunction
+
+The owner's idea, and the best thing to come out of designing this.
+
+The final-wager difficulty vote already lets the wheel land on a level nobody
+picked — the vote is a floor, and unvoted harder levels keep a small weight.
+This pushes the same joke one step further.
+
+When **Hard** wins the vote, there is a small chance (roughly one game in
+eight) that the wheel settles on Hard, then visibly *stutters* and drops one
+notch further to **VERY HARD** — its own colour, its own sound, and a line
+making clear the wheel did that on purpose. It must never read as a bug: the
+glitch is choreographed, and the reveal says so.
+
+This only becomes possible once difficulty is measured, because "very hard"
+has to mean something real — the bottom band by actual correct-rate, not a
+fourth label invented for the occasion.
+
+The vote itself stays at **three** options. It is a fast group choice on a
+dramatic screen; five would turn a moment of tension into a menu. How
+questions are classified internally and how many buttons a player sees are
+separate decisions and do not have to match.
 
 ## Chat: deliberately not in the first version
 
