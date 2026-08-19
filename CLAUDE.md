@@ -5,15 +5,20 @@
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-18.
+> Last verified against the code: 2026-08-19.
 >
 > The live database was verified directly on 2026-08-18 via
 > `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
 > applied — several were never run.
 >
-> **A probe result is only as good as the probe.** Two sections of that script
-> were reporting confident nonsense; see #6. Facts below that came from it have
-> been re-measured since it was fixed.
+> **A probe result is only as good as the probe.** Three sections of that
+> script have been caught reporting confident nonsense; see #6. Facts below
+> that came from it have been re-measured since each fix.
+>
+> **Open right now: `player_stats_computed` does not exist on the live
+> database**, which silently kills the leaderboard, tier badges, profile stats
+> and the entire title system. See #8 — it needs
+> `migrations/031_restore_player_stats_view.sql` run by hand.
 
 ## What This Is
 
@@ -237,6 +242,32 @@ mastery tree works — slowly — and nobody noticed.
 policy filters rows out rather than refusing the request, so `error_logs` reads
 as empty no matter how much it holds.
 
+**A third fault, found 2026-08-19, and it had been hiding a dead feature.**
+The probe said two contradictory things about `player_stats_computed` in the
+same run: the row-count section could not read it, and the columns section
+reported `all present`. The confident half was wrong. The columns check counted
+a column as missing only on HTTP 400 "does not exist" — and a relation that is
+not there answers **404** to every request, so no column was ever recorded
+missing and the table came out clean. The most reassuring possible output for
+the most broken possible state.
+
+It now refuses to report on any table the read section could not reach, and it
+distinguishes **missing** from **not permitted**: PostgREST answers `PGRST205`
+for an unknown relation and `42501` for a refused one. Reporting a missing
+GRANT as a missing table would send the next session to write a migration for
+something that already exists.
+
+What it uncovered is in #8.
+
+**One claim in this file was not supported by the probe.** It said
+`question_feedback` was "confirmed working, 3 flags and 2 thumbs-down". Every
+probe run reads that table as `rows=0`, including the run on the day the claim
+was written, so whatever established it, it was not this tool. The rows may
+well exist and be invisible to a visitor — that is what the paragraph above
+describes — but "confirmed" was too strong, and a later session would have
+treated it as measured. **Say where a number came from, or do not write it
+down.**
+
 The lesson generalises past this script: **when a check reports that everything
 is fine, or that everything is broken, suspect the check.** Both are shapes a
 broken measurement makes far more readily than a real system does.
@@ -247,6 +278,39 @@ broken measurement makes far more readily than a real system does.
 records which ones were actually run, so **the live schema is not known with
 certainty from this repo alone.** Run `scripts/inspect-db.sql` in the SQL Editor
 to get the real picture before relying on any table or policy.
+
+### 8. `player_stats_computed` is missing, and four features are dead
+
+**Open. Needs `migrations/031_restore_player_stats_view.sql` run by the owner.**
+
+Measured 2026-08-19: the live database answers **`PGRST205`** for
+`player_stats_computed` — "could not find the table in the schema cache". Not
+`42501`, so it is absent rather than locked. Migration 017 created it and was
+apparently never run (#7).
+
+Four reads in `js/db/social.js` go to that view. Each logs and returns `[]`:
+
+| Read | What the player sees |
+|---|---|
+| `fetchAllPlayerStatsForLeaderboard` | global leaderboard empty |
+| `fetchCategoryLeaderboard` | every category leaderboard empty |
+| `fetchPlayerStats` | profile shows no stats — **and no title ever unlocks** |
+| `fetchPlayerStatsBatch` | no tier badge in any lobby |
+
+The title system is the worst of them, and the most instructive. It does not
+fail visibly: after every game `evaluateUnlocks()` is handed an empty array,
+finds nothing to award, and reports success. There is no error state for
+"nobody ever earns anything".
+
+**Do not conclude tiers work because a tier badge appeared in a playtest.**
+`computeCategoryTiers([])` returns `{}`, so an empty read renders no badge at
+all. The 71px lobby overflow was reproduced in the harness with a *seeded*
+tier, which is not evidence about the live database.
+
+This sat unnoticed because the probe reported the view as `all present` — see
+#6. It is the strongest example in this project of the rule that follows from
+it: a broken measurement does not report a broken system, it reports a
+healthy one.
 
 ---
 
@@ -530,10 +594,12 @@ absence was noticed three times slower than intended.
 
 ## Question Feedback and Health
 
-**Confirmed working against the live database on 2026-08-18**: `question_feedback`
-holds real rows written by real play (3 flags, 2 thumbs-down). This was the
-feature most worth verifying and it is not broken. What was broken is the
-admin's ability to *act* on it — see #5.
+**The admin's ability to act on feedback was broken and is fixed — see #5.**
+Whether the table currently holds rows is *not* established: every db-probe run
+reads it as empty, and an earlier claim here that it held 3 flags and 2
+thumbs-down cited no source (#6). A restrictive SELECT policy would look
+identical to an empty table from a visitor's key, so this is unresolved rather
+than bad — but do not repeat the claim as fact.
 
 - Feedback is keyed on **`voter_id`** — `user:<uuid>` signed in, otherwise
   `device:<uuid>` from localStorage. One vote per person per question, ever.
