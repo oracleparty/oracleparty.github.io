@@ -595,12 +595,27 @@ still be an unvoted level — that is the deliberate last-second switch.
 - **Chat** — in lobby and in game, with typing indicators and message hearts
 - **Accounts** — optional; guests can play everything except friends and stats.
   Email/password, or **Continue with Google** (`signInWithGoogle()` in
-  `auth.js`). Google needs credentials pasted into the Supabase dashboard
-  before it works — see `docs/GOOGLE_SIGNIN_SETUP.md`. Until then the button
-  reports "Couldn't reach Google" and email sign-up is unaffected. A Google
-  user arrives with no local display name, so profile creation falls back to
-  the name Google supplies; without that fallback they get no profile row and
-  every account-only feature silently does nothing for them.
+  `auth.js`). **Google sign-in is live as of 2026-08-19** — the owner completed
+  the Google Cloud and Supabase setup in `docs/GOOGLE_SIGNIN_SETUP.md` and
+  signed in end to end. If it ever reports "Google sign-in isn't switched on
+  yet", that is Supabase answering *provider is not enabled* and means a
+  dashboard setting, not a code fault; anything else reports "Couldn't reach
+  Google". Email sign-up is unaffected either way. A Google user arrives with
+  no local display name, so profile creation falls back to the name Google
+  supplies; without that fallback they get no profile row and every
+  account-only feature silently does nothing for them.
+
+  **The Google screen says "Sign in to zzpqymehapwbjupphxec.supabase.co"**,
+  because the sign-in genuinely happens on Supabase's server and Google shows
+  the host that receives it. The owner is right that it reads as phishing to a
+  normal person. Two ways out, and **do not repeat the claim that only the paid
+  one works** — that was said here once and it was too strong:
+    * Free: complete the consent-screen branding and verify ownership of
+      `oracleparty.github.io` in Google Search Console, then pass Google's
+      brand review. Verification is possible for a github.io subdomain by
+      committing the HTML verification file to this repo.
+    * Paid: Supabase's custom-domain add-on, which changes the host itself.
+      Needs a domain the owner buys.
   **Signing in does not make the database safer** — guests still play, so the
   publishable key must still be accepted from anyone (#2).
 - **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
@@ -618,6 +633,11 @@ still be an unvoted level — that is the deliberate last-second switch.
   in play. Candidates: countdown ticks, timer running out, correct/incorrect on
   reveal, the scoreboard animation, the difficulty wheel. Must be mutable, and
   must not fire on a phone whose ringer is off.
+- **A real logo.** `icons/icon-512.png` is an "OP" monogram whose origin the
+  owner does not recognise, and it is the app icon, the PWA icon and the only
+  candidate for the Google consent screen. Wanted eventually, not urgent.
+  Uploading any logo to that consent screen triggers Google's brand review, so
+  it is worth doing once, with the real thing.
 - **General UI polish.** Raised after the 2026-08-18 playtest without specific
   targets. Ask for a screen before working on this — it is not a licence to
   restyle working screens on a hunch.
