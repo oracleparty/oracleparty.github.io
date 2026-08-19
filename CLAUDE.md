@@ -15,10 +15,10 @@
 > script have been caught reporting confident nonsense; see #6. Facts below
 > that came from it have been re-measured since each fix.
 >
-> **Open right now: `player_stats_computed` does not exist on the live
-> database**, which silently kills the leaderboard, tier badges, profile stats
-> and the entire title system. See #8 — it needs
-> `migrations/031_restore_player_stats_view.sql` run by hand.
+> `player_stats_computed` was missing from the live database until
+> 2026-08-19, which silently killed the leaderboard, tier badges, profile
+> stats and every title unlock. Migration 031 was run and the probe confirms
+> it. Kept as #8 because of how it hid, not because it is open.
 
 ## What This Is
 
@@ -279,16 +279,18 @@ records which ones were actually run, so **the live schema is not known with
 certainty from this repo alone.** Run `scripts/inspect-db.sql` in the SQL Editor
 to get the real picture before relying on any table or policy.
 
-### 8. `player_stats_computed` is missing, and four features are dead
+### 8. `player_stats_computed` was missing, and took four features with it
 
-**Open. Needs `migrations/031_restore_player_stats_view.sql` run by the owner.**
+**RESOLVED 2026-08-19** — migration 031 was run, and the probe now reads the
+view as present. Kept here because of how long it hid and what hid it.
 
-Measured 2026-08-19: the live database answers **`PGRST205`** for
+Measured earlier that day: the live database answered **`PGRST205`** for
 `player_stats_computed` — "could not find the table in the schema cache". Not
-`42501`, so it is absent rather than locked. Migration 017 created it and was
+`42501`, so it was absent rather than locked. Migration 017 created it and was
 apparently never run (#7).
 
-Four reads in `js/db/social.js` go to that view. Each logs and returns `[]`:
+Four reads in `js/db/social.js` go to that view. While it was missing, each
+logged and returned `[]`:
 
 | Read | What the player sees |
 |---|---|
@@ -297,10 +299,15 @@ Four reads in `js/db/social.js` go to that view. Each logs and returns `[]`:
 | `fetchPlayerStats` | profile shows no stats — **and no title ever unlocks** |
 | `fetchPlayerStatsBatch` | no tier badge in any lobby |
 
-The title system is the worst of them, and the most instructive. It does not
-fail visibly: after every game `evaluateUnlocks()` is handed an empty array,
-finds nothing to award, and reports success. There is no error state for
+The title system was the worst of them, and the most instructive. It did not
+fail visibly: after every game `evaluateUnlocks()` was handed an empty array,
+found nothing to award, and reported success. There is no error state for
 "nobody ever earns anything".
+
+**Titles unlocked before this date do not exist.** Anyone who played while the
+view was missing earned nothing, and nothing backfills it — the unlock check
+only runs at the end of a game. That is not a bug to fix, it is a fact about
+the history.
 
 **Do not conclude tiers work because a tier badge appeared in a playtest.**
 `computeCategoryTiers([])` returns `{}`, so an empty read renders no badge at
@@ -311,6 +318,11 @@ This sat unnoticed because the probe reported the view as `all present` — see
 #6. It is the strongest example in this project of the rule that follows from
 it: a broken measurement does not report a broken system, it reports a
 healthy one.
+
+The probe now ends with a **WHAT THIS MEANS FOR A PLAYER** section that maps
+each missing object to the features it takes down, so the next one of these is
+one line of output rather than a chain of inference. As of 2026-08-19 that
+section lists only `get_mastery_counts`, which is harmless and says so.
 
 ---
 
