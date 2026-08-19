@@ -279,6 +279,44 @@ records which ones were actually run, so **the live schema is not known with
 certainty from this repo alone.** Run `scripts/inspect-db.sql` in the SQL Editor
 to get the real picture before relying on any table or policy.
 
+### 9. Play counts were deleted the instant they were earned
+
+**Needs `migrations/033_play_counts_survive_the_room.sql` run by the owner.**
+
+Measured from the SQL Editor on 2026-08-19, after the automated probe honestly
+reported it could not tell (this project's OpenAPI output carries no
+foreign-key annotations):
+
+```
+game_plays_room_id_fkey   -> rooms   ON DELETE CASCADE
+game_plays_player_id_fkey -> players ON DELETE CASCADE
+```
+
+A room is deleted when the last player leaves, and a player's row is deleted
+when they leave. Both happen at the end of **every** game, so every play record
+was destroyed within seconds of being written. `game_plays` held **0 rows**,
+and `get_category_play_counts()` returned nothing at all.
+
+**Everything in the counting path was correct.** The RPC was installed, its
+body counts every row, and `fetchCategoryPlayCounts` maps the result onto the
+category cards properly. The symptom — every category showing 0 plays — is
+listed in #3 as a signature of a missing RPC, and this time the RPC was fine
+and the data was being deleted underneath it. **The same symptom has two very
+different causes; check the row count before checking the function.**
+
+Migration 033 drops both keys rather than softening them to `SET NULL`.
+`game_plays` is a historical record — a game in this category was played, by
+someone, at a time — and once it is over there is nothing left to point at. A
+key that has to be nulled at the end of every game is not describing a real
+relationship. The columns stay and remain useful while the game runs, since
+`completeGamePlay` and `increment_questions_answered` both find a row by
+`room_id + player_id`.
+
+`answers` keeps its cascade deliberately: it really is scratch data for one
+room, which is exactly why `question_stats` and `answer_tally` exist.
+
+**Every play before 2026-08-19 is gone for good** — deleted, not hidden.
+
 ### 8. `player_stats_computed` was missing, and took four features with it
 
 **RESOLVED 2026-08-19** — migration 031 was run, and the probe now reads the
@@ -659,11 +697,18 @@ absence was noticed three times slower than intended.
 ## Question Feedback and Health
 
 **The admin's ability to act on feedback was broken and is fixed — see #5.**
-Whether the table currently holds rows is *not* established: every db-probe run
-reads it as empty, and an earlier claim here that it held 3 flags and 2
-thumbs-down cited no source (#6). A restrictive SELECT policy would look
-identical to an empty table from a visitor's key, so this is unresolved rather
-than bad — but do not repeat the claim as fact.
+`question_feedback` is **measured empty** as of 2026-08-19 — counted from the
+SQL Editor as the owner, so this is the real count and not a visitor's view of
+it. An earlier claim here that it held 3 flags and 2 thumbs-down cited no
+source and is withdrawn (#6).
+
+No defect has been found behind that zero. Migration 020's policies are
+`WITH CHECK (true)` for INSERT, UPDATE and DELETE, the unique index the upsert
+needs is present, and `scenario-feedback.mjs` exercises the write path. The
+plainest explanation is that nobody has rated a question since the table last
+held anything — the UI only appears after a reveal and needs a deliberate tap.
+**Do not "fix" this without first establishing a failed write**; rating one
+question and re-counting is the cheap test.
 
 - Feedback is keyed on **`voter_id`** — `user:<uuid>` signed in, otherwise
   `device:<uuid>` from localStorage. One vote per person per question, ever.
