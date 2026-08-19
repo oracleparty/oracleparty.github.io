@@ -12,7 +12,7 @@ A hand-written character defined in a file, not a generated one. Each has:
 | | |
 |---|---|
 | **Name and look** | Fixed name, avatar emoji and colour, so they are recognisable game to game |
-| **Category skills** | A percentage per category — History 90%, Science 45%, Pop Culture 15% |
+| **Category skills** | A percentage per category. **Numbers not yet chosen — see below** |
 | **Speed** | How long they take to answer, with variation so it never looks mechanical |
 | **Wager habit** | Reckless (spends the big numbers early), cautious (hoards them), or erratic |
 | **Typing style** | Clean, all-lowercase, or prone to a typo |
@@ -41,70 +41,31 @@ same subject is exactly the mistake a person makes.
 
 ## How likely a bot is to be right
 
-**Category skill, then adjusted by the question's difficulty.**
+**Category skill only, for now.**
 
-A bot with History 90% does not get nine in ten History questions right
-regardless — an easy one nudges the odds up, a hard one drags them down. The
-stored easy/medium/hard rating on each question does the adjusting.
+An earlier draft of this document had skill adjusted by each question's
+difficulty, using fixed amounts (+12 for an easy question, -15 for a hard one).
+**Those numbers were invented with no basis and have been removed.** They were
+a guess dressed up as a design, and a guess in place of a number that can
+actually be measured is the worst kind.
 
-This costs a little predictability: you cannot say exactly how strong a bot is
-without watching it play. In exchange, hard questions feel hard even for the
-good bots, and a bot's bad category is properly humbling rather than just
-statistically worse.
+The adjustment itself is a sound idea — a hard question SHOULD trouble even a
+strong bot. But the size of it has to come from somewhere real. Once questions
+have been played, one is answered correctly 31% of the time and another 78%,
+and the gap between them is measured rather than imagined. That is the only
+honest source for it.
 
-The exact weighting is a number to tune once it can be felt in play.
+So: no difficulty adjustment until there is data to derive one from.
 
-**The difficulty labels are real and varied.** Measured on 2026-08-19 across a
-1,000-question sample: **medium 523, hard 257, easy 220**. Worth checking
-before building on them — a column reading 'medium' for everything would have
-collapsed skill-times-difficulty quietly back into plain skill.
+### The category skills have to be chosen by a person
 
-### Difficulty should eventually be measured, not imported
+There is no data that can tell you how good a fictional character should be at
+History. It is a design decision, not a measurement, and it belongs to whoever
+is designing the characters.
 
-The labels came from opentdb, where every question was **multiple choice** and
-a pure guess is right one time in four. This game makes people *type* the
-answer. So an imported "easy" is materially harder here than the label claims,
-and the labels are not merely coarse — they are calibrated for a different
-game.
-
-`question_stats` already counts `times_asked` and `times_correct` per question,
-written by `record_question_outcome` once per question per game. That is the
-real difficulty: how often people actually get it right.
-
-**The bands, agreed with the owner.** Four, and the percentages are the
-owner's — given as centres, written here as the edges between them:
-
-| Band | Roughly | Boundary |
-|---|---|---|
-| Easy | 75% get it right | 63% and above |
-| Medium | 50% | 38–63% |
-| Difficult | 25% | 18–38% |
-| Very difficult | 10% | below 18% |
-
-**Bots do not use the bands.** They use the raw correct-rate, because a band
-covering 18–38% would make a bot treat a 19% question and a 37% one
-identically. The bands exist for the admin page — for a person scanning a list.
-Where `botAccuracy()` currently shifts by the imported easy/medium/hard label,
-it should shift continuously by the measured rate once there is one.
-
-The plan, when it is built:
-
-1. **Blend, do not switch.** A threshold ("override after 20 plays") has a
-   cliff, and with 4,859 questions and few players most questions would never
-   reach it — the override would apply to almost nothing for a very long time.
-   Instead weight the imported label as if it were a handful of prior
-   observations and let real plays pull the value toward reality. At zero plays
-   it is exactly today's behaviour; by fifty it is essentially measured.
-2. **Never overwrite the original.** Keep the imported label; add the measured
-   one alongside. If the measurement ever goes wrong it can be seen and reset,
-   and nothing touches question text or answers.
-3. **Write it where it already happens.** `record_question_outcome` runs once
-   per question per game and is SECURITY DEFINER, so it can maintain the
-   effective difficulty in the same call. No new machinery, no extra fetch
-   during a game, and bots read it off the question they are already holding.
-4. **Show both on the admin page first.** Imported "easy", playing at 31%. The
-   labels are likely wrong more often than expected, and that is worth seeing
-   before anything depends on it.
+An earlier draft of this file proposed six bots with full skill tables. Those
+numbers were invented too, and are gone. What each bot knows and does not know
+is still to be decided.
 
 ## Rules that are not up for negotiation
 
@@ -115,6 +76,11 @@ These come from the owner and are load-bearing:
 - **No bot-only rooms.** A game always has at least one person in it.
 - **Bots are obvious.** Distinct look and a marker beside the name, everywhere
   they appear. Nobody should ever be unsure whether they just lost to a person.
+- **Nothing a bot does is ever recorded.** Not to `question_stats`, not to
+  `question_history`, not to anyone's stats. A bot's answers are decided by a
+  percentage somebody typed, so counting them would mean a question's measured
+  difficulty is partly made of that invented number — corrupting the one
+  source of real data this design depends on.
 
 ## The leaderboard
 
@@ -184,19 +150,15 @@ getting one wrong — fails on repetition. Six lines are all seen within two
 games, and at that point they read as cheap. A bot repeating itself is worse
 than a bot saying nothing.
 
-Doing it properly means templates filled from real facts rather than fixed
-sentences: the wager they actually spent, the streak they are actually on, the
-name of whoever actually beat them. The facts vary each round, so few lines
-still sound fresh. It also needs a no-repeat rule within a game and a cooldown
-so two bots never talk over each other.
+**Bots honk instead.** It is already in the game, needs nothing written, and a
+bot that honks when it nails a hard one has more character than one typing
+"Nice!". How readily each bot honks, and at what, is part of its character and
+is still to be decided — an earlier draft put invented probabilities here and
+they have been removed.
 
-None of that is hard, but it is guesswork until someone has played against
-these bots and knows what they should sound like. **The personality is already
-visible every round without a word** — answer speed, wager habits, typing
-style. Chat is the least necessary channel and the most likely to grate.
-
-**Bots do honk.** It is already in the game, needs nothing written, and a bot
-that honks when it nails a hard one has more character than one typing "Nice!".
+One trigger worth keeping from that draft, because it is a design idea rather
+than a number: a bot honking when a **human** gets a hard question right reads
+as applause. A bot that honks mainly at its own successes reads as smug.
 
 Written lines come after the first play session, driven by what is actually
 missing rather than what seems likely to be.
@@ -213,9 +175,17 @@ part of this.
 
 ## Still open
 
-- How many bots ship at first, and who they are. Six or so, spread across
-  skill levels, feels right. To be proposed and reacted to, not guessed.
-- Whether bots get titles and tiers, or whether those stay human.
+Everything about the characters themselves:
+
+- Who the bots are, how many, and what each is good and bad at. **No numbers
+  should be invented here.** Either the owner sets them, or he asks for a
+  proposal knowing it is a proposal.
+- How readily each honks, and at what.
+- How fast each answers.
+- How the difficulty adjustment is sized — after there is play data, not before.
+
+Decided already: bots show **BOT** where a player shows their tier, and what
+they are good at where a player shows their title.
 
 ## Rough build order
 
