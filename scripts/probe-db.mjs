@@ -351,6 +351,7 @@ const RPC_PROBES = [
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
+const missingRpcs = [];
 for (const [fn, args] of RPC_PROBES) {
   const r = await req(`rpc/${fn}`, {
     method: 'POST',
@@ -361,6 +362,7 @@ for (const [fn, args] of RPC_PROBES) {
   let state;
   if (r.status === 404) {
     state = '*** NOT INSTALLED (or a different signature) ***';
+    missingRpcs.push(fn);
   } else if (code === '22P02' || (r.status >= 200 && r.status < 300)) {
     state = 'installed';
   } else {
@@ -372,6 +374,71 @@ for (const [fn, args] of RPC_PROBES) {
 console.log('\n' + '='.repeat(70));
 console.log('Probe complete. Nothing was created, modified or deleted.');
 console.log('='.repeat(70));
+
+// ============================================
+// WHAT THIS MEANS FOR A PLAYER
+//
+// Everything above is a fact about the database. None of it says what a person
+// holding a phone would actually notice, and that gap is how a dead feature
+// survives a green probe: player_stats_computed sat unreadable in the output
+// for days while the leaderboard, the tier badges, the profile's stats and
+// every title unlock were silently empty, and nothing here connected the two.
+//
+// So the last thing this script prints is the only thing most readers need:
+// which parts of the game are broken right now, in words, with the fix.
+//
+// Each entry names a database object and what depends on it. Absent from this
+// list means "no known player-visible consequence" — not "unimportant".
+// ============================================
+
+const CONSEQUENCES = [
+  { object: 'player_stats_computed', kind: 'table',
+    fix: 'run migrations/031_restore_player_stats_view.sql',
+    breaks: [
+      'the global leaderboard is empty',
+      'every category leaderboard is empty',
+      'the profile page shows no stats',
+      'no tier badge appears in any lobby',
+      'NO TITLE EVER UNLOCKS — the check runs against nothing and reports success',
+    ] },
+  { object: 'question_stats', kind: 'table',
+    fix: 'run migrations/025_question_stats.sql',
+    breaks: ['the admin Question Health page has no performance data'] },
+  { object: 'answer_tally', kind: 'table',
+    fix: 'run migrations/029_answer_tally.sql',
+    breaks: ['the admin page cannot show what people actually typed'] },
+  { object: 'record_answer_text', kind: 'rpc',
+    fix: 'run migrations/029_answer_tally.sql',
+    breaks: ['nothing anybody types is ever counted'] },
+  { object: 'record_question_outcome', kind: 'rpc',
+    fix: 'run migrations/025_question_stats.sql',
+    breaks: ['no question performance is recorded, so bad questions stay invisible'] },
+  { object: 'get_category_play_counts', kind: 'rpc',
+    fix: 'run migrations/021_play_count_access.sql',
+    breaks: ['every category shows 0 plays on the host screen'] },
+  // Deliberately listed even though it is harmless: an entry saying "this is
+  // missing and it does not matter" is worth more than silence, which reads
+  // the same as "not checked".
+  { object: 'get_mastery_counts', kind: 'rpc',
+    fix: 'optional — migrations would add it; fetchMasteryCounts already falls back',
+    breaks: ['the mastery tree falls back to a slower client-side query (works, just slower)'] },
+];
+
+console.log('\n--- WHAT THIS MEANS FOR A PLAYER ---');
+const broken = CONSEQUENCES.filter(c =>
+  c.kind === 'rpc' ? missingRpcs.includes(c.object) : unreadable.has(c.object));
+
+if (broken.length === 0) {
+  console.log('  Nothing on the watch list is missing.');
+} else {
+  for (const c of broken) {
+    const why = c.kind === 'rpc' ? 'function not installed' : unreadable.get(c.object);
+    console.log(`\n  ${c.object} — ${why}`);
+    for (const line of c.breaks) console.log(`      · ${line}`);
+    console.log(`      FIX: ${c.fix}`);
+  }
+}
+console.log('');
 
 // ============================================
 // COLUMN EXISTENCE
