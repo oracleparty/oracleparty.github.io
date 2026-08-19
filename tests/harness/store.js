@@ -30,6 +30,7 @@ export class FakeStore {
   constructor() {
     this.tables = new Map();       // name -> array of row objects
     this._denied = new Set();      // tables whose writes are refused, RLS-style
+    this._missing = new Set();     // tables that answer as if they do not exist
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
     this.presence = new Map();     // topic -> Map(robotId -> state)
@@ -47,6 +48,21 @@ export class FakeStore {
   denyWrites(table) { this._denied.add(table); }
   /** Undo denyWrites. */
   allowWrites(table) { this._denied.delete(table); }
+
+  /**
+   * Make `table` behave as if it does not exist, the way PostgREST does:
+   * an ERROR with code PGRST205, not an empty list.
+   *
+   * The difference is the whole point. An unseeded table in this store returns
+   * [] with no error, which is what a real EMPTY table does — so a code path
+   * that falls back when a relation is missing could never be reached here,
+   * and the fallback would ship untested. player_stats_computed was absent
+   * from the live database for months answering exactly this error while every
+   * scenario saw a harmless empty array.
+   */
+  denyReads(table) { this._missing.add(table); }
+  /** Undo denyReads. */
+  allowReads(table) { this._missing.delete(table); }
 
   seed(name, rows) {
     this.table(name).push(...rows.map(r => ({ ...r })));
@@ -198,6 +214,19 @@ export class FakeStore {
       return modifiers.single
         ? { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } }
         : { data: [], error: null, count: 0 };
+    }
+
+    // A relation PostgREST cannot find. Applies to reads and writes alike, and
+    // is checked before anything else, because a missing table cannot filter,
+    // order or count.
+    if (this._missing.has(table)) {
+      const err = {
+        message: `Could not find the table 'public.${table}' in the schema cache`,
+        code: 'PGRST205',
+      };
+      return modifiers.single || modifiers.maybeSingle
+        ? { data: null, error: err }
+        : { data: null, error: err };
     }
 
     try {

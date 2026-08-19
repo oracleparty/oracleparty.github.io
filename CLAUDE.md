@@ -283,6 +283,10 @@ to get the real picture before relying on any table or policy.
 
 **RESOLVED 2026-08-19** — migration 031 was run, and the probe now reads the
 view as present. Kept here because of how long it hid and what hid it.
+**Migration 032 is the follow-up and is still hand-applied by the owner**: it
+adds `player_totals_computed` (honest global totals) and `get_mastery_counts`
+(the RPC `fetchMasteryCounts` has always fallen back for). Both have working
+fallbacks, so nothing breaks before it is run.
 
 Measured earlier that day: the live database answered **`PGRST205`** for
 `player_stats_computed` — "could not find the table in the schema cache". Not
@@ -352,7 +356,25 @@ invisible, and they all arrive at once on the day it is restored. Expect more
 of this from the leaderboard, the profile and the title system specifically:
 none of that code has ever processed a non-empty result on the live site.
 `tests/titles.test.js` now fails if the double count returns (verified by
-removing the fix).
+removing the fix), and `scenario-account.mjs` seeds subcategory rows so the
+two possible readings of the data give different answers — with rollups alone
+they are indistinguishable, which is why the scenario was blind to it.
+
+**A third counting question, and the owner settled it.** The global board sums
+across *categories*, and a question filed under two topics produces a row under
+each. Measured: **105 of 1000 questions carry more than one category (11%),
+1.11 tags each**. For a per-topic proficiency that duplication is correct and
+stays — getting a History-and-Culture question right is evidence about both.
+For the single combined total it is not, so `player_totals_computed`
+(migration 032) counts each answered question once, and the leaderboards read
+that instead.
+
+**Points are correct answers, not game score, and that is deliberate.** The
+owner's reasoning, which is better than the alternative: a game score depends
+on which wagers a player happened to hold and on which host was judging —
+including any judgement they overrode — so it is not comparable between two
+people who never played together. Do not "improve" the global board by
+switching it to `game_history.score`.
 
 ---
 
@@ -760,6 +782,15 @@ never sign in, and both kinds share a lobby.
 
 **When a bug is reported that the robots cannot see, ask what a real account
 has that a robot does not.**
+
+**`store.denyReads(table)` simulates a relation that is not there** — an error
+with code `PGRST205`, not an empty list. The difference is the whole point: an
+unseeded table in the fake store returns `[]` with no error, which is what a
+real *empty* table does, so any code that falls back when a relation is
+missing could never be reached and the fallback shipped untested. This is
+exactly the state `player_stats_computed` was in for months (#8).
+`scenario-account.mjs` uses it to prove the leaderboard falls back to the
+per-category rollups instead of going blank while migration 032 is unapplied.
 
 **`store.denyWrites(table)` simulates an RLS refusal** — zero rows, no error,
 exactly as Postgres behaves when a policy denies a write. This is the most

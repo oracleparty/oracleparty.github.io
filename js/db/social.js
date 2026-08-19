@@ -250,6 +250,30 @@ export async function upsertTitleUnlock(userId, wordId, level) {
  * Fetch all player stats (cross-user) for leaderboard aggregation.
  * Reads from computed view. Client-side groups by user_id.
  */
+/**
+ * Whole-account totals for the global and friends leaderboards.
+ *
+ * Reads player_totals_computed (migration 032), which counts each answered
+ * question ONCE. The per-category view cannot: it files a question under every
+ * topic it carries — correctly, because getting a History-and-Culture question
+ * right is evidence about both — so adding those rows together counts 11% of
+ * questions more than once and can reorder players who are close.
+ *
+ * Falls back to the per-category rollups if the view is not there yet, because
+ * a leaderboard that is slightly generous beats a leaderboard that is blank.
+ * Delete the fallback once migration 032 is confirmed everywhere.
+ */
+export async function fetchPlayerTotalsForLeaderboard() {
+  const { data, error } = await supabase
+    .from('player_totals_computed')
+    .select('user_id, questions_answered, correct_answers, games_played, wins');
+  if (error) {
+    logger.warn('Supabase', 'player_totals_computed unavailable, using per-category rollups', error);
+    return fetchAllPlayerStatsForLeaderboard();
+  }
+  return data || [];
+}
+
 export async function fetchAllPlayerStatsForLeaderboard() {
   // Category rollups only. The view also emits a row per subcategory, and the
   // rollup already contains them, so fetching both made every leaderboard

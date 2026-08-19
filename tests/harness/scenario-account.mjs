@@ -80,6 +80,21 @@ try {
     stats(alice.userId, 'science', 80, 51, 9, 2, 'space'),
     stats(bob.userId, 'history', 60, 33, 7, 1, 'ancient'),
   ]);
+
+  // Whole-account totals (migration 032), which the global and friends boards
+  // read instead of adding the per-category rows up.
+  //
+  // Alice's correct answers here are 140, NOT the 96 + 51 = 147 her category
+  // rows sum to. That gap is the point: 7 of her correct answers were on
+  // questions filed under two topics, so the per-category rows count them
+  // twice and the true figure is lower. If the board ever shows 147 it has
+  // gone back to summing categories.
+  const ALICE_POINTS = 140;
+  table.store.seed('player_totals_computed', [
+    { user_id: alice.userId, questions_answered: 190, correct_answers: ALICE_POINTS, games_played: ALICE_GAMES, wins: ALICE_WINS },
+    { user_id: bob.userId, questions_answered: 60, correct_answers: 33, games_played: 7, wins: 1 },
+    { user_id: carol.userId, questions_answered: 20, correct_answers: 8, games_played: 3, wins: 0 },
+  ]);
   table.store.seed('game_history', [
     { id: 'gh1', user_id: alice.userId, room_id: 'r1', category: 'history', subcategory: null,
       score: 62, placement: 1, total_players: 4, played_at: new Date().toISOString() },
@@ -162,13 +177,48 @@ try {
   if (!(globalText || '').includes('Alice')) {
     problems.push('the signed-in player does not appear on the global leaderboard despite having stats');
   }
-  // Same double-count check on the board, which sums the same rows.
   const flat = (globalText || '').replace(/\s+/g, ' ');
   if (flat.includes(`${ALICE_GAMES * 2} games`)) {
     problems.push(`the global leaderboard credits Alice with ${ALICE_GAMES * 2} games — double her ${ALICE_GAMES}, so subcategory rows are being summed with their rollup`);
   } else if (!flat.includes(`${ALICE_GAMES} games`)) {
     problems.push(`the global leaderboard does not show Alice's ${ALICE_GAMES} games (got: ${flat.slice(0, 100)})`);
   }
+  // Points must come from the whole-account totals, not from adding the
+  // per-category rows together.
+  if (flat.includes('147 pts')) {
+    problems.push('the global leaderboard shows 147 pts — the sum of Alice\'s per-category rows, which counts a question filed under two topics twice');
+  } else if (!flat.includes(`${ALICE_POINTS} pts`)) {
+    problems.push(`the global leaderboard does not show Alice's ${ALICE_POINTS} points (got: ${flat.slice(0, 100)})`);
+  }
+
+  // ============================================================
+  // THE BOARD WHEN THE TOTALS VIEW IS NOT THERE
+  //
+  // Migration 032 is hand-applied, so there is a window where the app is
+  // deployed and the view is not. A leaderboard that is slightly generous
+  // beats one that is blank, so fetchPlayerTotalsForLeaderboard falls back to
+  // the per-category rollups.
+  //
+  // This is only testable because the store can now answer PGRST205 rather
+  // than an empty list — an unseeded table looks like an EMPTY one, and an
+  // empty one never triggers a fallback.
+  // ============================================================
+  heading('the leaderboard with the totals view missing');
+  table.store.denyReads('player_totals_computed');
+  await alice.goto('leaderboard.html');
+  await alice.page.waitForTimeout(2500);
+  const fallbackText = (await alice.page.textContent('#lb-global-list').catch(() => '') || '')
+    .replace(/\s+/g, ' ');
+  note(`global list on the fallback path: ${fallbackText.trim().slice(0, 90)}`);
+  if (!fallbackText.includes('Alice')) {
+    problems.push('with player_totals_computed missing the global leaderboard goes blank instead of falling back');
+  }
+  // The fallback is the per-category rollups, so it reads 147 — generous by
+  // the 7 double-counted answers, and correct about games.
+  if (!fallbackText.includes(`${ALICE_GAMES} games`)) {
+    problems.push(`the fallback board lost Alice's game count (got: ${fallbackText.slice(0, 90)})`);
+  }
+  table.store.allowReads('player_totals_computed');
 
   // Switching to the category tab must not blank the page.
   const catTab = alice.page.locator('[data-tab="category"], #tab-category-btn').first();

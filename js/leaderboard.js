@@ -6,7 +6,7 @@
 import { $, $$, escapeHtml, renderAvatar, navigateWithFade } from './utils.js';
 import { LEADERBOARD_LIMIT } from './constants.js';
 import {
-  fetchAllPlayerStatsForLeaderboard,
+  fetchPlayerTotalsForLeaderboard,
   fetchCategoryLeaderboard,
   fetchGameHistorySince,
   fetchProfilesBatch,
@@ -95,15 +95,26 @@ async function loadTab(tab) {
 
 async function loadGlobalLeaderboard() {
   const container = $('#lb-global-list');
-  const allStats = await fetchAllPlayerStatsForLeaderboard();
+  const allStats = await fetchPlayerTotalsForLeaderboard();
 
-  // Aggregate per user
+  // Aggregate per user.
+  //
+  // "Points" is CORRECT ANSWERS, deliberately not the score from the game.
+  // A game score depends on which wagers a player happened to hold and on
+  // which host was judging — including any judgement they overrode — so it is
+  // not comparable between two people who never played together. Correct
+  // answers is the same measurement for everybody.
+  //
+  // The rows come from player_totals_computed, which counts each answered
+  // question once. Summing the per-category rows here instead would count a
+  // question filed under two topics twice — see fetchPlayerTotalsForLeaderboard.
+  // The loop survives either source: the fallback returns one row per
+  // category, and games are per-category in both, so adding up is correct.
   const userMap = {};
   for (const s of allStats) {
     if (!userMap[s.user_id]) userMap[s.user_id] = { totalScore: 0, gamesPlayed: 0, wins: 0 };
     userMap[s.user_id].gamesPlayed += s.games_played || 0;
     userMap[s.user_id].wins += s.wins || 0;
-    // Total score approximation: correct_answers as score proxy (actual scores are in game_history)
     userMap[s.user_id].totalScore += s.correct_answers || 0;
   }
 
@@ -271,7 +282,7 @@ async function loadFriendsLeaderboard() {
   const friendIds = friends.map(f => f.user_id);
   friendIds.push(currentUser.user.id);
 
-  const allStats = await fetchAllPlayerStatsForLeaderboard();
+  const allStats = await fetchPlayerTotalsForLeaderboard();
   const friendStats = allStats.filter(s => friendIds.includes(s.user_id));
 
   // Aggregate per user

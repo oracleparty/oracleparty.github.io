@@ -49,7 +49,7 @@ export {
   updateProfile, fetchPlayerStats, fetchPlayerStatsBatch,
   fetchGameHistory, insertGameHistoryEntry, searchProfiles,
   fetchTitleUnlocks, upsertTitleUnlock,
-  fetchAllPlayerStatsForLeaderboard, fetchCategoryLeaderboard,
+  fetchAllPlayerStatsForLeaderboard, fetchPlayerTotalsForLeaderboard, fetchCategoryLeaderboard,
   fetchGameHistorySince, fetchProfilesBatch,
   fetchSiteSettings, upsertSiteSetting, deleteSiteSetting,
   sendFriendRequest, fetchPendingRequests, fetchSentRequests,
