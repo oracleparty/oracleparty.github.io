@@ -57,6 +57,7 @@ console.log('='.repeat(70));
 // admin-only table like error_logs reads as empty no matter how much is in it.
 console.log('\n--- TABLE EXISTS / READABLE / ROWS VISIBLE TO A VISITOR ---');
 const present = [];
+const unreadable = new Map();   // table -> why, for the column check below
 for (const t of TABLES) {
   const r = await req(`${t}?select=*&limit=1`, { headers: { Prefer: 'count=exact', Range: '0-0' } });
   const range = r.headers.get('content-range');
@@ -65,11 +66,24 @@ for (const t of TABLES) {
   if (r.status === 200 || r.status === 206) {
     present.push(t);
     console.log(`  ${t.padEnd(20)} readable    rows=${count}`);
-  } else if (r.status === 404) {
-    console.log(`  ${t.padEnd(20)} DOES NOT EXIST`);
-  } else {
-    console.log(`  ${t.padEnd(20)} read blocked (HTTP ${r.status})`);
+    continue;
   }
+
+  // "Not there" and "there but not yours" are different problems with
+  // different fixes, and collapsing them into one line is how a missing GRANT
+  // gets read as a missing table. PostgREST distinguishes them in the body:
+  // an unknown relation is PGRST205 / 42P01, a refused one is 42501.
+  const code = pgCode(r.body);
+  let why;
+  if (code === '42501' || r.status === 401 || r.status === 403) {
+    why = `EXISTS but this visitor may not read it (HTTP ${r.status}${code ? ' / ' + code : ''})`;
+  } else if (r.status === 404) {
+    why = `DOES NOT EXIST for a visitor (HTTP 404${code ? ' / ' + code : ''})`;
+  } else {
+    why = `read blocked (HTTP ${r.status}${code ? ' / ' + code : ''})`;
+  }
+  unreadable.set(t, why);
+  console.log(`  ${t.padEnd(20)} ${why}`);
 }
 
 console.log('\n--- COLUMNS (from one sample row; blank if table empty) ---');
@@ -416,7 +430,24 @@ const REQUIRED = {
 };
 
 console.log('\n--- COLUMNS THE APP DEPENDS ON ---');
+//
+// THIS SECTION USED TO LIE, in the way CLAUDE.md #6 warns about: it counted a
+// column as missing only on HTTP 400 "does not exist". A table that is not
+// there at all answers 404 to every request, so not one column was ever
+// recorded as missing and the table was reported "all present" — the most
+// reassuring possible output for the most broken possible state.
+//
+// player_stats_computed is exactly that case: the row-count section above said
+// it could not be read, and this section said all of its columns were present.
+// Two halves of one script disagreeing about one object, and the confident
+// half was the wrong one.
 for (const [tbl, cols] of Object.entries(REQUIRED)) {
+  if (unreadable.has(tbl)) {
+    // Say nothing about columns of something we cannot read. Any answer here
+    // would be an artefact of the failure, not a fact about the schema.
+    console.log(`  ${tbl.padEnd(20)} *** NOT CHECKED — ${unreadable.get(tbl)} ***`);
+    continue;
+  }
   const missing = [];
   for (const col of cols) {
     const r = await req(`${tbl}?select=${col}&limit=1`);
