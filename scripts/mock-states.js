@@ -729,6 +729,21 @@ export const STATES = {
   // GAME.HTML — Modals / Overlays
   // ==========================================
   // ==========================================
+  // PRIVACY.HTML
+  //
+  // Long-form reading, which nothing else in this app is, so it has its own
+  // type rules and therefore its own way to go wrong. It is also the page a
+  // stranger is most likely to open on a phone in daylight.
+  // ==========================================
+  'privacy': {
+    page: 'privacy',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+    },
+  },
+
+  // ==========================================
   // PROFILE.HTML
   //
   // The profile page had NO mock at all, so nothing measured it — the layout

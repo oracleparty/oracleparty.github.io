@@ -1963,6 +1963,64 @@ body::after {
   color: var(--color-text-muted);
 }
 
+/* --- Home page legal link ---
+   Bottom of the home screen, under the dock. Small and low-contrast on
+   purpose: it has to be findable, not prominent. Still measured for contrast
+   by the layout sweep like everything else. */
+.home__legal {
+  position: absolute;
+  /* Clears the dock rather than guessing at a gap. The dock is
+     position:absolute bottom:0 with 10px top padding, a 28px button and a
+     bottom padding of max(12px, safe-area) — so this is that same sum plus a
+     gap. Written as the arithmetic it actually is, because a hardcoded 70px
+     would silently overlap on any phone with a home indicator.
+     Placing it at bottom:8px put it directly on top of the dock buttons: the
+     layout sweep does not check for overlap, and a screenshot did. */
+  bottom: calc(10px + 28px + max(12px, env(safe-area-inset-bottom, 12px)) + var(--space-sm));
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  z-index: 2;
+}
+.home__legal:active { text-decoration: underline; }
+
+/* --- Legal pages (privacy) ---
+   Long-form reading, which nothing else in this app is. Wider line height and
+   real spacing between sections, because a wall of 12px text is a page that
+   says "do not read me" while claiming to be transparent. */
+.legal {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding-bottom: var(--space-xl);
+}
+.legal p,
+.legal li {
+  font-size: var(--text-sm);
+  line-height: 1.65;
+  color: var(--color-text);
+}
+.legal h2 {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-text);
+  margin: var(--space-xl) 0 var(--space-xs);
+}
+.legal ul {
+  margin: 0 0 var(--space-md);
+  padding-left: 1.15rem;
+}
+.legal li { margin-bottom: var(--space-xs); }
+.legal p { margin: 0 0 var(--space-md); }
+.legal__updated {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs) !important;
+}
+.legal a { color: var(--color-primary); }
+
 /* --- Danger zone (account deletion) ---
    Set apart from the settings above it by a rule and space, so an irreversible
    action never sits flush against a toggle. The button is outlined rather than

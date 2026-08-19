@@ -28,6 +28,14 @@
 //   CLIPPED   text is truncated by its container. Sometimes intended (a long
 //             title with an ellipsis), so it is reported separately and
 //             judged, never failed on automatically.
+//   COVERED   a control with something on top of it, so tapping its middle
+//             hits the other thing. Asked of the browser via elementFromPoint
+//             rather than computed from rectangles, which accounts for
+//             z-index and stacking. REPORTED, NEVER FAILED ON: a control
+//             behind a pinned footer in a scrolling area is usually reachable
+//             by scrolling, so these need judging. Every other check looks at
+//             one element at a time and so cannot see this class of fault at
+//             all.
 //   UNREADABLE text whose colour has less than 3:1 contrast against what it
 //             actually sits on. Every state runs in all three themes, because
 //             a colour can survive on white and vanish on black — CLAUDE.md
@@ -105,7 +113,7 @@ function startServer() {
 // Runs in the page. Returns every measurable layout fault on the current screen.
 function measure(stressText) {
   const vw = document.documentElement.clientWidth;
-  const out = { vw, overflow: [], scrollers: [], ragged: [], clipped: [], unstyled: [], contrast: [] };
+  const out = { vw, overflow: [], scrollers: [], ragged: [], clipped: [], unstyled: [], contrast: [], covered: [] };
 
   // Every class name the stylesheet actually defines. Used to catch a mock
   // that has drifted away from the app it claims to preview.
@@ -309,6 +317,59 @@ function measure(stressText) {
       }
     }
   }
+  // ============================================
+  // A CONTROL THAT CANNOT BE TAPPED
+  //
+  // Everything above measures elements one at a time, so nothing noticed a
+  // Privacy link landing directly on the home dock's buttons: neither element
+  // overflowed, neither was low contrast, and the page did not scroll
+  // sideways. It looked perfect to every existing check and was obviously
+  // wrong in a screenshot.
+  //
+  // ASKS THE BROWSER, rather than comparing rectangles. A first version did
+  // the arithmetic itself and reported 123 faults across the app — nearly all
+  // of them elements in different stacking contexts that overlap perfectly
+  // legitimately. A check that cries wolf is one people stop reading, which
+  // would have made this worse than nothing.
+  //
+  // elementFromPoint is the actual question: if you tapped the middle of this
+  // control, would you hit it? That accounts for z-index, stacking contexts,
+  // pointer-events and transforms, none of which rectangle maths can see.
+  // ============================================
+  const label = el => {
+    const id = el.id ? `#${el.id}` : '';
+    const cls = typeof el.className === 'string' && el.className.trim()
+      ? '.' + el.className.trim().split(/\s+/)[0] : '';
+    const txt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 18);
+    return `${el.tagName.toLowerCase()}${id}${cls}${txt ? ` "${txt}"` : ''}`;
+  };
+
+  for (const el of root.querySelectorAll('a, button')) {
+    if (!visible(el)) continue;
+    const cs = getComputedStyle(el);
+    if (cs.pointerEvents === 'none' || el.disabled) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) continue;
+    // Only judge controls fully on screen; a partially scrolled one is a
+    // different question and belongs to the overflow check.
+    if (r.top < 0 || r.bottom > window.innerHeight || r.left < 0 || r.right > window.innerWidth) continue;
+
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!hit) continue;
+    if (hit === el || el.contains(hit) || hit.contains(el)) continue;
+
+    // A control sitting behind an open sheet or modal is not a bug — that is
+    // what a sheet is for, and the screen underneath stays .screen.active
+    // while it is open. Only a covering element that is NOT a full-screen
+    // layer counts, which is the difference between "a panel is over this"
+    // and "two controls are fighting for the same corner".
+    const h = hit.getBoundingClientRect();
+    const coversScreen = (h.width * h.height) > (window.innerWidth * window.innerHeight * 0.5);
+    if (coversScreen) continue;
+
+    out.covered.push(`${label(el)} cannot be tapped — ${label(hit)} is on top of it`);
+  }
+
   return out;
 }
 
@@ -354,6 +415,7 @@ console.log('='.repeat(72));
 let faults = 0;
 let clippedCount = 0;
 const drift = new Set();
+const covered = new Set();
 
 for (const name of names) {
   const state = STATES[name];
@@ -407,6 +469,7 @@ for (const name of names) {
       // as failures would leave this permanently red and therefore ignored.
       const bad = r.overflow.length + r.scrollers.length + r.ragged.length + r.contrast.length;
       clippedCount += r.clipped.length;
+      for (const v of r.covered) covered.add(`${v}   (${name} @ ${width}px)`);
       for (const u of r.unstyled) drift.add(`${u}   (first seen: ${name})`);
 
       if (bad) {
@@ -416,6 +479,7 @@ for (const name of names) {
         for (const s of r.scrollers.slice(0, 5)) console.log(`    SCROLLS-X ${s}`);
         for (const g of r.ragged.slice(0, 5))    console.log(`    RAGGED    ${g}`);
         for (const c of r.contrast.slice(0, 5))  console.log(`    UNREADABLE ${c}`);
+
         if (r.overflow.length > 5) console.log(`    ... and ${r.overflow.length - 5} more overflowing elements`);
         if (r.contrast.length > 5) console.log(`    ... and ${r.contrast.length - 5} more low-contrast elements`);
       }
@@ -438,6 +502,17 @@ if (drift.size) {
   console.log('either the stylesheet lost them or the markup invented them:');
   for (const d of drift) console.log(`  · ${d}`);
 }
+if (covered.size) {
+  // Reported, never failed on — the same treatment CLIPPED gets, and for the
+  // same reason. A control behind a pinned footer inside a scrolling area is
+  // usually reachable by scrolling, so this needs a human to judge. A first
+  // version failed the build on these and produced 123 findings across the
+  // app, which is a check nobody would read twice.
+  console.log(`\n${covered.size} control(s) with something on top of them — judge these, do not assume:`);
+  for (const c of [...covered].slice(0, 12)) console.log(`  · ${c}`);
+  if (covered.size > 12) console.log(`  ... and ${covered.size - 12} more`);
+}
+
 if (clippedCount) {
   console.log(`${clippedCount} element(s) clip their content (overflow-x: hidden) — usually deliberate; run with --state to inspect.`);
 }
