@@ -270,6 +270,33 @@ try {
   console.log(`\n  format values in first 1000: ${JSON.stringify(counts)}`);
 } catch { /* ignore */ }
 
+// How many questions carry MORE THAN ONE category.
+//
+// player_stats_computed unnests questions.categories, so a question tagged
+// with two categories produces a row under each. That is correct for a
+// per-category leaderboard and wrong for any total summed ACROSS categories:
+// the global board's "points" would count such a question once per tag.
+//
+// Whether that matters is a number, not an opinion, which is why it is
+// measured here instead of argued about. If multi-category questions are rare
+// the distortion is noise; if they are common the global ranking is wrong.
+const cats = await req('questions?select=categories&limit=1000');
+try {
+  const rows = JSON.parse(cats.body || '[]');
+  const counts = {};
+  let tagTotal = 0;
+  for (const r of rows) {
+    const n = Array.isArray(r.categories) ? r.categories.length : 0;
+    counts[n] = (counts[n] || 0) + 1;
+    tagTotal += n;
+  }
+  const multi = rows.filter(r => (r.categories || []).length > 1).length;
+  console.log(`  categories per question in first 1000: ${JSON.stringify(counts)}`);
+  console.log(`  more than one category: ${multi}/${rows.length}` +
+              `${rows.length ? ` (${Math.round((multi / rows.length) * 100)}%)` : ''}` +
+              `, ${rows.length ? (tagTotal / rows.length).toFixed(2) : 0} tags each on average`);
+} catch { /* ignore */ }
+
 // How many questions carry plausible WRONG answers already.
 //
 // These came from opentdb as multiple-choice distractors and survived the
