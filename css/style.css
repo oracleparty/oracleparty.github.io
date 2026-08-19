@@ -1913,6 +1913,47 @@ body::after {
   color: var(--color-text-muted);
 }
 
+/* A bot's only badge. Deliberately grey and quiet: it must be unmistakable
+   that this is not a person, without competing with Host or Ready for
+   attention. Measured against the badge's own tint over each theme's surface,
+   which is why light and dark carry different values — see .badge--ready. */
+.badge--bot {
+  background: rgba(107, 114, 128, 0.14);
+  color: #4B5563;
+}
+[data-theme="dark"] .badge--bot,
+[data-theme="oled"] .badge--bot {
+  background: rgba(156, 163, 175, 0.18);
+  color: #C3C8D1;
+}
+
+/* Host-only "add a practice bot". Sits under the player list, deliberately
+   understated — it is a utility, not the way most games start. */
+.btn-add-bot {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.btn-add-bot:active {
+  transform: scale(0.98);
+}
+.btn-add-bot:disabled {
+  opacity: 0.5;
+}
+
+.remove-bot-btn {
+  color: var(--color-text-muted);
+}
+
 /* --- Player List --- */
 .player-list {
   width: 100%;

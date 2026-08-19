@@ -280,11 +280,20 @@ export const STATES = {
             ? '<span class="badge badge--ready">Ready</span>'
             : '<span class="badge badge--not-ready">Not Ready</span>');
         }
-        const sub = (p.tier ? '<span class="player-tier" data-tier="' + p.tier.toLowerCase() + '">' + p.tier + '</span>' : '')
-                  + (p.title ? '<span class="player-title">' + p.title + '</span>' : '');
-        // The host sees action buttons on everyone but themselves.
-        const actions = p.isHost ? '' :
-          '<button class="honk-btn" aria-label="Quack">\u{1F986}</button>'
+        // A bot carries one badge and nothing else — no ready state, no tier,
+        // no title. Same as the app.
+        if (p.isBot) {
+          badges.length = 0;
+          badges.push('<span class="badge badge--bot">Bot</span>');
+        }
+        const sub = p.isBot ? '' :
+          ((p.tier ? '<span class="player-tier" data-tier="' + p.tier.toLowerCase() + '">' + p.tier + '</span>' : '')
+           + (p.title ? '<span class="player-title">' + p.title + '</span>' : ''));
+        // The host sees action buttons on everyone but themselves — and on a
+        // bot, only the remove button. Host and co-host are for humans.
+        const actions = p.isHost ? '' : p.isBot
+          ? '<button class="icon-btn remove-bot-btn" aria-label="Remove bot">✕</button>'
+          : '<button class="honk-btn" aria-label="Quack">\u{1F986}</button>'
           + '<button class="icon-btn cohost-btn' + (p.isCohost ? ' cohost-btn--demote' : '') + '" aria-label="Co-host">'
           + (p.isCohost ? '★' : '☆') + '</button>'
           + '<button class="icon-btn transfer-host-btn" aria-label="Make host">\u{1F451}</button>';
@@ -310,7 +319,17 @@ export const STATES = {
         { ...P[3] },
         { ...P[4], tier: 'Novice', title: 'Student of the Ages' },
         { ...P[5] },
+        // A practice bot sits in the same list as everyone else, so its row has
+        // to fit the same budget. It is here because a bot row that was never
+        // previewed is a bot row nobody measured.
+        { name: 'Practice Bot', color: '#6b7280', emoji: '\u{1F916}', isBot: true },
       ].map(p => row(p, { ready: false })).join('');
+
+      // The host's add-bot button is hidden once the room has one, exactly as
+      // renderAddBotButton() does it — so this state previews the "already has
+      // a bot" case and lobby-ready below previews the other.
+      const addBot = document.getElementById('btn-add-bot');
+      if (addBot) addBot.classList.add('hidden');
 
       const chat = document.getElementById('chat-drawer-messages');
       if (chat) {
@@ -350,6 +369,15 @@ export const STATES = {
           notReady.textContent = 'Ready';
         }
       });
+
+      // The no-bot half of the lobby: the bot's row goes and the host's
+      // add-bot button appears. Both halves have to be previewed somewhere or
+      // one of them is never measured — the button was invisible in every
+      // state until this was added, so the sweep had nothing to check.
+      const bot = document.querySelector('#player-list .badge--bot');
+      if (bot) bot.closest('.player-item').remove();
+      const addBot = document.getElementById('btn-add-bot');
+      if (addBot) addBot.classList.remove('hidden');
     },
   },
 

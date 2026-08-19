@@ -159,7 +159,8 @@ function honkAvatarHtml(player) {
 
 function honkBtnHtml(player) {
   const isMe = String(player.id) === String(state.room.playerId);
-  return isMe ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Quack">&#x1F986;</button>`;
+  // Never at a bot — there is nobody on the other end to startle.
+  return (isMe || player.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Quack">&#x1F986;</button>`;
 }
 
 export function renderRevealAnswers(answers) {
@@ -539,19 +540,25 @@ function recordCurrentQuestionOutcomes() {
   if (!question) return;
   for (const answer of state.currentAnswers || []) {
     if (answer.submitted_answer === '__WAGER_LOCKED__') continue;
+
+    // NOTHING a bot does is recorded — not the outcome, not the text. Its
+    // answer comes from a percentage somebody chose, so counting it would put
+    // that invented number into question_stats, which is the evidence used to
+    // decide whether a question is too hard, and into answer_tally, which is
+    // the evidence used to decide whether its answer key is wrong.
+    //
+    // This check has to come FIRST. When it sat between the two writes, the
+    // outcome was recorded and only the text was skipped, which is the worse
+    // half to keep.
+    const player = (state.players || []).find(p => String(p.id) === String(answer.player_id));
+    if (player?.is_bot) continue;
+
     const overridden = answer.auto_correct != null
       && !!answer.auto_correct !== !!answer.is_correct;
     recordQuestionOutcome(question.id, answer.is_correct, overridden);
 
     // Record the text itself, so the common answers to a question can be seen
     // and a missing acceptable answer shows up without anyone noticing it.
-    //
-    // Never for a bot: a bot's answer comes from a percentage somebody chose,
-    // so counting it would make this data partly that invented number. There
-    // are no bots yet — the guard is here so it cannot be forgotten when there
-    // are.
-    const player = (state.players || []).find(p => String(p.id) === String(answer.player_id));
-    if (player?.is_bot) continue;
     recordAnswerText(question.id, answer.submitted_answer);
   }
 }

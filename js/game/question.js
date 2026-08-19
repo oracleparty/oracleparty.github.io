@@ -13,6 +13,7 @@ import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
 import { showHostSettingsGear } from './host.js';
+import { answerQuestionForBots, answerFinalQuestionForBots } from './bots.js';
 
 // Forward reference — set by init.js to avoid circular imports
 let _showRevealScreen = null;
@@ -137,6 +138,7 @@ export function showQuestionScreen() {
   if (isReconnect) {
     // Reconnect: skip sync buffer, resume timer from server timestamp
     startTimer();
+    answerForBots();
     $('#answer-input').focus({ preventScroll: true });
   } else {
     // Normal flow: 1-second sync buffer before revealing question
@@ -158,6 +160,9 @@ export function showQuestionScreen() {
       // Start timer from server timestamp
       startTimer();
 
+      // Bots answer the moment the question is live — nobody waits for one.
+      answerForBots();
+
       // Focus the answer input for quick typing
       $('#answer-input').focus({ preventScroll: true });
     }, WAGER_AUTO_SKIP_MS);
@@ -174,6 +179,18 @@ export function showQuestionScreen() {
       handleSubmitAnswer();
     }
   };
+}
+
+/**
+ * Answer for any bots in the room, host only (the gate lives in bots.js).
+ *
+ * Fire-and-forget: a bot failing to answer must never hold up the question for
+ * the humans, and if it does fail the host's timer-expiry pass writes it a
+ * blank like any absent player.
+ */
+function answerForBots() {
+  const run = state.isFinalWagerRound ? answerFinalQuestionForBots : answerQuestionForBots;
+  run().catch(err => logger.warn('Bots', 'Bot answering failed', err));
 }
 
 function renderWagerGrid() {

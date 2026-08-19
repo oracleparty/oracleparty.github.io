@@ -47,6 +47,7 @@ import {
 } from './state.js';
 import { repositionChatBar, showChatBar, hideChatBar, closeChatDrawer } from './chat.js';
 import { showHostSettingsGear } from './host.js';
+import { lockBotFinalWagers, getHumans } from './bots.js';
 
 // Forward references — registered by init.js to avoid circular imports
 let _cleanup = null;
@@ -115,7 +116,7 @@ export async function showScoresScreen() {
     const isMe = String(p.id) === String(state.room.playerId);
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+    const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
       <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
@@ -364,6 +365,13 @@ export function showFinalWagerScreen() {
   const revealBtn = $('#btn-fw-reveal');
   const options = document.querySelectorAll('.fw-option');
 
+  // Bots lock their final wager immediately, so the list shows a number for
+  // them instead of a "Waiting..." that would never resolve. Host only, and
+  // fire-and-forget — the screen must render either way.
+  lockBotFinalWagers()
+    .then(() => updateFinalWagerPlayerList())
+    .catch(err => logger.warn('Bots', 'Could not lock bot final wagers', err));
+
   // Render player wager list (initial "Waiting..." for all, then fetch actual state)
   renderFinalWagerPlayers();
   updateFinalWagerPlayerList();
@@ -511,7 +519,7 @@ function renderFinalWagerPlayers(lockedWagers) {
       : `<span class="fw-player-row__wager fw-player-row__wager--waiting">Waiting...</span>`;
 
     const isMe = String(p.id) === String(state.room.playerId);
-    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+    const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
       <div class="fw-player-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
@@ -882,7 +890,12 @@ export async function showResultsScreen() {
       const validAnswers = myAnswers.filter(a => !state.disqualifiedQuestions.has(a.question_number));
       const correctCount = validAnswers.filter(a => a.is_correct).length;
       const totalAnswered = validAnswers.length;
-      const sortedForPlacement = [...state.players].sort((a, b) => (state.scores[b.id] || 0) - (state.scores[a.id] || 0));
+      // Placement is against PEOPLE. A bot's score comes from a percentage
+      // somebody chose, so counting it would mean a player's own history is
+      // partly made of that invented number — "2nd of 3" against two bots is
+      // not a fact about anybody's trivia.
+      const humans = getHumans(state.players);
+      const sortedForPlacement = [...humans].sort((a, b) => (state.scores[b.id] || 0) - (state.scores[a.id] || 0));
       const placement = sortedForPlacement.findIndex(p => String(p.id) === String(state.room.playerId)) + 1;
       const sub = state.room.subcategory || null;
       // Fire-and-forget — don't block results rendering
@@ -890,7 +903,7 @@ export async function showResultsScreen() {
         userId: uid, roomId: state.room.id, category: cat,
         subcategory: sub,
         score: state.scores[state.room.playerId] || 0,
-        placement, totalPlayers: state.players.length
+        placement, totalPlayers: humans.length
       });
       // Per-question mastery is written in real-time during doReveal().
 
@@ -969,7 +982,7 @@ export async function showResultsScreen() {
     const isMe = String(p.id) === String(state.room.playerId);
     const honks = getHonkCount(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-    const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+    const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
       <div class="results-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>

@@ -22,6 +22,11 @@
  *
  * Order: co-host first — they are the designated heir and can already advance
  * the game — then the longest-present player.
+ *
+ * Bots are never candidates. Host and co-host are for humans, and a bot cannot
+ * advance a phase, judge an answer or start a game — a room whose host is a bot
+ * is a frozen room. If the only rows left are bots there is no next host, and
+ * returning null is correct: nobody is there to play.
  */
 export function determineNextHost(players, absentIds = new Set()) {
   if (!players || players.length === 0) return null;
@@ -31,7 +36,7 @@ export function determineNextHost(players, absentIds = new Set()) {
   // A present host means there is nothing to do.
   if (players.some(p => p.is_host && isPresent(p))) return null;
 
-  const candidates = players.filter(isPresent);
+  const candidates = players.filter(p => isPresent(p) && !p.is_bot);
   if (candidates.length === 0) return null;   // everyone is gone; nobody to promote
 
   const cohost = candidates.find(p => p.is_cohost);

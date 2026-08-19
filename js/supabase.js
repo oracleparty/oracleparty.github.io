@@ -17,12 +17,13 @@ export {
 
 // --- Players & Answers ---
 export {
-  addPlayer, promoteToHost, demoteHost, promoteToCohost, demoteCohost,
+  addPlayer, addBot, promoteToHost, demoteHost, promoteToCohost, demoteCohost,
   removePlayer, removePlayerBeacon, markDisconnectedBeacon, playerHeartbeat,
   fetchPlayers, toggleReady,
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
-  fetchAllAnswers, insertBlankAnswers, deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
+  fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers,
+  deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
 } from './db/players.js';
 
 // --- Questions ---

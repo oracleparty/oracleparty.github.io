@@ -373,9 +373,12 @@ console.log('='.repeat(70));
 // ============================================
 
 const REQUIRED = {
+  // is_bot is migration 030. Without it, adding a practice bot inserts an
+  // unknown column and Postgres rejects the whole row — the same shape as
+  // every schema-drift bug in CLAUDE.md #3.
   players: ['id', 'room_id', 'display_name', 'is_host', 'is_cohost', 'score',
             'last_seen_at', 'disconnected_at', 'joined_at', 'user_id',
-            'avatar_color', 'avatar_emoji', 'title', 'is_ready', 'score'],
+            'avatar_color', 'avatar_emoji', 'title', 'is_ready', 'is_bot', 'score'],
   rooms:   ['id', 'code', 'host_name', 'category', 'subcategory', 'status', 'used_question_ids',
             'game_phase', 'current_question', 'question_ids', 'question_started_at',
             'countdown_started_at', 'questions_per_game', 'question_timer',
@@ -387,6 +390,7 @@ const REQUIRED = {
   question_feedback: ['id', 'question_id', 'voter_id', 'room_id', 'player_name',
                       'feedback_type', 'flag_reason'],
   questions: ['id', 'question', 'correct_answer', 'acceptable_answers',
+              'incorrect_answers',
               'categories', 'subcategory', 'difficulty', 'format', 'fun_fact'],
   // Everything else the app writes anywhere, gathered by scanning every
   // .insert/.update/.upsert call. One unknown column rejects the whole

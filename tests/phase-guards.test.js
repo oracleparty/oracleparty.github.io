@@ -61,6 +61,41 @@ describe('determineNextHost', () => {
     expect(players[0].id).toBe(original[0].id);
     expect(players[1].id).toBe(original[1].id);
   });
+
+  // Host and co-host are for humans. A bot cannot start a game, advance a
+  // phase or judge an answer, so a room in its hands is a frozen room.
+  it('never promotes a bot, even when it joined first', () => {
+    const players = [
+      { id: 'bot', is_host: false, is_bot: true, joined_at: '2024-01-01T00:00:00Z' },
+      { id: '2', is_host: false, joined_at: '2024-01-01T00:05:00Z' },
+    ];
+    expect(determineNextHost(players).id).toBe('2');
+  });
+
+  it('never promotes a bot, even one flagged as co-host', () => {
+    // The UI cannot make a bot co-host, but a stray row must not be able to
+    // inherit the room either.
+    const players = [
+      { id: 'bot', is_host: false, is_bot: true, is_cohost: true, joined_at: '2024-01-01T00:00:00Z' },
+      { id: '2', is_host: false, joined_at: '2024-01-01T00:05:00Z' },
+    ];
+    expect(determineNextHost(players).id).toBe('2');
+  });
+
+  it('returns null when only bots are left', () => {
+    const players = [
+      { id: 'bot', is_host: false, is_bot: true, joined_at: '2024-01-01T00:00:00Z' },
+    ];
+    expect(determineNextHost(players)).toBe(null);
+  });
+
+  it('still returns null when a present human host exists alongside a bot', () => {
+    const players = [
+      { id: '1', is_host: true, joined_at: '2024-01-01T00:00:00Z' },
+      { id: 'bot', is_host: false, is_bot: true, joined_at: '2024-01-01T00:01:00Z' },
+    ];
+    expect(determineNextHost(players)).toBe(null);
+  });
 });
 
 // ============================================

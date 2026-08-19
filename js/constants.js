@@ -82,6 +82,31 @@ export const STALE_TIMEOUT_MS = 120000;          // 2 minutes — seat released;
 export const DISCONNECTED_TIMEOUT_MS = 45000;     // 45 seconds — faster cleanup after beacon (tab close)
 export const HEARTBEAT_DB_INTERVAL_MS = 15000;    // 15 seconds — DB heartbeat (last_seen_at update)
 
+// === PRACTICE BOT ===
+// One bot, one accuracy, no personality yet. Everything here is deliberately
+// the plainest possible choice, because none of it has been measured:
+//
+//   * BOT_ACCURACY is a coin flip. It is not a claim about how hard the
+//     questions are or how well anyone plays — it is the one number that
+//     needs no justification, and it stays until real data replaces it.
+//   * The bot answers the instant the question starts. Nobody should ever
+//     wait for a bot.
+//   * Its wrong answers come from questions.incorrect_answers, the original
+//     multiple-choice distractors, so no wrong answer is ever invented. A
+//     question with none stored gets a blank, which is honest: the bot did
+//     not know it.
+//
+// A bot never hosts, never co-hosts, and nothing it does is recorded.
+export const BOT_DISPLAY_NAME = 'Practice Bot';
+export const BOT_ACCURACY = 0.5;
+// The middle of the three final-wager options (0 / 10 / 20). A bot with one
+// flat accuracy has no read on the question and no read on the standings, so
+// picking either extreme would be a strategy it does not have.
+export const BOT_FINAL_WAGER = 10;
+export const BOT_AVATAR_COLOR = '#6b7280';
+export const BOT_AVATAR_EMOJI = '\u{1F916}';
+export const MAX_BOTS_PER_ROOM = 1;
+
 // === UI ===
 export const PULL_REFRESH_THRESHOLD = 60;
 export const MASTERY_TREE_BASE_INDENT = 12;

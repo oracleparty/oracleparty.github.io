@@ -1,7 +1,55 @@
 # Bots — design, agreed 2026-08-19
 
-Not built yet. This is the plan, written down so it can be argued with before
-any code exists.
+Most of this is still the plan. **One slice of it is built** — see immediately
+below — and the rest is written down so it can be argued with before any more
+code exists.
+
+---
+
+## What is actually built (2026-08-19)
+
+**One bot. No character. A coin flip.** The owner asked for the plumbing first
+and the personality afterwards, so this slice deliberately contains no invented
+numbers at all.
+
+| | |
+|---|---|
+| **Who** | A single "Practice Bot", grey robot avatar. Not a character, and not meant to become one — the cast replaces it |
+| **How many** | One per room (`MAX_BOTS_PER_ROOM`) |
+| **Accuracy** | `BOT_ACCURACY = 0.5`, flat, every category, every difficulty. A coin flip is the one number that needs no justification |
+| **Speed** | Instant. It answers the moment the question goes live |
+| **Wrong answers** | One of the question's own stored `incorrect_answers`. **Blank** if the question has none — the owner chose blank over borrowing another question's answer, so nothing is ever invented |
+| **Wager** | Random among the values it has not spent. It has no read on the questions, so any rule would be a strategy it does not have |
+| **Final wager** | Always 10, the middle option, for the same reason |
+| **Recorded** | Nothing. Not `question_stats`, not `answer_tally`, and not counted in the human's placement or player count in `game_history` |
+| **Leaderboard** | Not there at all yet. The yardstick band below is unbuilt |
+
+Where it lives: `js/game/bots.js` (the database side, host only) and
+`js/game/bot-logic.js` (the decisions, pure and unit tested — bots.js reaches
+Supabase, which the test runner cannot load).
+
+The four host-only rules are enforced where they have to be, not where they
+read best:
+
+- **Added and removed only by the host, only in the lobby** —
+  `renderAddBotButton` / `handleAddBot` / `handleRemoveBot` in `js/lobby.js`.
+- **Never host or co-host** — `determineNextHost` excludes bots, the lobby's
+  own promotion path excludes them, and the Make Host / Co-Host buttons are not
+  rendered on a bot's row at all.
+- **Never swept, never shown as away** — a bot sends no heartbeat and joins no
+  presence channel, so both checks in `js/lobby.js` and `js/game/` skip it. Left
+  in, the sweep removes the bot partway through the game it was added for.
+- **A bot does not hold a room open** — `humanPlayers()` in `js/lobby.js` is
+  what "is anybody still here" means, so the last person out still takes the
+  room with them.
+
+`tests/harness/scenario-bots.mjs` plays a full solo game and checks every one
+of those, including that the bot spent each wager exactly once and that nothing
+it typed reached either data table. The "never recorded" check was verified by
+breaking it: moving the bot guard one line later makes `question_stats` read
+`asked=2` and the scenario names the failure.
+
+Everything below this line is still design.
 
 ---
 
@@ -35,9 +83,17 @@ So a bot that gets a question wrong gives a real, human-written wrong answer
 for *that specific question*. Nothing is invented, and nothing can hallucinate
 — which is the whole reason the question bank is worth something.
 
-For the remaining 20%, the bot borrows another question's correct answer from
-the same category. That is still real text, and confusing two things from the
-same subject is exactly the mistake a person makes.
+For the remaining 20%, an earlier draft had the bot borrow another question's
+correct answer from the same category. **The owner chose blank instead**, and
+that is what is built: a question with no stored wrong answers gets an empty
+submission, which the reveal already renders as "No answer". Borrowing produces
+text that was never a wrong answer to *this* question, and the whole point of
+using the stored distractors is that nobody made them up. Blank is honest —
+the bot did not know it.
+
+The gap closes on its own. `answer_tally` (migration 029) records what real
+people type, so the questions with no stored distractors accumulate real wrong
+answers just by being played.
 
 ## How likely a bot is to be right
 
@@ -189,11 +245,20 @@ they are good at where a player shows their title.
 
 ## Rough build order
 
-1. The bot definitions — names, skills, habits. No behaviour yet.
-2. Adding and removing them in the lobby, with the host-only rules enforced.
-3. Answering: skill × difficulty, distractor lookup, timing, typing style.
-4. Wagering by habit.
-5. Honks.
-6. Leaderboard yardstick band.
+Reordered once it was clear the plumbing could be finished before a single
+character existed. Building the machinery first means the cast can be argued
+about while the thing already works.
+
+1. ~~Adding and removing them in the lobby, with the host-only rules
+   enforced.~~ **Done.**
+2. ~~Answering at all: one flat accuracy, distractor lookup, instant.~~
+   **Done.**
+3. The bot definitions — names, per-category skills, habits. **Not started,
+   and no numbers to be invented for it.**
+4. Speed and typing style, so a bot does not read as a machine.
+5. Wagering by habit.
+6. Honks.
+7. Leaderboard yardstick band.
+8. Difficulty adjustment — only once there is play data to size it from.
 
 Each step is playable before the next one starts.

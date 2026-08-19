@@ -313,6 +313,31 @@ export class FakeStore {
     }
     if (name === 'get_category_play_counts') return [];
 
+    // Mirrors migration 025: one row per question, counting how it performed.
+    // Recorded here so a scenario can assert what is NOT counted — a bot's
+    // answers must never reach this table, because they come from a chosen
+    // percentage rather than from anybody playing.
+    if (name === 'record_question_outcome') {
+      if (!args?.p_question_id) return null;
+      const rows = this.table('question_stats');
+      const existing = rows.find(r => String(r.question_id) === String(args.p_question_id));
+      const correct = args.p_is_correct ? 1 : 0;
+      const overridden = args.p_overridden ? 1 : 0;
+      if (existing) {
+        existing.times_asked += 1;
+        existing.times_correct += correct;
+        existing.times_overridden += overridden;
+      } else {
+        rows.push({
+          question_id: args.p_question_id,
+          times_asked: 1,
+          times_correct: correct,
+          times_overridden: overridden,
+        });
+      }
+      return null;
+    }
+
     // Mirrors migration 029: count what was typed, keyed on lowercased and
     // trimmed text, keeping one example of the original spelling. Blank
     // answers are ignored — somebody running out of time says nothing about

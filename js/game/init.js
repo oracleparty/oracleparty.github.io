@@ -246,6 +246,11 @@ async function init() {
       const newAway = new Map();
       for (const p of state.players) {
         const id = String(p.id);
+        // A bot joins no presence channel, so it is permanently "not
+        // connected". Faded at 40% opacity through every reveal and scoreboard
+        // it would read as the player everyone is waiting on, when it is the
+        // one that has always already answered.
+        if (p.is_bot) continue;
         if (!connectedActive.has(id)) {
           newAway.set(id, state.awayTimestamps.get(id) || Date.now());
         }

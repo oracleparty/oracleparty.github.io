@@ -117,6 +117,13 @@ table above as a catalogue of how this failure *presents*, not as an open bug
 list. The one thing still missing is the `get_mastery_counts` RPC, which has a
 client-side fallback and so has never been noticed (#6).
 
+**`migrations/030_bot_players.sql` adds `players.is_bot` and is the newest
+hand-applied one.** Until it is run, pressing "+ Practice Bot" in the lobby
+inserts an unknown column, Postgres rejects the whole INSERT, and no bot
+appears — but it shows as a toast rather than silence, because `addBot` goes
+through `reportWriteFailure` (#4). Check the db-probe output before concluding
+the bot feature is broken.
+
 **Run `scripts/probe-db.mjs` before believing anything about the schema.** It
 runs on GitHub Actions (dev sessions are firewalled from Supabase), needs no
 secret, and reports which columns exist and what any visitor is permitted to
@@ -273,6 +280,8 @@ to get the real picture before relying on any table or policy.
 │   │   ├── chat.js         In-game chat
 │   │   ├── host.js         Host settings panel
 │   │   ├── state.js        Shared mutable game state
+│   │   ├── bots.js         Practice bots — host answers on their behalf
+│   │   ├── bot-logic.js    Bot decisions, pure + unit tested (no imports)
 │   │   ├── scoring-helpers.js / timer-helpers.js / host-promotion.js
 │   ├── supabase.js     Re-export hub for all db/ modules
 │   ├── auth.js         Display name, optional accounts, session
@@ -406,6 +415,8 @@ still be an unvoted level — that is the deliberate last-second switch.
 - **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`
 - **Co-host** — a second player can share host controls
 - **Presence + heartbeat** — `last_seen_at` drives stale-player cleanup
+- **Practice bot** — one per room, added by the host in the lobby. Makes solo
+  play possible. See below.
 
 ### Wanted, not built
 
@@ -424,18 +435,59 @@ still be an unvoted level — that is the deliberate last-second switch.
   screen stays calm while you are still thinking and becomes a waiting room
   once you are done. Not agreed yet.
 
-- **Bots.** Designed and agreed, not built. See `docs/BOTS.md`. The key fact
-  that makes it cheap: 80% of questions still carry their original
-  multiple-choice distractors in `questions.incorrect_answers`, a column
-  nothing in `js/` reads any more. A bot answering wrongly picks one, so no
-  wrong answer is ever generated.
+- **Bot characters.** The plumbing is built (below); the cast is not. Names,
+  per-category strengths, speed, wager habits, honking, and the leaderboard
+  yardstick band are all still open, and `docs/BOTS.md` marks which numbers
+  must come from the owner rather than from a model. Two earlier drafts of that
+  file invented skill tables and difficulty adjustments; both were deleted at
+  the owner's instruction. **Do not invent a number here.**
+
+## Practice Bots
+
+A bot is an ordinary row in `players` with `is_bot` set (migration 030), so it
+appears in the lobby, the reveal, the scoreboard and the results through code
+that already existed. The host's browser answers on its behalf — the same
+device that already owns phase, timer and judging (#1).
+
+Deliberately the plainest possible version, because none of it has been
+measured: **one bot per room, 50% accuracy flat, answering instantly.** The
+coin flip is the only number that makes no claim about how hard the questions
+are. `js/game/bot-logic.js` holds the decisions and is unit tested;
+`js/game/bots.js` holds the database side and is host-gated.
+
+**Wrong answers are never invented.** 80% of questions still carry their
+original multiple-choice distractors in `questions.incorrect_answers`, a column
+nothing else reads. A bot that misses picks one. A question with none stored
+gets a **blank** — the owner chose that over borrowing another question's
+answer, because borrowed text was never a wrong answer to *this* question.
+
+Four rules from the owner, and where each is enforced:
+
+| Rule | Enforced in |
+|---|---|
+| Only a human host adds or removes one, only in the lobby | `renderAddBotButton` / `handleAddBot` / `handleRemoveBot` in `js/lobby.js` |
+| Never host or co-host | `determineNextHost`, `handleHostPromotion`, and the row's buttons are not rendered at all |
+| Nothing it does is recorded | `recordCurrentQuestionOutcomes` in `reveal.js`, and `getHumans()` for placement in `scores.js` |
+| A bot never holds a room open | `humanPlayers()` in `js/lobby.js` |
+
+Two exemptions that are not optional: a bot **sends no heartbeat and joins no
+presence channel**, so it must be skipped by both stale sweeps and both away
+computations. Left in, the sweep removes it partway through the game it was
+added for, and the reveal shows it faded at 40% — the "do not wait for them"
+signal — for the one player that has always already answered.
+
+**The recording rule is the fragile one.** The guard has to come *before*
+`recordQuestionOutcome`, not between it and `recordAnswerText`. When it sat in
+the middle, the outcome was counted and only the text was skipped — the worse
+half to keep, and invisible without a check. `scenario-bots.mjs` catches it:
+break it and `question_stats` reads `asked=2` where a solo human is `asked=1`.
 
 ## Database Tables
 
 `rooms`, `players`, `answers`, `chat_messages`, `chat_archive`, `questions`,
-`question_feedback`, `question_history`, `game_plays`, `game_history`,
-`profiles`, `player_stats`, `friend_requests`, `friendships`, `title_unlocks`,
-`site_settings`, `error_logs`.
+`question_feedback`, `question_history`, `question_stats`, `answer_tally`,
+`game_plays`, `game_history`, `profiles`, `player_stats`, `friend_requests`,
+`friendships`, `title_unlocks`, `site_settings`, `error_logs`.
 
 ---
 
@@ -454,7 +506,10 @@ The agreed model — implemented except where marked:
 - **`STALE_TIMEOUT_MS`** — the seat is released. Rejoining reassigns previous
   answers to the new player row, so score and history survive.
 - **Succession order: co-host first** (designated heir, can already advance),
-  then longest-present. Absent players can neither hold nor inherit the role.
+  then longest-present. Absent players can neither hold nor inherit the role,
+  and **neither can a bot** — a room whose host is a bot is a room nobody can
+  start, advance or judge. If only bots are left there is no next host, which
+  is correct: nobody is there to play.
 
 **Deputising, not replacement.** At `HOST_HANDOVER_MS` the host *keeps the
 crown* and the next in line is granted advance rights via `state.isDeputy`
@@ -539,6 +594,7 @@ node tests/harness/scenario-feedback.mjs  # votes, flags, timer-expiry scoring
 node tests/harness/scenario-cohost.mjs    # promote, demote, gated controls
 node tests/harness/scenario-account.mjs  # profile, leaderboard, friends, signed-in lobby
 node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused writes
+node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
 ```
 
 **Robots must never reach the real project.** Three beacons

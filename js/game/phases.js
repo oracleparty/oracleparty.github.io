@@ -836,6 +836,10 @@ export async function checkStalePresence() {
   for (const p of state.players) {
     const id = String(p.id);
     if (id === String(state.room.playerId)) continue;
+    // A bot has no browser and sends no heartbeat, so every timestamp it has is
+    // frozen at the moment it was added. Judged like a player it goes stale
+    // partway through the game it was added for and gets swept out mid-round.
+    if (p.is_bot) continue;
 
     // A missing timestamp means "we cannot tell", not "silent since 1970".
     // last_seen_at did not exist on the live players table, so this read as

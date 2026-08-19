@@ -5,9 +5,11 @@
 
 import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from './utils.js';
 import { logger } from './logger.js';
-import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, HEARTBEAT_DB_INTERVAL_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS } from './constants.js';
+import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, HEARTBEAT_DB_INTERVAL_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS,
+         BOT_DISPLAY_NAME, BOT_AVATAR_COLOR, BOT_AVATAR_EMOJI, MAX_BOTS_PER_ROOM } from './constants.js';
 import {
   addPlayer,
+  addBot,
   fetchPlayers,
   fetchMessages,
   sendMessage,
@@ -68,6 +70,7 @@ const chatMessagesEl = $('#chat-drawer-messages');
 const chatInput = $('#chat-drawer-input');
 const btnSend = $('#btn-chat-send');
 const btnStartGame = $('#btn-start-game');
+const btnAddBot = $('#btn-add-bot');
 const btnReady = $('#btn-ready');
 const btnCopyCode = $('#btn-copy-code');
 const btnLeave = $('#btn-leave');
@@ -173,6 +176,11 @@ async function init() {
       const newAway = new Map();
       for (const p of players) {
         const id = String(p.id);
+        // A bot joins no presence channel, so it is permanently "not connected"
+        // and would sit in the lobby faded to 40% opacity — the signal that
+        // says "this player's phone is asleep, don't wait for them" — while
+        // being the one player that never keeps anybody waiting.
+        if (p.is_bot) continue;
         if (!connectedActive.has(id)) {
           newAway.set(id, awayTimestamps.get(id) || Date.now());
         }
@@ -240,6 +248,11 @@ async function init() {
     const cohostBtn = e.target.closest('.cohost-btn');
     if (cohostBtn) {
       handleCohostToggle(cohostBtn.dataset.cohostId, cohostBtn.dataset.cohostName, cohostBtn.classList.contains('cohost-btn--demote'));
+      return;
+    }
+    const removeBot = e.target.closest('.remove-bot-btn');
+    if (removeBot) {
+      handleRemoveBot(removeBot.dataset.removeBotId);
     }
   };
   playerListEl.addEventListener('click', handlePlayerListClick);
@@ -358,6 +371,9 @@ function attachListeners() {
   // Start game (host)
   btnStartGame.addEventListener('click', handleStartGame);
 
+  // Add a practice bot (host)
+  if (btnAddBot) btnAddBot.addEventListener('click', handleAddBot);
+
   // Leave
   btnLeave.addEventListener('click', handleLeave);
 
@@ -388,9 +404,21 @@ async function loadPlayers() {
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
   // IDENTITY only sends the primary key). The 5-second poll catches this.
-  if (players.length > 0 && !players.some(p => p.is_host)) {
+  if (humanPlayers().length > 0 && !players.some(p => p.is_host)) {
     await handleHostPromotion();
   }
+}
+
+/**
+ * Everyone in the room who is not a bot.
+ *
+ * Used everywhere the question is really "is anybody still here" — who can
+ * inherit the host role, and whether leaving empties the room. A bot cannot
+ * hold a lobby open on its own: if the last person walks out, a room with a
+ * bot in it would otherwise survive forever with nobody in it.
+ */
+function humanPlayers() {
+  return players.filter(p => !p.is_bot);
 }
 
 function sortPlayers() {
@@ -440,6 +468,14 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   } else if (!p.is_ready && !p.is_host && !p.is_cohost) {
     badges.push('<span class="badge badge--not-ready">Not Ready</span>');
   }
+  // A bot carries one badge and nothing else. It has no ready state to report
+  // (it is always ready), no tier and no title, so the row stays inside the
+  // budget that the co-host overflow taught us to respect.
+  if (p.is_bot) {
+    badges.length = 0;
+    badges.push('<span class="badge badge--bot">Bot</span>');
+  }
+
   const isMe = String(p.id) === String(room.playerId);
   const nameDisplay = escapeHtml(p.display_name) + (isMe ? ' (You)' : '');
 
@@ -471,17 +507,25 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const isAway = awayTimestamps.has(String(p.id));
   const honks = getHonkCount(p.id);
   const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-  const honkBtn = isMe ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+  // No honking at a bot — there is nobody on the other end to startle.
+  const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
   // Host actions are icons, not words. Measured at 375px, the word buttons
   // ("Co-Host" 65px + "Transfer" 73px) plus the honk button and a status badge
   // left ZERO pixels for the player's name, which collapsed to nothing. Icons
   // keep every row on one line and the same height, so the list stays even.
   // aria-label carries the meaning for screen readers.
-  const transferBtn = (room.isHost && !isMe && !p.is_host)
+  //
+  // A bot gets neither. Host and co-host are for humans: a bot cannot start a
+  // game, advance a phase or judge an answer, so a room in its hands is a
+  // frozen room. Its only control is the host's remove button.
+  const transferBtn = (room.isHost && !isMe && !p.is_host && !p.is_bot)
     ? `<button class="icon-btn transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}" aria-label="Make ${escapeHtml(p.display_name)} the host" title="Make host">&#x1F451;</button>`
     : '';
+  const removeBotBtn = (room.isHost && p.is_bot)
+    ? `<button class="icon-btn remove-bot-btn" data-remove-bot-id="${p.id}" aria-label="Remove ${escapeHtml(p.display_name)}" title="Remove bot">&#x2715;</button>`
+    : '';
   let cohostBtn = '';
-  if (room.isHost && !isMe && !p.is_host) {
+  if (room.isHost && !isMe && !p.is_host && !p.is_bot) {
     if (p.is_cohost) {
       cohostBtn = `<button class="icon-btn cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}" aria-label="Remove ${escapeHtml(p.display_name)} as co-host" title="Remove co-host">&#x2605;</button>`;
     } else {
@@ -502,6 +546,7 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
       ${honkBtn}
       ${cohostBtn}
       ${transferBtn}
+      ${removeBotBtn}
       <span class="player-item__badges">${badges.join('')}</span>
     </div>
   `;
@@ -526,6 +571,61 @@ function renderPlayers() {
     btnStartGame.disabled = players.length < 2;
     btnStartGame.style.opacity = players.length < 2 ? '0.5' : '1';
   }
+
+  renderAddBotButton();
+}
+
+/**
+ * The host's "add a practice bot" button.
+ *
+ * Host only, and only in the lobby. A bot exists because a person put it
+ * there — there are no bot-only rooms and no bots that appear on their own.
+ * Once the room is at MAX_BOTS_PER_ROOM the button goes away; removal is the
+ * ✕ on the bot's own row, so add and remove are never both offered at once.
+ */
+function renderAddBotButton() {
+  if (!btnAddBot) return;
+  const botCount = players.filter(p => p.is_bot).length;
+  const show = room.isHost && botCount < MAX_BOTS_PER_ROOM;
+  btnAddBot.classList.toggle('hidden', !show);
+}
+
+let _isAddingBot = false;
+async function handleAddBot() {
+  if (!room.isHost || _isAddingBot) return;
+  if (players.filter(p => p.is_bot).length >= MAX_BOTS_PER_ROOM) return;
+  _isAddingBot = true;
+  btnAddBot.disabled = true;
+  try {
+    const { data, error } = await addBot(room.id, BOT_DISPLAY_NAME, {
+      avatarColor: BOT_AVATAR_COLOR,
+      avatarEmoji: BOT_AVATAR_EMOJI
+    });
+    // addBot already toasts on failure (reportWriteFailure). Nothing more to
+    // say here — but do NOT touch the local list, or the lobby would show a
+    // bot that the database refused.
+    if (error || !data) return;
+    if (!players.some(p => String(p.id) === String(data.id))) {
+      players.push(data);
+      sortPlayers();
+    }
+    renderPlayers();
+    addSystemMessage(`${BOT_DISPLAY_NAME} joined — it answers instantly and nothing it does is recorded.`);
+  } finally {
+    _isAddingBot = false;
+    btnAddBot.disabled = false;
+  }
+}
+
+async function handleRemoveBot(botId) {
+  if (!room.isHost) return;
+  const { error } = await removePlayer(botId);
+  if (error) {
+    showToast("Couldn't remove the bot", 'error');
+    return;
+  }
+  players = players.filter(p => String(p.id) !== String(botId));
+  renderPlayers();
 }
 
 async function handlePlayerChange(payload) {
@@ -576,8 +676,9 @@ async function handlePlayerChange(payload) {
       // Remove the player from local list
       players = players.filter(p => String(p.id) !== deletedId);
 
-      // If room is now empty, delete it (cleanup zombie rooms)
-      if (players.length === 0) {
+      // If room is now empty, delete it (cleanup zombie rooms).
+      // A bot left behind does not count as somebody being here.
+      if (humanPlayers().length === 0) {
         await deleteRoom(room.id);
         return;
       }
@@ -610,15 +711,19 @@ async function handlePlayerChange(payload) {
  * Co-host gets priority, otherwise the player with the lowest joined_at self-promotes.
  */
 async function handleHostPromotion() {
-  if (players.length === 0) return;
+  // Bots are never candidates: host and co-host are for humans, and a room
+  // hosted by a bot is a room nobody can start, advance or judge. If only bots
+  // are left there is nobody to promote.
+  const eligible = humanPlayers();
+  if (eligible.length === 0) return;
 
   // Prefer co-host, otherwise earliest player
-  const cohost = players.find(p => p.is_cohost);
+  const cohost = eligible.find(p => p.is_cohost);
   let nextHost;
   if (cohost) {
     nextHost = cohost;
   } else {
-    const sorted = [...players].sort((a, b) => {
+    const sorted = [...eligible].sort((a, b) => {
       const ta = a.joined_at ? new Date(a.joined_at) : Infinity;
       const tb = b.joined_at ? new Date(b.joined_at) : Infinity;
       return ta - tb;
@@ -1407,6 +1512,10 @@ function checkStalePresence() {
   for (const p of players) {
     const id = String(p.id);
     if (id === String(room.playerId)) continue; // Don't kick ourselves
+    // A bot has no browser and sends no heartbeat, so its timestamps never
+    // move. Judged like a player it would be swept out of the lobby a couple
+    // of minutes after the host added it.
+    if (p.is_bot) continue;
 
     // A missing timestamp means "we cannot tell", not "silent since 1970".
     // last_seen_at did not exist on the live players table, so this read as
@@ -1464,7 +1573,9 @@ function checkStalePresence() {
 async function handleLeave() {
   isLeaving = true;
   cleanup();
-  if (players.length <= 1) {
+  // Bots do not keep a room alive. The last person out takes the room with
+  // them, exactly as if they had been alone in it.
+  if (humanPlayers().length <= 1) {
     await deleteRoom(room.id);
   } else {
     await removePlayer(room.playerId);
@@ -1477,7 +1588,7 @@ async function handleLeave() {
 function handleBackButton() {
   isLeaving = true;
   cleanup();
-  if (players.length <= 1) {
+  if (humanPlayers().length <= 1) {
     deleteRoomBeacon(room.id);
   } else {
     removePlayerBeacon(room.playerId);
