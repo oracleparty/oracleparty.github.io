@@ -276,6 +276,19 @@ try {
               `${total ? (distractorCount / Math.max(withDistractors, 1)).toFixed(1) : 0} each on average`);
 } catch { /* ignore */ }
 
+// Is `difficulty` actually populated, and does it vary?
+//
+// Bots weight their odds by it, so a column that is 'medium' for everything
+// would quietly turn skill-times-difficulty back into plain skill. Worth
+// knowing before building on it rather than after.
+const diff = await req('questions?select=difficulty&limit=1000');
+try {
+  const rows = JSON.parse(diff.body || '[]');
+  const byDiff = {};
+  for (const r of rows) byDiff[r.difficulty ?? 'null'] = (byDiff[r.difficulty ?? 'null'] || 0) + 1;
+  console.log(`  difficulty spread in first 1000: ${JSON.stringify(byDiff)}`);
+} catch { /* ignore */ }
+
 console.log('\n--- FEEDBACK TABLE (the broken loop) ---');
 const fb = await req('question_feedback?select=feedback_type,flag_reason&limit=1000');
 if (fb.status === 200) {

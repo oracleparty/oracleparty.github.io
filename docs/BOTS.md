@@ -18,8 +18,8 @@ A hand-written character defined in a file, not a generated one. Each has:
 | **Typing style** | Clean, all-lowercase, or prone to a typo |
 | **Voice** | An occasional honk. No chat in the first version — see below |
 
-Nothing here is generated at runtime. A bot is a table of numbers and a list of
-sentences somebody wrote.
+Nothing here is generated at runtime. A bot is a table of numbers somebody
+chose, and its answers come out of the question bank.
 
 ## Where the wrong answers come from
 
@@ -144,11 +144,11 @@ part of this.
 
 ## Rough build order
 
-1. The bot definitions — names, skills, habits, lines. No behaviour yet.
+1. The bot definitions — names, skills, habits. No behaviour yet.
 2. Adding and removing them in the lobby, with the host-only rules enforced.
 3. Answering: skill × difficulty, distractor lookup, timing, typing style.
 4. Wagering by habit.
-5. Chat lines.
+5. Honks.
 6. Leaderboard yardstick band.
 
 Each step is playable before the next one starts.
