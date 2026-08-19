@@ -27,6 +27,8 @@ const TABLES = [
   // player_stats. It was absent from this list, so nothing here would have
   // noticed the leaderboard silently returning an empty list.
   'player_stats_computed',
+  // Migration 029 — what people actually typed.
+  'answer_tally',
 ];
 
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
@@ -114,7 +116,7 @@ for (const t of present) {
 
 const PK = {
   profiles: 'user_id', site_settings: 'key', question_stats: 'question_id',
-  question_health: 'question_id',
+  question_health: 'question_id', answer_tally: 'question_id',
 };
 const pkOf = t => PK[t] || 'id';
 
@@ -331,6 +333,7 @@ const RPC_PROBES = [
   ['get_mastery_counts', { p_user_id: NOT_A_UUID }],
   ['record_question_outcome', { p_question_id: NOT_A_UUID, p_is_correct: true, p_overridden: false }],
   ['increment_questions_answered', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID }],
+  ['record_answer_text', { p_question_id: NOT_A_UUID, p_answer: 'probe' }],
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
@@ -403,6 +406,7 @@ const REQUIRED = {
   player_stats:     ['user_id'],
   game_history:     ['user_id', 'played_at'],
   question_stats:   ['question_id', 'times_asked', 'times_correct', 'times_overridden'],
+  answer_tally:     ['question_id', 'answer_key', 'answer_shown', 'times_given', 'last_seen'],
   player_stats_computed: ['user_id', 'category', 'subcategory', 'questions_answered',
                           'correct_answers', 'games_played', 'wins'],
 };
