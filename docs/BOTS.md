@@ -54,6 +54,42 @@ statistically worse.
 
 The exact weighting is a number to tune once it can be felt in play.
 
+**The difficulty labels are real and varied.** Measured on 2026-08-19 across a
+1,000-question sample: **medium 523, hard 257, easy 220**. Worth checking
+before building on them — a column reading 'medium' for everything would have
+collapsed skill-times-difficulty quietly back into plain skill.
+
+### Difficulty should eventually be measured, not imported
+
+The labels came from opentdb, where every question was **multiple choice** and
+a pure guess is right one time in four. This game makes people *type* the
+answer. So an imported "easy" is materially harder here than the label claims,
+and the labels are not merely coarse — they are calibrated for a different
+game.
+
+`question_stats` already counts `times_asked` and `times_correct` per question,
+written by `record_question_outcome` once per question per game. That is the
+real difficulty: how often people actually get it right.
+
+The plan, when it is built:
+
+1. **Blend, do not switch.** A threshold ("override after 20 plays") has a
+   cliff, and with 4,859 questions and few players most questions would never
+   reach it — the override would apply to almost nothing for a very long time.
+   Instead weight the imported label as if it were a handful of prior
+   observations and let real plays pull the value toward reality. At zero plays
+   it is exactly today's behaviour; by fifty it is essentially measured.
+2. **Never overwrite the original.** Keep the imported label; add the measured
+   one alongside. If the measurement ever goes wrong it can be seen and reset,
+   and nothing touches question text or answers.
+3. **Write it where it already happens.** `record_question_outcome` runs once
+   per question per game and is SECURITY DEFINER, so it can maintain the
+   effective difficulty in the same call. No new machinery, no extra fetch
+   during a game, and bots read it off the question they are already holding.
+4. **Show both on the admin page first.** Imported "easy", playing at 31%. The
+   labels are likely wrong more often than expected, and that is worth seeing
+   before anything depends on it.
+
 ## Rules that are not up for negotiation
 
 These come from the owner and are load-bearing:
