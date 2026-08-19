@@ -3,12 +3,13 @@
 // Avatar picker, profile page logic, bottom sheet profile card
 // ============================================
 
-import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade } from './utils.js';
+import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade, showToast } from './utils.js';
 import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT } from './constants.js';
 import {
   supabase,
   fetchProfile,
   updateProfile,
+  deleteMyAccount,
   fetchPlayerStats,
   fetchGameHistory,
   sendFriendRequest,
@@ -28,7 +29,7 @@ import {
   fetchQuestionCount,
   fetchProfileByTag
 } from './supabase.js';
-import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut } from './auth.js';
+import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut, markAccountDeleted } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
@@ -860,6 +861,24 @@ export async function initProfilePage() {
       </div>
       <p style="color: var(--color-text-dim); font-size: var(--text-sm); margin: var(--space-md) 0 var(--space-sm);">${escapeHtml(authUser.user.email)}</p>
       <button class="btn btn-secondary btn-block" id="profile-sign-out">Sign Out</button>
+
+      <div class="danger-zone">
+        <div class="danger-zone__title">Delete Account</div>
+        <p class="danger-zone__text">
+          Permanently removes your account, stats, history, titles and friends.
+          This cannot be undone and you will not be able to sign in again.
+        </p>
+        <button class="btn btn-danger btn-block" id="profile-delete-account">Delete Account</button>
+        <div id="profile-delete-confirm" class="hidden">
+          <p class="danger-zone__text">Type <strong>DELETE</strong> to confirm.</p>
+          <input type="text" id="profile-delete-input" class="input" autocomplete="off"
+                 autocapitalize="characters" spellcheck="false" aria-label="Type DELETE to confirm">
+          <button class="btn btn-danger btn-block" id="profile-delete-go" disabled
+                  style="margin-top: var(--space-sm);">Permanently Delete</button>
+          <button class="btn btn-secondary btn-block" id="profile-delete-cancel"
+                  style="margin-top: var(--space-xs);">Cancel</button>
+        </div>
+      </div>
     `;
 
     // Online status toggle
@@ -907,6 +926,56 @@ export async function initProfilePage() {
     const signOutBtn = $('#profile-sign-out');
     if (signOutBtn) {
       signOutBtn.onclick = async () => {
+        await signOut();
+        navigateWithFade('index.html');
+      };
+    }
+
+    // --- Delete account -------------------------------------------------
+    //
+    // Deliberately NOT the tap-again-to-confirm used for quitting and host
+    // transfer. Those are recoverable in seconds; this is not recoverable at
+    // all, and a stray double-tap on a phone must not be able to destroy an
+    // account. Typing the word is a deliberate act that cannot happen by
+    // accident.
+    const deleteBtn = $('#profile-delete-account');
+    const confirmBox = $('#profile-delete-confirm');
+    const deleteInput = $('#profile-delete-input');
+    const deleteGo = $('#profile-delete-go');
+    const deleteCancel = $('#profile-delete-cancel');
+
+    if (deleteBtn && confirmBox && deleteInput && deleteGo && deleteCancel) {
+      deleteBtn.onclick = () => {
+        deleteBtn.classList.add('hidden');
+        confirmBox.classList.remove('hidden');
+        deleteInput.focus({ preventScroll: true });
+      };
+      deleteCancel.onclick = () => {
+        confirmBox.classList.add('hidden');
+        deleteBtn.classList.remove('hidden');
+        deleteInput.value = '';
+        deleteGo.disabled = true;
+      };
+      deleteInput.oninput = () => {
+        deleteGo.disabled = deleteInput.value.trim().toUpperCase() !== 'DELETE';
+      };
+      deleteGo.onclick = async () => {
+        deleteGo.disabled = true;
+        deleteGo.textContent = 'Deleting...';
+        const { error: delErr } = await deleteMyAccount();
+        if (delErr) {
+          // Say so. Telling somebody their data is gone when it is not is the
+          // worst version of the silent-failure bug in this codebase, because
+          // they will believe it and act on it.
+          showToast("Couldn't delete your account — nothing was removed", 'error');
+          deleteGo.textContent = 'Permanently Delete';
+          deleteGo.disabled = false;
+          return;
+        }
+        // Before signOut, because signOut swallows its own failures — if it
+        // cannot reach the server the session survives, and this flag is what
+        // stops the next page load recreating the profile just deleted.
+        markAccountDeleted();
         await signOut();
         navigateWithFade('index.html');
       };

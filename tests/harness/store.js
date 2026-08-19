@@ -343,6 +343,28 @@ export class FakeStore {
     // Mirrors migration 034: one record per person per room, counting ROUNDS.
     // Idempotent on p_game_key, so calling it twice for the same round counts
     // once — the caller fires from a phase transition that can repeat.
+    // Mirrors migration 035. Takes no arguments there and none here: the
+    // function reads auth.uid() itself, so it can only ever delete the caller.
+    // The harness passes the signed-in user through the shim's session.
+    if (name === 'delete_my_account') {
+      const uid = args?.__callerUserId ?? null;
+      if (!uid) return null;
+      const purge = (tbl, pred) => {
+        const rows = this.table(tbl);
+        for (let i = rows.length - 1; i >= 0; i--) if (pred(rows[i])) rows.splice(i, 1);
+      };
+      purge('question_feedback', r => r.voter_id === `user:${uid}`);
+      purge('title_unlocks', r => String(r.user_id) === String(uid));
+      purge('question_history', r => String(r.user_id) === String(uid));
+      purge('game_history', r => String(r.user_id) === String(uid));
+      purge('player_stats', r => String(r.user_id) === String(uid));
+      purge('player_stats_computed', r => String(r.user_id) === String(uid));
+      purge('friend_requests', r => String(r.sender_id) === String(uid) || String(r.receiver_id) === String(uid));
+      purge('friendships', r => String(r.user_a) === String(uid) || String(r.user_b) === String(uid));
+      purge('profiles', r => String(r.user_id) === String(uid));
+      return null;
+    }
+
     if (name === 'record_game_play') {
       const rows = this.table('game_plays');
       const existing = rows.find(r =>

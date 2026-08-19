@@ -263,6 +263,32 @@ export async function upsertTitleUnlock(userId, wordId, level) {
  * a leaderboard that is slightly generous beats a leaderboard that is blank.
  * Delete the fallback once migration 032 is confirmed everywhere.
  */
+/**
+ * Delete the signed-in player's account and everything attached to it.
+ *
+ * Goes through the delete_my_account() function (migration 035) rather than a
+ * pile of client-side deletes, for two reasons. A browser cannot delete its own
+ * auth.users row at all, so without it the account survives and the player can
+ * still sign in. And seven separate deletes can fail individually, leaving
+ * somebody half-deleted with no way to tell or to finish; inside the function
+ * it is one transaction.
+ *
+ * The function takes no arguments and reads auth.uid() itself, so this cannot
+ * be aimed at anyone else's account.
+ *
+ * Returns { error }. The caller MUST check it — reporting success on a failed
+ * deletion is the worst version of the silent-failure bug this codebase is
+ * full of, because the player believes their data is gone.
+ */
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) {
+    logger.error('Supabase', 'deleteMyAccount failed', error);
+    return { error };
+  }
+  return { error: null };
+}
+
 export async function fetchPlayerTotalsForLeaderboard() {
   const { data, error } = await supabase
     .from('player_totals_computed')

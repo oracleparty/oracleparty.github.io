@@ -46,7 +46,7 @@ export {
 // --- Social (profiles, friends, leaderboards, titles, settings) ---
 export {
   generateDiscriminator, createProfile, fetchProfile, fetchProfileByTag,
-  updateProfile, fetchPlayerStats, fetchPlayerStatsBatch,
+  updateProfile, deleteMyAccount, fetchPlayerStats, fetchPlayerStatsBatch,
   fetchGameHistory, insertGameHistoryEntry, searchProfiles,
   fetchTitleUnlocks, upsertTitleUnlock,
   fetchAllPlayerStatsForLeaderboard, fetchPlayerTotalsForLeaderboard, fetchCategoryLeaderboard,

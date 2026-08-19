@@ -728,6 +728,79 @@ export const STATES = {
   // ==========================================
   // GAME.HTML — Modals / Overlays
   // ==========================================
+  // ==========================================
+  // PROFILE.HTML
+  //
+  // The profile page had NO mock at all, so nothing measured it — the layout
+  // sweep only sees what is rendered here. This covers the account box,
+  // because that is where the irreversible control lives and an irreversible
+  // control that has never been measured on a phone is the wrong one to guess
+  // about.
+  // ==========================================
+  'profile-account': {
+    page: 'profile',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const name = document.getElementById('profile-name');
+      if (name) name.textContent = 'ArchaeologistAnna';
+      const acct = document.getElementById('profile-account');
+      if (!acct) return;
+      // Mirrors the accountEl.innerHTML block in js/profile.js. If that
+      // changes, change this in the same commit.
+      acct.innerHTML = `
+        <div class="profile-toggle">
+          <span>Show Online Status</span>
+          <label class="profile-switch">
+            <input type="checkbox" checked>
+            <span class="profile-switch__slider"></span>
+          </label>
+        </div>
+        <div class="profile-toggle">
+          <span>OLED Black Mode</span>
+          <label class="profile-switch">
+            <input type="checkbox">
+            <span class="profile-switch__slider"></span>
+          </label>
+        </div>
+        <p style="color: var(--color-text-dim); font-size: var(--text-sm); margin: var(--space-md) 0 var(--space-sm);">archaeologist.anna@example.com</p>
+        <button class="btn btn-secondary btn-block">Sign Out</button>
+        <div class="danger-zone">
+          <div class="danger-zone__title">Delete Account</div>
+          <p class="danger-zone__text">
+            Permanently removes your account, stats, history, titles and friends.
+            This cannot be undone and you will not be able to sign in again.
+          </p>
+          <button class="btn btn-danger btn-block">Delete Account</button>
+        </div>
+      `;
+      const tabContent = document.getElementById('profile-tab-content');
+      if (tabContent) tabContent.style.display = '';
+    },
+  },
+
+  // The confirmation half, which is the state a player is actually in when
+  // they are one tap from destroying their account.
+  'profile-delete-confirm': {
+    page: 'profile',
+    screen: null,
+    inherits: 'profile-account',
+    inject: () => {
+      const zone = document.querySelector('.danger-zone');
+      if (!zone) return;
+      const btn = zone.querySelector('.btn-danger');
+      if (btn) btn.remove();
+      const box = document.createElement('div');
+      box.innerHTML = `
+        <p class="danger-zone__text">Type <strong>DELETE</strong> to confirm.</p>
+        <input type="text" class="input" value="DELETE">
+        <button class="btn btn-danger btn-block" style="margin-top: var(--space-sm);">Permanently Delete</button>
+        <button class="btn btn-secondary btn-block" style="margin-top: var(--space-xs);">Cancel</button>
+      `;
+      zone.appendChild(box);
+    },
+  },
+
   'display-name-modal': {
     page: 'game',
     screen: 'question-screen',

@@ -427,6 +427,86 @@ try {
       && !/updateProfile failed|PGRST116/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
+  // ============================================================
+  // DELETING AN ACCOUNT
+  //
+  // Irreversible, so the two things that matter are that it removes
+  // EVERYTHING attached to the account, and that a refusal is never reported
+  // as success — telling somebody their data is gone when it is not is the
+  // worst version of the silent-failure bug this codebase keeps producing.
+  // ============================================================
+  heading('deleting an account');
+
+  const before = {
+    profiles: table.store.table('profiles').filter(r => String(r.user_id) === String(carol.userId)).length,
+    stats: table.store.table('player_stats_computed').filter(r => String(r.user_id) === String(carol.userId)).length,
+  };
+  note(`Carol before: ${JSON.stringify(before)}`);
+
+  await carol.goto('profile.html');
+  await carol.page.waitForTimeout(2500);
+
+  const deleteBtn = carol.page.locator('#profile-delete-account');
+  if (!await deleteBtn.isVisible().catch(() => false)) {
+    problems.push('a signed-in player is offered no way to delete their account');
+  } else {
+    await deleteBtn.click().catch(() => {});
+    await carol.page.waitForTimeout(500);
+
+    // A stray tap must not be able to destroy an account.
+    const armedWithoutTyping = await carol.page.evaluate(() => {
+      const b = document.querySelector('#profile-delete-go');
+      return !!b && !b.disabled;
+    }).catch(() => false);
+    note(`delete button armed before typing DELETE: ${armedWithoutTyping}`);
+    if (armedWithoutTyping) {
+      problems.push('the permanent-delete button is clickable before the confirmation is typed');
+    }
+
+    // Wrong word must not arm it either.
+    await carol.page.fill('#profile-delete-input', 'delete me').catch(() => {});
+    await carol.page.waitForTimeout(200);
+    const armedByWrongWord = await carol.page.evaluate(() => {
+      const b = document.querySelector('#profile-delete-go');
+      return !!b && !b.disabled;
+    }).catch(() => false);
+    if (armedByWrongWord) problems.push('any text arms the permanent-delete button, not just DELETE');
+
+    await carol.page.fill('#profile-delete-input', 'DELETE').catch(() => {});
+    await carol.page.waitForTimeout(300);
+
+    const goBtn = carol.page.locator('#profile-delete-go');
+    const armed = await goBtn.isEnabled().catch(() => false);
+    note(`delete button armed after typing DELETE: ${armed}`);
+    if (!armed) {
+      problems.push('typing DELETE does not enable the permanent-delete button');
+    } else {
+      await goBtn.click().catch(() => {});
+      await carol.page.waitForTimeout(3000);
+
+      const after = {
+        profiles: table.store.table('profiles').filter(r => String(r.user_id) === String(carol.userId)).length,
+        stats: table.store.table('player_stats_computed').filter(r => String(r.user_id) === String(carol.userId)).length,
+        history: table.store.table('game_history').filter(r => String(r.user_id) === String(carol.userId)).length,
+        friendships: table.store.table('friendships').filter(r =>
+          String(r.user_a) === String(carol.userId) || String(r.user_b) === String(carol.userId)).length,
+      };
+      note(`Carol after: ${JSON.stringify(after)}`);
+      for (const [what, n] of Object.entries(after)) {
+        if (n > 0) problems.push(`deleting the account left ${n} row(s) in ${what}`);
+      }
+
+      // Nobody else's data may be touched. This is the check that catches a
+      // function taking a user id instead of reading it from the session.
+      const aliceSurvives = table.store.table('profiles')
+        .filter(r => String(r.user_id) === String(alice.userId)).length;
+      note(`Alice's profile still present after Carol deleted hers: ${aliceSurvives === 1}`);
+      if (aliceSurvives !== 1) {
+        problems.push('deleting one account removed another player\'s data');
+      }
+    }
+  }
+
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);
 } finally {

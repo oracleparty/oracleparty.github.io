@@ -154,7 +154,18 @@ class FakeChannel {
 export function createClient(_url, _key) {
   return {
     from: (table) => new QueryBuilder(table),
-    rpc: (name, args) => window.__dbOp({ table: name, action: 'rpc', payload: args, filters: [], modifiers: {} }),
+    // The store has no auth context, so anything the real database would read
+    // from auth.uid() has to be carried across explicitly. Taken from the
+    // injected session, never from the caller's arguments — that is the whole
+    // security property of delete_my_account, and a shim that let a scenario
+    // pass any id would be testing a function the app does not have.
+    rpc: (name, args) => window.__dbOp({
+      table: name,
+      action: 'rpc',
+      payload: { ...(args || {}), __callerUserId: window.__fakeSession?.user?.id || null },
+      filters: [],
+      modifiers: {},
+    }),
     channel: (topic) => {
       const ch = new FakeChannel(topic);
       channels.push(ch);
@@ -171,7 +182,11 @@ export function createClient(_url, _key) {
       // Returning an error keeps the button's failure path honest rather than
       // throwing "signInWithOAuth is not a function" and looking like a crash.
       signInWithOAuth: async () => ({ data: { provider: 'google', url: null }, error: { message: 'OAuth not supported in tests' } }),
-      signOut:    async () => ({ error: null }),
+      // Clears the session, like the real client does. A no-op here was not a
+      // harmless shortcut: it left a session alive after sign-out, so the next
+      // page load looked like "signed in with no profile" and initAuth's
+      // partial-signup heal recreated the profile a test had just deleted.
+      signOut:    async () => { window.__fakeSession = null; return { error: null }; },
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     },
   };

@@ -211,8 +211,15 @@ export async function initAuth() {
     }).catch(() => {});
     initGlobalPresence(session.user.id, profile.show_online_status !== false).catch(() => {});
     _initFriendRequestNotifications(session.user.id);
-  } else if (!_currentProfile) {
-    // Session exists but no profile — retry creation (handles partial signup)
+  } else if (!_currentProfile && !consumeAccountDeletedFlag()) {
+    // Session exists but no profile — retry creation (handles partial signup).
+    //
+    // NOT after a deliberate deletion. signOut() clears the stored session, so
+    // normally there is no session left to trigger this — but signOut swallows
+    // its own errors, and if it fails (offline at exactly the wrong moment)
+    // the session survives, this branch sees "signed in, no profile", and
+    // faithfully recreates the profile the player just asked to erase.
+    // Recreating deleted data is the one failure this path must not have.
     try {
       // A player who signed in with Google may never have typed a name here,
       // so fall back to the one Google supplies before giving up. Without this
@@ -377,6 +384,27 @@ export async function signIn(email, password) {
 /**
  * Sign out. Clears auth state but preserves display name (reverts to guest).
  */
+/**
+ * Set when a player deletes their account, read once on the next page load.
+ *
+ * Exists only to stop the partial-signup heal above from resurrecting a
+ * deleted profile if sign-out fails. Consumed on read, so it cannot suppress
+ * the heal for a genuine partial signup later on.
+ */
+const ACCOUNT_DELETED_KEY = 'oracle_party_account_deleted';
+
+export function markAccountDeleted() {
+  try { localStorage.setItem(ACCOUNT_DELETED_KEY, '1'); } catch (_) {}
+}
+
+function consumeAccountDeletedFlag() {
+  try {
+    if (localStorage.getItem(ACCOUNT_DELETED_KEY) !== '1') return false;
+    localStorage.removeItem(ACCOUNT_DELETED_KEY);
+    return true;
+  } catch (_) { return false; }
+}
+
 export async function signOut() {
   try { await supabase.auth.signOut(); } catch (e) { logger.warn('Auth', 'signOut error', e); }
   _currentUser = null;
