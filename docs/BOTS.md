@@ -16,7 +16,7 @@ A hand-written character defined in a file, not a generated one. Each has:
 | **Speed** | How long they take to answer, with variation so it never looks mechanical |
 | **Wager habit** | Reckless (spends the big numbers early), cautious (hoards them), or erratic |
 | **Typing style** | Clean, all-lowercase, or prone to a typo |
-| **Voice** | A handful of written chat lines for getting one right, getting one wrong, and losing |
+| **Voice** | An occasional honk. No chat in the first version — see below |
 
 Nothing here is generated at runtime. A bot is a table of numbers and a list of
 sentences somebody wrote.
@@ -102,13 +102,45 @@ This is worth more than it looks: today the game cannot be tested at all
 without finding a second human, which has blocked every playtest. Bots end
 that.
 
+## Chat: deliberately not in the first version
+
+The obvious version — a few written lines per bot for winning, losing and
+getting one wrong — fails on repetition. Six lines are all seen within two
+games, and at that point they read as cheap. A bot repeating itself is worse
+than a bot saying nothing.
+
+Doing it properly means templates filled from real facts rather than fixed
+sentences: the wager they actually spent, the streak they are actually on, the
+name of whoever actually beat them. The facts vary each round, so few lines
+still sound fresh. It also needs a no-repeat rule within a game and a cooldown
+so two bots never talk over each other.
+
+None of that is hard, but it is guesswork until someone has played against
+these bots and knows what they should sound like. **The personality is already
+visible every round without a word** — answer speed, wager habits, typing
+style. Chat is the least necessary channel and the most likely to grate.
+
+**Bots do honk.** It is already in the game, needs nothing written, and a bot
+that honks when it nails a hard one has more character than one typing "Nice!".
+
+Written lines come after the first play session, driven by what is actually
+missing rather than what seems likely to be.
+
+## Adding bots: lobby only
+
+Decided. A bot joins before the game starts, like any player.
+
+The reason is the wager rule: values 1..N are each spent exactly once, so a bot
+arriving at question 6 has no sensible history of what it already spent.
+Rescuing an abandoned game by handing a bot someone's vacated seat — inheriting
+their spent wagers — is a coherent idea, but it is a separate feature and not
+part of this.
+
 ## Still open
 
 - How many bots ship at first, and who they are. Six or so, spread across
-  skill levels, feels right.
-- Whether a bot should ever use the chat unprompted, or only react.
+  skill levels, feels right. To be proposed and reacted to, not guessed.
 - Whether bots get titles and tiers, or whether those stay human.
-- Whether a bot can be added mid-game or only in the lobby.
 
 ## Rough build order
 
