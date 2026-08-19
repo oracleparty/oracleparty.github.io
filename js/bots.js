@@ -65,6 +65,34 @@ export const TYPING_STYLE = {
 };
 
 /**
+ * Honk profiles.
+ *
+ * The honk is already in the game and needs nothing written, which makes it a
+ * better first personality channel than chat: it cannot repeat itself into
+ * being annoying, and it carries tone without words.
+ *
+ * `chance` is the probability of honking when a trigger fires, so the same
+ * trigger reads differently per bot — Pip honking at everything is excitable,
+ * The Archivist honking once a game means something happened.
+ *
+ * Triggers:
+ *   nailedIt       this bot got one right in a category it is strong in
+ *   humanNailedIt  a HUMAN got a hard question right — applause, not gloating
+ *   blewIt         this bot got one wrong having staked a high wager
+ *   lostLead       this bot was top of the scoreboard and no longer is
+ */
+export const HONK_PROFILE = {
+  // Dignified. Applauds a genuinely hard answer and almost nothing else.
+  reserved: { nailedIt: 0.05, humanNailedIt: 0.45, blewIt: 0.05, lostLead: 0.10 },
+  // Ordinary enthusiasm.
+  warm: { nailedIt: 0.30, humanNailedIt: 0.35, blewIt: 0.20, lostLead: 0.25 },
+  // Honks at everything, mostly at itself.
+  excitable: { nailedIt: 0.70, humanNailedIt: 0.55, blewIt: 0.60, lostLead: 0.50 },
+  // Barely ever. When it does, everyone notices.
+  glacial: { nailedIt: 0.02, humanNailedIt: 0.25, blewIt: 0.02, lostLead: 0.15 },
+};
+
+/**
  * The roster.
  *
  * Six, spread deliberately: two specialists with real blind spots, two
@@ -80,6 +108,12 @@ export const TYPING_STYLE = {
  * round. Nobody answers instantly — a bot that submits in 0.4s every time is
  * unmistakably a machine, and worse, it ends the round before anyone has read
  * the question.
+ *
+ * `debut: true` marks the three that ship first. Six is a lot to get right
+ * without having played against any of them, and these three span the whole
+ * range — weakest to strongest, fastest to slowest, sloppiest to cleanest — so
+ * the contrast is obvious immediately. The other three are written and waiting;
+ * they turn on once the first three have been played and tuned.
  */
 export const BOT_ROSTER = [
   {
@@ -97,6 +131,8 @@ export const BOT_ROSTER = [
     speed: [6, 14],
     wagerStyle: 'cautious',
     typing: 'clean',
+    honk: 'reserved',
+    debut: true,
   },
   {
     id: 'nia',
@@ -112,6 +148,7 @@ export const BOT_ROSTER = [
     speed: [3, 8],
     wagerStyle: 'reckless',
     typing: 'casual',
+    honk: 'warm',
   },
   {
     id: 'marisol',
@@ -127,6 +164,7 @@ export const BOT_ROSTER = [
     speed: [5, 12],
     wagerStyle: 'cautious',
     typing: 'clean',
+    honk: 'warm',
   },
   {
     id: 'bo',
@@ -142,6 +180,7 @@ export const BOT_ROSTER = [
     speed: [4, 9],
     wagerStyle: 'erratic',
     typing: 'sloppy',
+    honk: 'excitable',
   },
   {
     id: 'archivist',
@@ -157,6 +196,8 @@ export const BOT_ROSTER = [
     speed: [8, 17],
     wagerStyle: 'cautious',
     typing: 'clean',
+    honk: 'glacial',
+    debut: true,
   },
   {
     id: 'pip',
@@ -172,8 +213,29 @@ export const BOT_ROSTER = [
     speed: [2, 5],
     wagerStyle: 'reckless',
     typing: 'sloppy',
+    honk: 'excitable',
+    debut: true,
   },
 ];
+
+/** The bots offered in the lobby today. */
+export function debutBots() {
+  return BOT_ROSTER.filter(b => b.debut);
+}
+
+/**
+ * Whether a bot honks at something that just happened.
+ *
+ * Called per trigger, per bot. Kept pure so it can be tested without a game
+ * running; the caller supplies the roll.
+ */
+export function shouldHonk(bot, trigger, roll = Math.random()) {
+  const profile = HONK_PROFILE[bot?.honk];
+  if (!profile) return false;
+  const chance = profile[trigger];
+  if (chance == null) return false;
+  return roll < chance;
+}
 
 /** Look a bot up by its id. */
 export function getBot(id) {

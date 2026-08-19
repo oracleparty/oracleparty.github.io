@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BOT_ROSTER, DIFFICULTY_SHIFT, SKILL_FLOOR, SKILL_CEILING,
-  getBot, botAccuracy, describeBot,
+  getBot, botAccuracy, describeBot, debutBots, shouldHonk, HONK_PROFILE,
 } from '../js/bots.js';
 import { CATEGORY_META } from '../js/categories.js';
 
@@ -115,5 +115,44 @@ describe('describeBot', () => {
 
   it('survives a bot with no listed skills', () => {
     expect(describeBot({ base: 50, skills: {} })).toBe('50% everywhere');
+  });
+});
+
+describe('honks', () => {
+  it('ships exactly three bots to start with', () => {
+    // Six is a lot to tune without having played any of them.
+    expect(debutBots().length).toBe(3);
+  });
+
+  it('spans the range in the three that debut', () => {
+    // The point of picking three is contrast, not variety for its own sake.
+    const debut = debutBots();
+    const bases = debut.map(b => b.base);
+    expect(Math.max(...bases) - Math.min(...bases)).toBeGreaterThanOrEqual(40);
+    expect(new Set(debut.map(b => b.typing)).size).toBeGreaterThan(1);
+    expect(new Set(debut.map(b => b.honk)).size).toBe(3);
+  });
+
+  it('applauds a human more readily than it congratulates itself', () => {
+    // The reserved and glacial bots exist to make a hard question feel earned.
+    // If they honked at themselves more than at a person, they would read as
+    // smug rather than generous.
+    for (const id of ['wick', 'archivist']) {
+      const bot = getBot(id);
+      const p = HONK_PROFILE[bot.honk];
+      expect(p.humanNailedIt, `${bot.name}`).toBeGreaterThan(p.nailedIt);
+    }
+  });
+
+  it('honks by chance, not on a schedule', () => {
+    const pip = getBot('pip');
+    expect(shouldHonk(pip, 'nailedIt', 0.01)).toBe(true);
+    expect(shouldHonk(pip, 'nailedIt', 0.99)).toBe(false);
+  });
+
+  it('never honks for a bot or trigger it does not know', () => {
+    expect(shouldHonk(null, 'nailedIt', 0)).toBe(false);
+    expect(shouldHonk(getBot('pip'), 'nonsense', 0)).toBe(false);
+    expect(shouldHonk({ honk: 'nonsense' }, 'nailedIt', 0)).toBe(false);
   });
 });
