@@ -612,8 +612,12 @@ still be an unvoted level — that is the deliberate last-second switch.
   one works** — that was said here once and it was too strong:
     * Free: complete the consent-screen branding and verify ownership of
       `oracleparty.github.io` in Google Search Console, then pass Google's
-      brand review. Verification is possible for a github.io subdomain by
-      committing the HTML verification file to this repo.
+      brand review. **Ownership is verified as of 2026-08-19** — the
+      `google-site-verification` meta tag in `index.html` is what proves it,
+      and Google re-checks periodically, so removing that line un-verifies the
+      site. What remains is the brand review, which is deliberately parked
+      until there is a real logo: uploading one is what triggers the review,
+      so it is worth doing once with the finished artwork rather than twice.
     * Paid: Supabase's custom-domain add-on, which changes the host itself.
       Needs a domain the owner buys.
   **Signing in does not make the database safer** — guests still play, so the
