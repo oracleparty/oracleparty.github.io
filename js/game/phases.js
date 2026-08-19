@@ -424,7 +424,10 @@ export async function handlePhaseTransition(phase) {
         playerName: getDisplayName(),
         category: state.room.category,
         subcategory: state.room.subcategory || null,
-        totalQuestions: state.totalQuestions
+        totalQuestions: state.totalQuestions,
+        // Identifies WHICH round this is. The room is reused across Play
+        // Again, so without it every round in a room is the same play.
+        gameKey: state.countdownStartedAt || null
       });
     }
     // Clear stale questionStartedAt on normal transitions (not init reconnect)

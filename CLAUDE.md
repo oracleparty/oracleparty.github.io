@@ -317,6 +317,34 @@ room, which is exactly why `question_stats` and `answer_tally` exist.
 
 **Every play before 2026-08-19 is gone for good** — deleted, not hidden.
 
+**A second counting fault sat behind the first.** The record is keyed on
+`(room_id, player_id)` and a room survives Play Again, so a group playing six
+rounds together wrote to one record six times and counted as **one play each**
+— under-counting exactly the people who play most. Migration 034 keeps the
+one-record-per-person-per-room shape and counts rounds on it via
+`record_game_play`, because `completeGamePlay` and
+`increment_questions_answered` both find a record by `room_id + player_id` and
+nothing else: allowing several rows per room would have made a counting fix
+quietly corrupt two other things.
+
+The counter advances only when `p_game_key` — the room's countdown timestamp,
+rewritten per game and identical on every phone — **changes**, so the caller
+can fire as often as it likes. That matters: it is called from a phase
+transition, which is not guaranteed to happen exactly once.
+
+**A play is one person, one round.** The owner chose per-person over per-game.
+A rejoin does not double count, because the record is written only at question
+0 and now survives the player row being deleted.
+
+**The scenario check for this was measuring nothing at first**, and it is worth
+knowing how. It asserted that there were more RPC calls than counted rounds,
+reading the gap as proof the idempotency guard worked — but each player calls
+once per round, so 2 players x 2 rounds is 4 calls with nothing deduplicated.
+Deleting the guard entirely changed the result not at all. It now checks the
+property the harness can actually establish: the round key is stable within a
+round and different between rounds. Verified by forcing the key to null, which
+makes `games_played` stay at 1 and reports both faults by name.
+
 ### 8. `player_stats_computed` was missing, and took four features with it
 
 **RESOLVED 2026-08-19** — migration 031 was run, and the probe now reads the

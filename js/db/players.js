@@ -232,7 +232,30 @@ export function subscribeToPlayers(roomId, callback) {
 // GAME PLAYS (play/completion tracking)
 // ============================================
 
-export async function insertGamePlay({ roomId, playerId, playerName, category, subcategory, totalQuestions }) {
+export async function insertGamePlay({ roomId, playerId, playerName, category, subcategory, totalQuestions, gameKey }) {
+  // record_game_play (migration 034) counts ROUNDS, not rooms. A room survives
+  // "Play Again", so the old plain upsert had a group's whole evening counting
+  // as one play each — under-counting exactly the people who play most.
+  //
+  // gameKey is the room's countdown timestamp, rewritten at the start of every
+  // game and identical on every phone in the room. The function only advances
+  // the counter when the key CHANGES, so calling this twice for one round is
+  // harmless — which matters, because the caller fires from a phase transition
+  // that is not guaranteed to happen exactly once.
+  const { error } = await supabase.rpc('record_game_play', {
+    p_room_id: roomId,
+    p_player_id: playerId,
+    p_player_name: playerName,
+    p_category: category,
+    p_subcategory: subcategory || null,
+    p_total_questions: totalQuestions,
+    p_game_key: gameKey || null,
+  });
+  if (!error) return;
+
+  // Migration 034 not applied yet. Fall back to the original write, which
+  // records the play but counts one per room rather than one per round.
+  logger.warn('Supabase', 'record_game_play unavailable, falling back to upsert', error);
   const row = {
     room_id: roomId,
     player_id: playerId,
@@ -244,11 +267,11 @@ export async function insertGamePlay({ roomId, playerId, playerName, category, s
     completed: false
   };
   if (subcategory) row.subcategory = subcategory;
-  const { error } = await supabase
+  const { error: upsertError } = await supabase
     .from('game_plays')
     .upsert(row, { onConflict: 'room_id,player_id' });
 
-  if (error) logger.error('Supabase', 'insertGamePlay failed', error);
+  if (upsertError) logger.error('Supabase', 'insertGamePlay failed', upsertError);
 }
 
 export async function incrementQuestionsAnswered(roomId, playerId) {

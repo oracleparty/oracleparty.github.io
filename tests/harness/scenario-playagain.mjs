@@ -234,6 +234,71 @@ try {
     }
   }
 
+  // ============================================================
+  // EVERY ROUND COUNTS AS A PLAY
+  //
+  // A room survives Play Again, and the play record is keyed on
+  // (room_id, player_id) — so before migration 034 a group's whole evening
+  // wrote to one record and counted as a single play each. Plays were
+  // under-counted for exactly the people who play the most.
+  //
+  // record_game_play now counts rounds on that one record, keyed on the
+  // room's countdown timestamp so a repeated call for the same round is a
+  // no-op. This scenario is the only one that plays twice in one room, so it
+  // is the only place the difference is visible.
+  // ============================================================
+  heading('every round counts as a play');
+  const plays = table.store.table('game_plays');
+  note(`game_plays rows: ${plays.length}, games_played: ${JSON.stringify(plays.map(p => p.games_played))}`);
+
+  if (plays.length === 0) {
+    problems.push('no play was recorded at all — the category cards would show 0 plays');
+  } else {
+    // One record per person per room, still. More would break
+    // completeGamePlay and increment_questions_answered, which both find a
+    // record by room_id + player_id and nothing else.
+    if (plays.length !== everyone.length) {
+      problems.push(`${plays.length} play records for ${everyone.length} players — there should be exactly one each per room`);
+    }
+    const counts = plays.map(p => p.games_played || 0);
+    if (counts.some(c => c < 2)) {
+      problems.push(`a player's play count is ${Math.min(...counts)} after two games — a second round in the same room is not being counted`);
+    }
+    if (counts.some(c => c > 2)) {
+      problems.push(`a player's play count is ${Math.max(...counts)} after two games — a round is being counted more than once`);
+    }
+  }
+
+  // THE GAME KEY, not the call count.
+  //
+  // A first version of this checked that there were more RPC calls than
+  // counted rounds, reading that gap as proof the idempotency guard worked.
+  // It was not: each player calls once per round, so 2 players x 2 rounds is
+  // 4 calls with nothing deduplicated. Removing the guard entirely changed
+  // the result not at all — the check was measuring nothing, exactly the
+  // failure CLAUDE.md warns about.
+  //
+  // What the harness CAN establish honestly is the property the SQL depends
+  // on: the key is stable within a round and different between rounds. Given
+  // that, `games_played` only advances when the key changes, and repeated
+  // calls within one round cannot double-count. Whether Postgres applies that
+  // correctly is the migration's business, not this scenario's.
+  const calls = table.store.log.filter(o => o.table === 'record_game_play' && o.action === 'rpc');
+  const keys = calls.map(o => o.payload?.p_game_key ?? null);
+  const distinct = [...new Set(keys)];
+  note(`record_game_play calls: ${calls.length}, distinct round keys: ${distinct.length}`);
+
+  if (calls.length === 0) {
+    problems.push('record_game_play was never called — plays are being written by the fallback path');
+  } else if (distinct.includes(null)) {
+    problems.push('a play was recorded with no round key — every round in that room would count as one');
+  } else if (distinct.length !== 2) {
+    problems.push(`two games produced ${distinct.length} distinct round keys, expected 2 — ` +
+      (distinct.length < 2
+        ? 'the second round reuses the first round\'s key, so it will not be counted'
+        : 'the key changes within a round, so one game counts several times'));
+  }
+
   for (const r of everyone) {
     const real = r.consoleErrors.filter(e =>
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));

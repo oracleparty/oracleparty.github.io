@@ -340,7 +340,59 @@ export class FakeStore {
       if (row) row.questions_answered = (row.questions_answered || 0) + 1;
       return null;
     }
-    if (name === 'get_category_play_counts') return [];
+    // Mirrors migration 034: one record per person per room, counting ROUNDS.
+    // Idempotent on p_game_key, so calling it twice for the same round counts
+    // once — the caller fires from a phase transition that can repeat.
+    if (name === 'record_game_play') {
+      const rows = this.table('game_plays');
+      const existing = rows.find(r =>
+        String(r.room_id) === String(args.p_room_id) &&
+        String(r.player_id) === String(args.p_player_id));
+      const isNewRound = !existing || existing.last_game_key !== args.p_game_key;
+      if (!existing) {
+        rows.push({
+          id: newId('game_plays'),
+          room_id: args.p_room_id, player_id: args.p_player_id,
+          player_name: args.p_player_name, category: args.p_category,
+          subcategory: args.p_subcategory, total_questions: args.p_total_questions,
+          questions_answered: 0, started_at: new Date().toISOString(),
+          completed: false, games_played: 1, last_game_key: args.p_game_key,
+        });
+      } else {
+        existing.player_name = args.p_player_name;
+        existing.category = args.p_category;
+        existing.subcategory = args.p_subcategory;
+        existing.total_questions = args.p_total_questions;
+        if (isNewRound) {
+          existing.questions_answered = 0;
+          existing.completed = false;
+          existing.games_played = (existing.games_played || 0) + 1;
+        }
+        existing.last_game_key = args.p_game_key;
+      }
+      return null;
+    }
+
+    // Counts rounds, not records — see record_game_play above.
+    if (name === 'get_category_play_counts') {
+      const byCat = new Map();
+      const bySub = new Map();
+      for (const r of this.table('game_plays')) {
+        if (!r.category) continue;
+        byCat.set(r.category, (byCat.get(r.category) || 0) + (r.games_played || 0));
+        if (r.subcategory) {
+          const key = `${r.category}|${r.subcategory}`;
+          bySub.set(key, (bySub.get(key) || 0) + (r.games_played || 0));
+        }
+      }
+      const out = [];
+      for (const [category, play_count] of byCat) out.push({ category, subcategory: null, play_count });
+      for (const [key, play_count] of bySub) {
+        const [category, subcategory] = key.split('|');
+        out.push({ category, subcategory, play_count });
+      }
+      return out;
+    }
 
     // Mirrors migration 025: one row per question, counting how it performed.
     // Recorded here so a scenario can assert what is NOT counted — a bot's
