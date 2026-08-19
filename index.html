@@ -8,6 +8,13 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Google Search Console ownership proof. Public by design — it is only
+       meaningful to Google, and it has to be readable by anyone for the check
+       to work, so it is not a secret and must not be treated as one.
+       Verifying the domain is what lets the Google sign-in consent screen be
+       branded as Oracle Party rather than showing the raw Supabase host.
+       Google re-checks periodically: removing this line un-verifies the site. -->
+  <meta name="google-site-verification" content="yKODwPXNiI4n96uJ_Iq7Hl-mwm6-fLIZgJ7Jjlc-VkI" />
   <title>Oracle Party</title>
   <script>(function(){var s=localStorage.getItem('oracle_party_theme');if(!s){s=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';localStorage.setItem('oracle_party_theme',s);}if(s!=='light'){document.documentElement.setAttribute('data-theme',s);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[s]||'#F8F7F4';}})();if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
   <script>
