@@ -261,9 +261,25 @@ export async function signInWithGoogle() {
   });
   if (error) {
     logger.error('Auth', 'signInWithGoogle failed', error);
-    return { error };
+    return { error, notConfigured: isProviderNotEnabled(error) };
   }
-  return { error: null };
+  return { error: null, notConfigured: false };
+}
+
+/**
+ * Google is switched off in the Supabase dashboard, as opposed to anything
+ * having gone wrong.
+ *
+ * Worth telling apart. Supabase answers HTTP 400 "Unsupported provider:
+ * provider is not enabled" until the credentials from
+ * docs/GOOGLE_SIGNIN_SETUP.md are pasted in, and the button reported that as
+ * "Couldn't reach Google" — which sends whoever is debugging it to look at the
+ * network, their connection and this code, none of which is the problem. The
+ * one thing that needed doing was a dashboard setting.
+ */
+function isProviderNotEnabled(error) {
+  const msg = (error?.message || '').toLowerCase();
+  return msg.includes('provider is not enabled') || msg.includes('unsupported provider');
 }
 
 /**
@@ -443,11 +459,13 @@ export function showSignUpModal() {
       googleBtn.onclick = async () => {
         errorEl.textContent = '';
         googleBtn.disabled = true;
-        const { error } = await signInWithGoogle();
+        const { error, notConfigured } = await signInWithGoogle();
         // On success the browser has already left for Google, so anything
         // running here means it did not.
         if (error) {
-          errorEl.textContent = "Couldn't reach Google — try email instead";
+          errorEl.textContent = notConfigured
+            ? 'Google sign-in isn\u2019t switched on yet — use email for now'
+            : "Couldn't reach Google — try email instead";
           googleBtn.disabled = false;
         }
       };

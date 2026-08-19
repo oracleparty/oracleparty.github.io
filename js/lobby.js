@@ -610,7 +610,10 @@ async function handleAddBot() {
       sortPlayers();
     }
     renderPlayers();
-    addSystemMessage(`${BOT_DISPLAY_NAME} joined — it answers instantly and nothing it does is recorded.`);
+    // No chat notice. The bot appearing in the player list IS the notification,
+    // and a system message for something the host just did themselves is noise
+    // in a pane that is 34vh tall — it pushes real conversation up for no
+    // information anybody lacked.
   } finally {
     _isAddingBot = false;
     btnAddBot.disabled = false;

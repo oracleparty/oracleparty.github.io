@@ -224,6 +224,45 @@ const UPSERT_TARGETS = [
     { room_id: NOT_A_UUID, player_id: NOT_A_UUID, question_number: 1 }],
 ];
 
+// ============================================
+// FOREIGN KEYS
+//
+// Read from PostgREST's OpenAPI description, which annotates a column with
+// "<fk table='...' column='...'/>" when one exists. Read-only, and the only
+// way to see this without a database password.
+//
+// It matters because a foreign key to `rooms` is a countdown. Rooms are
+// DELETED when the last player leaves, so anything pointing at one with
+// ON DELETE CASCADE is erased at the end of every session — which looks
+// exactly like "the feature stopped recording" rather than like a deletion.
+// `answers` is already known to work this way and is documented as such.
+//
+// This CANNOT see the ON DELETE action, only that a key exists. A key to
+// rooms is a reason to go and check, not a verdict.
+// ============================================
+
+console.log('\n--- FOREIGN KEYS TO `rooms` (data that dies with the room) ---');
+try {
+  const spec = await req('');
+  const doc = JSON.parse(spec.body || '{}');
+  const defs = doc.definitions || doc.components?.schemas || {};
+  let found = 0;
+  for (const [table, def] of Object.entries(defs)) {
+    for (const [col, meta] of Object.entries(def.properties || {})) {
+      const m = /<fk table='([^']+)' column='([^']+)'\/>/.exec(meta.description || '');
+      if (!m) continue;
+      found++;
+      const flag = m[1] === 'rooms' ? '  <-- dies with the room if ON DELETE CASCADE' : '';
+      if (m[1] === 'rooms') console.log(`  ${table}.${col} -> ${m[1]}.${m[2]}${flag}`);
+    }
+  }
+  if (found === 0) {
+    console.log('  (the OpenAPI description carries no foreign-key annotations — cannot tell from here)');
+  }
+} catch (err) {
+  console.log(`  (could not read the OpenAPI description: ${err.message})`);
+}
+
 console.log('\n--- UPSERT CONFLICT TARGETS (nothing is written) ---');
 for (const [t, cols, payload] of UPSERT_TARGETS) {
   const r = await req(`${t}?on_conflict=${encodeURIComponent(cols)}`, {
