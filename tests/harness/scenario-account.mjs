@@ -40,8 +40,17 @@ try {
   // player being unable to start a game.
   seedQuestions(table.store);
   // --- seed the kind of history a real account accumulates -----------------
-  const stats = (userId, category, answered, correct, games, wins) => ({
-    id: `st-${userId}-${category}`, user_id: userId, category, subcategory: null,
+  //
+  // SEEDED IN THE SHAPE THE REAL VIEW RETURNS, which is not the obvious one.
+  // player_stats_computed emits a row per subcategory AND a rollup row
+  // (subcategory null) whose totals ALREADY CONTAIN them. Seeding only
+  // rollups — which this scenario did until 2026-08-19 — makes the two
+  // possible readings of the data identical, so a page that adds every row up
+  // scores the same as one that adds the rollups, and the double-count bug in
+  // CLAUDE.md #8 was invisible here by construction.
+  const stats = (userId, category, answered, correct, games, wins, subcategory = null) => ({
+    id: `st-${userId}-${category}-${subcategory || 'all'}`,
+    user_id: userId, category, subcategory,
     questions_answered: answered, correct_answers: correct,
     games_played: games, wins,
   });
@@ -54,11 +63,22 @@ try {
   // question_history against questions (migration 017), not the player_stats
   // table. Seeding the table left the leaderboard empty and looked like a bug
   // in the app; it was a bug in this scenario.
+  //
+  // Alice's TRUE totals are the rollups only: 14 + 9 = 23 games, 6 + 2 = 8
+  // wins, 120 + 80 = 200 questions. The subcategory rows below are a
+  // breakdown of those same numbers, not extra play, and the assertions
+  // further down check the page agrees.
+  const ALICE_GAMES = 23, ALICE_WINS = 8, ALICE_ANSWERED = 200;
   table.store.seed('player_stats_computed', [
     stats(alice.userId, 'history', 120, 96, 14, 6),
     stats(alice.userId, 'science', 80, 51, 9, 2),
     stats(bob.userId, 'history', 60, 33, 7, 1),
     stats(carol.userId, 'history', 20, 8, 3, 0),
+    // The breakdown inside those rollups.
+    stats(alice.userId, 'history', 70, 58, 8, 4, 'ancient'),
+    stats(alice.userId, 'history', 50, 38, 6, 2, 'medieval'),
+    stats(alice.userId, 'science', 80, 51, 9, 2, 'space'),
+    stats(bob.userId, 'history', 60, 33, 7, 1, 'ancient'),
   ]);
   table.store.seed('game_history', [
     { id: 'gh1', user_id: alice.userId, room_id: 'r1', category: 'history', subcategory: null,
@@ -86,6 +106,40 @@ try {
     problems.push('the profile stats block is empty for a player with recorded stats');
   }
 
+  // THE NUMBERS, not just that there are some.
+  //
+  // "the block is not empty" passes just as happily on doubled totals, which
+  // is how the profile shipped for months showing twice the games anybody had
+  // played. Reading the value out is the difference between checking a page
+  // rendered and checking it is telling the truth.
+  const statNums = await alice.page.evaluate(() =>
+    [...document.querySelectorAll('#profile-stats .profile-stat')].map(el => ({
+      label: (el.querySelector('.profile-stat__label')?.textContent || '').trim(),
+      value: (el.querySelector('.profile-stat__value')?.textContent || '').trim(),
+    }))).catch(() => []);
+  note(`profile stats: ${JSON.stringify(statNums)}`);
+
+  const statValue = label => statNums.find(s => s.label.toLowerCase() === label)?.value;
+  const games = statValue('games');
+  const wins = statValue('wins');
+  if (games !== String(ALICE_GAMES)) {
+    problems.push(`profile shows ${games} games where the rollups say ${ALICE_GAMES}` +
+      (games === String(ALICE_GAMES * 2)
+        ? ' — exactly double, so the subcategory rows are being added to their own rollup'
+        : ''));
+  }
+  if (wins !== String(ALICE_WINS)) {
+    problems.push(`profile shows ${wins} wins where the rollups say ${ALICE_WINS}`);
+  }
+  // Accuracy is derived from the same sums. It survives an even double count
+  // by cancelling, so it is checked to catch an UNEVEN one — a question with
+  // no subcategory is counted once and one with a subcategory twice.
+  const acc = statValue('accuracy');
+  const expectedAcc = `${Math.round(((96 + 51) / ALICE_ANSWERED) * 100)}%`;
+  if (acc !== expectedAcc) {
+    problems.push(`profile accuracy reads ${acc}, expected ${expectedAcc} from the rollups`);
+  }
+
   const catText = await alice.page.textContent('#profile-categories').catch(() => '');
   if (!(catText || '').trim()) {
     problems.push('the per-category breakdown is empty for a player with stats in two categories');
@@ -104,9 +158,16 @@ try {
   await alice.page.waitForTimeout(2500);
 
   const globalText = await alice.page.textContent('#lb-global-list').catch(() => '');
-  note(`global list: ${(globalText || '').replace(/\s+/g, ' ').trim().slice(0, 90)}`);
+  note(`global list: ${(globalText || '').replace(/\s+/g, ' ').trim().slice(0, 120)}`);
   if (!(globalText || '').includes('Alice')) {
     problems.push('the signed-in player does not appear on the global leaderboard despite having stats');
+  }
+  // Same double-count check on the board, which sums the same rows.
+  const flat = (globalText || '').replace(/\s+/g, ' ');
+  if (flat.includes(`${ALICE_GAMES * 2} games`)) {
+    problems.push(`the global leaderboard credits Alice with ${ALICE_GAMES * 2} games — double her ${ALICE_GAMES}, so subcategory rows are being summed with their rollup`);
+  } else if (!flat.includes(`${ALICE_GAMES} games`)) {
+    problems.push(`the global leaderboard does not show Alice's ${ALICE_GAMES} games (got: ${flat.slice(0, 100)})`);
   }
 
   // Switching to the category tab must not blank the page.
