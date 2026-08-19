@@ -631,3 +631,51 @@ export async function recordQuestionOutcome(questionId, isCorrect, overridden) {
   });
   if (error) logger.error('Supabase', 'recordQuestionOutcome failed', error);
 }
+
+/**
+ * Record WHAT somebody typed, so the common answers to a question can be seen.
+ *
+ * Deliberately does not record who typed it, or whether it was judged correct.
+ * The verdict depends on which host was judging and whether they overrode it,
+ * which makes it noise; question_stats already tracks correctness separately.
+ * The text and the count are objective.
+ *
+ * The point is finding bad answer keys without anyone having to notice: eleven
+ * people typing "JFK" and being marked wrong is one missing acceptable answer,
+ * not eleven wrong people. It also supplies real wrong answers for bots, so
+ * none has to be invented.
+ *
+ * Host only, once per player per question, same as recordQuestionOutcome —
+ * otherwise every device in the room would count the same answer again.
+ */
+export async function recordAnswerText(questionId, answerText) {
+  if (!questionId) return;
+  const text = (answerText || '').trim();
+  // A blank is somebody running out of time. It says nothing about the
+  // question, and counting it would bury the real answers under it.
+  if (!text) return;
+  const { error } = await supabase.rpc('record_answer_text', {
+    p_question_id: questionId,
+    p_answer: text,
+  });
+  if (error) logger.error('Supabase', 'recordAnswerText failed', error);
+}
+
+/**
+ * Every distinct answer given to a question, most common first.
+ * Read by the admin page, next to the box for adding acceptable answers.
+ */
+export async function fetchAnswerTally(questionId, limit = 25) {
+  if (!questionId) return [];
+  const { data, error } = await supabase
+    .from('answer_tally')
+    .select('answer_shown, times_given, last_seen')
+    .eq('question_id', questionId)
+    .order('times_given', { ascending: false })
+    .limit(limit);
+  if (error) {
+    logger.error('Supabase', 'fetchAnswerTally failed', error);
+    return [];
+  }
+  return data || [];
+}

@@ -312,6 +312,26 @@ export class FakeStore {
       return null;
     }
     if (name === 'get_category_play_counts') return [];
+
+    // Mirrors migration 029: count what was typed, keyed on lowercased and
+    // trimmed text, keeping one example of the original spelling. Blank
+    // answers are ignored — somebody running out of time says nothing about
+    // the question.
+    if (name === 'record_answer_text') {
+      const shown = String(args?.p_answer ?? '').trim().slice(0, 120);
+      if (!args?.p_question_id || !shown) return null;
+      const key = shown.toLowerCase();
+      const rows = this.table('answer_tally');
+      const existing = rows.find(r =>
+        String(r.question_id) === String(args.p_question_id) && r.answer_key === key);
+      if (existing) existing.times_given += 1;
+      else rows.push({
+        question_id: args.p_question_id, answer_key: key,
+        answer_shown: shown, times_given: 1,
+      });
+      return null;
+    }
+
     return null;
   }
 }

@@ -12,7 +12,7 @@ import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
          upsertQuestionHistory, upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
-  recordQuestionOutcome,
+  recordQuestionOutcome, recordAnswerText,
 } from '../supabase.js';
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
@@ -542,6 +542,17 @@ function recordCurrentQuestionOutcomes() {
     const overridden = answer.auto_correct != null
       && !!answer.auto_correct !== !!answer.is_correct;
     recordQuestionOutcome(question.id, answer.is_correct, overridden);
+
+    // Record the text itself, so the common answers to a question can be seen
+    // and a missing acceptable answer shows up without anyone noticing it.
+    //
+    // Never for a bot: a bot's answer comes from a percentage somebody chose,
+    // so counting it would make this data partly that invented number. There
+    // are no bots yet — the guard is here so it cannot be forgotten when there
+    // are.
+    const player = (state.players || []).find(p => String(p.id) === String(answer.player_id));
+    if (player?.is_bot) continue;
+    recordAnswerText(question.id, answer.submitted_answer);
   }
 }
 

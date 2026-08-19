@@ -5,7 +5,7 @@
 
 import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
-import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting } from './supabase.js';
+import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS } from './constants.js';
 
@@ -787,6 +787,66 @@ function qhStat(label, value, tone) {
           </span>`;
 }
 
+/**
+ * Show every answer people have given to this question, most common first.
+ *
+ * Fetched when the row is opened rather than with the list: 25 questions each
+ * pulling their own tally would be 25 extra queries to render a page where
+ * most rows are never expanded.
+ *
+ * A bar behind each row makes it scannable. A real chart would not say
+ * anything the sorted list does not.
+ */
+async function renderAnswerTally(row, q) {
+  const box = row.querySelector('.qh-tally');
+  if (!box || box.dataset.loaded === q.id) return;
+  box.dataset.loaded = q.id;
+  box.innerHTML = '<p style="font-size:var(--text-xs); color:var(--color-text-muted);">Loading answers…</p>';
+
+  const rows = await fetchAnswerTally(q.id);
+  if (rows.length === 0) {
+    box.innerHTML = '<p style="font-size:var(--text-xs); color:var(--color-text-muted);">'
+      + 'Nobody has answered this yet.</p>';
+    return;
+  }
+
+  // Everything already accepted, so a row can say whether adding it would
+  // change anything. Compared case-insensitively, the same way the tally
+  // counts.
+  const accepted = new Set(
+    [q.correct_answer, ...(Array.isArray(q.acceptable_answers) ? q.acceptable_answers : [])]
+      .filter(Boolean).map(a => String(a).trim().toLowerCase())
+  );
+
+  const max = Math.max(...rows.map(r => r.times_given));
+  const total = rows.reduce((n, r) => n + r.times_given, 0);
+
+  box.innerHTML = `
+    <div style="font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:4px;">
+      What people typed — ${total} answer${total === 1 ? '' : 's'} recorded
+    </div>
+    ${rows.map(r => {
+      const known = accepted.has(String(r.answer_shown).trim().toLowerCase());
+      const pct = Math.round((r.times_given / max) * 100);
+      return `
+        <div style="position:relative; padding:3px 6px; margin-bottom:2px; font-size:var(--text-xs);">
+          <div style="position:absolute; inset:0; width:${pct}%;
+                      background:${known ? 'var(--color-success)' : 'var(--color-primary)'};
+                      opacity:0.14; border-radius:3px;"></div>
+          <div style="position:relative; display:flex; justify-content:space-between; gap:var(--space-sm);">
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              ${escapeHtml(r.answer_shown)}${known ? ' <span style="opacity:.6">(accepted)</span>' : ''}
+            </span>
+            <strong style="flex:0 0 auto;">${r.times_given}</strong>
+          </div>
+        </div>`;
+    }).join('')}
+    <p style="font-size:var(--text-xs); color:var(--color-text-muted); margin-top:4px;">
+      Answers with no "(accepted)" mark are ones the game counts as wrong.
+    </p>
+  `;
+}
+
 function createHealthRow(q) {
   const row = document.createElement('div');
   row.className = 'admin-flag-row';
@@ -821,6 +881,11 @@ function createHealthRow(q) {
       ${qhStat('liked', likedLabel, likedTone)}
     </div>
     <div class="qh-edit" style="display:none; margin-top:var(--space-sm);">
+      <!-- What people actually typed, shown right where an acceptable answer
+           gets added. The whole value is seeing "JFK x11" and adding it in the
+           same place, rather than reading the data somewhere else and acting
+           on it here. -->
+      <div class="qh-tally" style="margin-bottom:var(--space-sm);"></div>
       <label style="display:block; font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:4px;">
         Also accept these answers (one per line)
       </label>
@@ -833,9 +898,11 @@ function createHealthRow(q) {
     </div>
   `;
 
-  row.querySelector('.admin-q-row__text').onclick = () => {
+  row.querySelector('.admin-q-row__text').onclick = async () => {
     const edit = row.querySelector('.qh-edit');
-    edit.style.display = edit.style.display === 'none' ? '' : 'none';
+    const opening = edit.style.display === 'none';
+    edit.style.display = opening ? '' : 'none';
+    if (opening) await renderAnswerTally(row, q);
   };
 
   row.querySelector('.qh-save').onclick = async () => {

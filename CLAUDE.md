@@ -490,6 +490,30 @@ admin's ability to *act* on it — see #5.
 - Feedback only appears **after the answer is revealed** — `showFeedbackUI()`
   runs inside `doReveal()`. Rating a question you have not seen the answer to
   would be meaningless.
+- **`answer_tally` records what people actually typed** (migration 029): the
+  text and a count, nothing else. Not who said it, and not whether it was
+  judged correct — that verdict depends on which host was judging and whether
+  they overrode it, which makes it noise. Counting is on lowercased, trimmed
+  text, so "JFK" and " jfk " are one row while "J.F.K." stays separate; a
+  near-miss spelling is exactly what is worth seeing.
+
+  The point is finding bad answer keys with nobody having to notice. Eleven
+  people typing "JFK" against a key of "Kennedy" is one missing acceptable
+  answer, not eleven wrong people. It appears inside the Question Health row,
+  next to the box for adding alternates, so the data sits where the action is
+  taken. It also supplies real wrong answers for bots, so none is invented.
+
+  **Nothing a bot types is ever counted** — a bot's answer comes from a
+  percentage somebody chose, so recording it would make this data partly that
+  invented number. `scenario-feedback.mjs` fails by name if the guard is
+  removed.
+
+- **Recording happens on ADVANCE, not on reveal.** `recordCurrentQuestionOutcomes()`
+  runs inside `handleNextQuestion`, which is wired to the SCORES screen's
+  button — the reveal screen's button only moves to the scoreboard. A host who
+  leaves at the results screen never records the final question. Worth knowing
+  before concluding from an empty `question_stats` that the RPC is broken.
+
 - **`times_overridden` is the most valuable column.** A host flipping a
   judgement is a human stating a valid answer was rejected — better evidence
   of a bad answer key than a flag, and it costs players no effort.

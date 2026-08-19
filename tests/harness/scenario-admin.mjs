@@ -51,6 +51,15 @@ try {
       last_asked_at: new Date().toISOString() },
   ]);
 
+  // What people typed, most common first. The point of this data is that
+  // "JFK" appearing eleven times against an answer key of "Kennedy" is one
+  // missing acceptable answer, not eleven wrong people.
+  table.store.seed('answer_tally', [
+    { question_id: 'q1', answer_key: 'answer 1', answer_shown: 'Answer 1', times_given: 9 },
+    { question_id: 'q1', answer_key: 'ansewr 1', answer_shown: 'Ansewr 1', times_given: 4 },
+    { question_id: 'q1', answer_key: 'no idea', answer_shown: 'no idea', times_given: 2 },
+  ]);
+
   table.store.seed('question_feedback', [
     { id: 'f1', question_id: 'q1', voter_id: 'device:aaa', room_id: null,
       player_name: 'Dana', feedback_type: 'flag', flag_reason: 'wrong_answer' },
@@ -189,6 +198,30 @@ try {
         problems.push(`the alternates were not written to the question (got ${JSON.stringify(stored?.acceptable_answers)})`);
       }
     }
+  }
+
+  // ============================================================
+  // 5b. WHAT PEOPLE TYPED
+  //
+  // It has to appear next to the box for adding acceptable answers, because
+  // the whole value is reading "Ansewr 1 x4" and adding it in the same place.
+  // ============================================================
+  heading('the answers people gave');
+  const tallyText = (await firstRow.locator('.qh-tally').textContent().catch(() => '')) || '';
+  note(`tally shows: ${tallyText.replace(/\s+/g, ' ').trim().slice(0, 100)}`);
+  if (!tallyText.trim()) {
+    problems.push('opening a question shows nothing about what people have typed');
+  }
+  if (!tallyText.includes('Ansewr 1')) {
+    problems.push('a common misspelling is missing from the list of what people typed');
+  }
+  if (!/9/.test(tallyText) || !/4/.test(tallyText)) {
+    problems.push('the counts are not shown next to the answers');
+  }
+  // The correct answer must be marked, or every list looks like a list of
+  // problems and the real ones stop standing out.
+  if (!/accepted/i.test(tallyText)) {
+    problems.push('nothing marks which answers the game already accepts');
   }
 
   // ============================================================

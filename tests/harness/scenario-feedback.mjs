@@ -270,6 +270,99 @@ try {
     }
   }
 
+  // ============================================================
+  // WHAT PEOPLE TYPED
+  //
+  // The host records each answer's text when it advances the round, so a
+  // missing acceptable answer can be spotted without anyone noticing it by
+  // hand. Two things must hold: real answers are counted, and a BOT's answer
+  // never is — a bot's answer comes from a percentage somebody chose, so
+  // counting it would make this data partly that invented number.
+  // ============================================================
+  heading('recording what people typed');
+
+  // Recording happens in handleNextQuestion, which is wired to the SCORES
+  // screen's action button — not the reveal screen's, which only moves on to
+  // the scoreboard.
+  //
+  // Driven by whatever screen the host is actually on rather than a fixed
+  // number of clicks: phases arrive over Realtime and a counted sequence
+  // desynchronises, then reports its own impatience as a bug.
+  const advance = async (rounds = 1) => {
+    for (let i = 0; i < rounds * 6; i++) {
+      const screen = await activeScreen(host);
+      if (screen === 'reveal-screen') await clickIfReady(host, '#btn-next-question');
+      else if (screen === 'scores-screen') await clickIfReady(host, '#btn-scores-action');
+      else if (screen === 'question-screen') break;
+      await host.page.waitForTimeout(1200);
+    }
+  };
+  await advance();
+  await host.page.waitForTimeout(1500);
+
+  // Named explicitly: if these stop being called, question_stats and the
+  // answer tally both go quietly empty, which is how question_stats came to
+  // hold nothing at all on the live database for months.
+  const rpcOps = new Set(table.store.log.filter(o => o.action === 'rpc').map(o => o.table));
+  note(`rpc calls seen: ${JSON.stringify([...rpcOps])}`);
+  if (!rpcOps.has('record_question_outcome')) {
+    problems.push('record_question_outcome was never called — question performance is not being recorded');
+  }
+  if (!rpcOps.has('record_answer_text')) {
+    problems.push('record_answer_text was never called — nothing is recording what players typed');
+  }
+  const tally = table.store.table('answer_tally');
+  note(`answer_tally: ${JSON.stringify(tally.map(t => `${t.answer_shown} x${t.times_given}`))}`);
+  if (tally.length === 0) {
+    problems.push('nothing was recorded about what players typed');
+  }
+  if (!tally.some(t => t.answer_shown === TYPED)) {
+    problems.push('the typed-but-unsubmitted answer was not counted in what people typed');
+  }
+  // A blank is somebody running out of time and says nothing about the
+  // question; counting it would bury the real answers underneath it.
+  if (tally.some(t => !String(t.answer_shown).trim())) {
+    problems.push('a blank answer was recorded as if it were an answer');
+  }
+
+  // Now the bot rule. There are no bots yet, so a real player is flagged as
+  // one on the host's side — which is exactly what the guard reads. This pins
+  // it so it cannot be quietly dropped when bots do arrive.
+  heading('a bot answer is never counted');
+  const BOT_TEXT = 'this came from a bot and must not be counted';
+  await host.page.evaluate(name => {
+    const st = window.__state;
+    const p = (st?.players || []).find(p => p.display_name === name);
+    if (p) p.is_bot = true;
+  }, 'Bob').catch(() => {});
+
+  const bobInput2 = bob.page.locator('#answer-input');
+  if (await bobInput2.isVisible().catch(() => false)) {
+    const w = bob.page.locator('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first();
+    if (await w.isVisible().catch(() => false)) await w.click().catch(() => {});
+    await bobInput2.fill(BOT_TEXT).catch(() => {});
+    await clickIfReady(bob, '#btn-submit-answer');
+  }
+  const hostInput2 = host.page.locator('#answer-input');
+  if (await hostInput2.isVisible().catch(() => false)) {
+    const w = host.page.locator('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first();
+    if (await w.isVisible().catch(() => false)) await w.click().catch(() => {});
+    await hostInput2.fill('a real human answer').catch(() => {});
+    await clickIfReady(host, '#btn-submit-answer');
+  }
+  await host.page.waitForTimeout(2500);
+  await advance();
+  await host.page.waitForTimeout(1500);
+
+  const tally2 = table.store.table('answer_tally');
+  note(`after the bot round: ${JSON.stringify(tally2.map(t => t.answer_shown))}`);
+  if (tally2.some(t => t.answer_shown === BOT_TEXT)) {
+    problems.push('a bot answer was recorded in what people typed — this data would be partly an invented number');
+  }
+  if (!tally2.some(t => t.answer_shown === 'a real human answer')) {
+    problems.push('the human answer in that round was not recorded, so the bot guard is excluding too much');
+  }
+
   for (const r of [host, bob]) {
     const real = r.consoleErrors.filter(e =>
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
