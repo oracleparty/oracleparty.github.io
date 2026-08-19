@@ -32,7 +32,7 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
+import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows } from './titles.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode } from './categories.js';
 
 // ============================================
@@ -237,7 +237,9 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     // Compute aggregate stats
     let totalGames = 0, totalWins = 0, totalAnswered = 0, totalCorrect = 0;
     let bestCat = null, bestAcc = 0;
-    for (const s of stats) {
+    // Rollups only. The view also returns a row per subcategory, and the
+    // rollup already contains them — see categoryRollupRows.
+    for (const s of categoryRollupRows(stats)) {
       totalGames += s.games_played || 0;
       totalWins += s.wins || 0;
       totalAnswered += s.questions_answered || 0;
@@ -704,7 +706,10 @@ export async function initProfilePage() {
   // Stats summary
   let totalGames = 0, totalWins = 0, totalAnswered = 0, totalCorrect = 0;
   let strongCat = null, strongAcc = 0, weakCat = null, weakAcc = 1;
-  for (const s of stats) {
+  // Rollups only — see categoryRollupRows. This also fixes "Strongest" and
+  // "Weakest", which could otherwise name a category while reporting the
+  // accuracy of one narrow subcategory inside it.
+  for (const s of categoryRollupRows(stats)) {
     totalGames += s.games_played || 0;
     totalWins += s.wins || 0;
     totalAnswered += s.questions_answered || 0;

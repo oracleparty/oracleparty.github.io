@@ -6,6 +6,7 @@ import {
   evaluateUnlocks,
   hasReachedApprentice,
   buildDisplayTitle,
+  categoryRollupRows,
 } from '../js/titles.js';
 
 // ============================================
@@ -335,5 +336,74 @@ describe('TITLE_WORDS structure', () => {
         expect(RARITY_CELEBRATION[r], `missing celebration for ${r}`).toBeDefined();
       }
     }
+  });
+});
+
+
+// ============================================
+// categoryRollupRows — the double-count guard
+//
+// player_stats_computed returns every number twice: a row per subcategory AND
+// a rollup row (subcategory null) that already contains their sum. Anything
+// that ADDS rows up has to take the rollups only.
+//
+// This went unnoticed for as long as it did because the view did not exist on
+// the live database, so every one of those sums had only ever run over an
+// empty array (CLAUDE.md #8).
+// ============================================
+describe('categoryRollupRows', () => {
+  const rows = [
+    { category: 'history', subcategory: null, questions_answered: 100, correct_answers: 80, games_played: 10, wins: 4 },
+    { category: 'history', subcategory: 'ancient', questions_answered: 60, correct_answers: 50, games_played: 6, wins: 3 },
+    { category: 'history', subcategory: 'medieval', questions_answered: 40, correct_answers: 30, games_played: 4, wins: 1 },
+  ];
+
+  it('keeps only the category-level rows', () => {
+    expect(categoryRollupRows(rows).map(r => r.subcategory)).toEqual([null]);
+  });
+
+  it('treats undefined and empty-string subcategories as rollups', () => {
+    // A row from a client-side fallback may carry no subcategory key at all.
+    expect(categoryRollupRows([{ category: 'x' }, { category: 'y', subcategory: '' }])).toHaveLength(2);
+  });
+
+  it('survives null and undefined input', () => {
+    expect(categoryRollupRows(null)).toEqual([]);
+    expect(categoryRollupRows(undefined)).toEqual([]);
+  });
+
+  it('the rollup alone is the true total — summing every row doubles it', () => {
+    const rollupOnly = categoryRollupRows(rows)
+      .reduce((n, r) => n + r.games_played, 0);
+    const everyRow = rows.reduce((n, r) => n + r.games_played, 0);
+    expect(rollupOnly).toBe(10);
+    expect(everyRow).toBe(20);   // what the five broken call sites were computing
+  });
+});
+
+// ============================================
+// Title unlocks must count games once, not twice
+// ============================================
+describe('evaluateUnlocks play-count milestones', () => {
+  // 'fearless' unlocks at 50 games played.
+  const gamesRow = (subcategory, games) =>
+    ({ category: 'history', subcategory, questions_answered: 10, correct_answers: 5, games_played: games, wins: 0 });
+
+  it('does not unlock a 50-game title on 30 real games', () => {
+    // 30 real games. Counting the subcategory rows as well would reach 60 and
+    // hand out a title the player has not earned.
+    const stats = [
+      gamesRow(null, 30),
+      gamesRow('ancient', 20),
+      gamesRow('medieval', 10),
+    ];
+    const changes = evaluateUnlocks(stats, {}, [], { hour: 12 });
+    expect(changes.find(c => c.wordId === 'fearless')).toBeUndefined();
+  });
+
+  it('still unlocks it once the rollup itself reaches the threshold', () => {
+    const stats = [gamesRow(null, 50), gamesRow('ancient', 50)];
+    const changes = evaluateUnlocks(stats, {}, [], { hour: 12 });
+    expect(changes.find(c => c.wordId === 'fearless')).toBeDefined();
   });
 });

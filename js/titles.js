@@ -316,11 +316,36 @@ export function computeCategoryTiers(stats) {
 }
 
 /**
+ * The category-level rows of player_stats_computed, and nothing else.
+ *
+ * THE VIEW RETURNS EACH NUMBER TWICE. For one player in one category it emits
+ * a row per subcategory AND a rollup row with subcategory NULL that already
+ * contains the sum of them. Anything that ADDS rows up must take the rollups
+ * only; anything that reads a single row (a tier, a title, one category's
+ * accuracy) can use either.
+ *
+ * Five places summed every row and so counted most things twice — games,
+ * wins, questions and correct answers alike. Nothing caught it because the
+ * view did not exist on the live database until 2026-08-19 (CLAUDE.md #8), so
+ * every one of those sums had only ever run over an empty array.
+ *
+ * The inflation is NOT a clean factor of two: a question with no subcategory
+ * is counted once and one with a subcategory twice, so it varies per player
+ * and reorders a leaderboard rather than just scaling it.
+ */
+export function categoryRollupRows(stats) {
+  return (stats || []).filter(s => !s.subcategory);
+}
+
+/**
  * Compute aggregate stats from player_stats rows.
+ *
+ * Rollups only — see categoryRollupRows. Summing every row unlocked
+ * play-count titles at roughly half the games they ask for.
  */
 function computeAggregateStats(stats) {
   let totalGames = 0, totalWins = 0;
-  for (const s of (stats || [])) {
+  for (const s of categoryRollupRows(stats)) {
     totalGames += s.games_played || 0;
     totalWins += s.wins || 0;
   }

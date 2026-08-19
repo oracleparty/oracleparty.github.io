@@ -251,9 +251,14 @@ export async function upsertTitleUnlock(userId, wordId, level) {
  * Reads from computed view. Client-side groups by user_id.
  */
 export async function fetchAllPlayerStatsForLeaderboard() {
+  // Category rollups only. The view also emits a row per subcategory, and the
+  // rollup already contains them, so fetching both made every leaderboard
+  // total count most things twice — and unevenly, because a question with no
+  // subcategory is counted once. See categoryRollupRows in js/titles.js.
   const { data, error } = await supabase
     .from('player_stats_computed')
-    .select('user_id, category, questions_answered, correct_answers, games_played, wins');
+    .select('user_id, category, questions_answered, correct_answers, games_played, wins')
+    .is('subcategory', null);
   if (error) { logger.error('Supabase', 'fetchAllPlayerStatsForLeaderboard failed', error); return []; }
   return data || [];
 }

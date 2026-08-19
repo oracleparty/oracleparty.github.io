@@ -324,6 +324,36 @@ each missing object to the features it takes down, so the next one of these is
 one line of output rather than a chain of inference. As of 2026-08-19 that
 section lists only `get_mastery_counts`, which is harmless and says so.
 
+**Restoring the view exposed a second bug underneath it, in the same hour.**
+`player_stats_computed` returns every number **twice**: for one player in one
+category it emits a row per subcategory AND a rollup row (`subcategory` null)
+that already contains their sum. Five places summed every row —
+
+| Site | Effect |
+|---|---|
+| `loadGlobalTab` in `leaderboard.js` | global ranking on doubled totals |
+| `loadFriendsTab` in `leaderboard.js` | same, for friends |
+| the profile card in `profile.js` | games, wins, questions all doubled |
+| the profile page summary in `profile.js` | same, plus Strongest/Weakest could name a category while reporting one subcategory's accuracy |
+| `computeAggregateStats` in `titles.js` | **play-count titles unlock at half the games they ask for** |
+
+The rule is now one exported function, `categoryRollupRows` in `titles.js`:
+**anything that adds rows up takes the rollups only; anything that reads a
+single row — a tier, a title, one category's accuracy — can use either.**
+`fetchAllPlayerStatsForLeaderboard` filters at the query instead, since it has
+no other caller. The per-category breakdown in `profile.js` was always right;
+it had `stats.filter(s => !s.subcategory)` inline, which is what established
+the intended meaning.
+
+Nothing caught this for months because **the sums had only ever run over an
+empty array.** A missing dependency does not just disable the feature that
+needs it — it makes every bug downstream of that feature untestable and
+invisible, and they all arrive at once on the day it is restored. Expect more
+of this from the leaderboard, the profile and the title system specifically:
+none of that code has ever processed a non-empty result on the live site.
+`tests/titles.test.js` now fails if the double count returns (verified by
+removing the fix).
+
 ---
 
 ## File Structure
