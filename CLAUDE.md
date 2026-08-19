@@ -417,6 +417,19 @@ still be an unvoted level — that is the deliberate last-second switch.
   targets. Ask for a screen before working on this — it is not a licence to
   restyle working screens on a hunch.
 
+  One measured target exists: the question screen's content stops at 448px
+  whatever the phone, leaving **47% of an iPhone 14 empty below the answer
+  box** (33% on a smaller SE). The proposal is to fill it only AFTER the player
+  submits — avatars lighting up as others answer, and where you stand — so the
+  screen stays calm while you are still thinking and becomes a waiting room
+  once you are done. Not agreed yet.
+
+- **Bots.** Designed and agreed, not built. See `docs/BOTS.md`. The key fact
+  that makes it cheap: 80% of questions still carry their original
+  multiple-choice distractors in `questions.incorrect_answers`, a column
+  nothing in `js/` reads any more. A bot answering wrongly picks one, so no
+  wrong answer is ever generated.
+
 ## Database Tables
 
 `rooms`, `players`, `answers`, `chat_messages`, `chat_archive`, `questions`,
