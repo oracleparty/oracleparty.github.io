@@ -384,7 +384,7 @@ async function initHostGame() {
 
     // Rebuild used wagers from existing answers (clear first to prevent stale data)
     const allAnswers = await fetchAllAnswers(state.room.id);
-    const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+    const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
     state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
     state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
     // Recover final wager value if locked in
@@ -569,7 +569,7 @@ async function applyGameState(roomData) {
   // Rebuild disqualified questions and used wagers from existing answers.
   // Disq must come first so usedWagers can correctly skip wagers from disqualified Qs.
   const allAnswers = await fetchAllAnswers(state.room.id);
-  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
+  const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
   state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
   state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
 

@@ -441,7 +441,11 @@ export async function handlePhaseTransition(phase) {
     if (state.questionStartedAt) {
       const qNum = state.currentQuestion;
       fetchAnswersForQuestion(state.room.id, qNum).then(answers => {
-        const myAnswer = answers.find(a => a.player_id === state.room.playerId);
+        // String() on both sides. Everywhere else in this file compares ids
+        // that way, and here a type mismatch would not throw — it would quietly
+        // find nothing, show a returning player an empty question box, and let
+        // the reveal treat them as having never answered.
+        const myAnswer = answers.find(a => String(a.player_id) === String(state.room.playerId));
         if (myAnswer) {
           // Already submitted — go straight to reveal
           state.hasSubmitted = true;

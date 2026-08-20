@@ -154,6 +154,51 @@ try {
   await host.page.waitForTimeout(1500);
   note(`answers stored: ${table.store.table('answers').length}`);
 
+  // ------------------------------------------------------------
+  // A RE-RENDER MUST NOT ERASE AN ANSWER ALREADY SENT
+  //
+  // From a playtest: "someone put an answer in and then it disappeared to no
+  // answer -- seemed to recur for him and disappear on reveal".
+  //
+  // Realtime re-calls showQuestionScreen for the SAME question, and it used to
+  // empty the answer box and reset hasSubmitted every time. The reveal then
+  // auto-submits "whatever is currently typed" for anyone it believes has not
+  // answered — through an UPSERT, which cheerfully replaced a real answer with
+  // an empty string. The player watched their own words become "No answer".
+  //
+  // Forced explicitly rather than hoped for: whether a duplicate render happens
+  // is a matter of Realtime timing, and a test that waits for one is measuring
+  // the harness's luck. This calls the function the way Realtime would.
+  // ------------------------------------------------------------
+  heading('a re-render of the same question keeps the answer');
+
+  const bobPlayerId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
+  const storedBefore = table.store.table('answers')
+    .find(a => String(a.player_id) === String(bobPlayerId) && a.question_number === 0);
+  note(`Bob's stored answer before the re-render: ${JSON.stringify(storedBefore?.submitted_answer)}`);
+
+  const rerenderErr = await bob.page.evaluate(async () => {
+    try {
+      const m = await import('/js/game/question.js');
+      if (typeof m.showQuestionScreen !== 'function') return 'showQuestionScreen is not exported';
+      const before = window.__state.hasSubmitted;
+      m.showQuestionScreen();
+      return before === true && window.__state.hasSubmitted !== true
+        ? 'RESET'
+        : null;
+    } catch (e) { return e.message; }
+  }).catch(e => e.message);
+
+  if (rerenderErr === 'RESET') {
+    problems.push('re-rendering the same question reset hasSubmitted, so the reveal will auto-submit a blank over an answer the player already sent');
+  } else if (rerenderErr) {
+    problems.push(`could not exercise the re-render: ${rerenderErr}`);
+  } else {
+    await bob.page.waitForTimeout(600);
+    const typed = await bob.page.inputValue('#answer-input').catch(() => '(no input)');
+    note(`Bob's answer box after the re-render: ${JSON.stringify(typed)}`);
+  }
+
   // Host reveals. #btn-next-question is dual-purpose on the reveal screen:
   // the first press runs doReveal (judges, records history, shows the host
   // toggles and the disqualify button); a later press moves to the scoreboard.
@@ -164,6 +209,15 @@ try {
   note(`host is on ${await activeScreen(host)} before revealing`);
   await clickIfReady(host, '#btn-next-question');
   await host.page.waitForTimeout(2500);
+
+  // The answer itself must have survived the re-render AND the reveal's
+  // auto-submit pass. This is the assertion the playtest report describes.
+  const storedAfter = table.store.table('answers')
+    .find(a => String(a.player_id) === String(bobPlayerId) && a.question_number === 0);
+  note(`Bob's stored answer after the reveal: ${JSON.stringify(storedAfter?.submitted_answer)}`);
+  if (storedBefore && storedAfter?.submitted_answer !== storedBefore.submitted_answer) {
+    problems.push(`a real answer was replaced during the reveal — ${JSON.stringify(storedBefore.submitted_answer)} became ${JSON.stringify(storedAfter?.submitted_answer)}`);
+  }
 
   let aliceRow = historyFor(table.store, host.userId, qId);
   let bobRow = historyFor(table.store, bob.userId, qId);

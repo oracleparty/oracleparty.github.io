@@ -49,14 +49,29 @@ export function showQuestionScreen() {
 
   $('#question-text').textContent = getQuestionText(q);
 
-  $('#answer-form').classList.remove('answer-input--submitted');
-  $('#answer-input').value = '';
-  $('#answer-input').disabled = false;
-  $('#btn-submit-answer').disabled = true;
-  $('#submit-status').classList.add('hidden');
+  // Is this a genuinely NEW question, or a re-render of the one already on
+  // screen? Realtime events re-call this function for the same question — the
+  // wager reset below has been guarded against exactly that for a while, and
+  // the answer box and hasSubmitted never were. So a re-render emptied the
+  // input and marked the player as not having submitted, and the reveal's
+  // auto-submit then wrote a blank over the answer they had really sent.
+  // Reported from a playtest: "someone put an answer in and then it disappeared
+  // to no answer ... disappear on reveal".
+  const sameQuestion = state._renderedQuestion === state.currentQuestion
+    && state._renderedFinalRound === !!state.isFinalWagerRound;
+  state._renderedQuestion = state.currentQuestion;
+  state._renderedFinalRound = !!state.isFinalWagerRound;
+
+  if (!sameQuestion) {
+    $('#answer-form').classList.remove('answer-input--submitted');
+    $('#answer-input').value = '';
+    $('#answer-input').disabled = false;
+    $('#btn-submit-answer').disabled = true;
+    $('#submit-status').classList.add('hidden');
+    state.hasSubmitted = false;
+  }
   $('#wager-error').textContent = '';
 
-  state.hasSubmitted = false;
   state.onRevealScreen = false;
   state.resultsRevealed = false;
   state.timerExpired = false;
@@ -481,16 +496,35 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   }
   const scoreEarned = computeScoreEarned(isCorrect, wager, state.isFinalWagerRound);
 
-  const submitResult = await submitAnswer({
-    roomId: state.room.id,
-    playerId: state.room.playerId,
-    questionNumber: state.currentQuestion,
-    questionId: q.id,
-    wager,
-    submittedAnswer: answer,
-    isCorrect,
-    scoreEarned
-  });
+  // An AUTO-submitted blank must never overwrite an answer that is already
+  // there. submitAnswer is an upsert, so it happily replaces a real answer with
+  // an empty string — which is how a player reported typing an answer and
+  // watching it turn into "No answer" at the reveal. Any path that resets
+  // state.hasSubmitted while their answer is already in the database (a
+  // refresh, a re-render of the same question) turns the reveal's tidy-up pass
+  // into an eraser. insertBlankAnswers is ON CONFLICT DO NOTHING and is exactly
+  // the right instrument; it already exists for the host's version of this.
+  //
+  // Deliberately NOT applied to a deliberate submit or to auto-submitted TEXT:
+  // both are the player saying something, and the last thing they said wins.
+  const submitResult = (autoSubmit && isBlank)
+    ? await insertBlankAnswers([{
+        roomId: state.room.id,
+        playerId: state.room.playerId,
+        questionNumber: state.currentQuestion,
+        questionId: q.id,
+        wager
+      }]).then(() => ({ data: null, error: null }), error => ({ data: null, error }))
+    : await submitAnswer({
+        roomId: state.room.id,
+        playerId: state.room.playerId,
+        questionNumber: state.currentQuestion,
+        questionId: q.id,
+        wager,
+        submittedAnswer: answer,
+        isCorrect,
+        scoreEarned
+      });
 
   // If the DB write failed (network drop mid-submit), revert local state and
   // allow retry — without this revert, the player thinks they submitted, gets

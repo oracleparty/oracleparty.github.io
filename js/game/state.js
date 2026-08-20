@@ -43,6 +43,14 @@ export const state = {
   // the game — a missed question costs a wager and nothing more.
   finalWagerSelected: false,
   finalWagerTimerId: null,
+  // Which question the question screen is currently showing. Realtime re-calls
+  // showQuestionScreen for the SAME question, and without knowing that, it
+  // cleared the answer box and reset hasSubmitted every time — so the reveal's
+  // auto-submit wrote a blank over an answer the player had really sent.
+  // null rather than -1: question 0 is a real question and -1 would be a magic
+  // number pretending not to be one.
+  _renderedQuestion: null,
+  _renderedFinalRound: false,
   difficultyVoteLocked: false,
   difficultyVotes: {},       // { playerId: 'easy'|'medium'|'hard' }
   votedDifficulty: null,     // consensus result
