@@ -498,27 +498,26 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
  * the one being flipped, so it is enough to know which way to move
  * times_correct. No row means nothing was recorded to amend.
  */
-export async function amendQuestionHistory(userId, questionId, isCorrect) {
-  const { data: existing } = await supabase
-    .from('question_history')
-    .select('id, times_seen, times_correct, last_correct')
-    .eq('user_id', userId)
-    .eq('question_id', questionId)
-    .maybeSingle();
-
-  if (!existing) return;
-  if (!!existing.last_correct === !!isCorrect) return;
-
-  const delta = isCorrect ? 1 : -1;
-  // Clamped because a row can be amended twice (host flips, then flips back)
-  // and because these counters are the denominator of every accuracy in the
-  // app — a negative one would poison the category, not just the question.
-  const nextCorrect = Math.max(0, Math.min(existing.times_seen, existing.times_correct + delta));
-
-  const { error } = await supabase.from('question_history').update({
-    times_correct: nextCorrect,
-    last_correct: !!isCorrect
-  }).eq('id', existing.id);
+export async function amendQuestionHistory(userId, questionId, isCorrect, roomId) {
+  // Through the database, NOT a direct UPDATE. question_history is scoped to
+  // its owner (migration 011: UPDATE USING user_id = auth.uid()), so a host
+  // correcting somebody else's answer was silently refused — zero rows, no
+  // error. The correction landed on the host's own row and nowhere else.
+  //
+  // amend_question_history (migration 041) runs as the table owner and checks
+  // that the player really answered that question in that room before it
+  // touches anything. roomId is therefore required; without it the guard has
+  // nothing to verify and the function returns without doing anything.
+  if (!userId || !questionId || !roomId) {
+    logger.warn('Supabase', 'amendQuestionHistory called without room context', { userId, questionId, roomId });
+    return;
+  }
+  const { error } = await supabase.rpc('amend_question_history', {
+    p_user_id: userId,
+    p_question_id: questionId,
+    p_room_id: roomId,
+    p_is_correct: !!isCorrect
+  });
   if (error) logger.error('Supabase', 'amendQuestionHistory failed', error);
 }
 
@@ -537,30 +536,20 @@ export async function amendQuestionHistory(userId, questionId, isCorrect) {
  * falls back to "have they ever got this right" — the true previous verdict
  * is not stored anywhere, and this is the closest honest answer.
  */
-export async function revokeQuestionHistory(userId, questionId) {
-  const { data: existing } = await supabase
-    .from('question_history')
-    .select('id, times_seen, times_correct, last_correct')
-    .eq('user_id', userId)
-    .eq('question_id', questionId)
-    .maybeSingle();
-
-  if (!existing) return;
-
-  const nextSeen = existing.times_seen - 1;
-  const nextCorrect = Math.max(0, existing.times_correct - (existing.last_correct ? 1 : 0));
-
-  if (nextSeen <= 0) {
-    const { error } = await supabase.from('question_history').delete().eq('id', existing.id);
-    if (error) logger.error('Supabase', 'revokeQuestionHistory delete failed', error);
+export async function revokeQuestionHistory(userId, questionId, roomId) {
+  // Same reason as amendQuestionHistory, plus one of its own: question_history
+  // has NO DELETE policy for anybody, so the "this was their only sighting,
+  // remove the row" branch could never work from a client at all. The function
+  // owns the table and can.
+  if (!userId || !questionId || !roomId) {
+    logger.warn('Supabase', 'revokeQuestionHistory called without room context', { userId, questionId, roomId });
     return;
   }
-
-  const { error } = await supabase.from('question_history').update({
-    times_seen: nextSeen,
-    times_correct: nextCorrect,
-    last_correct: nextCorrect > 0
-  }).eq('id', existing.id);
+  const { error } = await supabase.rpc('revoke_question_history', {
+    p_user_id: userId,
+    p_question_id: questionId,
+    p_room_id: roomId
+  });
   if (error) logger.error('Supabase', 'revokeQuestionHistory failed', error);
 }
 

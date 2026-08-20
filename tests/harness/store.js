@@ -416,6 +416,41 @@ export class FakeStore {
       return out;
     }
 
+    // Mirrors migration 041. The real ones are SECURITY DEFINER because
+    // question_history is scoped to its owner, so a host correcting somebody
+    // else's answer is refused outright — the whole reason these exist. The
+    // fake store has no RLS, so what a scenario can prove here is that the app
+    // GOES THROUGH the function rather than writing the table directly; the
+    // permission itself is the migration's business.
+    if (name === 'amend_question_history') {
+      const rows = this.table('question_history');
+      const row = rows.find(r =>
+        String(r.user_id) === String(args?.p_user_id) &&
+        String(r.question_id) === String(args?.p_question_id));
+      if (!row) return null;
+      if (!!row.last_correct === !!args?.p_is_correct) return null;
+      const delta = args?.p_is_correct ? 1 : -1;
+      row.times_correct = Math.max(0, Math.min(row.times_seen, (row.times_correct || 0) + delta));
+      row.last_correct = !!args?.p_is_correct;
+      return null;
+    }
+
+    if (name === 'revoke_question_history') {
+      const rows = this.table('question_history');
+      const i = rows.findIndex(r =>
+        String(r.user_id) === String(args?.p_user_id) &&
+        String(r.question_id) === String(args?.p_question_id));
+      if (i === -1) return null;
+      const row = rows[i];
+      const nextSeen = (row.times_seen || 0) - 1;
+      const nextCorrect = Math.max(0, (row.times_correct || 0) - (row.last_correct ? 1 : 0));
+      if (nextSeen <= 0) { rows.splice(i, 1); return null; }
+      row.times_seen = nextSeen;
+      row.times_correct = nextCorrect;
+      row.last_correct = nextCorrect > 0;
+      return null;
+    }
+
     // Mirrors migration 025: one row per question, counting how it performed.
     // Recorded here so a scenario can assert what is NOT counted — a bot's
     // answers must never reach this table, because they come from a chosen

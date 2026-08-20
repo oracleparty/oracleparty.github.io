@@ -923,17 +923,24 @@ consequences, none of which error:
 So a host's correction lands on their own row and quietly does nothing for
 everyone else. The scenario passes because the fake store has no RLS.
 
-**This is also the answer to "should statistics be per-device?".** They are,
-and it is not a design decision — it is this policy, never revisited. Each
-player's own browser is the only thing that can write their history, so a
-phone that is asleep at the reveal records nothing, and a phone that is awake
-records a miss. The same event, two different outcomes, decided by hardware.
+**FIXED for the corrections, by migration 041.** `amend_question_history` and
+`revoke_question_history` are SECURITY DEFINER, so the table stays shut to
+clients and a host's correction reaches the player it is about. The guard could
+not be "the caller must be the host" — a host is very often a guest, and a
+guest has no `auth.uid()` — so it is about the CLAIM instead: the correction is
+applied only if that player really answered that question in that room. You
+cannot reach into a stranger's history from nowhere. Somebody already in the
+room could misuse it, but they can already edit the scoreboard, so it opens
+nothing that was closed. **Both calls now require a `roomId`** and do nothing
+without one; `scenario-accuracy` fails by name if a call site drops it.
 
-The fix is the pattern `record_question_outcome` already uses: a SECURITY
-DEFINER function that takes the whole round and writes every player's row,
-called once by the host. It would also make absence and distraction consistent,
-because one writer would decide both. **Not built — it needs the owner's
-decision on whether an absent player's blank should count.**
+**Still per-device: the RECORDING of a round.** `doReveal` writes the player's
+own row from the player's own browser, so a phone asleep at the reveal records
+nothing and a phone awake records a miss — the same event, two outcomes,
+decided by hardware. Making that consistent needs one more DEFINER function
+that records the whole round for everybody, called once by the host. **Not
+built — it needs the owner's decision on whether an absent player's blank
+should count.**
 
 ## Proficiency counts questions; volume counts attempts
 

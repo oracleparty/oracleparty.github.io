@@ -300,6 +300,47 @@ try {
   }
 
   // ------------------------------------------------------------
+  // THE CORRECTIONS MUST GO THROUGH THE DATABASE FUNCTION
+  //
+  // question_history is scoped to its owner — migration 011 grants UPDATE only
+  // where user_id = auth.uid(), and grants no DELETE to anybody. So a host
+  // correcting somebody ELSE'S answer with a direct write is silently refused:
+  // zero rows, no error. It lands on the host's own row and nowhere else, and
+  // the disqualify path cannot delete a row even for the caller.
+  //
+  // The fake store has no RLS, so it cannot reproduce the refusal — which is
+  // exactly why this bug survived a passing scenario. What it CAN establish is
+  // that the app calls amend_question_history / revoke_question_history rather
+  // than touching the table, and that is the thing a future edit would undo.
+  // ------------------------------------------------------------
+  heading('corrections go through the database, not the table');
+  {
+    const rpcNames = table.store.log
+      .filter(o => o.action === 'rpc')
+      .map(o => o.table);
+    note(`rpc calls seen: ${JSON.stringify([...new Set(rpcNames)])}`);
+
+    if (!rpcNames.includes('amend_question_history')) {
+      problems.push('a host override did not call amend_question_history — a direct write here is refused for every player but the host, silently');
+    }
+    if (!rpcNames.includes('revoke_question_history')) {
+      problems.push('a disqualification did not call revoke_question_history — a direct write here is refused for every player but the host, and cannot delete a row at all');
+    }
+
+    // Every RPC must carry the room, because that is the only thing the
+    // function can check: it refuses to touch a history row unless that player
+    // really answered that question in that room. Without it the guard has
+    // nothing to verify and the correction does nothing.
+    const missingRoom = table.store.log.filter(o =>
+      o.action === 'rpc' &&
+      (o.table === 'amend_question_history' || o.table === 'revoke_question_history') &&
+      !o.payload?.p_room_id);
+    if (missingRoom.length) {
+      problems.push(`${missingRoom.length} correction call(s) carried no room id — the database guard cannot verify the round happened and refuses them all`);
+    }
+  }
+
+  // ------------------------------------------------------------
   // 3. A disqualified round is not evidence about the question either.
   // ------------------------------------------------------------
   heading('question health after a disqualified round');

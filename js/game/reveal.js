@@ -503,7 +503,7 @@ export async function handleJudgmentOverride(e) {
   // mind is not a second sighting of the question. See amendQuestionHistory.
   const player = state.players.find(p => p.id === answer.player_id);
   if (player?.user_id && answer.question_id) {
-    amendQuestionHistory(player.user_id, answer.question_id, newCorrect);
+    amendQuestionHistory(player.user_id, answer.question_id, newCorrect, state.room.id);
   }
 }
 
@@ -557,7 +557,7 @@ async function handleDisqualifyRound() {
     if (answer.question_id) {
       const player = state.players.find(p => p.id === answer.player_id);
       if (player?.user_id) {
-        revokeQuestionHistory(player.user_id, answer.question_id);
+        revokeQuestionHistory(player.user_id, answer.question_id, state.room.id);
       }
     }
   }

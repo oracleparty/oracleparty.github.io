@@ -950,7 +950,7 @@ async function openScoreEditQuestion(questionNumber) {
     // AMEND, not upsert — a retroactive correction is not a second attempt.
     const player = state.players.find(p => String(p.id) === String(answer.player_id));
     if (player?.user_id && answer.question_id) {
-      amendQuestionHistory(player.user_id, answer.question_id, newCorrect);
+      amendQuestionHistory(player.user_id, answer.question_id, newCorrect, state.room.id);
     }
 
     await updateScores();
@@ -1526,7 +1526,7 @@ async function handleReviewQuestions() {
         // AMEND, not upsert — a retroactive correction is not a second attempt.
         const player = state.players.find(p => String(p.id) === String(answer.player_id));
         if (player?.user_id && answer.question_id) {
-          amendQuestionHistory(player.user_id, answer.question_id, newCorrect);
+          amendQuestionHistory(player.user_id, answer.question_id, newCorrect, state.room.id);
         }
 
         showResultsScreen();
