@@ -82,6 +82,43 @@ describe('levenshteinDistance', () => {
 // ============================================
 // fuzzyMatch — Core Answer Judging
 // ============================================
+describe('fuzzyMatch — short answers are exact', () => {
+  // From a playtest: "for single letter answers like what letter yaddah yaddah
+  // it should be exact not fuzzy". It was worse than loose. The threshold had a
+  // Math.max(1, ...) floor, so a one-character answer allowed one edit — and
+  // one edit turns any letter into any other. A question asking which letter
+  // something begins with could not be got wrong by anybody.
+  //
+  // 415 tests passed both before and after the fix, so nothing here could have
+  // caught it. These are the cases that fail without it.
+  it('one letter accepts only that letter', () => {
+    expect(fuzzyMatch('A', 'A')).toBe(true);
+    expect(fuzzyMatch('a', 'A')).toBe(true);
+    for (const wrong of ['B', 'C', 'Z', 'Q']) {
+      expect(fuzzyMatch(wrong, 'A')).toBe(false);
+    }
+  });
+
+  it('two and three letter answers do not accept a near miss', () => {
+    expect(fuzzyMatch('cat', 'cat')).toBe(true);
+    expect(fuzzyMatch('bat', 'cat')).toBe(false);
+    expect(fuzzyMatch('cot', 'cat')).toBe(false);
+    expect(fuzzyMatch('ca', 'cat')).toBe(false);
+    expect(fuzzyMatch('up', 'us')).toBe(false);
+  });
+
+  it('four characters and up keep their typo tolerance', () => {
+    // The rule is one typo per four characters, and this is where it starts.
+    expect(fuzzyMatch('Ohao', 'Ohio')).toBe(true);
+    expect(fuzzyMatch('Napolean', 'Napoleon')).toBe(true);
+    expect(fuzzyMatch('Shakespere', 'Shakespeare')).toBe(true);
+  });
+
+  it('still rejects a different word of the same length', () => {
+    expect(fuzzyMatch('Idaho', 'Ohio')).toBe(false);
+  });
+});
+
 describe('fuzzyMatch', () => {
   describe('exact matches after normalization', () => {
     it('matches identical answers', () => {

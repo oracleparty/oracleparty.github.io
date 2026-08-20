@@ -398,6 +398,14 @@ async function initHostGame() {
       state.questionStartedAt = roomData.question_started_at;
     }
 
+    // Hydrate scores from the answers already in the database. Without this the
+    // host's own scoreboard reads all zeros after a refresh: line ~222 sets
+    // every score to 0 as a baseline, and only applyGameState — the NON-host
+    // reconnect path — ever recomputed them. Two paths doing the same job, one
+    // of which forgot half of it. Reported from a playtest as "upon players
+    // refreshing ... reset scores to zero also".
+    await updateScores();
+
     // If reconnecting to countdown, skip straight to question
     if (roomData.game_phase === 'countdown') {
       await updateGameState(state.room.id, { game_phase: 'question', current_question: 0 });

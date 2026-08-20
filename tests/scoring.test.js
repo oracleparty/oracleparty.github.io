@@ -155,9 +155,35 @@ describe('buildUsedWagersMap', () => {
     expect(map.has(20)).toBe(false);
   });
 
-  it('skips auto-submitted blanks (empty submitted_answer)', () => {
+  // This test used to assert the opposite, and the opposite was the bug.
+  //
+  // A missed round burns the player's lowest unused wager — the rule that makes
+  // going away neither cheaper nor dearer than being present and wrong. This
+  // function runs on every reconnect and decides which wagers a returning
+  // player is offered, so handing the blank's wager back let a refresh buy it
+  // twice and spend some other value twice over. Reported from a playtest as
+  // "upon players refreshing their bet values were reset".
+  //
+  // Skipping was right when the host wrote wager=1 for every non-submitter,
+  // because counting six identical 1s would have been nonsense. Since
+  // insertBlankAnswers began giving each player their OWN lowest unused value,
+  // the blank carries a real, distinct wager and skipping it loses information.
+  it('counts a blank answer — a missed round still spends a wager', () => {
     const answers = [
       { question_number: 0, wager: 1, is_correct: false, submitted_answer: '' },
+      { question_number: 1, wager: 2, is_correct: true,  submitted_answer: 'oslo' },
+    ];
+    const map = buildUsedWagersMap(answers, 5, new Set());
+    expect(map.has(1)).toBe(true);
+    expect(map.get(1)).toBe(false); // spent, and scored nothing
+    expect(map.has(2)).toBe(true);
+    // The next wager offered must be 3, not 1 — 1 is gone.
+    expect(findNextAvailableWager(map, 5)).toBe(3);
+  });
+
+  it('still skips the final-wager placeholder, which is not an answer', () => {
+    const answers = [
+      { question_number: 0, wager: 1, is_correct: false, submitted_answer: '__WAGER_LOCKED__' },
       { question_number: 1, wager: 2, is_correct: true,  submitted_answer: 'oslo' },
     ];
     const map = buildUsedWagersMap(answers, 5, new Set());

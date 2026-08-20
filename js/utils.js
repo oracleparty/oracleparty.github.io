@@ -406,8 +406,19 @@ export function fuzzyMatch(submitted, correct, alternates = []) {
       if (!digitSequencesMatch(normalizedSubmitted, normalizedCandidate)) continue;
     }
 
-    // Levenshtein distance with threshold (word-part tolerance only)
-    const threshold = Math.max(1, Math.floor(normalizedCandidate.length * FUZZY_MATCH_THRESHOLD));
+    // Levenshtein distance with threshold. NO Math.max(1, ...) floor: the rule
+    // is "roughly one typo per four characters", and a three-letter word does
+    // not have four characters. The floor overrode the very rule it was
+    // documented as implementing, and at short lengths it did not soften the
+    // matching, it removed it — a one-letter answer allowed one edit, so EVERY
+    // single letter was accepted for every other. A question asking which
+    // letter something starts with could not be got wrong. "cat" took "bat",
+    // "US" took "up".
+    //
+    // Below four characters this is now exact-after-normalisation, which is
+    // what a player typing one letter means. From four up it is unchanged:
+    // 4-7 chars tolerate one edit, 8-11 two.
+    const threshold = Math.floor(normalizedCandidate.length * FUZZY_MATCH_THRESHOLD);
     const distance = levenshteinDistance(normalizedSubmitted, normalizedCandidate);
     if (distance <= threshold) return true;
 
@@ -419,7 +430,11 @@ export function fuzzyMatch(submitted, correct, alternates = []) {
       for (const word of words) {
         if (word.length > MIN_WORD_LENGTH_LASTNAME) {
           const wordDist = levenshteinDistance(normalizedSubmitted, word);
-          const wordThreshold = Math.max(1, Math.floor(word.length * FUZZY_MATCH_THRESHOLD));
+          // Same reasoning as above. Harmless in practice here, since this
+          // branch already requires the word to be longer than
+          // MIN_WORD_LENGTH_LASTNAME, but two thresholds meant to express the
+          // same rule should not be written two different ways.
+          const wordThreshold = Math.floor(word.length * FUZZY_MATCH_THRESHOLD);
           if (wordDist <= wordThreshold) return true;
         }
       }

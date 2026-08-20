@@ -383,6 +383,28 @@ async function handleTimerExpired() {
       }
       // Never overwrites a real answer — see insertBlankAnswers.
       if (blanks.length) await insertBlankAnswers(blanks);
+
+      // The final round needs a second pass, because insertBlankAnswers cannot
+      // reach these rows. Everyone who locked a wager already HAS an answer row
+      // holding __WAGER_LOCKED__, so the insert above skips them as duplicates
+      // and their locked number stays attached to a question they never
+      // answered. The final wager is the only round that subtracts, so leaving
+      // 20 there is the difference between "scored nothing" and "lost 20 for
+      // being away". A blank answer bets 0, whatever was chosen.
+      if (state.isFinalWagerRound) {
+        const unanswered = freshAnswers.filter(a =>
+          (a.submitted_answer || '').trim() === '__WAGER_LOCKED__');
+        await Promise.all(unanswered.map(a => submitAnswer({
+          roomId: state.room.id,
+          playerId: a.player_id,
+          questionNumber: state.currentQuestion,
+          questionId: q.id,
+          wager: 0,
+          submittedAnswer: '',
+          isCorrect: false,
+          scoreEarned: 0
+        })));
+      }
     }
     // Broadcast reveal phase so all clients transition
     updateGameState(state.room.id, { game_phase: 'reveal' })
@@ -441,9 +463,15 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   const correctAnswer = getCorrectAnswer(q);
   const alternates = getAlternates(q);
   const isCorrect = answer ? fuzzyMatch(answer, correctAnswer, alternates) : false;
+  const isBlank = !String(answer || '').trim();
   let wager;
   if (state.isFinalWagerRound) {
-    wager = state.finalWager || 0;
+    // A blank final answer wagers 0 whatever was locked in. The final wager is
+    // the only round that can SUBTRACT points, and losing 20 for a question you
+    // were never present to attempt is not a bet, it is a penalty for going
+    // away — which no other round in this game imposes. Someone who typed
+    // something and got it wrong still pays: they made the bet.
+    wager = isBlank ? 0 : (state.finalWager || 0);
   } else if (state.currentWager) {
     wager = state.currentWager;
   } else {

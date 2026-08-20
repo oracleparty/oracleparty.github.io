@@ -888,6 +888,11 @@ async function openScoreEditQuestion(questionNumber) {
     </div>
   `;
 
+  // A round the host threw out is not up for re-judgement anywhere. Awarding
+  // points inside a disqualified question would move the score with no visible
+  // reason, since the whole round reads as zero.
+  const editDisqualified = state.disqualifiedQuestions?.has(questionNumber);
+
   for (const player of state.players) {
     const answer = answers.find(a => String(a.player_id) === String(player.id));
     if (!answer) continue;
@@ -905,9 +910,9 @@ async function openScoreEditQuestion(questionNumber) {
         ${renderAvatar({ displayName: player.display_name, avatarColor: player.avatar_color, avatarEmoji: player.avatar_emoji })}
         <span class="answer-row__name">${escapeHtml(player.display_name)}</span>
         <span class="answer-row__wager ${isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect'}">${answer.wager}</span>
-        <div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}" data-question-number="${questionNumber}" data-player-name="${escapeHtml(player.display_name)}">
+        ${editDisqualified ? '' : `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}" data-question-number="${questionNumber}" data-player-name="${escapeHtml(player.display_name)}">
           <div class="answer-toggle__thumb"></div>
-        </div>
+        </div>`}
       </div>
       <div class="answer-row__bottom">
         <span class="answer-row__answer ${colorClass}">${displayText}</span>
@@ -930,6 +935,7 @@ async function openScoreEditQuestion(questionNumber) {
     const playerName = toggle.dataset.playerName;
     const answer = answers.find(a => String(a.id) === String(answerId));
     if (!answer) return;
+    if (state.disqualifiedQuestions?.has(qNum)) return;
 
     const newCorrect = !answer.is_correct;
     const isFinal = qNum >= state.totalQuestions;
@@ -1366,7 +1372,9 @@ async function handleReviewQuestions() {
 
     // Host: show ALL player answers with toggle switches for score correction
     let hostAnswersHtml = '';
-    if (canControlGame()) {
+    // Same rule as the reveal and the score-edit sheet: a disqualified round
+    // shows what happened but offers no way to re-judge it.
+    if (canControlGame() && !state.disqualifiedQuestions?.has(i)) {
       const qAnswers = allAnswers.filter(a => a.question_number === i && a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__');
       if (qAnswers.length > 0) {
         const isFinalWager = i === state.totalQuestions;
@@ -1483,6 +1491,7 @@ async function handleReviewQuestions() {
         const answerId = toggle.dataset.answerId;
         const answer = allAnswers.find(a => String(a.id) === String(answerId));
         if (!answer) return;
+        if (state.disqualifiedQuestions?.has(answer.question_number)) return;
         const row = toggle.closest('.review-answer-row');
         const isFinalWager = row?.dataset.isFinal === 'true';
 

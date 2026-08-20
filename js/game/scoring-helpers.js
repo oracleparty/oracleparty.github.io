@@ -71,17 +71,36 @@ export function buildDisqualifiedSet(allAnswers) {
 
 /**
  * Reconstruct a player's regular-round usedWagers map from their answers.
+ *
+ * This runs on every reconnect, so it decides which wagers a returning player
+ * is offered. It must agree with what the live game already spent, or a refresh
+ * hands back numbers that are gone.
+ *
  * Skips:
- *  - final wager round (question_number >= totalQuestions) — separate wager space (0/10/20)
- *  - auto-submitted blanks (empty submitted_answer) — host writes wager=1 for non-submitters
- *  - disqualified questions — wager is refunded
+ *  - final wager round (question_number >= totalQuestions) — separate wager
+ *    space (0/10/20)
+ *  - __WAGER_LOCKED__ — a placeholder written when a final wager is chosen, not
+ *    an answer to anything
+ *  - disqualified questions — the wager really is refunded there, by
+ *    handleDisqualifyRound
+ *
+ * A BLANK ANSWER IS COUNTED. It used to be skipped, and that was the bug behind
+ * "upon players refreshing their bet values were reset" from a playtest: a
+ * missed round burns the player's lowest unused wager — that is the rule that
+ * makes going away neither cheaper nor dearer than being present and wrong —
+ * so a rebuild that gave it back let a refresh buy the wager a second time and
+ * spend some other value twice. The skip made sense when the host wrote wager=1
+ * for every non-submitter, because counting six identical 1s would have been
+ * nonsense; since insertBlankAnswers started giving each player their own
+ * lowest unused value, the blank carries a real, distinct wager and skipping it
+ * is what loses information.
  */
 export function buildUsedWagersMap(myAnswers, totalQuestions, disqualifiedSet) {
   const usedWagers = new Map();
   for (const a of myAnswers) {
     if (a.question_number >= totalQuestions) continue;
     const submitted = (a.submitted_answer || '').trim();
-    if (!submitted || submitted === '__WAGER_LOCKED__') continue;
+    if (submitted === '__WAGER_LOCKED__') continue;
     if (disqualifiedSet && disqualifiedSet.has(a.question_number)) continue;
     if (a.wager) usedWagers.set(a.wager, !!a.is_correct);
   }

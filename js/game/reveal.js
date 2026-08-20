@@ -77,11 +77,11 @@ export async function showRevealScreen() {
   }
 
   // BUG 3 FIX: Safety re-fetch after 1.5s to catch answers submitted concurrently.
-  if (!state.resultsRevealed && state.currentAnswers.length < state.players.length) {
+  if (!state.resultsRevealed && submittedCount(state.currentAnswers) < state.players.length) {
     setTimeout(async () => {
       if (!state.onRevealScreen || state.currentQuestion !== currentQ || state.resultsRevealed) return;
       const fresh = await fetchAnswersForQuestion(state.room.id, currentQ);
-      if (fresh.length > state.currentAnswers.length) {
+      if (submittedCount(fresh) > submittedCount(state.currentAnswers)) {
         state.currentAnswers = fresh;
         renderRevealAnswers(fresh);
       }
@@ -90,7 +90,7 @@ export async function showRevealScreen() {
 
   // Show countdown timer on reveal screen if the round isn't over yet
   const revealTimer = $('#reveal-timer');
-  if (!state.timerExpired && state.currentAnswers.length < state.players.length) {
+  if (!state.timerExpired && submittedCount(state.currentAnswers) < state.players.length) {
     revealTimer.style.display = '';
   } else {
     revealTimer.style.display = 'none';
@@ -164,6 +164,19 @@ function honkBtnHtml(player) {
   return (isMe || player.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${player.id}" aria-label="Quack">&#x1F986;</button>`;
 }
 
+/**
+ * How many players have actually ANSWERED, as opposed to merely having a row.
+ *
+ * On the final question lockInFinalWager writes a __WAGER_LOCKED__ placeholder
+ * for every player the moment they choose a number, so plain answers.length
+ * equals the player count before anybody has typed a word — which made the
+ * screen believe the round was complete and hide the countdown.
+ */
+function submittedCount(answers) {
+  return (answers || []).filter(a =>
+    (a.submitted_answer || '').trim() !== '__WAGER_LOCKED__').length;
+}
+
 export function renderRevealAnswers(answers) {
   const container = $('#reveal-answers');
 
@@ -180,10 +193,21 @@ export function renderRevealAnswers(answers) {
 
     const titleHtml = player.title ? `<span class="player-title">${escapeHtml(player.title)}</span>` : '';
 
-    if (answer) {
+    // On the FINAL question every player already has a row the moment they lock
+    // a wager: lockInFinalWager writes __WAGER_LOCKED__ as a placeholder so
+    // other phones can see the number. That is not a submission, and rendering
+    // it as one made the reveal screen say "No answer" for somebody who was
+    // still typing. Reported from a playtest: "it showed no answer for them so
+    // I thought they were ready". Before the reveal a placeholder means WAITING;
+    // only once the answers are revealed does it mean they never answered.
+    const isPlaceholder = answer && (answer.submitted_answer || '').trim() === '__WAGER_LOCKED__';
+    const stillWaiting = !answer || (isPlaceholder && !state.resultsRevealed);
+    const isDisqualified = state.disqualifiedQuestions?.has(state.currentQuestion);
+
+    if (!stillWaiting) {
       row.dataset.answerId = answer.id;
       const rawText = (answer.submitted_answer || '').trim();
-      const submittedText = rawText === '__WAGER_LOCKED__' ? '' : rawText;
+      const submittedText = isPlaceholder ? '' : rawText;
       const isEmpty = !submittedText;
       const isCorrect = answer.is_correct || false;
       const wager = answer.wager || 0;
@@ -194,8 +218,12 @@ export function renderRevealAnswers(answers) {
         : '';
       const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
 
-      // Toggle: host only, visible only after reveal (prevents host seeing correct/incorrect early)
-      const toggleHtml = (canControlGame() && state.resultsRevealed)
+      // Toggle: host only, visible only after reveal (prevents host seeing
+      // correct/incorrect early), and never on a round that has been thrown
+      // out. Marking somebody correct in a disqualified round would award
+      // points for a question the host has just declared did not happen —
+      // the score would move and the reason would be invisible.
+      const toggleHtml = (canControlGame() && state.resultsRevealed && !isDisqualified)
         ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
              <div class="answer-toggle__thumb"></div>
            </div>`
@@ -226,8 +254,13 @@ export function renderRevealAnswers(answers) {
         </div>
       `;
     } else {
-      // Player hasn't submitted yet — show waiting state
+      // Player hasn't submitted yet — show waiting state. A locked final wager
+      // still shows its number here, because they really did choose it; it is
+      // the ANSWER that has not arrived.
       const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
+      const wagerHtml = isPlaceholder
+        ? `<span class="answer-row__wager">${answer.wager || 0}</span>`
+        : '';
       row.innerHTML = `
         <div class="answer-row__top">
           ${honkAvatarHtml(player)}
@@ -236,6 +269,7 @@ export function renderRevealAnswers(answers) {
             ${titleHtml}
           </div>
           ${honkBtnHtml(player)}
+          ${wagerHtml}
         </div>
         <div class="answer-row__bottom">
           <span class="answer-row__answer answer-row__answer--waiting">Waiting...</span>
@@ -440,6 +474,11 @@ async function handleRevealResults() {
 export async function handleJudgmentOverride(e) {
   const toggle = e.target.closest('.answer-toggle--host');
   if (!toggle) return;
+
+  // Belt and braces with the render above: the toggle is not drawn on a
+  // disqualified round, but a stale one left in the DOM from before the
+  // disqualification must not still be clickable.
+  if (state.disqualifiedQuestions?.has(state.currentQuestion)) return;
 
   const answerId = toggle.dataset.answerId;
   if (!answerId) return;
