@@ -10,6 +10,7 @@ import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, HEARTBEAT_
 import {
   addPlayer,
   addBot,
+  fetchRoomScores,
   fetchPlayers,
   fetchMessages,
   sendMessage,
@@ -268,25 +269,15 @@ async function init() {
   // Typing indicator
   initTypingIndicator(room.id, room.playerId, getDisplayName(), updateTypingUI);
 
-  // Room session leaderboard (cumulative scores across games in this room)
-  const roomScoresKey = `oracle_party_room_scores_${room.id}`;
-  const roomScores = JSON.parse(sessionStorage.getItem(roomScoresKey) || '{}');
-  if (Object.keys(roomScores).length > 0) {
-    const scoresSection = $('#room-scores');
-    const scoresList = $('#room-scores-list');
-    if (scoresSection && scoresList) {
-      scoresSection.style.display = '';
-      const sorted = Object.entries(roomScores).sort((a, b) => b[1] - a[1]);
-      scoresList.innerHTML = sorted.map(([name, score], i) => {
-        const isMe = name === getDisplayName();
-        return `<div class="room-score-row${isMe ? ' room-score-row--me' : ''}">
-          <span class="room-score-row__rank">${i + 1}</span>
-          <span class="room-score-row__name">${escapeHtml(name)}</span>
-          <span class="room-score-row__score">${score} pts</span>
-        </div>`;
-      }).join('');
-    }
-  }
+  // Room session leaderboard (cumulative scores across games in this room).
+  //
+  // Read from the ROOM, not from sessionStorage. The old copy died with the tab
+  // — somebody who left and came back saw nothing — and every device kept its
+  // own tally built from whatever games that device happened to witness, so two
+  // people could read different numbers off the same lobby. Needs migration 038;
+  // until it is applied fetchRoomScores returns {} and this section simply does
+  // not appear, exactly as it does for a room whose first game is unfinished.
+  renderRoomScores(room.id);
 
   // System message — detect if returning from a game
   // BUG 1 FIX: When returning via Play Again, show a clear message so the chat
@@ -1497,6 +1488,37 @@ function handleRoomChange(payload) {
 // Two thresholds:
 //   - DISCONNECTED_TIMEOUT_MS (45s): player beacon fired (tab close / navigation)
 //   - STALE_TIMEOUT_MS (3 min): player heartbeat stopped (internet loss / crash)
+
+/**
+ * Cumulative points across every game played in this room, newest total first.
+ * Hidden entirely when there is nothing to show — a room on its first game, or
+ * one where migration 038 has not been applied yet.
+ */
+async function renderRoomScores(roomId) {
+  const scoresSection = $('#room-scores');
+  const scoresList = $('#room-scores-list');
+  if (!scoresSection || !scoresList) return;
+
+  const roomScores = await fetchRoomScores(roomId).catch(() => ({}));
+  const sorted = Object.entries(roomScores)
+    .filter(([, score]) => typeof score === 'number')
+    .sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length === 0) {
+    scoresSection.style.display = 'none';
+    return;
+  }
+
+  scoresSection.style.display = '';
+  scoresList.innerHTML = sorted.map(([name, score], i) => {
+    const isMe = name === getDisplayName();
+    return `<div class="room-score-row${isMe ? ' room-score-row--me' : ''}">
+      <span class="room-score-row__rank">${i + 1}</span>
+      <span class="room-score-row__name">${escapeHtml(name)}</span>
+      <span class="room-score-row__score">${score} pts</span>
+    </div>`;
+  }).join('');
+}
 
 function checkStalePresence() {
   const now = Date.now();

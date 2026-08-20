@@ -9,6 +9,7 @@ import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, A
 import {
   supabase,
   updateGameState,
+  addRoomScores,
   submitAnswer,
   fetchAnswersForQuestion,
   updateAnswerJudgment,
@@ -1047,16 +1048,22 @@ export async function showResultsScreen() {
     }
   }
 
-  // Room session cumulative scores (for lobby leaderboard)
-  // Guard: only write once per game to prevent score doubling on re-render
-  if (!state._cumulativeScoresWritten) {
+  // Room session cumulative scores (for the lobby leaderboard).
+  //
+  // HOST ONLY, and once per game. Every device computes the same scores from
+  // the same answers, so letting all of them add to a shared total would
+  // multiply it by the number of phones in the room. The re-render guard stays
+  // because showResultsScreen is re-entered on Realtime events.
+  //
+  // Keyed on display name, not player id: a player row is deleted when someone
+  // leaves and recreated when they return, so the id is not stable across the
+  // very event this is meant to survive, and guests have no account to key on.
+  if (!state._cumulativeScoresWritten && state.room.isHost) {
     state._cumulativeScoresWritten = true;
-    const roomScoresKey = `oracle_party_room_scores_${state.room.id}`;
-    const cumulative = JSON.parse(sessionStorage.getItem(roomScoresKey) || '{}');
-    for (const p of state.players) {
-      cumulative[p.display_name] = (cumulative[p.display_name] || 0) + (state.scores[p.id] || 0);
-    }
-    sessionStorage.setItem(roomScoresKey, JSON.stringify(cumulative));
+    const earned = {};
+    for (const p of state.players) earned[p.display_name] = state.scores[p.id] || 0;
+    addRoomScores(state.room.id, earned)
+      .catch(err => logger.warn('Game', 'Could not save room scores', err));
   }
 
   $('#results-category').textContent = getCategoryLabel();

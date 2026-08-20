@@ -247,6 +247,42 @@ try {
   // no-op. This scenario is the only one that plays twice in one room, so it
   // is the only place the difference is visible.
   // ============================================================
+  // ============================================================
+  // ROOM SCORES ACCUMULATE, ON THE ROOM
+  //
+  // The lobby's cumulative tally used to live in sessionStorage on each phone,
+  // so it died with the tab and every device kept a different version built
+  // from whatever games that device happened to witness. It belongs to the
+  // room (migration 038). Two things must hold: the total is the SUM of both
+  // games, and it was written ONCE — every device computes the same scores, so
+  // a per-device write would multiply the tally by the number of phones.
+  // ============================================================
+  heading('room scores across two games');
+  {
+    const room = table.store.table('rooms')[0];
+    const tally = room?.room_scores || {};
+    note(`room_scores after two games: ${JSON.stringify(tally)}`);
+
+    if (Object.keys(tally).length === 0) {
+      problems.push('no room scores were saved on the room — the lobby tally is empty for everybody, including anyone who rejoins');
+    } else {
+      for (const r of everyone) {
+        if (!(r.name in tally)) {
+          problems.push(`${r.name} has no line in the room tally after playing two games in this room`);
+        }
+      }
+      // Written by the host alone. More writes than games means every device
+      // added its own copy, which inflates the tally by the room size.
+      const writes = table.store.log.filter(o =>
+        o.table === 'rooms' && o.action === 'update' &&
+        o.payload && Object.prototype.hasOwnProperty.call(o.payload, 'room_scores'));
+      note(`room_scores writes: ${writes.length} (expected one per game)`);
+      if (writes.length > 2) {
+        problems.push(`room_scores was written ${writes.length} times across two games — every device is adding its own copy, so the tally is multiplied by the number of players`);
+      }
+    }
+  }
+
   heading('every round counts as a play');
   const plays = table.store.table('game_plays');
   note(`game_plays rows: ${plays.length}, games_played: ${JSON.stringify(plays.map(p => p.games_played))}`);

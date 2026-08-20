@@ -248,6 +248,67 @@ export async function updateGameState(roomId, updates) {
 }
 
 /**
+ * Add one game's scores to the room's running Room Scores tally.
+ *
+ * The tally used to live in sessionStorage on each phone, which meant it died
+ * with the tab — somebody who left and came back saw nothing — and that every
+ * device kept its own version, computed from whatever games that device
+ * happened to witness. Two people could read different numbers off the same
+ * lobby with no way to tell which was right. Needs migration 038.
+ *
+ * Read-modify-write rather than a jsonb merge in SQL, because the merge would
+ * have to ADD to each existing value and PostgREST cannot express that. The
+ * race it exposes is not a real one: only the host writes this, once per game,
+ * and there is exactly one host.
+ *
+ * `earned` is { displayName: pointsThisGame }. Nothing is deleted, so a player
+ * who has left keeps their line — that is the point of a room tally.
+ */
+export async function addRoomScores(roomId, earned) {
+  const { data: room, error: readErr } = await supabase
+    .from('rooms')
+    .select('room_scores')
+    .eq('id', roomId)
+    .maybeSingle();
+
+  // Before migration 038 is applied this column does not exist and the select
+  // errors. Bail rather than wiping the row with a write it cannot satisfy —
+  // the lobby falls back to showing no tally, which is what it did before.
+  if (readErr) {
+    logger.error('Supabase', 'addRoomScores read failed', readErr);
+    return { error: readErr };
+  }
+
+  const cumulative = { ...(room?.room_scores || {}) };
+  for (const [name, points] of Object.entries(earned || {})) {
+    cumulative[name] = (cumulative[name] || 0) + (points || 0);
+  }
+
+  const { error } = await supabase
+    .from('rooms')
+    .update({ room_scores: cumulative })
+    .eq('id', roomId);
+
+  if (error) logger.error('Supabase', 'addRoomScores write failed', error);
+  return { error };
+}
+
+/**
+ * Read the room's cumulative Room Scores tally. Returns {} when the column is
+ * not there yet (migration 038 unapplied) or the room is gone, so the lobby
+ * simply shows no tally rather than an error.
+ */
+export async function fetchRoomScores(roomId) {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('room_scores')
+    .eq('id', roomId)
+    .maybeSingle();
+  if (error) { logger.error('Supabase', 'fetchRoomScores failed', error); return {}; }
+  return data?.room_scores || {};
+}
+
+/**
  * Save the selected question IDs to the room.
  */
 export async function saveQuestionIds(roomId, questionIds) {

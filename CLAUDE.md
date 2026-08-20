@@ -629,6 +629,19 @@ questions looks like, not a bug. `scripts/mock-states.js` gained
 `profile-stats`, because the only profile mock filled the Account section and
 these three had never once been rendered by the sweep.
 
+**Room Scores now live on the room** (`rooms.room_scores`, migration 038).
+They were in each phone's sessionStorage, so they died with the tab — somebody
+who left and came back saw nothing — and every device kept its own tally built
+from whatever games that device happened to witness, so two people could read
+different numbers off the same lobby. **The host writes it, once per game**:
+every device computes the same scores from the same answers, so a per-device
+write multiplies the tally by the room size. `scenario-playagain` counts the
+writes and fails if there is more than one per game; removing the host guard
+doubles Bob's total, which is what it looks like in a two-player room.
+
+Keyed on **display name**, not player id: the row is deleted and recreated on
+the very rejoin this is meant to survive, and guests have no account to key on.
+
 **Feedback writes are now checked, not assumed.** A playtest reported flags not
 reaching the admin page, and `question_feedback` reads empty. Those two facts
 were impossible to act on: an RLS refusal returns no error, so a refused write

@@ -353,6 +353,30 @@ export const STATES = {
     },
   },
 
+  // A room part-way through an evening: two games played, so the cumulative
+  // Room Scores tally is showing. It lives on the room now (migration 038)
+  // rather than in each phone's sessionStorage, and .room-score-row had never
+  // been rendered by the sweep in any state.
+  'lobby-room-scores': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    injectArgs: () => PLAYERS,
+    inject: (P) => {
+      const section = document.getElementById('room-scores');
+      const list = document.getElementById('room-scores-list');
+      if (!section || !list) return;
+      section.style.display = '';
+      const tally = [[P[0].name, 128], [P[2].name, 96], [P[3].name, 71], [P[1].name, -14]];
+      list.innerHTML = tally.map(([name, score], i) =>
+        `<div class="room-score-row${i === 0 ? ' room-score-row--me' : ''}">
+          <span class="room-score-row__rank">${i + 1}</span>
+          <span class="room-score-row__name">${name}</span>
+          <span class="room-score-row__score">${score} pts</span>
+        </div>`).join('');
+    },
+  },
+
   'lobby-ready': {
     page: 'lobby',
     screen: 'lobby-screen',

@@ -10,6 +10,7 @@ export {
   generateRoomCode, createRoom, findRoomByCode, fetchPublicRooms,
   cleanupOrphanedRooms, deleteRoom, deleteRoomBeacon, fetchRoom,
   updateRoomStatus, updateGameState, saveQuestionIds, appendUsedQuestionIds,
+  addRoomScores, fetchRoomScores,
   getServerTimeOffset, testConnection,
   subscribeToRoom, createPresenceChannel, createHonkChannel,
   createTypingChannel, createDifficultyVoteChannel, unsubscribe,
