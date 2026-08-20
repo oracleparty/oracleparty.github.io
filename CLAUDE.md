@@ -546,6 +546,98 @@ switching it to `game_history.score`.
 - Auto-judging fuzzy-matches against the correct answer plus stored alternates
   (`FUZZY_MATCH_THRESHOLD` in `constants.js`). Host override is final.
 
+## Fixed in the 2026-08-20 playtest
+
+Two real games with several people. Every one of these was invisible to the
+robots until a scenario was written for it, and several were invisible to the
+player too.
+
+**A single-letter answer could not be got wrong.** The Levenshtein threshold in
+`fuzzyMatch` carried a `Math.max(1, ...)` floor, so a one-character answer
+allowed one edit — and one edit turns any letter into any other. "cat" took
+"bat"; "US" took "up". The floor contradicted the rule it was documented as
+implementing (one typo per four characters), so it is gone: under four
+characters is exact after normalisation, four and up is unchanged. **415 tests
+passed before and after**, which is the part worth remembering — a whole class
+of answer was ungradeable and no existing test touched it.
+
+**Refreshing gave back a wager that had already been spent.**
+`buildUsedWagersMap` skipped blank answers. A missed round burns the player's
+lowest unused wager, so the rebuild handed it back and it could be spent twice.
+That skip was correct when the host wrote `wager=1` for every non-submitter;
+since `insertBlankAnswers` began giving each player their own lowest unused
+value it destroys real information. The unit test asserting the old behaviour
+was **encoding the bug** and has been replaced.
+
+**Refreshing zeroed the scoreboard, for the host only.** There are two
+reconnect paths — `initHostGame` and `applyGameState` — and only the second
+ever called `updateScores()`. The first set every score to 0 as a baseline and
+never hydrated. Two functions doing the same job, one of which forgot half of
+it; check both whenever you touch either.
+
+**An answer already sent could be erased by a re-render.**
+`showQuestionScreen` emptied the answer box and set `hasSubmitted = false`
+every time it ran, and Realtime re-calls it for the same question. The wager
+reset immediately below it had been guarded against exactly that for months,
+with a comment saying why; the answer text never was. The reveal's tidy-up pass
+then auto-submitted "whatever is currently typed" — an empty string — through
+an **upsert**, replacing the real answer. Two independent fixes: a re-render of
+the question already on screen leaves the box alone (`state._renderedQuestion`),
+and an auto-submitted BLANK now goes through `insertBlankAnswers`
+(`ON CONFLICT DO NOTHING`) so it cannot overwrite anything by any route. A
+deliberate submit, and an auto-submit carrying real text, still upsert.
+
+**The final wager had no timer at all**, so one person who had put their phone
+down held the last round open indefinitely. `FINAL_WAGER_TIMER_SECONDS` is 20,
+fixed rather than the room's question-timer setting — that setting is for
+reading and typing, not for choosing between three buttons. On expiry whatever
+they tapped stands; somebody who never touched the screen wagers **0**, not the
+`state.finalWager` default of 20. That default exists to punish indecision, and
+committing it on a timeout would punish absence instead, which no other round
+does.
+
+The clock runs off the room's `question_started_at`, and **the host must stamp
+it AFTER broadcasting the phase, as a separate write.** The first version
+stamped it inside `showFinalWagerScreen`, which runs before the broadcast, so
+every other client cleared the stamp when the phase arrived and no clock ever
+started. `scenario-fullgame` caught it: Carol ignored the screen and lost 20
+points.
+
+**A blank final answer wagers 0 whatever was locked in.** The final wager is
+the only round that subtracts. Needed a second pass at timer expiry, because
+everyone who locked a wager already has a `__WAGER_LOCKED__` row and
+`insertBlankAnswers` skips them as duplicates.
+
+**"No answer" appeared for players who were still typing.** Same placeholder:
+on the final question every player has a row the moment they lock a wager, and
+the reveal read that as a blank submission — so the host saw "No answer" and
+concluded everyone was ready. Before the reveal a placeholder means *waiting*;
+only afterwards does it mean they never answered. The same distinction fixes
+the countdown, which had been hiding itself on the final question because
+`answers.length === players.length` was true before anybody had typed a word.
+
+**A disqualified round could still be marked correct**, in all three places a
+host can flip a judgement. Awarding points inside a round the host has just
+declared did not happen moves the score with no visible reason.
+
+**The profile had two percentages and neither said what it measured.** The
+section labelled "Categories" was always correct-over-answered — proficiency,
+never completion — but nothing said so, and the Mastery bar directly above it
+IS completion. Renamed to **Proficiency**, and both sections carry one line
+saying which question they answer. Mastery sitting near 1% is what 4,859
+questions looks like, not a bug. `scripts/mock-states.js` gained
+`profile-stats`, because the only profile mock filled the Account section and
+these three had never once been rendered by the sweep.
+
+**Feedback writes are now checked, not assumed.** A playtest reported flags not
+reaching the admin page, and `question_feedback` reads empty. Those two facts
+were impossible to act on: an RLS refusal returns no error, so a refused write
+and nobody-rated-anything are the same silence. `upsertQuestionFeedback`
+`.select()`s and goes through `writeSucceeded`, and the admin flagged queue
+counts every kind of feedback so "no flags" and "no ratings at all" are
+different sentences. **This is a diagnostic, not a diagnosis** — nothing has
+yet established which of the two it is.
+
 ## Fixed in the 2026-08-18 playtest
 
 Five bugs from one real game with two people. Recorded because each explains a
@@ -619,7 +711,11 @@ nothing on the wheel is unreachable.
 
 ## Other Features
 
-- **Honks** — tap to blast a sound at everyone, throttled by `HONK_THROTTLE`
+- **Honks** — tap to blast a sound at everyone, throttled by `HONK_THROTTLE`.
+  The honker's avatar shakes on every client (`jiggleHonker` in `honk.js`), so
+  a quack has a face on it. `from_id` was in the broadcast payload from the
+  start and nothing read it. Works off `data-player-id`, which every
+  player-listing screen already sets, so no screen needs to know honks exist.
 - **Chat** — in lobby and in game, with typing indicators and message hearts
 - **Accounts** — optional; guests can play everything except friends and stats.
   Email/password, or **Continue with Google** (`signInWithGoogle()` in
@@ -1119,7 +1215,11 @@ existing check passed. Two reasons it got through, both worth remembering:
 **If you change how a screen renders, change its mock in the same commit.** The
 sweep's unstyled-class check is what catches this now, but only if you read it.
 
-Known and deliberate: `.feedback-btn--flag` has no rule (the flag button falls
+Known and deliberate, and reported every run: `.mastery-group`,
+`.mastery-sub-rows`, `.profile-category-group` and `.profile-subcategory-rows`
+are grouping wrappers the JS queries by (`closest`, `querySelector`) and shows
+or hides inline — there is nothing for CSS to say about them.
+`.feedback-btn--flag` has no rule (the flag button falls
 back to the shared `.feedback-btn` look), `.admin-qh__controls` has none
 either (its layout is inline on the element), and `watermark-all` is excluded
 — it is a glyph-calibration state whose cards differ by design.
