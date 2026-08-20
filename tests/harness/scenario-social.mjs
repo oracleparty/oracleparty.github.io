@@ -163,8 +163,34 @@ try {
   if (!honkVisible) {
     problems.push(`no honk button on Alice's screen (${await activeScreen(host)})`);
   } else {
+    // Watch for the honker's avatar shaking BEFORE the honk, because the class
+    // is added and removed again within about half a second — polling after the
+    // fact would find nothing and prove nothing. from_id has always been in the
+    // broadcast payload and nothing read it, so a honk used to arrive from
+    // nobody in particular; this is what puts a face on it.
+    const aliceId = table.store.table('players').find(p => p.display_name === 'Alice')?.id;
+    const watch = r => r.page.evaluate((id) => new Promise(resolve => {
+      const sel = `[data-player-id="${id}"]`;
+      const seen = () => [...document.querySelectorAll(sel)]
+        .some(row => (row.querySelector('.avatar') || row).classList.contains('honk-jiggle'));
+      if (seen()) return resolve(true);
+      const obs = new MutationObserver(() => { if (seen()) { obs.disconnect(); resolve(true); } });
+      obs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+      setTimeout(() => { obs.disconnect(); resolve(seen()); }, 4000);
+    }), String(aliceId)).catch(() => false);
+
+    const jiggledOnBob = watch(bob);
+    const jiggledOnAlice = watch(host);
+
     await honkBtn.click().catch(() => {});
     await host.page.waitForTimeout(2000);
+
+    const [bobSaw, aliceSaw] = await Promise.all([jiggledOnBob, jiggledOnAlice]);
+    note(`honker's avatar shook — on Bob's screen: ${bobSaw}, on Alice's own: ${aliceSaw}`);
+    if (!bobSaw && !aliceSaw) {
+      problems.push("a honk did not shake the honker's avatar on any client — the quack arrives from nobody in particular");
+    }
+
     // The badge is rendered on every client that received the honk.
     const badgeFor = async r => r.page.evaluate(() =>
       [...document.querySelectorAll('.honk-badge')]

@@ -2389,6 +2389,29 @@ body::after {
   100% { opacity: 0; transform: translate(-50%, -100%) scale(0.8); }
 }
 
+/* The honker's own avatar shakes, so a quack has a face on it. Rotation and a
+   small scale rather than a horizontal shift: avatars sit in tight flex rows
+   next to names and badges, and translating one would shove its neighbours. */
+@keyframes honk-jiggle {
+  0%, 100% { transform: rotate(0deg)   scale(1); }
+  15%      { transform: rotate(-12deg) scale(1.12); }
+  35%      { transform: rotate(10deg)  scale(1.12); }
+  55%      { transform: rotate(-7deg)  scale(1.06); }
+  75%      { transform: rotate(5deg)   scale(1.03); }
+}
+.honk-jiggle {
+  animation: honk-jiggle 0.55s ease-in-out;
+  /* The row can be overflow:hidden and the rotated corners must not be
+     clipped against a neighbour. */
+  position: relative;
+  z-index: 1;
+}
+/* Someone who has turned motion down still gets the honk sound and the duck;
+   they do not need a shaking avatar as well. */
+@media (prefers-reduced-motion: reduce) {
+  .honk-jiggle { animation: none; }
+}
+
 /* --- Chat --- */
 
 /* Player list inside lobby-players section */

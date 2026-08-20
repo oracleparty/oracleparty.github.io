@@ -75,6 +75,32 @@ function spawnGooseEmoji() {
 }
 
 /**
+ * Shake the honker's avatar wherever they are on screen.
+ *
+ * from_id has always been in the broadcast payload and nothing read it, so a
+ * honk arrived from nobody in particular — you got quacked at and had no idea
+ * who did it. Every screen that lists players already tags its rows with
+ * data-player-id (lobby, reveal, scores, final wager, results), so the sender
+ * can be found without any screen knowing about honks.
+ *
+ * Restarting the animation needs the class removed and the layout flushed
+ * before it goes back on; without the reflow the browser coalesces the two
+ * changes and a second honk during the first one does nothing at all — which
+ * is precisely when someone is spamming and most wants to see it.
+ */
+function jiggleHonker(fromId) {
+  if (!fromId) return;
+  const rows = document.querySelectorAll(`[data-player-id="${CSS.escape(String(fromId))}"]`);
+  for (const row of rows) {
+    const target = row.querySelector('.avatar') || row;
+    target.classList.remove('honk-jiggle');
+    void target.offsetWidth;
+    target.classList.add('honk-jiggle');
+    target.addEventListener('animationend', () => target.classList.remove('honk-jiggle'), { once: true });
+  }
+}
+
+/**
  * Initialize the honk system for a room.
  * @param {string} roomId
  * @param {string} playerId - local player's ID
@@ -93,6 +119,11 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
       // Update count and UI immediately — no debounce, honk spam is fun
       honkCounts[targetId] = (honkCounts[targetId] || 0) + 1;
       if (onCountUpdate) onCountUpdate(targetId, honkCounts[targetId]);
+
+      // Everyone sees WHO honked, not just the person hit — the count badge
+      // already updates on every device, so the room already knows a honk
+      // happened; this says who. Silent, so it stays out of the way.
+      if (!_honkMuted) jiggleHonker(payload.from_id);
 
       // If I'm the honked player, react! (skip sound+animation when muted)
       if (targetId === localPlayerId && !_honkMuted) {
@@ -114,6 +145,9 @@ export function sendHonk(targetPlayerId) {
   if (!_honkMuted) {
     playHonk();
     spawnGooseEmoji();
+    // The sender's own avatar too, so the feedback is immediate rather than
+    // waiting on the broadcast round trip — the same reason the duck is local.
+    jiggleHonker(localPlayerId);
   }
   honkChannel.send({
     type: 'broadcast',
