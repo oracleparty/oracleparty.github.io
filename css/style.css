@@ -2058,6 +2058,64 @@ body::after {
 
 /* What a player typed against an "Other" flag. Quoted and italic because it is
    somebody's words, not a field the app generated. */
+/* An account row that opens. The affordance is the pointer and the open-state
+   tint — no chevron, because the row already carries a Delete button and a
+   third control would crowd a 375px line. */
+.stat-drill__row--openable { cursor: pointer; }
+
+/* An openable row stacks its name over its detail line instead of putting them
+   side by side. Side by side, "31 games · 8 sessions" truncated to "31 games ·
+   8 s…" next to a long display name — and that line is the whole reason to
+   scan the list. Same move the lobby row already makes for tier and title: when
+   a 375px row cannot fit two things across, it fits them down.
+   The action button stays on the right, vertically centred against the pair. */
+.stat-drill__row--openable .stat-drill__name,
+.stat-drill__row--openable .stat-drill__meta {
+  flex: none;
+  text-align: left;
+  white-space: normal;
+}
+.stat-drill__row--openable {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name action" "meta action";
+  align-items: center;
+  column-gap: var(--space-sm);
+  row-gap: 1px;
+}
+.stat-drill__row--openable .stat-drill__name { grid-area: name; }
+.stat-drill__row--openable .stat-drill__meta { grid-area: meta; }
+.stat-drill__row--openable > .stat-drill__action,
+.stat-drill__row--openable > .stat-drill__meta:last-child { grid-area: action; align-self: center; }
+.stat-drill__row--open { background: var(--color-surface); }
+
+/* The expanded panel. Key on the left, value on the right, wrapping rather
+   than truncating: an email that is cut off answers nothing, which is the
+   whole reason this panel exists. */
+.account-detail {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  margin: 0 0 var(--space-sm);
+}
+.account-detail__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 3px 0;
+  font-size: var(--text-sm);
+}
+.account-detail__key {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.account-detail__val {
+  color: var(--color-text);
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+}
+
 .admin-flag-row__note {
   font-family: var(--font-body);
   font-style: italic;

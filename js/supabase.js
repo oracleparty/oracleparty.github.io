@@ -57,4 +57,5 @@ export {
   acceptFriendRequest, declineFriendRequest, cancelFriendRequest,
   createFriendship, removeFriend, fetchFriends, isFriend, hasFriends,
   subscribeToFriendRequests,
+  fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts,
 } from './db/social.js';

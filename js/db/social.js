@@ -675,3 +675,78 @@ export function subscribeToFriendRequests(userId, callback) {
     })
     .subscribe();
 }
+
+/**
+ * Who an account actually is — email, sign-up method, whether the address was
+ * ever confirmed, and when they last signed in.
+ *
+ * Goes through admin_account_details (migration 042) because all of that lives
+ * in auth.users, which PostgREST does not expose and must not: every player's
+ * browser carries the same publishable key, so a readable auth.users would be a
+ * public mailing list. The function checks the caller is an admin and returns
+ * one account at a time, so an email reaches the screen only after a deliberate
+ * tap on that person.
+ *
+ * Returns null when the function is not installed yet or the caller is not an
+ * admin. The panel then simply shows the parts it can compute from `profiles`
+ * and `game_history`, which is more useful than an error.
+ */
+export async function fetchAdminAccountDetails(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase.rpc('admin_account_details', { p_user_id: userId });
+  if (error) {
+    logger.warn('Supabase', 'fetchAdminAccountDetails unavailable', error);
+    return null;
+  }
+  // RETURNS TABLE gives an array even for one row.
+  return Array.isArray(data) ? (data[0] || null) : (data || null);
+}
+
+/**
+ * Every completed game for one account, newest first.
+ *
+ * game_history holds one row per player per finished game, so counting rows is
+ * "games played" and counting distinct room_ids is "sessions" — six rounds with
+ * the same group in one evening is six games and one session. Both are worth
+ * showing: the first says what somebody did, the second says how they use it.
+ */
+export async function fetchAccountGames(userId, limit = 200) {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('game_history')
+    .select('room_id, category, subcategory, score, placement, total_players, played_at')
+    .eq('user_id', userId)
+    .order('played_at', { ascending: false })
+    .limit(limit);
+  if (error) { logger.error('Supabase', 'fetchAccountGames failed', error); return []; }
+  return data || [];
+}
+
+/**
+ * Games and sessions for SEVERAL accounts in one query, for the collapsed list.
+ * Returns { userId: { games, sessions, lastPlayed } }.
+ */
+export async function fetchAccountPlayCounts(userIds) {
+  const ids = (userIds || []).filter(Boolean);
+  if (ids.length === 0) return {};
+  const { data, error } = await supabase
+    .from('game_history')
+    .select('user_id, room_id, played_at')
+    .in('user_id', ids);
+  if (error) { logger.error('Supabase', 'fetchAccountPlayCounts failed', error); return {}; }
+
+  const out = {};
+  for (const row of data || []) {
+    const key = String(row.user_id);
+    if (!out[key]) out[key] = { games: 0, rooms: new Set(), lastPlayed: null };
+    out[key].games += 1;
+    if (row.room_id) out[key].rooms.add(String(row.room_id));
+    if (!out[key].lastPlayed || row.played_at > out[key].lastPlayed) {
+      out[key].lastPlayed = row.played_at;
+    }
+  }
+  for (const key of Object.keys(out)) {
+    out[key] = { games: out[key].games, sessions: out[key].rooms.size, lastPlayed: out[key].lastPlayed };
+  }
+  return out;
+}

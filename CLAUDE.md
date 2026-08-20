@@ -764,7 +764,33 @@ nothing on the wheel is unreachable.
 - **Leaderboard** — global and per-category, plus a per-player mastery tree
 - **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`. The four
   stat cards open the list they were counted from; before that they were the
-  only figures on the page that could not be checked. Two actions live there:
+  only figures on the page that could not be checked. **An account row opens**
+  to show who it actually is — email, sign-up method, whether the address was
+  ever confirmed, last sign-in — plus games, sessions, wins and what they play.
+  The identity half goes through `admin_account_details` (migration 042),
+  because all of it lives in `auth.users`, which PostgREST does not expose and
+  must not: every browser carries the same publishable key, so a readable
+  `auth.users` would be a public mailing list. One account per call, so an
+  email reaches the screen only after a deliberate tap. It degrades to the
+  computable half when the function is missing.
+
+  **Every row on that list is a real account.** Guests have no `profiles` row
+  at all, so nothing there is a guest — "New Player" means somebody signed up,
+  or arrived through Google, and never chose a name.
+
+  **Games and sessions are both shown, and they answer different questions.**
+  `game_history` holds one row per player per finished game, so counting rows
+  is games and counting distinct `room_id`s is sessions: six rounds with the
+  same group in one evening is six games and one session. Thirty games across
+  two sessions is a different player from thirty across twenty-five, and
+  neither number says that alone.
+
+  **Games Active says why a room looks active** — "2 of 3 still here", or
+  "4 players, all silent — abandoned". See the note on abandoned rooms below.
+
+  **Games Today is the local calendar day**, midnight-to-now where the reader
+  is, not UTC and not a rolling 24 hours. That matches the word "today"; the
+  rolling question is what Games Active answers. Two actions live there:
   ending a stuck room, and deleting somebody's account via
   `admin_delete_account` (migration 037). That function takes a user id, which
   is a dangerous shape, so it carries three guards — the caller must be an
@@ -859,6 +885,36 @@ break it and `question_stats` reads `asked=2` where a solo human is `asked=1`.
 `friendships`, `title_unlocks`, `site_settings`, `error_logs`.
 
 ---
+
+## A room is only ever cleaned up from inside it
+
+A player row goes either by a beacon on unload or by another client in the room
+running the stale sweep. **When everybody's phone dies at once, nobody sweeps**,
+the rows persist, and `cleanupOrphanedRooms` — which asks only "are there
+player rows" — never fires. The room reads as a game in progress forever. This
+is what "two active games nobody was in" was.
+
+`cleanupAbandonedRooms` uses the evidence that already exists: `last_seen_at`,
+refreshed by the heartbeat every 15 seconds. A room where every HUMAN has been
+silent for `ABANDONED_ROOM_MS` (20 minutes) is deleted. Three guards, and none
+is optional:
+
+- **20 minutes, not the 2-minute in-game stale timeout.** This deletes a whole
+  room rather than one seat, and deleting a live room out from under a game is
+  far worse than leaving a dead one listed.
+- **No `last_seen_at` at all means "cannot tell"** and protects the room. This
+  is the same rule as `checkStalePresence`, and ignoring it once had hosts
+  kicking every player seconds after they joined.
+- **Bots are ignored when asking whether anyone is alive**, because a bot never
+  heartbeats. A room of only bots is abandoned by definition.
+
+It runs from the Join page's existing sweep and from the admin dashboard before
+it counts, so the number an admin sees and the list a player sees agree.
+
+**The public games list was never showing these**, contrary to a claim made
+once in this session: `fetchPublicRooms` requires `who_can_join = 'anyone'` AND
+`created_at` within two hours, so an invite-only or older ghost was never
+offered to anyone. Only a young public one could have been.
 
 ## Presence, Away and Host Handover
 

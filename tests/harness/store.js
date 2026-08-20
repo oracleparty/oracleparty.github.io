@@ -416,6 +416,21 @@ export class FakeStore {
       return out;
     }
 
+    // Mirrors migration 042. The real one reads auth.users, which no client
+    // can see; the fake store has no auth schema, so a scenario can check that
+    // the panel ASKS for the details and copes when they are unavailable.
+    if (name === 'admin_account_details') {
+      const p = this.table('profiles').find(r => String(r.user_id) === String(args?.p_user_id));
+      if (!p) return [];
+      return [{
+        email: `${String(p.display_name || 'someone').toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`,
+        provider: 'email',
+        email_confirmed: true,
+        last_sign_in_at: new Date().toISOString(),
+        signed_up_at: p.created_at || new Date().toISOString(),
+      }];
+    }
+
     // Mirrors migration 041. The real ones are SECURITY DEFINER because
     // question_history is scoped to its owner, so a host correcting somebody
     // else's answer is refused outright — the whole reason these exist. The

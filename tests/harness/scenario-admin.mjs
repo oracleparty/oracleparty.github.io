@@ -92,6 +92,25 @@ try {
 
   // Two live rooms, one playing; one abandoned room with a stale player in it.
   const now = Date.now();
+  // Finished games for the admin, so the account panel has something to
+  // summarise. Without these the panel's "plays most" line never runs at all —
+  // which is how the first version of this scenario failed to catch a missing
+  // CATEGORY_META import: the guard existed, the test data never reached it.
+  //
+  // Three games across TWO rooms on purpose: games and sessions must come out
+  // as different numbers, or an assertion on both proves only one.
+  table.store.seed('game_history', [
+    { id: 1, user_id: 'user-roman', room_id: 'past-room-1', category: 'history',
+      subcategory: null, score: 42, placement: 1, total_players: 3,
+      played_at: new Date(now - 86400000).toISOString() },
+    { id: 2, user_id: 'user-roman', room_id: 'past-room-1', category: 'history',
+      subcategory: null, score: 31, placement: 2, total_players: 3,
+      played_at: new Date(now - 86000000).toISOString() },
+    { id: 3, user_id: 'user-roman', room_id: 'past-room-2', category: 'science',
+      subcategory: null, score: 18, placement: 3, total_players: 4,
+      played_at: new Date(now - 3600000).toISOString() },
+  ]);
+
   table.store.seed('rooms', [
     { id: 'room-live-1', code: 'AAAA', host_name: 'Roman', category: 'history', status: 'playing',
       who_can_join: 'anyone', questions_per_game: 5, question_timer: 30, created_at: new Date().toISOString() },
@@ -316,6 +335,79 @@ try {
       hasDelete: !!row.querySelector('[data-del-account]'),
     }))).catch(() => []);
   note(`account rows: ${JSON.stringify(guards)}`);
+
+  // ============================================================
+  // TAPPING AN ACCOUNT OPENS IT
+  //
+  // The dashboard listed eleven accounts, most of them called "New Player",
+  // with no way to tell a real person from an abandoned sign-up and no action
+  // but Delete. The panel answers that — but the half that identifies somebody
+  // reads auth.users through a database function, so it is the half most
+  // likely to be missing, and it must degrade to a partial answer rather than
+  // an error.
+  //
+  // This also guards a live ReferenceError: renderAccountDetail reads
+  // CATEGORY_META, which was NOT imported when it was written. The
+  // module-integrity check passed because it only verifies FUNCTIONS, and
+  // nothing here runs until a row is actually tapped.
+  // ============================================================
+  heading('opening an account');
+  {
+    const firstRow = admin.page.locator('#stat-drill-body [data-account]').first();
+    if (!await firstRow.isVisible().catch(() => false)) {
+      problems.push('no account row was openable — the list is not clickable at all');
+    } else {
+      await firstRow.click().catch(() => {});
+      await admin.page.waitForTimeout(1500);
+
+      const panel = await admin.page.evaluate(() => {
+        const el = [...document.querySelectorAll('[data-account-detail]')]
+          .find(e => e.style.display !== 'none');
+        if (!el) return null;
+        return {
+          text: el.textContent.replace(/\s+/g, ' ').trim(),
+          rows: el.querySelectorAll('.account-detail__row').length,
+          stillLoading: /Loading/.test(el.textContent),
+        };
+      }).catch(() => null);
+
+      note(`panel: ${panel ? JSON.stringify(panel).slice(0, 200) : '(never opened)'}`);
+
+      if (!panel) {
+        problems.push('tapping an account opened nothing');
+      } else {
+        if (panel.stillLoading) problems.push('the account panel never finished loading');
+        if (panel.rows === 0) problems.push('the account panel opened empty');
+        if (!/Games played/i.test(panel.text)) {
+          problems.push('the account panel does not say how many games they have played');
+        }
+        if (!/Sessions/i.test(panel.text)) {
+          problems.push('the account panel does not say how many sessions — games and sessions answer different questions and both were asked for');
+        }
+        // Three games across two rooms. If these came out equal the panel
+        // would be reporting one number twice under two labels.
+        if (!/Games played 3/i.test(panel.text)) {
+          problems.push(`games played is wrong — expected 3, panel says: ${panel.text.slice(0, 120)}`);
+        }
+        if (!/Sessions 2/i.test(panel.text)) {
+          problems.push(`sessions is wrong — three games across two rooms is 2 sessions, panel says: ${panel.text.slice(0, 120)}`);
+        }
+        // Reached only when the player HAS games, which is what makes the
+        // CATEGORY_META line execute.
+        if (!/Plays most/i.test(panel.text)) {
+          problems.push('the account panel does not say which categories they play');
+        }
+      }
+
+      // A console error here means something in the panel threw. That is the
+      // shape a missing import takes, and it fires only on this tap.
+      const threw = admin.consoleErrors.filter(e =>
+        /is not defined|ReferenceError|Cannot read/i.test(e));
+      if (threw.length) {
+        problems.push(`opening an account threw: ${threw[0].slice(0, 160)}`);
+      }
+    }
+  }
   if (guards.length === 0) {
     problems.push('the accounts list is empty even though accounts exist');
   } else {

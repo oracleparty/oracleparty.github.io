@@ -5,7 +5,9 @@
 
 import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
-import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms } from './supabase.js';
+import { CATEGORY_META } from './categories.js';
+import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
+  fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS, ABANDONED_ROOM_MS } from './constants.js';
 
@@ -249,6 +251,12 @@ async function drillAccounts() {
   if (error) return drillError(error, 'accounts');
   if (!data || data.length === 0) return drillEmpty('No accounts yet.');
 
+  // Games and sessions for the whole list in ONE query. Six rounds with the
+  // same group in one evening is six games and one session, and the pair says
+  // something neither number says alone: thirty games across two sessions is a
+  // different player from thirty across twenty-five.
+  const counts = await fetchAccountPlayCounts(data.map(p => p.user_id));
+
   const me = getCurrentUser()?.user?.id;
   return data.map(p => {
     const isMe = String(p.user_id) === String(me);
@@ -262,11 +270,16 @@ async function drillAccounts() {
     const action = (isMe || p.is_admin)
       ? `<span class="stat-drill__meta">${isMe ? 'you' : 'admin'}</span>`
       : `<button class="btn-danger stat-drill__action" data-del-account="${escapeHtml(String(p.user_id))}" data-del-name="${escapeHtml(p.display_name || '')}">Delete</button>`;
-    return `<div class="stat-drill__row">
+    const c = counts[String(p.user_id)] || { games: 0, sessions: 0 };
+    const played = c.games === 0
+      ? 'never played'
+      : `${c.games} game${c.games === 1 ? '' : 's'} · ${c.sessions} session${c.sessions === 1 ? '' : 's'}`;
+    return `<div class="stat-drill__row stat-drill__row--openable" data-account="${escapeHtml(String(p.user_id))}">
       <span class="stat-drill__name">${escapeHtml(p.display_name || '(no name)')}<span class="stat-drill__tag">#${escapeHtml(p.discriminator || '----')}</span></span>
-      <span class="stat-drill__meta">${escapeHtml(when(p.created_at))}${noName ? ' · signed up, never set a name' : ''}</span>
+      <span class="stat-drill__meta">${escapeHtml(played)} · ${escapeHtml(when(p.created_at))}${noName ? ' · never set a name' : ''}</span>
       ${action}
-    </div>`;
+    </div>
+    <div class="account-detail" data-account-detail="${escapeHtml(String(p.user_id))}" style="display:none;"></div>`;
   }).join('');
 }
 
@@ -366,7 +379,80 @@ function disarm() {
   _armed = null;
 }
 
+/**
+ * The expanded view of one account: who they are, and what they have played.
+ *
+ * The identity half needs admin_account_details (migration 042) because email,
+ * sign-up method and last sign-in all live in auth.users, which no client can
+ * read. When that function is missing or refuses, the panel still shows
+ * everything computable from profiles and game_history rather than an error —
+ * a partial answer beats none, and the missing half says so.
+ */
+async function renderAccountDetail(userId, panel) {
+  panel.innerHTML = '<div class="stat-drill__loading">Loading…</div>';
+
+  const [details, games] = await Promise.all([
+    fetchAdminAccountDetails(userId).catch(() => null),
+    fetchAccountGames(userId).catch(() => []),
+  ]);
+
+  const rooms = new Set(games.map(g => String(g.room_id)).filter(Boolean));
+  const wins = games.filter(g => g.placement === 1).length;
+  const last = games[0]?.played_at;
+
+  // Categories they actually play, commonest first.
+  const byCat = {};
+  for (const g of games) byCat[g.category] = (byCat[g.category] || 0) + 1;
+  const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([c, n]) => `${CATEGORY_META[c]?.label || c} (${n})`).join(', ');
+
+  const idRows = details
+    ? [
+        ['Email', details.email || '(none)'],
+        ['Signed up with', details.provider === 'google' ? 'Google' : 'Email & password'],
+        ['Email confirmed', details.email_confirmed ? 'Yes' : 'No — never confirmed'],
+        ['Last signed in', details.last_sign_in_at ? when(details.last_sign_in_at) : 'Never'],
+      ]
+    : [['Identity', 'Needs migration 042, or you are not signed in as an admin']];
+
+  const playRows = [
+    ['Games played', String(games.length)],
+    ['Sessions', String(rooms.size)],
+    ['Wins', String(wins)],
+    ['Last played', last ? when(last) : 'Never'],
+  ];
+  if (top) playRows.push(['Plays most', top]);
+
+  panel.innerHTML = [...idRows, ...playRows].map(([k, v]) =>
+    `<div class="account-detail__row">
+       <span class="account-detail__key">${escapeHtml(k)}</span>
+       <span class="account-detail__val">${escapeHtml(v)}</span>
+     </div>`).join('');
+}
+
 async function handleDrillClick(e) {
+  // Open one account. Checked before the buttons below so a tap on Delete does
+  // not also expand the row underneath it.
+  if (!e.target.closest('[data-del-account]')) {
+    const row = e.target.closest('[data-account]');
+    if (row) {
+      const id = row.dataset.account;
+      const panel = document.querySelector(`[data-account-detail="${CSS.escape(id)}"]`);
+      if (panel) {
+        const open = panel.style.display !== 'none';
+        // One at a time: several open panels turn a scannable list into a wall.
+        document.querySelectorAll('[data-account-detail]').forEach(el => { el.style.display = 'none'; });
+        document.querySelectorAll('[data-account]').forEach(el => el.classList.remove('stat-drill__row--open'));
+        if (!open) {
+          panel.style.display = '';
+          row.classList.add('stat-drill__row--open');
+          await renderAccountDetail(id, panel);
+        }
+        return;
+      }
+    }
+  }
+
   const endBtn = e.target.closest('[data-end-room]');
   if (endBtn) {
     if (_armed !== endBtn) return arm(endBtn, 'Really end?');

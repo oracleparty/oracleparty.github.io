@@ -829,21 +829,43 @@ export const STATES = {
       const body = document.getElementById('stat-drill-body');
       if (!body) return;
       // Mirrors drillAccounts() in js/admin.js. Change both together.
+      //
+      // The second row is shown OPEN, with its detail panel. That panel holds
+      // an email, which is the longest unbreakable string this layout ever has
+      // to fit next to a label on a 375px phone — exactly the thing worth
+      // rendering rather than assuming.
       const rows = [
-        ['ArchaeologistAnna', '4821', 'Aug 3, 14:22', 'you'],
-        ['TimeTraveler42', '0917', 'Aug 7, 09:05', 'del'],
-        ['Bartholomew Kensington', '3310', 'Aug 11, 21:47', 'del'],
-        ['QuizMasterMax', '5566', 'Aug 14, 18:30', 'admin'],
+        ['ArchaeologistAnna', '4821', '31 games · 8 sessions · Aug 3, 14:22', 'you'],
+        ['TimeTraveler42', '0917', '12 games · 3 sessions · Aug 7, 09:05', 'del'],
+        ['New Player', '3310', 'never played · Aug 11, 21:47 · never set a name', 'del'],
+        ['QuizMasterMax', '5566', '4 games · 4 sessions · Aug 14, 18:30', 'admin'],
       ];
-      body.innerHTML = rows.map(([name, disc, at, kind]) => {
+      const detail = [
+        ['Email', 'bartholomew.kensington-smythe@verylongdomainname.example.com'],
+        ['Signed up with', 'Google'],
+        ['Email confirmed', 'No — never confirmed'],
+        ['Last signed in', 'Aug 7, 09:06'],
+        ['Games played', '12'],
+        ['Sessions', '3'],
+        ['Wins', '4'],
+        ['Last played', 'Aug 12, 20:14'],
+        ['Plays most', 'History (7), Pop Culture (3), Science (2)'],
+      ].map(([k, v]) =>
+        `<div class="account-detail__row">
+           <span class="account-detail__key">${k}</span>
+           <span class="account-detail__val">${v}</span>
+         </div>`).join('');
+
+      body.innerHTML = rows.map(([name, disc, at, kind], i) => {
         const action = kind === 'del'
           ? '<button class="btn-danger stat-drill__action">Delete</button>'
           : `<span class="stat-drill__meta">${kind}</span>`;
-        return `<div class="stat-drill__row">
+        const open = i === 1;
+        return `<div class="stat-drill__row stat-drill__row--openable${open ? ' stat-drill__row--open' : ''}">
           <span class="stat-drill__name">${name}<span class="stat-drill__tag">#${disc}</span></span>
           <span class="stat-drill__meta">${at}</span>
           ${action}
-        </div>`;
+        </div>` + (open ? `<div class="account-detail">${detail}</div>` : '');
       }).join('');
     },
   },
