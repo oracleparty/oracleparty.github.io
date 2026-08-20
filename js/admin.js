@@ -446,7 +446,22 @@ async function loadFlaggedQueue() {
     return;
   }
   if (!flags || flags.length === 0) {
-    container.innerHTML = '<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No flagged questions.</p>';
+    // "No flagged questions" answers the wrong question when the worry is
+    // whether ratings are being recorded at all. A playtest reported flags not
+    // reaching this page, and an empty list looks identical whether the writes
+    // are being refused, the reads are being filtered, or nobody tapped the
+    // flag. Counting every kind of feedback separates the first two from the
+    // third: ratings present but no flags is a working pipeline; nothing at all
+    // is a pipeline to investigate.
+    const { count, error: countErr } = await supabase
+      .from('question_feedback')
+      .select('question_id', { count: 'exact', head: true });
+    const suffix = countErr
+      ? ` (couldn't count other ratings: ${escapeHtml(countErr.message || String(countErr))})`
+      : count > 0
+        ? ` ${count} other rating${count === 1 ? '' : 's'} recorded, so ratings are reaching the database.`
+        : ' No ratings of any kind recorded yet — thumbs, flags or otherwise.';
+    container.innerHTML = `<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No flagged questions.${suffix}</p>`;
     return;
   }
 

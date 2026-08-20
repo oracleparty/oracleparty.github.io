@@ -3,7 +3,7 @@
 // ============================================
 
 import { supabase } from './client.js';
-import { logger, reportWriteFailure } from '../logger.js';
+import { logger, reportWriteFailure, writeSucceeded } from '../logger.js';
 import { CATEGORY_PAGE_SIZE, QUESTION_POOL_SIZE, WILDCARD_LIMIT, DIFFICULTY_QUESTION_LIMIT, TITLE_BATCH_SIZE } from '../constants.js';
 
 /**
@@ -629,7 +629,18 @@ export async function upsertQuestionFeedback({ questionId, roomId, playerName, f
   // Keyed on voter_id, so one person rates a question once no matter how many
   // games they play it in. Changing your mind updates the existing row rather
   // than adding another vote. room_id and player_name are kept for context.
-  const { error } = await supabase
+  // .select() so the ROW COUNT can be checked, not just the error. An RLS
+  // refusal returns no error at all — it writes nothing and reports success —
+  // which is the single most misleading thing this database does and the reason
+  // writeSucceeded exists (CLAUDE.md #4 and #5).
+  //
+  // This matters here more than almost anywhere. question_feedback reads empty
+  // on the live database, and a playtest reported flags not reaching the admin
+  // page. Without a row check there is no way to tell a refused write from
+  // nobody having rated anything: both look exactly like silence. Now a player
+  // whose rating does not save is told, and the next playtest produces evidence
+  // instead of another shrug.
+  const result = await supabase
     .from('question_feedback')
     .upsert({
       question_id: questionId,
@@ -638,10 +649,11 @@ export async function upsertQuestionFeedback({ questionId, roomId, playerName, f
       player_name: playerName,
       feedback_type: feedbackType,
       flag_reason: flagReason || null
-    }, { onConflict: 'question_id,voter_id' });
+    }, { onConflict: 'question_id,voter_id' })
+    .select();
 
-  reportWriteFailure('Save feedback', error, "Couldn't save your rating");
-  return { error };
+  const ok = writeSucceeded('Save feedback', result, "Couldn't save your rating");
+  return { error: ok ? null : (result.error || { message: 'feedback write affected zero rows' }) };
 }
 
 export async function deleteQuestionFeedbackByVoter({ questionId, voterId }) {

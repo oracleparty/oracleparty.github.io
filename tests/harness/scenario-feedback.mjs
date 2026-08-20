@@ -271,6 +271,38 @@ try {
   }
 
   // ============================================================
+  // A REFUSED RATING MUST NOT LOOK LIKE A SAVED ONE
+  //
+  // question_feedback reads empty on the live database and a playtest reported
+  // flags never reaching the admin page. An RLS refusal returns NO error — it
+  // writes nothing and reports success — so until the row count is checked, a
+  // refused rating and a rating nobody gave produce exactly the same silence.
+  // ============================================================
+  heading('a rating that cannot be saved says so');
+  {
+    table.store.denyWrites('question_feedback');
+    const before = table.store.table('question_feedback').length;
+    const thumbs = host.page.locator('.feedback-btn[data-type="thumbs_up"]').first();
+    if (!await thumbs.isVisible().catch(() => false)) {
+      problems.push('the feedback buttons were gone before the refusal check could run');
+    } else {
+      await thumbs.click().catch(() => {});
+      await host.page.waitForTimeout(2000);
+      const after = table.store.table('question_feedback').length;
+      const toast = await host.page.evaluate(() =>
+        [...document.querySelectorAll('[class*="toast"]')]
+          .map(e => e.textContent.trim()).filter(Boolean).join(' | ')).catch(() => '');
+      note(`refused write: rows ${before} -> ${after}, player told: ${JSON.stringify(toast)}`);
+      if (after !== before) {
+        problems.push('denyWrites did not refuse the write, so the check below proves nothing');
+      } else if (!/couldn.t save|could not save|permission/i.test(toast)) {
+        problems.push('a refused rating was not surfaced to the player — this is the silence that makes an empty question_feedback table impossible to diagnose');
+      }
+    }
+    table.store.allowWrites('question_feedback');
+  }
+
+  // ============================================================
   // WHAT PEOPLE TYPED
   //
   // The host records each answer's text when it advances the round, so a
@@ -365,6 +397,9 @@ try {
 
   for (const r of [host, bob]) {
     const real = r.consoleErrors.filter(e =>
+      // "Save feedback affected zero rows" is the refusal THIS scenario caused
+      // on purpose above, and logging it loudly is the behaviour being tested.
+      !/Save feedback affected zero rows/i.test(e) &&
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
