@@ -897,6 +897,44 @@ screen arrives with a freshly created row and would skip it.
 every third call, leaving the local view of `last_seen_at` up to 90s stale, so
 absence was noticed three times slower than intended.
 
+## Who is allowed to write a statistic
+
+**Measured from the live database on 2026-08-20, via the CI probe.**
+
+**A visitor CAN save a rating.** `question_feedback` answered
+`ALLOWED (died on a NOT NULL column, as intended)` to a deliberately invalid
+insert — RLS let it through and a constraint stopped it. So the empty table is
+**not** a permissions problem, and nobody should write a migration for one.
+What remains is the client: a write that never fires, or a value the database
+rejects. Both are now visible to the player (`writeSucceeded`), so the next
+rating produces evidence instead of silence.
+
+**A host CANNOT write another player's `question_history`.** Migration 011
+grants `INSERT WITH CHECK (user_id = auth.uid())` and
+`UPDATE USING (user_id = auth.uid())`, and **no DELETE policy at all**. Three
+consequences, none of which error:
+
+| Call | For yourself | For anybody else |
+|---|---|---|
+| `upsertQuestionHistory` from `doReveal` | works | never attempted |
+| `amendQuestionHistory` (host override) | works | **silently refused** |
+| `revokeQuestionHistory` (disqualify) | update branch works, **delete branch refused** | **silently refused** |
+
+So a host's correction lands on their own row and quietly does nothing for
+everyone else. The scenario passes because the fake store has no RLS.
+
+**This is also the answer to "should statistics be per-device?".** They are,
+and it is not a design decision — it is this policy, never revisited. Each
+player's own browser is the only thing that can write their history, so a
+phone that is asleep at the reveal records nothing, and a phone that is awake
+records a miss. The same event, two different outcomes, decided by hardware.
+
+The fix is the pattern `record_question_outcome` already uses: a SECURITY
+DEFINER function that takes the whole round and writes every player's row,
+called once by the host. It would also make absence and distraction consistent,
+because one writer would decide both. **Not built — it needs the owner's
+decision on whether an absent player's blank should count.**
+
 ## Accuracy: `question_history` holds counters, not a verdict
 
 Every accuracy in the app — profile, leaderboard, tier, title thresholds —
