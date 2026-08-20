@@ -74,7 +74,13 @@ export const CATEGORY_META = {
     { key: 'ingredients', icon: '𓆭', emoji: '🧅', label: 'Ingredients' },
     { key: 'beverages', icon: '𓈖', emoji: '🍹', label: 'Beverages' },
     { key: 'brands-restaurants', icon: '𓉐', emoji: '🍔', label: 'Brands & Restaurants' },
-    { key: 'language', icon: '𓏞', emoji: '📝', label: 'Language' },
+    // KEY STAYS 'language'. Questions are filed under that string in the
+    // database, and changing it would orphan every one of them — the browser
+    // matches on the key and shows the label. Only the label changed: "Language"
+    // next to Cuisines and Ingredients reads like the Language topic under
+    // Culture & Society, when what is actually filed here is where food words
+    // come from and what they mean.
+    { key: 'language', icon: '𓏞', emoji: '📝', label: 'Words & Origins' },
     { key: 'misc', icon: '𓋍', emoji: '🍕', label: 'Misc' },
   ]},
   'logic':            { icon: '𓃻', emoji: '🧩', label: 'Logic', subcategories: [  // E36 Baboon — sacred to Thoth, wisdom & calculation

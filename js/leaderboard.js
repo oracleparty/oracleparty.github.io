@@ -14,7 +14,7 @@ import {
 } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
-import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
+import { TITLE_WORDS, buildDisplayTitle, rowProficiency } from './titles.js';
 import { CATEGORY_META } from './categories.js';
 
 // ============================================
@@ -240,8 +240,14 @@ async function loadCategoryLeaderboard() {
 
   // Sort by accuracy desc
   const sorted = stats
-    .map(s => ({ ...s, accuracy: Math.round((s.correct_answers / s.questions_answered) * 100) }))
-    .sort((a, b) => b.accuracy - a.accuracy || b.questions_answered - a.questions_answered)
+    // Proficiency, not hit rate: the share of the QUESTIONS somebody has met in
+    // this category that they currently get right. rowProficiency falls back to
+    // the attempt counters where migration 040 has not been applied.
+    .map(s => {
+      const prof = rowProficiency(s);
+      return { ...s, accuracy: prof ? Math.round(prof.accuracy * 100) : 0, _met: prof ? prof.met : 0 };
+    })
+    .sort((a, b) => b.accuracy - a.accuracy || b._met - a._met)
     .slice(0, LEADERBOARD_LIMIT);
 
   const profiles = await fetchProfilesBatch(sorted.map(s => s.user_id));
@@ -255,7 +261,7 @@ async function loadCategoryLeaderboard() {
     const p = profileMap[s.user_id] || {};
     const title = buildProfileTitle(p);
     const isMe = s.user_id === myId;
-    return renderRow(i + 1, p, title, `${s.accuracy}%`, `${s.questions_answered} Qs · ${s.correct_answers} correct`, isMe);
+    return renderRow(i + 1, p, title, `${s.accuracy}%`, `${s._met} Qs met · ${s.questions_mastered ?? s.correct_answers} known`, isMe);
   }).join('');
 }
 

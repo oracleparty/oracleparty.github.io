@@ -294,9 +294,10 @@ const TIER_THRESHOLDS = {
 export function computeCategoryTiers(stats) {
   const tiers = {};
   for (const s of (stats || [])) {
-    if (s.questions_answered < MIN_QUESTIONS_FOR_TITLE) continue;
-    const accuracy = s.correct_answers / s.questions_answered;
-    const score = accuracy * Math.log2(s.questions_answered);
+    const prof = rowProficiency(s);
+    if (!prof || prof.met < MIN_QUESTIONS_FOR_TITLE) continue;
+    const accuracy = prof.accuracy;
+    const score = accuracy * Math.log2(prof.met);
     let tier = null;
     if (score >= TIER_THRESHOLDS.Oracle) tier = 'Oracle';
     else if (score >= TIER_THRESHOLDS.Master) tier = 'Master';
@@ -335,6 +336,47 @@ export function computeCategoryTiers(stats) {
  */
 export function categoryRollupRows(stats) {
   return (stats || []).filter(s => !s.subcategory);
+}
+
+/**
+ * Proficiency for one stats row: the share of the QUESTIONS you have met in it
+ * that you currently get right. Returns { met, mastered, accuracy } with
+ * accuracy in 0..1, or null when there is nothing to divide by.
+ *
+ * Counting questions rather than attempts is what makes a bad round
+ * recoverable. The old measure was SUM(times_correct) / SUM(times_seen) — a
+ * lifetime hit rate — so a miss was permanent dead weight that playing more
+ * could dilute but never undo, not even by learning the answer. Now the most
+ * recent sighting decides, in both directions: get it right later and the miss
+ * is gone, forget it later and the mastery is gone.
+ *
+ * FALLS BACK to the attempt counters when the new columns are absent, so the
+ * app behaves exactly as before until migration 040 is applied rather than
+ * showing everybody 0%.
+ *
+ * One row only. Never sum these across rows — see categoryRollupRows for why,
+ * and note that a ratio of ratios is not a ratio in any case: add the
+ * numerators and denominators, then divide.
+ */
+export function rowProficiency(s) {
+  if (!s) return null;
+  const hasNew = s.questions_met != null && s.questions_mastered != null;
+  const met = hasNew ? (s.questions_met || 0) : (s.questions_answered || 0);
+  const mastered = hasNew ? (s.questions_mastered || 0) : (s.correct_answers || 0);
+  if (met <= 0) return null;
+  return { met, mastered, accuracy: mastered / met };
+}
+
+/** Proficiency across several rows, added the only way a ratio can be. */
+export function sumProficiency(rows) {
+  let met = 0, mastered = 0;
+  for (const s of rows || []) {
+    const p = rowProficiency(s);
+    if (!p) continue;
+    met += p.met;
+    mastered += p.mastered;
+  }
+  return met > 0 ? { met, mastered, accuracy: mastered / met } : null;
 }
 
 /**

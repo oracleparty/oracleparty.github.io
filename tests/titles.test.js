@@ -6,8 +6,7 @@ import {
   evaluateUnlocks,
   hasReachedApprentice,
   buildDisplayTitle,
-  categoryRollupRows,
-} from '../js/titles.js';
+  categoryRollupRows, rowProficiency, sumProficiency } from '../js/titles.js';
 
 // ============================================
 // computeCategoryTiers
@@ -405,5 +404,90 @@ describe('evaluateUnlocks play-count milestones', () => {
     const stats = [gamesRow(null, 50), gamesRow('ancient', 50)];
     const changes = evaluateUnlocks(stats, {}, [], { hour: 12 });
     expect(changes.find(c => c.wordId === 'fearless')).toBeDefined();
+  });
+});
+
+
+// ============================================
+// rowProficiency / sumProficiency
+//
+// Proficiency counts QUESTIONS and lets the most recent result win, rather
+// than being a lifetime hit rate over attempts. That is what makes a bad round
+// recoverable: answer it wrong then right and the miss is gone. The old
+// measure could only dilute a miss, never undo it.
+//
+// The fallback matters as much as the rule. Migration 040 is hand-applied, and
+// before it runs the two new columns are simply absent — the app must behave
+// exactly as it did rather than reading undefined and showing everybody 0%.
+// ============================================
+describe('rowProficiency', () => {
+  it('counts questions known over questions met', () => {
+    const p = rowProficiency({ questions_met: 10, questions_mastered: 7, questions_answered: 40, correct_answers: 9 });
+    expect(p.met).toBe(10);
+    expect(p.mastered).toBe(7);
+    expect(p.accuracy).toBeCloseTo(0.7);
+  });
+
+  it('a miss corrected later leaves no trace', () => {
+    // Same person, same one question: seen twice, right once, currently right.
+    // The attempt rate says 50%; proficiency says they know it.
+    const row = { questions_met: 1, questions_mastered: 1, questions_answered: 2, correct_answers: 1 };
+    expect(rowProficiency(row).accuracy).toBe(1);
+  });
+
+  it('and forgetting later costs the mastery', () => {
+    const row = { questions_met: 1, questions_mastered: 0, questions_answered: 2, correct_answers: 1 };
+    expect(rowProficiency(row).accuracy).toBe(0);
+  });
+
+  it('falls back to the attempt counters before migration 040', () => {
+    const p = rowProficiency({ questions_answered: 8, correct_answers: 6 });
+    expect(p.met).toBe(8);
+    expect(p.mastered).toBe(6);
+    expect(p.accuracy).toBeCloseTo(0.75);
+  });
+
+  it('returns null when there is nothing to divide by', () => {
+    expect(rowProficiency({ questions_met: 0, questions_mastered: 0 })).toBe(null);
+    expect(rowProficiency(null)).toBe(null);
+    expect(rowProficiency({})).toBe(null);
+  });
+
+  it('sums numerators and denominators, not percentages', () => {
+    // 1/1 and 1/99 is 2/100, not the 50.5% an average of the two ratios gives.
+    const p = sumProficiency([
+      { questions_met: 1, questions_mastered: 1 },
+      { questions_met: 99, questions_mastered: 1 },
+    ]);
+    expect(p.met).toBe(100);
+    expect(p.mastered).toBe(2);
+    expect(p.accuracy).toBeCloseTo(0.02);
+  });
+});
+
+// calculateTitle lives in utils.js and duplicates the proficiency rule inline,
+// because titles.js imports utils.js and the reverse would be a cycle. Two
+// copies of one rule drift, so this pins them together.
+describe('the auto-title maths agrees with rowProficiency', () => {
+  it('ranks on questions known, not attempts', async () => {
+    const { calculateTitle } = await import('../js/utils.js');
+    // IDENTICAL attempt counters in both — 400 attempts, 200 right, a 50% hit
+    // rate either way. Only the question-level verdicts differ: 180 of 200
+    // currently known versus 90 of 200. A rule still ranking on attempts would
+    // score these two the same and land them in the same tier.
+    //
+    // 200 met, chosen so the scores fall either side of a tier boundary rather
+    // than both bottoming out at Apprentice, which is what the first version of
+    // this test did — it passed nothing and proved nothing.
+    const sharp = [{ category: 'history', questions_met: 200, questions_mastered: 180,
+                     questions_answered: 400, correct_answers: 200 }];
+    const blunt = [{ category: 'history', questions_met: 200, questions_mastered: 90,
+                     questions_answered: 400, correct_answers: 200 }];
+    const a = calculateTitle(sharp);
+    const b = calculateTitle(blunt);
+    expect(a.category).toBe('history');
+    // Same attempts and same correct_answers in both; only the question-level
+    // verdicts differ, so a rule that ignored them would return the same tier.
+    expect(a.tier).not.toBe(b.tier);
   });
 });

@@ -935,6 +935,42 @@ called once by the host. It would also make absence and distraction consistent,
 because one writer would decide both. **Not built — it needs the owner's
 decision on whether an absent player's blank should count.**
 
+## Proficiency counts questions; volume counts attempts
+
+**Migration 040.** Proficiency is `questions_mastered / questions_met` —
+distinct questions you currently get right, over distinct questions you have
+met — and the most recent sighting decides, in both directions. Get it wrong
+then right and the miss is gone; get it right then wrong and the mastery is.
+
+It replaced `SUM(times_correct) / SUM(times_seen)`, a lifetime hit rate over
+attempts, in which **a miss was permanent**: playing more could dilute it, and
+nothing could undo it, not even learning the answer. That made the number
+partly a record of how often somebody's phone had been awake at the reveal.
+
+**This is only as good as the resurfacing rule.** A question never asked again
+keeps its old verdict forever, so "recoverable" means "recoverable when it
+comes back". `fetchQuestionsByCategory` already re-serves missed questions at a
+flat ~5% per player per slot, and `question_history.next_eligible_at` exists on
+the live table and **is read by nothing** — that column is where a real spacing
+rule belongs. Treat the two as one feature.
+
+`questions_answered` and `correct_answers` are unchanged and still count
+attempts. They are the VOLUME measure, and the leaderboard's points are built
+on them deliberately (see the note on points below). Only percentages moved.
+The new columns are appended, because `CREATE OR REPLACE VIEW` cannot reorder
+or retype existing ones — which is also the safest shape.
+
+`rowProficiency` / `sumProficiency` in `titles.js` are the single rule, and
+both **fall back to the attempt counters when the new columns are absent**, so
+the app behaves exactly as before until 040 is applied rather than showing
+everybody 0%. `calculateTitle` in `utils.js` duplicates the rule inline because
+`titles.js` imports `utils.js` and the reverse would be a cycle;
+`tests/titles.test.js` pins the two together with a case whose attempt counters
+are identical and whose question verdicts are not.
+
+**`MIN_QUESTIONS_FOR_TITLE` now counts distinct questions, not attempts**, so
+it is marginally harder to reach. That is deliberate and more honest.
+
 ## Accuracy: `question_history` holds counters, not a verdict
 
 Every accuracy in the app — profile, leaderboard, tier, title thresholds —

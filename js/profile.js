@@ -33,7 +33,7 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows } from './titles.js';
+import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency } from './titles.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode } from './categories.js';
 
 // ============================================
@@ -243,10 +243,11 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     for (const s of categoryRollupRows(stats)) {
       totalGames += s.games_played || 0;
       totalWins += s.wins || 0;
-      totalAnswered += s.questions_answered || 0;
-      totalCorrect += s.correct_answers || 0;
-      if (s.questions_answered >= MIN_QUESTIONS_FOR_ACCURACY) {
-        const acc = s.correct_answers / s.questions_answered;
+      const prof = rowProficiency(s);
+      totalAnswered += prof ? prof.met : 0;
+      totalCorrect += prof ? prof.mastered : 0;
+      if (prof && prof.met >= MIN_QUESTIONS_FOR_ACCURACY) {
+        const acc = prof.accuracy;
         if (acc > bestAcc) { bestAcc = acc; bestCat = s.category; }
       }
     }
@@ -713,10 +714,11 @@ export async function initProfilePage() {
   for (const s of categoryRollupRows(stats)) {
     totalGames += s.games_played || 0;
     totalWins += s.wins || 0;
-    totalAnswered += s.questions_answered || 0;
-    totalCorrect += s.correct_answers || 0;
-    if (s.questions_answered >= MIN_QUESTIONS_FOR_CATEGORY) {
-      const acc = s.correct_answers / s.questions_answered;
+    const prof = rowProficiency(s);
+    totalAnswered += prof ? prof.met : 0;
+    totalCorrect += prof ? prof.mastered : 0;
+    if (prof && prof.met >= MIN_QUESTIONS_FOR_CATEGORY) {
+      const acc = prof.accuracy;
       if (acc > strongAcc) { strongAcc = acc; strongCat = s.category; }
       if (acc < weakAcc) { weakAcc = acc; weakCat = s.category; }
     }
@@ -744,7 +746,8 @@ export async function initProfilePage() {
     if (catStats.length > 0) {
       categoriesEl.innerHTML = catStats.map(s => {
         const meta = CATEGORY_META[s.category] || { icon: '?', label: s.category };
-        const acc = s.questions_answered > 0 ? Math.round((s.correct_answers / s.questions_answered) * 100) : 0;
+        const prof = rowProficiency(s);
+        const acc = prof ? Math.round(prof.accuracy * 100) : 0;
         const hasSubs = subStats.some(sub => sub.category === s.category);
 
         // Build subcategory rows if any exist
@@ -756,7 +759,8 @@ export async function initProfilePage() {
               const subNode = findSubcategoryNode(meta, sub.subcategory);
               const subIcon = subNode?.icon || '';
               const subLabel = subNode?.label || sub.subcategory;
-              const subAcc = sub.questions_answered > 0 ? Math.round((sub.correct_answers / sub.questions_answered) * 100) : 0;
+              const subProf = rowProficiency(sub);
+              const subAcc = subProf ? Math.round(subProf.accuracy * 100) : 0;
               return `<div class="profile-category-row profile-category-row--sub">
                 <span>${subIcon}</span>
                 <span class="profile-category-row__name">${escapeHtml(subLabel)}</span>

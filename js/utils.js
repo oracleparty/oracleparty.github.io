@@ -143,9 +143,15 @@ export function calculateTitle(stats) {
   let bestCat = null;
 
   for (const s of (stats || [])) {
-    if (s.questions_answered < MIN_QUESTIONS_FOR_TITLE) continue;
-    const accuracy = s.correct_answers / s.questions_answered;
-    const score = accuracy * Math.log2(s.questions_answered);
+    // Inlined rather than imported from titles.js: utils.js is imported by
+    // titles.js, and the reverse would be a cycle. Same rule, kept in step by
+    // tests/titles.test.js, which asserts the two agree.
+    const hasNew = s.questions_met != null && s.questions_mastered != null;
+    const met = hasNew ? (s.questions_met || 0) : (s.questions_answered || 0);
+    const mastered = hasNew ? (s.questions_mastered || 0) : (s.correct_answers || 0);
+    if (met < MIN_QUESTIONS_FOR_TITLE) continue;
+    const accuracy = mastered / met;
+    const score = accuracy * Math.log2(met);
     if (score > bestScore) {
       bestScore = score;
       bestCat = s.category;
