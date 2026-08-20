@@ -220,9 +220,13 @@ console.log('\n--- CAN A VISITOR RATE A QUESTION? (deliberately invalid; writes 
     const r = await req('question_feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      // room_id must be a UUID on the live table, whatever migration 020 says
+      // it declared — a non-uuid string fails to cast in 22P02 BEFORE RLS is
+      // reached, which teaches nothing about permission. All-zero uuids cannot
+      // match any real room or question.
       body: JSON.stringify({
         question_id: '00000000-0000-0000-0000-000000000000',
-        room_id: '__probe__',
+        room_id: '00000000-0000-0000-0000-000000000000',
         player_name: '__probe__',
         feedback_type: '__probe_invalid__',
       }),
@@ -237,7 +241,7 @@ console.log('\n--- CAN A VISITOR RATE A QUESTION? (deliberately invalid; writes 
     if (code === '23505') return 'ALLOWED (died on a unique index, as intended)';
     if (r.status >= 200 && r.status < 300) {
       // Should be unreachable. Clean up and say so loudly.
-      await req('question_feedback?room_id=eq.__probe__', { method: 'DELETE' });
+      await req('question_feedback?room_id=eq.00000000-0000-0000-0000-000000000000', { method: 'DELETE' });
       return 'ALLOWED — AND A ROW WAS WRITTEN. The foreign key, the feedback_type CHECK and the voter_id NOT NULL are ALL missing from this table. Deleted again.';
     }
     return `unclear (HTTP ${r.status}${code ? ` / ${code}` : ''}) — body: ${(r.body || '').slice(0, 200)}`;
