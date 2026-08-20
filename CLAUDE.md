@@ -99,6 +99,22 @@ Locking the rest is deliberately deferred: with judging and scoring running in
 the players' browsers, the clients *need* those write rights. The lockdown
 comes free with server authority (#1), and is wasted effort before it.
 
+**But rights the app never uses are not deferred, they are just wrong.**
+Migration 036 removes DELETE from `chat_messages` and `chat_archive`, and
+UPDATE from `chat_archive`, having checked `js/db/chat.js` rather than assumed:
+chat is inserted, read, and hearted, and never deleted by anything. Messages
+disappear when their room does, by cascade, which runs as the table owner and
+is unaffected by policies. Before this, any visitor could have wiped every chat
+message and every archive in the game.
+
+**What that does NOT fix, and the privacy policy now says so outright:** a
+person can still READ a room's chat they were never in. Permissions decide by
+identity and a guest has none — every guest is the same anonymous key. The only
+real fixes are requiring sign-in, which ends guest play, or putting a server
+between players and the database. That is #1, and chat privacy arrives with it.
+`privacy.html` tells players to treat chat as public, which is the honest
+position and better than a lock that only looks like one.
+
 ### 3. Schema drift is the single biggest source of "impossible" bugs
 
 Migrations are hand-applied, and several were never run. Every bug of this
