@@ -641,7 +641,21 @@ still be an unvoted level — that is the deliberate last-second switch.
 - **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
 - **Friends** — requests, accept/decline, see friends' active lobbies
 - **Leaderboard** — global and per-category, plus a per-player mastery tree
-- **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`
+- **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`. The four
+  stat cards open the list they were counted from; before that they were the
+  only figures on the page that could not be checked. Two actions live there:
+  ending a stuck room, and deleting somebody's account via
+  `admin_delete_account` (migration 037). That function takes a user id, which
+  is a dangerous shape, so it carries three guards — the caller must be an
+  admin (checked on `profiles.user_id`, never `profiles.id`, see #5), it
+  refuses to delete the caller, and it refuses to delete another admin. Its
+  delete list is deliberately identical to `delete_my_account`'s: if one grows
+  a table the other does not, "I deleted my account" and "an admin deleted my
+  account" stop meaning the same thing.
+- **Bans are not built, and would not work yet.** Guests never sign in, so a
+  ban could only bind to an account, and the banned person plays as a guest or
+  clears their browser data. It becomes possible with server authority (#1),
+  not before.
 - **Co-host** — a second player can share host controls
 - **Presence + heartbeat** — `last_seen_at` drives stale-player cleanup
 - **Practice bot** — one per room, added by the host in the lobby. Makes solo
@@ -1046,8 +1060,29 @@ existing check passed. Two reasons it got through, both worth remembering:
 sweep's unstyled-class check is what catches this now, but only if you read it.
 
 Known and deliberate: `.feedback-btn--flag` has no rule (the flag button falls
-back to the shared `.feedback-btn` look), and `watermark-all` is excluded — it
-is a glyph-calibration state whose cards differ by design.
+back to the shared `.feedback-btn` look), `.admin-qh__controls` has none
+either (its layout is inline on the element), and `watermark-all` is excluded
+— it is a glyph-calibration state whose cards differ by design.
+
+**COVERED is reported, never failed on.** It asks the browser, via
+`elementFromPoint`, whether tapping the middle of a control would actually hit
+it — the one fault class every other check is blind to, because they all
+measure one element at a time. It exists because a Privacy link added to the
+home screen landed exactly on the dock's three buttons and passed everything:
+no overflow, no low contrast, no sideways scroll. A screenshot showed it in a
+second. Three versions were needed to get the noise down (rectangle
+intersection: 123 findings, nearly all legitimate; hit-testing: 48, mostly
+controls behind an open sheet; hit-testing ignoring covering elements larger
+than half the viewport: 8, all explicable). At 8 it needs a human to judge, so
+it is informational — a check that fails the build on legitimate layout is one
+people stop reading.
+
+**`admin.html`, `profile.html` and `privacy.html` had no mocks until
+2026-08-19**, so the sweep had never rendered them. Adding the first one
+immediately found `.page-header__back` with no CSS rule anywhere: the back
+arrow on Profile and Leaderboard had shipped as a bare browser button, no
+colour, no padding, no minimum tap target. **A page with no mock is a page
+nobody is checking.**
 
 - **Always screenshot before pushing UI changes**, then read the screenshot and
   assess it honestly.

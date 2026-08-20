@@ -729,6 +729,58 @@ export const STATES = {
   // GAME.HTML — Modals / Overlays
   // ==========================================
   // ==========================================
+  // ADMIN.HTML
+  //
+  // The admin page had no mock either. The drill-down rows are the densest
+  // thing in this app — a name, a metadata line and a button on one row — so
+  // they are the most likely to squeeze the name to nothing, which is exactly
+  // how the lobby rows broke in a live game.
+  // ==========================================
+  'admin-drill': {
+    page: 'admin',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const loading = document.getElementById('admin-loading');
+      if (loading) loading.style.display = 'none';
+      const content = document.getElementById('admin-content');
+      if (content) content.style.display = '';
+
+      const vals = { 'stat-online': '11', 'stat-games': '3', 'stat-accounts': '11', 'stat-today': '24' };
+      for (const [id, v] of Object.entries(vals)) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
+      }
+      const card = document.querySelector('[data-drill="accounts"]');
+      if (card) card.classList.add('admin-stat-card--open');
+
+      const panel = document.getElementById('stat-drill');
+      if (panel) panel.classList.remove('hidden');
+      const title = document.getElementById('stat-drill-title');
+      if (title) title.textContent = 'Accounts';
+      const body = document.getElementById('stat-drill-body');
+      if (!body) return;
+      // Mirrors drillAccounts() in js/admin.js. Change both together.
+      const rows = [
+        ['ArchaeologistAnna', '4821', 'Aug 3, 14:22', 'you'],
+        ['TimeTraveler42', '0917', 'Aug 7, 09:05', 'del'],
+        ['Bartholomew Kensington', '3310', 'Aug 11, 21:47', 'del'],
+        ['QuizMasterMax', '5566', 'Aug 14, 18:30', 'admin'],
+      ];
+      body.innerHTML = rows.map(([name, disc, at, kind]) => {
+        const action = kind === 'del'
+          ? '<button class="btn-danger stat-drill__action">Delete</button>'
+          : `<span class="stat-drill__meta">${kind}</span>`;
+        return `<div class="stat-drill__row">
+          <span class="stat-drill__name">${name}<span class="stat-drill__tag">#${disc}</span></span>
+          <span class="stat-drill__meta">${at}</span>
+          ${action}
+        </div>`;
+      }).join('');
+    },
+  },
+
+  // ==========================================
   // PRIVACY.HTML
   //
   // Long-form reading, which nothing else in this app is, so it has its own

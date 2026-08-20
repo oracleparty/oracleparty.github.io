@@ -260,6 +260,71 @@ try {
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3|zero rows|permission/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
+
+  // ============================================================
+  // STAT DRILL-DOWNS
+  //
+  // The four numbers at the top now open the list they were counted from.
+  // The checks that matter are the guards on the destructive one: an admin
+  // must not be offered a Delete button on their own row or on another
+  // admin's, because the database refuses both and a button that always
+  // fails is worse than no button.
+  // ============================================================
+  heading('stat drill-downs');
+  await admin.goto('admin.html');
+  await admin.page.waitForTimeout(2500);
+
+  for (const which of ['online', 'games', 'accounts', 'today']) {
+    const card = admin.page.locator(`[data-drill="${which}"]`);
+    if (!await card.isVisible().catch(() => false)) {
+      problems.push(`the ${which} stat card is not tappable`);
+      continue;
+    }
+    await card.click().catch(() => {});
+    await admin.page.waitForTimeout(900);
+    const open = await admin.page.evaluate(() => {
+      const panel = document.querySelector('#stat-drill');
+      const body = document.querySelector('#stat-drill-body');
+      return {
+        shown: !!panel && !panel.classList.contains('hidden'),
+        title: (document.querySelector('#stat-drill-title')?.textContent || '').trim(),
+        text: (body?.textContent || '').trim().slice(0, 60),
+        errored: !!body?.querySelector('.stat-drill__error'),
+        stillLoading: (body?.textContent || '').includes('Loading...'),
+      };
+    }).catch(() => ({}));
+    note(`${which}: ${JSON.stringify(open)}`);
+    if (!open.shown) problems.push(`tapping the ${which} stat opened nothing`);
+    if (open.errored) problems.push(`the ${which} list reported an error: ${open.text}`);
+    if (open.stillLoading) problems.push(`the ${which} list never finished loading`);
+  }
+
+  // Tapping the open card again closes it.
+  await admin.page.locator('[data-drill="today"]').click().catch(() => {});
+  await admin.page.waitForTimeout(500);
+  const closed = await admin.page.evaluate(() =>
+    document.querySelector('#stat-drill')?.classList.contains('hidden')).catch(() => false);
+  note(`tapping the open card again closes it: ${closed}`);
+  if (!closed) problems.push('tapping an open stat card again does not close its list');
+
+  // The guards on Delete.
+  await admin.page.locator('[data-drill="accounts"]').click().catch(() => {});
+  await admin.page.waitForTimeout(1200);
+  const guards = await admin.page.evaluate(() =>
+    [...document.querySelectorAll('#stat-drill-body .stat-drill__row')].map(row => ({
+      name: (row.querySelector('.stat-drill__name')?.textContent || '').trim(),
+      hasDelete: !!row.querySelector('[data-del-account]'),
+    }))).catch(() => []);
+  note(`account rows: ${JSON.stringify(guards)}`);
+  if (guards.length === 0) {
+    problems.push('the accounts list is empty even though accounts exist');
+  } else {
+    const mine = guards.find(g => g.name.startsWith('Roman'));
+    if (mine && mine.hasDelete) {
+      problems.push("the admin is offered a Delete button on their OWN account row");
+    }
+  }
+
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);
 } finally {

@@ -47,11 +47,22 @@
 
       <!-- ===== STATS CARDS ===== -->
       <div class="admin-section">
+        <!-- Buttons, not divs. Each opens the list behind its number below.
+             A number with no way to see what it is made of is a number you
+             have to trust; these were the only figures on this page that
+             could not be checked. -->
         <div class="admin-stats">
-          <div class="admin-stat-card"><div id="stat-online" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Players Online</div></div>
-          <div class="admin-stat-card"><div id="stat-games" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Games Active</div></div>
-          <div class="admin-stat-card"><div id="stat-accounts" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Total Accounts</div></div>
-          <div class="admin-stat-card"><div id="stat-today" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Games Today</div></div>
+          <button class="admin-stat-card" data-drill="online" aria-expanded="false"><div id="stat-online" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Players Online</div></button>
+          <button class="admin-stat-card" data-drill="games" aria-expanded="false"><div id="stat-games" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Games Active</div></button>
+          <button class="admin-stat-card" data-drill="accounts" aria-expanded="false"><div id="stat-accounts" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Total Accounts</div></button>
+          <button class="admin-stat-card" data-drill="today" aria-expanded="false"><div id="stat-today" class="admin-stat-card__value">-</div><div class="admin-stat-card__label">Games Today</div></button>
+        </div>
+        <div id="stat-drill" class="stat-drill hidden">
+          <div class="stat-drill__head">
+            <span id="stat-drill-title" class="stat-drill__title"></span>
+            <button id="stat-drill-close" class="icon-btn" aria-label="Close">&#x2715;</button>
+          </div>
+          <div id="stat-drill-body" class="stat-drill__body"></div>
         </div>
       </div>
 

@@ -128,6 +128,245 @@ async function loadDashboardStats() {
 }
 
 // ============================================
+// STAT DRILL-DOWNS
+//
+// Each of the four numbers at the top opens the list it was counted from.
+// Before this they were the only figures on the page that could not be
+// checked — and this project has learned repeatedly that an unverifiable
+// number is one you end up believing when it is wrong.
+//
+// Every loader reports its own failure into the panel rather than rendering
+// an empty list. An empty list and a refused query look identical, and
+// treating the second as the first is the failure mode in CLAUDE.md #4.
+// ============================================
+
+const DRILL_TITLES = {
+  online: 'Players Online',
+  games: 'Games Active',
+  accounts: 'Accounts',
+  today: 'Games Today',
+};
+
+let _openDrill = null;
+
+function drillError(err, what) {
+  return `<p class="stat-drill__error">Couldn't load ${escapeHtml(what)}: ${escapeHtml(err.message || String(err))}</p>`;
+}
+
+function drillEmpty(text) {
+  return `<p class="stat-drill__empty">${escapeHtml(text)}</p>`;
+}
+
+const when = iso => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+async function drillOnline() {
+  const seenSince = new Date(Date.now() - STALE_TIMEOUT_MS).toISOString();
+  const { data: rooms, error: roomsErr } = await supabase
+    .from('rooms').select('id, code, category').in('status', ['lobby', 'playing']);
+  if (roomsErr) return drillError(roomsErr, 'rooms');
+  if (!rooms || rooms.length === 0) return drillEmpty('No live rooms.');
+
+  const { data: players, error } = await supabase
+    .from('players')
+    .select('id, display_name, room_id, last_seen_at, is_bot')
+    .in('room_id', rooms.map(r => r.id))
+    .gt('last_seen_at', seenSince);
+  if (error) return drillError(error, 'players');
+  if (!players || players.length === 0) return drillEmpty('Nobody online right now.');
+
+  const byRoom = new Map(rooms.map(r => [String(r.id), r]));
+  return players.map(p => {
+    const room = byRoom.get(String(p.room_id));
+    return `<div class="stat-drill__row">
+      <span class="stat-drill__name">${escapeHtml(p.display_name || '(no name)')}${p.is_bot ? ' <span class="badge badge--bot">Bot</span>' : ''}</span>
+      <span class="stat-drill__meta">${escapeHtml(room?.code || '?')} · ${escapeHtml(room?.category || '?')}</span>
+    </div>`;
+  }).join('');
+}
+
+async function drillGames() {
+  const { data: rooms, error } = await supabase
+    .from('rooms')
+    .select('id, code, category, subcategory, host_name, status, created_at')
+    .eq('status', 'playing')
+    .order('created_at', { ascending: false });
+  if (error) return drillError(error, 'rooms');
+  if (!rooms || rooms.length === 0) return drillEmpty('No games in progress.');
+
+  return rooms.map(r => `<div class="stat-drill__row">
+      <span class="stat-drill__name">${escapeHtml(r.code || '?')}</span>
+      <span class="stat-drill__meta">${escapeHtml(r.category || '?')}${r.subcategory ? ' · ' + escapeHtml(r.subcategory) : ''} · host ${escapeHtml(r.host_name || '?')} · ${escapeHtml(when(r.created_at))}</span>
+      <button class="btn-danger stat-drill__action" data-end-room="${escapeHtml(String(r.id))}" data-room-code="${escapeHtml(r.code || '')}">End</button>
+    </div>`).join('');
+}
+
+async function drillAccounts() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id, display_name, discriminator, is_admin, created_at')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+  if (error) return drillError(error, 'accounts');
+  if (!data || data.length === 0) return drillEmpty('No accounts yet.');
+
+  const me = getCurrentUser()?.user?.id;
+  return data.map(p => {
+    const isMe = String(p.user_id) === String(me);
+    // No delete button on yourself or on another admin. The database refuses
+    // both anyway (migration 037) — this stops the tap rather than explaining
+    // the refusal afterwards.
+    const action = (isMe || p.is_admin)
+      ? `<span class="stat-drill__meta">${isMe ? 'you' : 'admin'}</span>`
+      : `<button class="btn-danger stat-drill__action" data-del-account="${escapeHtml(String(p.user_id))}" data-del-name="${escapeHtml(p.display_name || '')}">Delete</button>`;
+    return `<div class="stat-drill__row">
+      <span class="stat-drill__name">${escapeHtml(p.display_name || '(no name)')}<span class="stat-drill__tag">#${escapeHtml(p.discriminator || '----')}</span></span>
+      <span class="stat-drill__meta">${escapeHtml(when(p.created_at))}</span>
+      ${action}
+    </div>`;
+  }).join('');
+}
+
+async function drillToday() {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const { data, error } = await supabase
+    .from('game_history')
+    .select('id, user_id, category, subcategory, score, placement, total_players, played_at')
+    .gte('played_at', todayStart.toISOString())
+    .order('played_at', { ascending: false });
+  if (error) return drillError(error, "today's games");
+  if (!data || data.length === 0) return drillEmpty('No games played today.');
+
+  // game_history stores a user id, not a name. Resolve them in one query
+  // rather than one per row.
+  const ids = [...new Set(data.map(g => g.user_id).filter(Boolean))];
+  const names = new Map();
+  if (ids.length) {
+    const { data: profs } = await supabase
+      .from('profiles').select('user_id, display_name').in('user_id', ids);
+    for (const p of profs || []) names.set(String(p.user_id), p.display_name);
+  }
+
+  return data.map(g => `<div class="stat-drill__row">
+      <span class="stat-drill__name">${escapeHtml(names.get(String(g.user_id)) || '(deleted account)')}</span>
+      <span class="stat-drill__meta">${escapeHtml(g.category || '?')} · ${g.score ?? 0} pts · ${g.placement ?? '?'}/${g.total_players ?? '?'} · ${escapeHtml(when(g.played_at))}</span>
+    </div>`).join('');
+}
+
+const DRILL_LOADERS = {
+  online: drillOnline, games: drillGames, accounts: drillAccounts, today: drillToday,
+};
+
+async function openDrill(which) {
+  const panel = $('#stat-drill');
+  const body = $('#stat-drill-body');
+  const title = $('#stat-drill-title');
+  if (!panel || !body || !title) return;
+
+  // Tapping the open one closes it.
+  if (_openDrill === which) return closeDrill();
+
+  _openDrill = which;
+  title.textContent = DRILL_TITLES[which] || '';
+  body.innerHTML = '<p class="stat-drill__empty">Loading...</p>';
+  panel.classList.remove('hidden');
+  document.querySelectorAll('[data-drill]').forEach(b => {
+    b.setAttribute('aria-expanded', b.dataset.drill === which ? 'true' : 'false');
+    b.classList.toggle('admin-stat-card--open', b.dataset.drill === which);
+  });
+
+  try {
+    const html = await DRILL_LOADERS[which]();
+    // A second tap may have changed which panel is open while this was
+    // loading. Dropping a stale result is the difference between a slow
+    // panel and one showing the wrong list.
+    if (_openDrill !== which) return;
+    body.innerHTML = html;
+  } catch (err) {
+    if (_openDrill !== which) return;
+    body.innerHTML = drillError(err, DRILL_TITLES[which] || 'that');
+  }
+}
+
+function closeDrill() {
+  _openDrill = null;
+  const panel = $('#stat-drill');
+  if (panel) panel.classList.add('hidden');
+  document.querySelectorAll('[data-drill]').forEach(b => {
+    b.setAttribute('aria-expanded', 'false');
+    b.classList.remove('admin-stat-card--open');
+  });
+}
+
+// Tap-again-to-confirm for the two destructive actions. Both are recoverable
+// in the sense that nothing is lost by NOT doing them, so the lighter
+// confirmation used elsewhere in this app is proportionate — unlike deleting
+// your own account, which types the word out.
+let _armed = null;
+let _armedTimer = null;
+
+function arm(btn, label) {
+  clearTimeout(_armedTimer);
+  if (_armed && _armed !== btn) _armed.textContent = _armed.dataset.idle;
+  btn.dataset.idle = btn.dataset.idle || btn.textContent;
+  btn.textContent = label;
+  _armed = btn;
+  _armedTimer = setTimeout(() => {
+    if (_armed === btn) { btn.textContent = btn.dataset.idle; _armed = null; }
+  }, 4000);
+}
+
+function disarm() {
+  clearTimeout(_armedTimer);
+  if (_armed) _armed.textContent = _armed.dataset.idle;
+  _armed = null;
+}
+
+async function handleDrillClick(e) {
+  const endBtn = e.target.closest('[data-end-room]');
+  if (endBtn) {
+    if (_armed !== endBtn) return arm(endBtn, 'Really end?');
+    disarm();
+    endBtn.disabled = true;
+    const { error } = await supabase.from('rooms').delete().eq('id', endBtn.dataset.endRoom);
+    if (error) {
+      endBtn.disabled = false;
+      endBtn.textContent = 'Failed';
+      logger.error('Admin', 'end room failed', error);
+      return;
+    }
+    await loadDashboardStats();
+    openDrill('games');
+    return;
+  }
+
+  const delBtn = e.target.closest('[data-del-account]');
+  if (delBtn) {
+    if (_armed !== delBtn) return arm(delBtn, 'Really delete?');
+    disarm();
+    delBtn.disabled = true;
+    const { error } = await supabase.rpc('admin_delete_account', { p_user_id: delBtn.dataset.delAccount });
+    if (error) {
+      // The function raises a named exception for every refusal — not an
+      // admin, deleting yourself, deleting another admin — so show what it
+      // said rather than a generic failure.
+      delBtn.disabled = false;
+      delBtn.textContent = 'Failed';
+      const body = $('#stat-drill-body');
+      if (body) body.insertAdjacentHTML('afterbegin', drillError(error, 'the delete'));
+      logger.error('Admin', 'admin_delete_account failed', error);
+      return;
+    }
+    await loadDashboardStats();
+    openDrill('accounts');
+  }
+}
+
+// ============================================
 // ANNOUNCEMENTS
 // ============================================
 
@@ -645,6 +884,15 @@ function createQuestionRow(q) {
 // ============================================
 
 function attachListeners() {
+  // Stat drill-downs
+  document.querySelectorAll('[data-drill]').forEach(btn => {
+    btn.onclick = () => openDrill(btn.dataset.drill);
+  });
+  const drillClose = $('#stat-drill-close');
+  if (drillClose) drillClose.onclick = closeDrill;
+  const drillBody = $('#stat-drill-body');
+  if (drillBody) drillBody.addEventListener('click', handleDrillClick);
+
   // Announcements
   $('#btn-set-announcement').onclick = async () => {
     const text = $('#announcement-input').value.trim();

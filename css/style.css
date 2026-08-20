@@ -1963,6 +1963,95 @@ body::after {
   color: var(--color-text-muted);
 }
 
+/* --- Admin stat drill-downs ---
+   The four cards became buttons, so they need to look pressable without
+   becoming loud — they are still primarily a readout. The open one is marked
+   so it is obvious which list is showing. */
+.admin-stat-card {
+  cursor: pointer;
+  text-align: center;
+  font: inherit;
+  border: 1px solid transparent;
+}
+.admin-stat-card:active { transform: scale(0.98); }
+.admin-stat-card--open { border-color: var(--color-primary); }
+
+.stat-drill {
+  margin-top: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.stat-drill__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+.stat-drill__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text);
+}
+.stat-drill__body {
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.stat-drill__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+.stat-drill__row:last-child { border-bottom: none; }
+.stat-drill__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+.stat-drill__tag {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+/* Fixed share of the row rather than flexible, so a long category cannot
+   squeeze the name to nothing — the mistake that made lobby rows collapse. */
+.stat-drill__meta {
+  flex: 0 1 45%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-align: right;
+}
+.stat-drill__action {
+  flex: 0 0 auto;
+  padding: 2px var(--space-sm);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+.stat-drill__empty,
+.stat-drill__error {
+  padding: var(--space-sm);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.stat-drill__error { color: var(--color-danger); }
+
 /* --- Home page legal link ---
    Bottom of the home screen, under the dock. Small and low-contrast on
    purpose: it has to be findable, not prominent. Still measured for contrast
