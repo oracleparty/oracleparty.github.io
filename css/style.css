@@ -836,6 +836,10 @@ body::after {
   animation: fade-up 0.6s var(--ease-out) 0.12s both;
 }
 
+.home.active .home__tagline {
+  animation: fade-up 0.6s var(--ease-out) 0.16s both;
+}
+
 .home.active .home__divider {
   animation: fade-up 0.6s var(--ease-out) 0.2s both;
 }
