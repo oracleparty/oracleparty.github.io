@@ -17,7 +17,9 @@
 --                   deleted. Messages disappear when their room is deleted,
 --                   which happens by cascade as the table owner and is not
 --                   affected by these policies.
---   chat_archive  — INSERT and SELECT only. Never updated, never deleted.
+--   chat_archive  — INSERT only, by players. The ONLY reader is js/admin.js,
+--                   so it keeps its existing admin-only SELECT policy and gets
+--                   no public one. Never updated, never deleted.
 --
 -- So today any visitor holding the publishable key — which is in the page
 -- source of every page, by necessity — could delete every chat message and
@@ -48,6 +50,9 @@ DROP POLICY IF EXISTS "Chat: anyone can delete" ON chat_messages;
 -- replaced by the three the app actually needs.
 DROP POLICY IF EXISTS "Chat messages: anyone" ON chat_messages;
 DROP POLICY IF EXISTS "Anyone can do anything with chat messages" ON chat_messages;
+-- The real one, found by reading pg_policies on the live database rather than
+-- guessing at names. A FOR ALL policy grants DELETE as a side effect.
+DROP POLICY IF EXISTS "Allow all for anon" ON chat_messages;
 
 DROP POLICY IF EXISTS "Chat messages: read" ON chat_messages;
 CREATE POLICY "Chat messages: read"
@@ -69,14 +74,28 @@ DROP POLICY IF EXISTS "Chat archive: anyone can delete" ON chat_archive;
 DROP POLICY IF EXISTS "Anyone can delete chat archive" ON chat_archive;
 DROP POLICY IF EXISTS "Chat archive: anyone" ON chat_archive;
 DROP POLICY IF EXISTS "Anyone can do anything with chat archive" ON chat_archive;
+DROP POLICY IF EXISTS "Allow all for chat_archive" ON chat_archive;
 
+-- NO public read policy here, and this was a mistake in the first version of
+-- this file. chat_archive is written by every player at the end of a game and
+-- read by NOBODY except js/admin.js — checked, not assumed. It already had an
+-- "Admins can read chat archive" policy, and adding a public one alongside it
+-- would have kept every archived conversation world-readable at exactly the
+-- moment this migration claims to be tightening things.
+--
+-- The catch-all above was already granting that read, so nothing was widened
+-- in practice — but dropping the catch-all without also dropping the public
+-- read would have left the hole open while looking closed, which is worse.
 DROP POLICY IF EXISTS "Chat archive: read" ON chat_archive;
-CREATE POLICY "Chat archive: read"
-  ON chat_archive FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Chat archive: write" ON chat_archive;
 CREATE POLICY "Chat archive: write"
   ON chat_archive FOR INSERT WITH CHECK (true);
+
+-- The duplicate left over from an earlier migration. One INSERT policy is
+-- enough; two permissive ones for the same command are just noise in the
+-- dashboard, and noise is where a wrong policy hides.
+DROP POLICY IF EXISTS "Anyone can insert chat archive" ON chat_archive;
 
 
 -- --------------------------------------------
