@@ -44,7 +44,7 @@ import {
 import {
   showScoresScreen, showFinalWagerScreen, showResultsScreen,
   updateScores, updateFinalWagerPlayerList, handleRevealFinalQuestion,
-  showScoreEditSheet,
+  showScoreEditSheet, clearFinalWagerTimer,
 } from './scores.js';
 
 // Forward reference — registered by init.js to avoid circular imports
@@ -458,6 +458,10 @@ export async function handlePhaseTransition(phase) {
   }
 
   if (phase === state.gamePhase) return;
+  // Captured because state.gamePhase is overwritten on the next line, so no
+  // case below can ask where it came from. 'loading' means init.js is routing a
+  // reconnect and has already put the room's real timestamps into state.
+  const prevPhase = state.gamePhase;
   state.gamePhase = phase;
 
   switch (phase) {
@@ -523,6 +527,14 @@ export async function handlePhaseTransition(phase) {
       break;
     case 'final_wager':
       state.isFinalWagerRound = true;
+      // The timestamp still holds the LAST question's start, which is minutes
+      // old by now, so the 20-second final-wager clock would read as already
+      // expired the instant the screen opened. Only the 'question' case cleared
+      // this before, because it was the only phase that used it. A reconnect
+      // arrives from init.js with the phase still 'loading' and the room's real
+      // timestamp already in place — that one must survive, or a player coming
+      // back would restart everyone's clock.
+      if (prevPhase !== 'loading') state.questionStartedAt = null;
       showFinalWagerScreen();
       break;
     case 'difficulty_vote':
@@ -537,6 +549,11 @@ export async function handlePhaseTransition(phase) {
       // was ALWAYS true because state.gamePhase is set to `phase` before the
       // switch statement, causing non-host players to never see the final question.
       state.isFinalWagerRound = true;
+      // Non-hosts arrive here when the host reveals; their 20-second wager
+      // clock may still be mid-count and must not keep ticking behind the
+      // question screen. The host's own path clears it in
+      // handleRevealFinalQuestion.
+      clearFinalWagerTimer();
       // Reset for the final question round (same resets as 'question' phase)
       state.currentWager = state.finalWager;
       state.wagerExplicitlySelected = true; // Final wager already locked in

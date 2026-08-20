@@ -35,6 +35,14 @@ export const state = {
   isFinalWagerRound: false,
   finalWager: 20, // Default to highest — punishes indecision on final round
   finalWagerLocked: false,
+  // Did the player actually TAP a wager, as opposed to inheriting the default
+  // above? The 20-second timer needs to tell those apart: someone who chose 20
+  // and did not press Lock In gets 20, but someone who never touched the screen
+  // must get 0. Letting the timer commit the default would take 20 points off a
+  // player for being away, which is the opposite of the rule everywhere else in
+  // the game — a missed question costs a wager and nothing more.
+  finalWagerSelected: false,
+  finalWagerTimerId: null,
   difficultyVoteLocked: false,
   difficultyVotes: {},       // { playerId: 'easy'|'medium'|'hard' }
   votedDifficulty: null,     // consensus result

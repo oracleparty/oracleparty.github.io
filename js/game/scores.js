@@ -5,7 +5,7 @@
 
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
 import { logger } from '../logger.js';
-import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS } from '../constants.js';
+import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS, FINAL_WAGER_TIMER_SECONDS } from '../constants.js';
 import {
   supabase,
   updateGameState,
@@ -38,6 +38,7 @@ import { evaluateUnlocks, hasReachedApprentice } from '../titles.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties } from './scoring-helpers.js';
+import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import {
   state, canControlGame, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
@@ -342,8 +343,20 @@ export function clearAutoProceed() {
 async function handleFinalWager() {
   state.gamePhase = 'final_wager';
   state.isFinalWagerRound = true;
+  // Drop the last question's stamp before the screen reads it, or the 20-second
+  // clock would open already expired.
+  state.questionStartedAt = null;
   showFinalWagerScreen();
   await updateGameState(state.room.id, { game_phase: 'final_wager' });
+
+  // Stamp the clock as a SEPARATE write, after the phase. Every other client
+  // clears the previous question's stamp when the phase lands, so a stamp sent
+  // in the same payload would be wiped by the transition it arrived with. This
+  // is the same two-step the question screen uses, for the same reason.
+  const startedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
+  state.questionStartedAt = startedAt;
+  updateGameState(state.room.id, { question_started_at: startedAt })
+    .catch(err => logger.warn('Game', 'Could not stamp the final wager timer', err));
 }
 
 async function handleShowResults() {
@@ -358,6 +371,13 @@ async function handleShowResults() {
 
 export function showFinalWagerScreen() {
   state.isFinalWagerRound = true;
+
+  // A timestamp already present here means a reconnect: init.js reads
+  // question_started_at off the room row before it routes the phase, and the
+  // final_wager case leaves it alone when it came from 'loading'. So a player
+  // returning mid-wager resumes the countdown already running rather than
+  // getting a fresh 20 seconds nobody else has.
+  if (!state.finalWagerLocked) state.finalWagerSelected = false;
 
   $('#fw-category').textContent = getCategoryLabel();
   $('#fw-current-score').textContent = state.scores[state.room.playerId] || 0;
@@ -387,6 +407,7 @@ export function showFinalWagerScreen() {
       options.forEach(b => b.classList.remove('fw-option--selected'));
       btn.classList.add('fw-option--selected');
       state.finalWager = parseInt(btn.dataset.wager, 10);
+      state.finalWagerSelected = true;
       // Show lock-in button (player can change mind until they tap it)
       lockBtn.style.display = '';
     };
@@ -437,6 +458,12 @@ export function showFinalWagerScreen() {
     };
   });
 
+  // The 20-second clock. The stamp itself is written by handleFinalWager, after
+  // the phase, so it cannot be cleared by the transition it travelled with.
+  // Until it lands the bar simply reads full — every tick re-reads
+  // state.questionStartedAt rather than capturing it once.
+  startFinalWagerTimer();
+
   // Broadcast channel for difficulty votes
   if (state.difficultyVoteChannel) supabase.removeChannel(state.difficultyVoteChannel);
   state.difficultyVoteChannel = createDifficultyVoteChannel(state.room.id);
@@ -478,9 +505,87 @@ export function showFinalWagerScreen() {
   showHostSettingsGear();
 }
 
+/**
+ * Stop the final-wager countdown and put the header back the way it was.
+ * Safe to call when no timer is running — every exit from the screen calls it,
+ * and a stray interval on this screen would keep ticking into the next round.
+ */
+export function clearFinalWagerTimer() {
+  if (state.finalWagerTimerId) {
+    clearInterval(state.finalWagerTimerId);
+    state.finalWagerTimerId = null;
+  }
+  const el = $('#fw-timer');
+  if (el) {
+    el.style.display = 'none';
+    el.classList.remove('timer--warning', 'timer--expired');
+  }
+}
+
+/**
+ * Count 20 seconds down from the room's shared timestamp, then commit.
+ *
+ * Reads state.questionStartedAt every tick rather than capturing it once:
+ * showFinalWagerScreen runs the moment the phase arrives, and on a non-host
+ * device the host's timestamp lands a beat later over Realtime. Until it does,
+ * getServerTimeLeft returns the full duration, so the bar simply sits at 100%
+ * instead of the screen having to sequence the two events.
+ */
+function startFinalWagerTimer() {
+  clearFinalWagerTimer();
+
+  const wrap = $('#fw-timer');
+  const bar = $('#fw-timer-bar');
+  const text = $('#fw-timer-text');
+  if (!wrap || !bar || !text) return;
+
+  // Nothing to count for somebody who has already committed. Showing them a
+  // clock they cannot act on only makes them think something is still expected.
+  if (state.finalWagerLocked) return;
+
+  wrap.style.display = '';
+
+  const tick = () => {
+    const left = _getServerTimeLeft(
+      state.questionStartedAt, state.serverTimeOffset, FINAL_WAGER_TIMER_SECONDS);
+    const secs = Math.ceil(left);
+    text.textContent = `${secs}s`;
+    bar.style.width = `${Math.max(0, (left / FINAL_WAGER_TIMER_SECONDS) * 100)}%`;
+    wrap.classList.toggle('timer--warning', left <= 5 && left > 0);
+
+    if (left > 0) return;
+
+    wrap.classList.add('timer--expired');
+    clearInterval(state.finalWagerTimerId);
+    state.finalWagerTimerId = null;
+
+    if (state.finalWagerLocked) return;
+
+    // Whatever they tapped stands — not pressing Lock In is indecision about
+    // confirming, not about the number. Someone who never touched the screen
+    // wagers 0: state.finalWager defaults to 20, and committing that default
+    // would take 20 points off a player for being away, when every other
+    // missed round in this game costs a wager and nothing else.
+    if (!state.finalWagerSelected) state.finalWager = 0;
+    lockInFinalWager();
+  };
+
+  tick();
+  state.finalWagerTimerId = setInterval(tick, 200);
+}
+
 async function lockInFinalWager() {
   if (state.finalWagerLocked) return;
   state.finalWagerLocked = true;
+  clearFinalWagerTimer();
+
+  // Reflect the committed number, which the timer may have just decided.
+  document.querySelectorAll('.fw-option').forEach(b => {
+    b.classList.toggle('fw-option--selected',
+      parseInt(b.dataset.wager, 10) === state.finalWager);
+  });
+  const lockBtn = $('#btn-fw-lock');
+  if (lockBtn) lockBtn.style.display = 'none';
 
   $('#fw-status').classList.remove('hidden');
   document.querySelectorAll('.fw-option').forEach(b => b.classList.add('fw-option--locked'));
@@ -632,6 +737,9 @@ export async function handleRevealFinalQuestion() {
   state.previousScores = {};
   state.questionStartedAt = null;
   state.currentWager = state.finalWager || 0;
+  // The wager screen is over. A tick left running here would fire
+  // lockInFinalWager against a screen nobody is looking at any more.
+  clearFinalWagerTimer();
   $('#reveal-answers').innerHTML = '';
 
   _showQuestionScreen();

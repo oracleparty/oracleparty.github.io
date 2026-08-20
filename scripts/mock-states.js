@@ -621,6 +621,15 @@ export const STATES = {
       document.getElementById('fw-current-score').textContent = '42';
       document.getElementById('btn-fw-lock').style.display = '';
 
+      // The 20-second wager clock. Shown mid-count rather than at 20s, because
+      // the bar at 100% is indistinguishable from a bar with no fill rule.
+      const fwTimer = document.getElementById('fw-timer');
+      if (fwTimer) {
+        fwTimer.style.display = '';
+        document.getElementById('fw-timer-bar').style.width = '55%';
+        document.getElementById('fw-timer-text').textContent = '11s';
+      }
+
       // Difficulty vote avatars
       const ea = document.querySelector('[data-dv-avatars="easy"]');
       const ma = document.querySelector('[data-dv-avatars="medium"]');
@@ -648,6 +657,10 @@ export const STATES = {
       if (lockBtn) lockBtn.style.display = 'none';
       const status = document.getElementById('fw-status');
       if (status) status.classList.remove('hidden');
+      // Locked in, so there is nothing left to count. A clock still running
+      // here would tell the player something is expected of them.
+      const fwTimer = document.getElementById('fw-timer');
+      if (fwTimer) fwTimer.style.display = 'none';
       // Mark all players as locked
       document.querySelectorAll('.fw-player-row__wager--waiting').forEach(el => {
         el.classList.remove('fw-player-row__wager--waiting');
@@ -804,6 +817,98 @@ export const STATES = {
   // control that has never been measured on a phone is the wrong one to guess
   // about.
   // ==========================================
+  // The three number sections of a profile, with data in them. Until now the
+  // only profile mock filled the Account section, so Stats, Mastery and
+  // Proficiency have never once been rendered by the sweep — the same gap that
+  // let .page-header__back ship with no CSS rule at all.
+  //
+  // Mastery and Proficiency are both percentages and they measure different
+  // things: Mastery is how much of the 4,859-question bank you have got right
+  // at least once (so it sits near 1% for a long time and that is correct),
+  // Proficiency is how often you are right in a category. Seeing them together
+  // is the point of this state.
+  //
+  // Mirrors the masteryEl / categoriesEl / statsEl innerHTML blocks in
+  // js/profile.js. If those change, change this in the same commit.
+  'profile-stats': {
+    page: 'profile',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const name = document.getElementById('profile-name');
+      if (name) name.textContent = 'ArchaeologistAnna';
+      const title = document.getElementById('profile-title');
+      if (title) title.textContent = 'Seasoned Scholar';
+
+      const statsEl = document.getElementById('profile-stats');
+      if (statsEl) {
+        statsEl.innerHTML = [
+          ['47', 'Games'], ['12', 'Wins'], ['26%', 'Win Rate'],
+          ['68%', 'Accuracy'], ['⏳', 'Strongest'], ['⚗️', 'Weakest'],
+        ].map(([v, l]) =>
+          `<div class="profile-stat"><div class="profile-stat__value">${v}</div><div class="profile-stat__label">${l}</div></div>`
+        ).join('');
+      }
+
+      const masteryEl = document.getElementById('profile-mastery');
+      if (masteryEl) {
+        const cats = [
+          ['⏳', 'History', 84, 412, 20],
+          ['⚗️', 'Science', 31, 388, 8],
+          ['🎬', 'Pop Culture', 12, 355, 3],
+        ];
+        masteryEl.innerHTML = `
+          <div class="mastery-summary">
+            <div class="mastery-summary__text">127 / 4,859 questions mastered</div>
+            <div class="mastery-bar"><div class="mastery-bar__fill" style="width: 3%"></div></div>
+          </div>
+        ` + cats.map(([icon, label, mastered, total, pct], i) => `
+          <div class="mastery-group" data-cat="c${i}">
+            <div class="mastery-row${i === 0 ? ' mastery-row--expandable' : ''}">
+              <span class="mastery-row__icon">${icon}</span>
+              <span class="mastery-row__name">${label}</span>
+              <span class="mastery-row__fraction">${mastered}/${total}</span>
+              <div class="mastery-bar mastery-bar--inline"><div class="mastery-bar__fill" style="width: ${pct}%"></div></div>
+              ${i === 0 ? '<span class="mastery-row__chevron">›</span>' : ''}
+            </div>
+            ${i === 0 ? `<div class="mastery-sub-rows">
+              <div class="mastery-row mastery-row--sub">
+                <span class="mastery-row__icon">🏛️</span>
+                <span class="mastery-row__name">Ancient World</span>
+                <span class="mastery-row__fraction">38/104</span>
+              </div>
+            </div>` : ''}
+          </div>
+        `).join('');
+      }
+
+      const catsEl = document.getElementById('profile-categories');
+      if (catsEl) {
+        const rows = [['⏳', 'History', 81], ['⚗️', 'Science', 64], ['🎬', 'Pop Culture', 43]];
+        catsEl.innerHTML = rows.map(([icon, label, acc], i) => `
+          <div class="profile-category-group" data-category="c${i}">
+            <div class="profile-category-row${i === 0 ? ' profile-category-row--expandable' : ''}">
+              <span>${icon}</span>
+              <span class="profile-category-row__name">${label}</span>
+              <span class="profile-category-row__accuracy">${acc}%</span>
+              ${i === 0 ? '<span class="profile-category-row__chevron">›</span>' : ''}
+            </div>
+            ${i === 0 ? `<div class="profile-subcategory-rows">
+              <div class="profile-category-row profile-category-row--sub">
+                <span>🏛️</span>
+                <span class="profile-category-row__name">Ancient World</span>
+                <span class="profile-category-row__accuracy">77%</span>
+              </div>
+            </div>` : ''}
+          </div>
+        `).join('');
+      }
+
+      const tabContent = document.getElementById('profile-tab-content');
+      if (tabContent) tabContent.style.display = '';
+    },
+  },
+
   'profile-account': {
     page: 'profile',
     screen: null,

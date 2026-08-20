@@ -98,15 +98,26 @@
         <div id="profile-stats" class="profile-stats"></div>
       </div>
 
-      <!-- Mastery Progress -->
+      <!-- Mastery Progress. This one really is completion — how much of the
+           question bank you have got right at least once — which is a
+           different question from Proficiency below, and the reason both
+           exist. Its percentage will sit near zero for a long time; that is
+           what 4,859 questions looks like, not a bug. -->
       <div class="profile-section">
         <div class="profile-section__label">Mastery</div>
+        <p class="profile-section__hint">How much of the question bank you have answered correctly.</p>
         <div id="profile-mastery"></div>
       </div>
 
-      <!-- Per-Category Breakdown -->
+      <!-- Per-Category Breakdown.
+           Called Proficiency, not Categories, because the number in each row
+           is correct-answers over questions-answered and nothing on the page
+           said so. "Categories" named the rows; it did not name the measure,
+           and the section above it is a completion count, so the two were easy
+           to read as the same kind of number. -->
       <div class="profile-section">
-        <div class="profile-section__label">Categories</div>
+        <div class="profile-section__label">Proficiency</div>
+        <p class="profile-section__hint">How often you answer correctly, per category.</p>
         <div id="profile-categories" class="profile-category-grid"></div>
       </div>
 

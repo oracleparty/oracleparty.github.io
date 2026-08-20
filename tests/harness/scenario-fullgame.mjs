@@ -10,6 +10,7 @@ import { PlaytestTable } from './harness.js';
 
 const CATEGORY = 'history';
 const QUESTIONS = 5;          // + 1 final wager question
+const FINAL_WAGER_SECONDS = 20;  // mirrors FINAL_WAGER_TIMER_SECONDS in js/constants.js
 const problems = [];
 const note = m => console.log('   ·', m);
 
@@ -148,6 +149,14 @@ try {
     }
 
     if (screen === 'final-wager-screen') {
+      // Carol never touches this screen. The final wager had no timer at all
+      // until a playtest found one person who had put their phone down holding
+      // the last round open, so what is being measured here is that going quiet
+      // costs 0 rather than the state.finalWager default of 20 — committing
+      // that default would take 20 points off somebody for being away, which no
+      // other missed round in this game does.
+      if (r.name === 'Carol') return screen;
+
       // A wager amount must be chosen before the lock button does anything.
       const key = `${r.name}:final`;
       if (!answered.has(key)) {
@@ -174,6 +183,7 @@ try {
   let round = 0;
   let lastQuestionSeen = -1;
   let reachedResults = false;
+  let waitedOutWagerClock = false;
 
   for (let step = 0; step < 160 && !reachedResults; step++) {
     for (const r of everyone) {
@@ -183,6 +193,16 @@ try {
     // Track progress by the room's own state, not one client's screen: clients
     // reach results at different moments and may navigate away afterwards.
     const room = table.store.table('rooms')[0];
+
+    // Sit through the 20-second wager clock once, so the timeout actually
+    // fires. Without this the loop races past the screen and the assertion
+    // below would pass on a wager Carol simply never got the chance to make.
+    if (room && room.game_phase === 'final_wager' && !waitedOutWagerClock) {
+      waitedOutWagerClock = true;
+      note(`waiting out the ${FINAL_WAGER_SECONDS}s final-wager clock with Carol away`);
+      await host.page.waitForTimeout((FINAL_WAGER_SECONDS + 3) * 1000);
+    }
+
     if (room && room.game_phase === 'results') reachedResults = true;
     if (room && room.current_question !== lastQuestionSeen) {
       lastQuestionSeen = room.current_question;
@@ -204,6 +224,18 @@ try {
   // --- Where did everyone end up? ---
   for (const r of everyone) {
     note(`${r.name} is on ${await activeScreen(r)}`);
+  }
+
+  // --- The final wager clock ---
+  const finalQ = QUESTIONS; // final wager rides on question_number === QUESTIONS
+  const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
+  const carolFinal = table.store.table('answers')
+    .find(a => String(a.player_id) === String(carolId) && a.question_number === finalQ);
+  note(`Carol never touched the wager screen; her locked wager: ${carolFinal ? carolFinal.wager : '(none)'}`);
+  if (!carolFinal) {
+    problems.push('a player who ignored the final wager screen locked nothing at all — the 20s clock never committed for her, so the room would still be waiting');
+  } else if (carolFinal.wager !== 0) {
+    problems.push(`a player who ignored the final wager screen was committed to ${carolFinal.wager} points, not 0 — being away must not cost more than a missed round does`);
   }
 
   // --- Do the clients agree on scores? ---

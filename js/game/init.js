@@ -69,6 +69,7 @@ import {
 } from './reveal.js';
 import {
   handleShowScores, showResultsScreen, updateScores, clearAutoProceed,
+  clearFinalWagerTimer,
   registerCleanup as registerScoresCleanup,
   registerShowQuestionScreen as registerScoresShowQuestionScreen,
   registerHandleNextQuestion as registerScoresHandleNextQuestion,
@@ -824,6 +825,7 @@ function cleanup() {
     state._syncIntervalId = null;
   }
   clearAutoProceed();
+  clearFinalWagerTimer();
   hideHostSettingsGear();
   resetReturnConfirm();
   if (_flagMenuCloseHandler) {

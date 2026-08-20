@@ -18,6 +18,12 @@ export const ADMIN_STATUS_FADE_MS = 2000;
 export const REVEAL_ANSWER_DELAY_MS = 1500;
 export const SCORE_PRE_ANIMATE_DELAY_MS = 800;
 export const WAGER_AUTO_SKIP_MS = 1000;
+// The final wager screen had no timer at all, so one person who had put their
+// phone down held the last round open indefinitely. Fixed rather than taken
+// from the room's question-timer setting: that setting is for reading a
+// question and typing an answer, and a 60-second one would be absurd for
+// choosing between three buttons.
+export const FINAL_WAGER_TIMER_SECONDS = 20;
 export const CHAT_FLASH_MS = 500;
 export const COUNTDOWN_FINISH_MS = 300;
 export const COUNTDOWN_TRANSITION_MS = 300;
