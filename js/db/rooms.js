@@ -4,7 +4,7 @@
 
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './client.js';
 import { logger, reportWriteFailure } from '../logger.js';
-import { PUBLIC_ROOMS_LIMIT } from '../constants.js';
+import { PUBLIC_ROOMS_LIMIT, ABANDONED_ROOM_MS } from '../constants.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
 /**
@@ -172,6 +172,70 @@ export async function cleanupOrphanedRooms() {
     for (const room of staleLobbies) {
       await supabase.from('rooms').delete().eq('id', room.id);
     }
+  }
+
+  // ABANDONED rooms: player rows still there, but nobody behind them.
+  //
+  // The zero-player check above cannot catch these. A player row is removed by
+  // a beacon on unload, or by another client in the room running the stale
+  // sweep — so if everybody's phone dies at once, nobody sweeps, the rows sit
+  // there forever, and the room reads as a game in progress. Which is what the
+  // owner saw: two "active games" nobody was in. It also means the Join page
+  // offers dead rooms to real players.
+  //
+  // last_seen_at is the evidence, and it is already maintained by the
+  // heartbeat every 15 seconds. A room where EVERY human has been silent far
+  // longer than any heartbeat gap has nobody in it.
+  await cleanupAbandonedRooms();
+}
+
+/**
+ * Delete rooms whose players have all stopped heartbeating.
+ *
+ * Deliberately conservative, because deleting a live room out from under a
+ * game is far worse than leaving a dead one on a list:
+ *
+ *   · ABANDONED_ROOM_MS is much longer than the in-game stale timeout. A real
+ *     game heartbeats every 15 seconds; this waits many minutes of total
+ *     silence from everybody.
+ *   · A player with NO last_seen_at at all means "cannot tell", not "silent
+ *     since 1970" — the room is left alone. Absence of evidence is not
+ *     evidence of absence, which is the mistake that once had hosts kicking
+ *     every player seconds after they joined.
+ *   · Bots are ignored when asking whether anyone is alive, because a bot has
+ *     no browser and never heartbeats. A room containing only bots is
+ *     abandoned by definition: nobody is there to play.
+ */
+export async function cleanupAbandonedRooms() {
+  const { data: rooms } = await supabase
+    .from('rooms')
+    .select('id')
+    .in('status', ['lobby', 'playing']);
+  if (!rooms || rooms.length === 0) return;
+
+  const { data: players, error } = await supabase
+    .from('players')
+    .select('room_id, last_seen_at, is_bot')
+    .in('room_id', rooms.map(r => r.id));
+  if (error) { logger.error('Supabase', 'cleanupAbandonedRooms failed', error); return; }
+
+  const byRoom = new Map();
+  for (const p of players || []) {
+    if (!byRoom.has(p.room_id)) byRoom.set(p.room_id, []);
+    byRoom.get(p.room_id).push(p);
+  }
+
+  const cutoff = Date.now() - ABANDONED_ROOM_MS;
+  for (const room of rooms) {
+    const humans = (byRoom.get(room.id) || []).filter(p => !p.is_bot);
+    // No humans at all is the zero-player case, already handled above; leaving
+    // it here too costs nothing and covers a bots-only room.
+    const anyoneAlive = humans.some(p => {
+      if (!p.last_seen_at) return true;   // cannot tell — assume alive
+      return new Date(p.last_seen_at).getTime() > cutoff;
+    });
+    if (anyoneAlive) continue;
+    await supabase.from('rooms').delete().eq('id', room.id);
   }
 }
 

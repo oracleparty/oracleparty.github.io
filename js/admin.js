@@ -5,9 +5,9 @@
 
 import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
-import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally } from './supabase.js';
+import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
-import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS } from './constants.js';
+import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS, ABANDONED_ROOM_MS } from './constants.js';
 
 // ============================================
 // INIT
@@ -82,6 +82,15 @@ async function loadDashboardStats() {
   //
   // Online now means: in a room that still exists, and seen within the same
   // window the game itself uses to decide someone has gone.
+  // Sweep abandoned rooms before counting them. A room is only ever cleaned up
+  // by a browser still inside it, so when everybody's phone dies at once the
+  // player rows persist, the zero-player check never fires, and the room reads
+  // as a live game forever — which is exactly what "two active games nobody is
+  // in" was. Same sweep the Join page runs, so the number here and the list a
+  // player sees agree.
+  await cleanupAbandonedRooms().catch(err =>
+    logger.warn('Admin', 'abandoned-room sweep failed', err));
+
   const seenSince = new Date(Date.now() - STALE_TIMEOUT_MS).toISOString();
   const { data: liveRooms, error: roomsErr } = await supabase
     .from('rooms')
@@ -197,11 +206,38 @@ async function drillGames() {
   if (error) return drillError(error, 'rooms');
   if (!rooms || rooms.length === 0) return drillEmpty('No games in progress.');
 
-  return rooms.map(r => `<div class="stat-drill__row">
+  // "status = playing" is not the same as "somebody is in there". A player row
+  // is removed by a beacon on unload or by another client in the room running
+  // the stale sweep, so when everybody's phone dies at once nobody sweeps and
+  // the room reads as a live game forever. Showing the heartbeat is what makes
+  // a ghost distinguishable from a real game without having to guess.
+  const { data: players } = await supabase
+    .from('players')
+    .select('room_id, last_seen_at, is_bot')
+    .in('room_id', rooms.map(r => r.id));
+
+  const byRoom = new Map();
+  for (const p of players || []) {
+    if (!byRoom.has(p.room_id)) byRoom.set(p.room_id, []);
+    byRoom.get(p.room_id).push(p);
+  }
+
+  const cutoff = Date.now() - ABANDONED_ROOM_MS;
+  return rooms.map(r => {
+    const humans = (byRoom.get(r.id) || []).filter(p => !p.is_bot);
+    const alive = humans.filter(p => !p.last_seen_at || new Date(p.last_seen_at).getTime() > cutoff);
+    const ghost = humans.length > 0 && alive.length === 0;
+    const who = humans.length === 0
+      ? 'nobody in the room'
+      : ghost
+        ? `${humans.length} player${humans.length === 1 ? '' : 's'}, all silent — abandoned`
+        : `${alive.length} of ${humans.length} still here`;
+    return `<div class="stat-drill__row">
       <span class="stat-drill__name">${escapeHtml(r.code || '?')}</span>
-      <span class="stat-drill__meta">${escapeHtml(r.category || '?')}${r.subcategory ? ' · ' + escapeHtml(r.subcategory) : ''} · host ${escapeHtml(r.host_name || '?')} · ${escapeHtml(when(r.created_at))}</span>
+      <span class="stat-drill__meta">${escapeHtml(r.category || '?')}${r.subcategory ? ' · ' + escapeHtml(r.subcategory) : ''} · host ${escapeHtml(r.host_name || '?')} · ${escapeHtml(who)} · ${escapeHtml(when(r.created_at))}</span>
       <button class="btn-danger stat-drill__action" data-end-room="${escapeHtml(String(r.id))}" data-room-code="${escapeHtml(r.code || '')}">End</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function drillAccounts() {
@@ -216,6 +252,10 @@ async function drillAccounts() {
   const me = getCurrentUser()?.user?.id;
   return data.map(p => {
     const isMe = String(p.user_id) === String(me);
+    // Every row here is a REAL account: guests have no profiles row at all, so
+    // nothing on this list is a guest. "New Player" means somebody signed up
+    // or came in through Google and never chose a name.
+    const noName = !p.display_name || p.display_name === 'New Player';
     // No delete button on yourself or on another admin. The database refuses
     // both anyway (migration 037) — this stops the tap rather than explaining
     // the refusal afterwards.
@@ -224,7 +264,7 @@ async function drillAccounts() {
       : `<button class="btn-danger stat-drill__action" data-del-account="${escapeHtml(String(p.user_id))}" data-del-name="${escapeHtml(p.display_name || '')}">Delete</button>`;
     return `<div class="stat-drill__row">
       <span class="stat-drill__name">${escapeHtml(p.display_name || '(no name)')}<span class="stat-drill__tag">#${escapeHtml(p.discriminator || '----')}</span></span>
-      <span class="stat-drill__meta">${escapeHtml(when(p.created_at))}</span>
+      <span class="stat-drill__meta">${escapeHtml(when(p.created_at))}${noName ? ' · signed up, never set a name' : ''}</span>
       ${action}
     </div>`;
   }).join('');
