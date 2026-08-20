@@ -433,7 +433,7 @@ async function loadFlaggedQueue() {
   // Fetch all flags
   const { data: flags, error } = await supabase
     .from('question_feedback')
-    .select('question_id, feedback_type, flag_reason, player_name')
+    .select('question_id, feedback_type, flag_reason, flag_note, player_name')
     .eq('feedback_type', 'flag');
 
   // A failed query and an empty queue used to render the same reassuring
@@ -468,9 +468,12 @@ async function loadFlaggedQueue() {
   // Group by question_id
   const grouped = {};
   for (const f of flags) {
-    if (!grouped[f.question_id]) grouped[f.question_id] = { count: 0, reasons: [], players: [] };
+    if (!grouped[f.question_id]) grouped[f.question_id] = { count: 0, reasons: [], notes: [], players: [] };
     grouped[f.question_id].count++;
     if (f.flag_reason) grouped[f.question_id].reasons.push(f.flag_reason);
+    // What somebody actually typed when they picked "Other". A flag with no
+    // reason is a report that something is wrong and no way to find out what.
+    if (f.flag_note) grouped[f.question_id].notes.push(f.flag_note);
     grouped[f.question_id].players.push(f.player_name);
   }
 
@@ -500,6 +503,7 @@ async function loadFlaggedQueue() {
           <span class="admin-flag-row__count">${info.count} flag${info.count > 1 ? 's' : ''}</span>
           <span class="admin-flag-row__reasons">${escapeText(reasons)}</span>
         </div>
+        ${(info.notes || []).map(n => `<div class="admin-flag-row__note">“${escapeText(n)}”</div>`).join('')}
         <div class="admin-flag-row__actions">
           <button class="btn btn-secondary" data-dismiss="${qId}">Unflag</button>
           <button class="btn btn-secondary btn-danger-text" data-remove="${qId}">Remove Q</button>

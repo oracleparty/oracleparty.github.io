@@ -499,6 +499,37 @@ export const STATES = {
   // ==========================================
   // GAME.HTML — Reveal
   // ==========================================
+  // Flagging a question as "Other", with the free-text box open. The flag is
+  // already saved by the time this shows; the note is the follow-up. This state
+  // exists because .feedback-flag-menu and .feedback-flag-note had never once
+  // been rendered open by the layout sweep, on a phone-width screen where a
+  // floating panel is exactly the thing that overflows.
+  'reveal-flag-other': {
+    page: 'game',
+    screen: 'reveal-screen',
+    inherits: 'reveal-answers',
+    inject: () => {
+      const fb = document.getElementById('reveal-feedback');
+      if (!fb) return;
+      fb.style.display = '';
+      fb.classList.remove('reveal__feedback--faded');
+      // The reason menu CLOSES when a reason is picked, so it is not open at
+      // the same time as the note box. Rendering both was fiction, and the
+      // sweep's covered-control check said so: the Send button sat underneath
+      // the "Ambiguous" option, which cannot happen in the real flow.
+      const menu = fb.querySelector('.feedback-flag-menu');
+      if (menu) menu.style.display = 'none';
+      const flagBtn = fb.querySelector('.feedback-btn[data-type="flag"]');
+      if (flagBtn) flagBtn.classList.add('feedback-btn--active');
+      const note = document.getElementById('feedback-flag-note');
+      if (note) {
+        note.style.display = '';
+        const input = document.getElementById('feedback-flag-note-input');
+        if (input) input.value = 'The answer key says Kennedy but JFK should count';
+      }
+    },
+  },
+
   'reveal-answers': {
     page: 'game',
     screen: 'reveal-screen',

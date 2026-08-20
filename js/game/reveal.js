@@ -659,6 +659,12 @@ function resetFeedbackUI() {
   container.classList.remove('reveal__feedback--faded');
   container.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('feedback-btn--active'));
   container.querySelector('.feedback-flag-menu').style.display = 'none';
+  const noteBox = container.querySelector('.feedback-flag-note');
+  if (noteBox) {
+    noteBox.style.display = 'none';
+    const noteInput = noteBox.querySelector('input');
+    if (noteInput) noteInput.value = '';
+  }
   const confirmEl = container.querySelector('.feedback-flag-confirm');
   if (confirmEl) { confirmEl.classList.remove('show'); confirmEl.textContent = ''; }
 }
@@ -695,6 +701,20 @@ function startFeedbackFadeTimer() {
   const container = $('#reveal-feedback');
   container.classList.remove('reveal__feedback--faded');
   state.feedbackFadeTimer = setTimeout(() => {
+    // Never fade while the flag menu is open. It drops to 20% opacity, which on
+    // a phone reads as "this closed" — and it does it after four seconds, which
+    // is less time than it takes to read five reasons and pick one. The buttons
+    // stayed clickable throughout, so somebody who pressed on anyway did save a
+    // flag, but anyone who took the hint gave up. Reported as flagging that
+    // "multiple times doesn't seem to work".
+    const menu = container.querySelector('.feedback-flag-menu');
+    const note = container.querySelector('.feedback-flag-note');
+    const openThing = (menu && menu.style.display !== 'none')
+      || (note && note.style.display !== 'none');
+    if (openThing) {
+      startFeedbackFadeTimer();
+      return;
+    }
     container.classList.add('reveal__feedback--faded');
   }, RESULTS_ACTION_DELAY_MS);
 }
@@ -785,9 +805,57 @@ export function initFeedbackListeners() {
         });
       }
 
+      // "Other" says nothing on its own, so offer a line to say what. The flag
+      // is ALREADY saved by this point — somebody who taps Other and then puts
+      // their phone down has still filed it, and the note is a follow-up.
+      const noteBox = $('#feedback-flag-note');
+      if (noteBox) {
+        if (reason === 'other' && q) {
+          noteBox.style.display = '';
+          $('#feedback-flag-note-input').value = '';
+          $('#feedback-flag-note-input').focus({ preventScroll: true });
+        } else {
+          noteBox.style.display = 'none';
+        }
+      }
+
       startFeedbackFadeTimer();
     });
   });
+
+  // Send the optional note for an "Other" flag. An UPDATE on the row already
+  // written, so a failure here loses the note and never the flag.
+  const noteBtn = document.getElementById('btn-feedback-flag-note');
+  const noteInput = document.getElementById('feedback-flag-note-input');
+  if (noteBtn && noteInput) {
+    const sendNote = () => {
+      const text = noteInput.value.trim();
+      const q = state.questions[state.currentQuestion];
+      if (!text || !q) return;
+      upsertQuestionFeedback({
+        voterId: getVoterId(),
+        questionId: q.id,
+        roomId: state.room.id,
+        playerName: getDisplayName(),
+        feedbackType: 'flag',
+        flagReason: 'other',
+        flagNote: text
+      });
+      $('#feedback-flag-note').style.display = 'none';
+      const confirmEl = document.getElementById('feedback-flag-confirm');
+      confirmEl.textContent = 'Thanks \u2014 sent \u2713';
+      confirmEl.classList.remove('show');
+      void confirmEl.offsetHeight;
+      confirmEl.classList.add('show');
+      startFeedbackFadeTimer();
+    };
+    noteBtn.addEventListener('click', (e) => { e.stopPropagation(); sendNote(); });
+    noteInput.addEventListener('click', (e) => e.stopPropagation());
+    noteInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') sendNote();
+    });
+  }
 
   // Close flag menu on outside click
   setFlagMenuCloseHandler(() => { flagMenu.style.display = 'none'; });

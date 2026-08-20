@@ -2056,6 +2056,19 @@ body::after {
 }
 .stat-drill__error { color: var(--color-danger); }
 
+/* What a player typed against an "Other" flag. Quoted and italic because it is
+   somebody's words, not a field the app generated. */
+.admin-flag-row__note {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  margin-top: var(--space-xs);
+  padding-left: var(--space-sm);
+  border-left: 2px solid var(--color-border);
+  line-height: 1.4;
+}
+
 /* --- Home page legal link ---
    Bottom of the home screen, under the dock. Small and low-contrast on
    purpose: it has to be findable, not prominent. Still measured for contrast
@@ -3374,6 +3387,34 @@ body::after {
 
 .reveal__feedback--faded {
   opacity: 0.2;
+}
+
+/* Free text for an "Other" flag. Sits under the reason menu, in the feedback
+   container's own stacking context, so it does not push the answer rows down.
+   The flag itself is already saved when this appears — this only adds detail. */
+.feedback-flag-note {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  z-index: 12;
+}
+.feedback-flag-note .input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+.feedback-flag-note .btn {
+  flex-shrink: 0;
+  padding: 0 var(--space-md);
+  font-size: var(--text-sm);
 }
 
 .feedback-btn {

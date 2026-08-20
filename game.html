@@ -33,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260820e">
+  <link rel="stylesheet" href="css/style.css?v=20260820f">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body style="opacity:0">
@@ -147,6 +147,15 @@
               <button data-reason="offensive">Offensive</button>
               <button data-reason="alternate_answer">Another valid answer</button>
               <button data-reason="other">Other</button>
+            </div>
+            <!-- Appears only for "Other", because the other four reasons say
+                 what they mean. The flag is already saved by the time this
+                 shows, so a note is genuinely optional. -->
+            <div class="feedback-flag-note" id="feedback-flag-note" style="display:none;">
+              <input type="text" id="feedback-flag-note-input" class="input"
+                placeholder="What's wrong with it?" aria-label="What is wrong with this question"
+                maxlength="280" autocomplete="off">
+              <button id="btn-feedback-flag-note" class="btn btn-primary">Send</button>
             </div>
             <p class="feedback-flag-confirm" id="feedback-flag-confirm"></p>
           </div>
@@ -429,7 +438,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/game/init.js?v=20260820e"></script>
+  <script type="module" src="js/game/init.js?v=20260820f"></script>
 
 </body>
 </html>

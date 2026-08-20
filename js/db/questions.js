@@ -621,7 +621,7 @@ async function _fetchMasteryCountsFallback(userId) {
 // QUESTION FEEDBACK
 // ============================================
 
-export async function upsertQuestionFeedback({ questionId, roomId, playerName, feedbackType, flagReason, voterId }) {
+export async function upsertQuestionFeedback({ questionId, roomId, playerName, feedbackType, flagReason, flagNote, voterId }) {
   if (!voterId) {
     logger.error('Supabase', 'upsertQuestionFeedback called without voterId');
     return { error: { message: 'missing voterId' } };
@@ -648,7 +648,11 @@ export async function upsertQuestionFeedback({ questionId, roomId, playerName, f
       room_id: roomId,
       player_name: playerName,
       feedback_type: feedbackType,
-      flag_reason: flagReason || null
+      flag_reason: flagReason || null,
+      // Only ever sent for the "Other" reason. Trimmed and capped client-side
+      // as well as by the CHECK in migration 039, because a value the database
+      // rejects arrives as a failed flag rather than a flag without a note.
+      flag_note: flagNote ? String(flagNote).trim().slice(0, 280) : null
     }, { onConflict: 'question_id,voter_id' })
     .select();
 

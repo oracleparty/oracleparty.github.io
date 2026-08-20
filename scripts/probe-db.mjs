@@ -196,6 +196,56 @@ for (const t of present) {
 }
 
 // ============================================
+// CAN A PLAYER ACTUALLY RATE A QUESTION?
+//
+// question_feedback is empty on the live database and a playtest reported
+// flags never reaching the admin page. The general write probe above cannot
+// help: it needs an existing row to aim at, and an empty table has none, so it
+// reports "no rows to probe with" — the one table where the answer matters
+// most is the one it says nothing about.
+//
+// This posts a row that THREE independent things must all be missing for it to
+// be written: the foreign key to questions, the CHECK on feedback_type, and
+// the NOT NULL on voter_id (migration 026). RLS is evaluated in ExecInsert
+// before any of them, so a refusal still arrives as 42501 and a permission
+// arrives as whichever constraint fires first. Neither writes a row.
+//
+// If a row IS written, that is itself the finding — it means the table has
+// drifted from every migration that describes it — and it is deleted again.
+// ============================================
+
+console.log('\n--- CAN A VISITOR RATE A QUESTION? (deliberately invalid; writes nothing) ---');
+{
+  const verdict = await (async () => {
+    const r = await req('question_feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({
+        question_id: '00000000-0000-0000-0000-000000000000',
+        room_id: '__probe__',
+        player_name: '__probe__',
+        feedback_type: '__probe_invalid__',
+      }),
+    });
+    const code = pgCode(r.body);
+    if (r.status === 401 || r.status === 403 || code === '42501') {
+      return 'BLOCKED — a player cannot save a rating at all. This is why the table is empty.';
+    }
+    if (code === '23503') return 'ALLOWED (died on the questions foreign key, as intended)';
+    if (code === '23514') return 'ALLOWED (died on the feedback_type CHECK, as intended)';
+    if (code === '23502') return 'ALLOWED (died on a NOT NULL column, as intended)';
+    if (code === '23505') return 'ALLOWED (died on a unique index, as intended)';
+    if (r.status >= 200 && r.status < 300) {
+      // Should be unreachable. Clean up and say so loudly.
+      await req('question_feedback?room_id=eq.__probe__', { method: 'DELETE' });
+      return 'ALLOWED — AND A ROW WAS WRITTEN. The foreign key, the feedback_type CHECK and the voter_id NOT NULL are ALL missing from this table. Deleted again.';
+    }
+    return `unclear (HTTP ${r.status}${code ? ` / ${code}` : ''}) — body: ${(r.body || '').slice(0, 200)}`;
+  })();
+  console.log(`  INSERT: ${verdict}`);
+}
+
+// ============================================
 // UPSERT CONFLICT TARGETS
 //
 // `.upsert(row, { onConflict: 'a,b' })` compiles to ON CONFLICT (a, b), and
