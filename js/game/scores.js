@@ -25,6 +25,7 @@ import {
   archiveChatMessages,
   insertGameHistoryEntry,
   upsertQuestionHistory,
+  amendQuestionHistory,
   fetchPlayerStats,
   fetchTitleUnlocks,
   upsertTitleUnlock,
@@ -36,7 +37,7 @@ import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../
 import { evaluateUnlocks, hasReachedApprentice } from '../titles.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
-import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty } from './scoring-helpers.js';
+import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties } from './scoring-helpers.js';
 import {
   state, canControlGame, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
@@ -584,10 +585,12 @@ export async function handleRevealFinalQuestion() {
   const tally = tallyDifficultyVotes(state.difficultyVotes);
   const mostVoted = modalDifficulty(tally); // null if no votes
   const winner = pickWeightedDifficulty(tally);
-  // Only difficulties somebody actually chose. The wheel teasing a level
-  // nobody picked reads as broken — it looks like it might land there when it
-  // never could have been the front-runner.
-  const voted = ['easy', 'medium', 'hard'].filter(d => (tally[d] || 0) > 0);
+  // The wheel visits every level the result could actually be, which is the
+  // most-voted one and everything harder (the vote is a floor). Cycling only
+  // the VOTED levels stopped the wheel dead whenever a small room agreed —
+  // three people picking Easy left one pill to cycle through, so it looked
+  // like the game just decided on its own. See allowedDifficulties.
+  const voted = allowedDifficulties(tally);
   state.votedDifficulty = winner;
 
   // Try to fetch a question matching the voted difficulty (optional — pre-fetched is fallback)
@@ -829,10 +832,10 @@ async function openScoreEditQuestion(questionNumber) {
 
     await updateAnswerJudgment(answerId, newCorrect, newScore);
 
-    // Update mastery for the affected player
+    // AMEND, not upsert — a retroactive correction is not a second attempt.
     const player = state.players.find(p => String(p.id) === String(answer.player_id));
     if (player?.user_id && answer.question_id) {
-      upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
+      amendQuestionHistory(player.user_id, answer.question_id, newCorrect);
     }
 
     await updateScores();
@@ -1396,10 +1399,10 @@ async function handleReviewQuestions() {
         // Persist to DB then re-render results behind the overlay
         await updateAnswerJudgment(answerId, newCorrect, newScore);
 
-        // Update mastery for the affected player
+        // AMEND, not upsert — a retroactive correction is not a second attempt.
         const player = state.players.find(p => String(p.id) === String(answer.player_id));
         if (player?.user_id && answer.question_id) {
-          upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
+          amendQuestionHistory(player.user_id, answer.question_id, newCorrect);
         }
 
         showResultsScreen();

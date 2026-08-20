@@ -8,6 +8,7 @@ import {
   buildUsedWagersMap,
   modalDifficulty,
   pickWeightedDifficulty,
+  allowedDifficulties,
 } from '../js/game/scoring-helpers.js';
 
 // ============================================
@@ -211,6 +212,58 @@ describe('modalDifficulty', () => {
     expect(modalDifficulty({ easy: 2, medium: 2, hard: 0 })).toBe('medium');
     expect(modalDifficulty({ easy: 0, medium: 2, hard: 2 })).toBe('hard');
     expect(modalDifficulty({ easy: 1, medium: 1, hard: 1 })).toBe('hard');
+  });
+});
+
+// ============================================
+// allowedDifficulties
+//
+// This is what the slot-machine wheel cycles through, and it has been wrong in
+// both directions. It first cycled all three levels regardless of votes, which
+// teased outcomes that could not happen; the fix made it cycle only the VOTED
+// levels, which stopped it spinning at all whenever a small room agreed — the
+// bug reported from a real two-player game as "it doesn't cycle, it just
+// chooses". The set that is both honest and dramatic is the set of possible
+// outcomes, so this asserts it agrees with pickWeightedDifficulty exactly.
+// ============================================
+describe('allowedDifficulties', () => {
+  it('all-Easy leaves every level in play, so the wheel has three to spin', () => {
+    expect(allowedDifficulties({ easy: 3, medium: 0, hard: 0 }))
+      .toEqual(['easy', 'medium', 'hard']);
+  });
+
+  it('all-Medium drops Easy — it is below the floor and cannot come up', () => {
+    expect(allowedDifficulties({ easy: 0, medium: 2, hard: 0 }))
+      .toEqual(['medium', 'hard']);
+  });
+
+  it('all-Hard is a certainty, and a wheel that spins would be lying', () => {
+    expect(allowedDifficulties({ easy: 0, medium: 0, hard: 4 })).toEqual(['hard']);
+  });
+
+  it('no votes leaves everything open', () => {
+    expect(allowedDifficulties({})).toEqual(['easy', 'medium', 'hard']);
+    expect(allowedDifficulties(null)).toEqual(['easy', 'medium', 'hard']);
+  });
+
+  it('never returns a level pickWeightedDifficulty cannot actually produce', () => {
+    const tallies = [
+      { easy: 3, medium: 0, hard: 0 },
+      { easy: 0, medium: 2, hard: 0 },
+      { easy: 0, medium: 0, hard: 4 },
+      { easy: 1, medium: 2, hard: 1 },
+      { easy: 2, medium: 2, hard: 0 },
+      {},
+    ];
+    for (const tally of tallies) {
+      const allowed = new Set(allowedDifficulties(tally));
+      const seen = new Set();
+      for (let i = 0; i < 4000; i++) seen.add(pickWeightedDifficulty(tally));
+      // Every outcome the picker produces must be on the wheel...
+      for (const d of seen) expect(allowed.has(d)).toBe(true);
+      // ...and every pill on the wheel must be reachable, or it is a tease.
+      for (const d of allowed) expect(seen.has(d)).toBe(true);
+    }
   });
 });
 

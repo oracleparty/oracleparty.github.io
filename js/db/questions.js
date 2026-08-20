@@ -442,9 +442,18 @@ export async function fetchQuestionsByIds(questionIds) {
 }
 
 /**
- * Upsert a question_history row for a user+question.
- * Increments times_seen (always) and times_correct (if correct).
- * Foundation for future spaced repetition / adaptive question selection.
+ * Record ONE NEW ATTEMPT at a question. Increments times_seen (always) and
+ * times_correct (if correct).
+ *
+ * These are COUNTERS, not a verdict, and that is the whole reason
+ * amendQuestionHistory and revokeQuestionHistory below exist. player_stats_
+ * computed derives accuracy as SUM(times_correct) / SUM(times_seen), so every
+ * extra call here permanently dilutes the player's accuracy by one attempt
+ * they never made.
+ *
+ * Call this exactly once per player, per question, per round — from doReveal.
+ * A host changing their mind afterwards is not a second attempt; a
+ * disqualified round is not an attempt at all.
  */
 export async function upsertQuestionHistory(userId, questionId, isCorrect) {
   const { data: existing } = await supabase
@@ -473,6 +482,86 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
     });
     if (error) logger.error('Supabase', 'upsertQuestionHistory insert failed', error);
   }
+}
+
+/**
+ * The host flipped their judgement of an attempt that was already recorded.
+ *
+ * Corrects the verdict WITHOUT counting a second attempt. All three override
+ * paths — the reveal screen, the scores screen and the review overlay — used
+ * upsertQuestionHistory, which meant a host correcting a wrong-marked answer
+ * gave the player times_seen=2, times_correct=1: 50% accuracy on a question
+ * they got right and the host agreed they got right. The correction made the
+ * number worse than leaving it alone.
+ *
+ * last_correct holds the verdict of the most recent attempt, which is exactly
+ * the one being flipped, so it is enough to know which way to move
+ * times_correct. No row means nothing was recorded to amend.
+ */
+export async function amendQuestionHistory(userId, questionId, isCorrect) {
+  const { data: existing } = await supabase
+    .from('question_history')
+    .select('id, times_seen, times_correct, last_correct')
+    .eq('user_id', userId)
+    .eq('question_id', questionId)
+    .maybeSingle();
+
+  if (!existing) return;
+  if (!!existing.last_correct === !!isCorrect) return;
+
+  const delta = isCorrect ? 1 : -1;
+  // Clamped because a row can be amended twice (host flips, then flips back)
+  // and because these counters are the denominator of every accuracy in the
+  // app — a negative one would poison the category, not just the question.
+  const nextCorrect = Math.max(0, Math.min(existing.times_seen, existing.times_correct + delta));
+
+  const { error } = await supabase.from('question_history').update({
+    times_correct: nextCorrect,
+    last_correct: !!isCorrect
+  }).eq('id', existing.id);
+  if (error) logger.error('Supabase', 'amendQuestionHistory failed', error);
+}
+
+/**
+ * The round was disqualified — take the attempt back out of the record.
+ *
+ * A disqualified question is one the host has declared should not have been
+ * asked, so it must count neither for nor against anybody. Previously the
+ * disqualify handler called upsertQuestionHistory(..., false), which recorded
+ * a THIRD thing: an extra attempt, marked wrong. The one action whose entire
+ * purpose is "this round does not count" was the action that damaged accuracy
+ * most.
+ *
+ * If this was the player's only sighting of the question the row goes
+ * entirely. Otherwise the counters step back one attempt, and last_correct
+ * falls back to "have they ever got this right" — the true previous verdict
+ * is not stored anywhere, and this is the closest honest answer.
+ */
+export async function revokeQuestionHistory(userId, questionId) {
+  const { data: existing } = await supabase
+    .from('question_history')
+    .select('id, times_seen, times_correct, last_correct')
+    .eq('user_id', userId)
+    .eq('question_id', questionId)
+    .maybeSingle();
+
+  if (!existing) return;
+
+  const nextSeen = existing.times_seen - 1;
+  const nextCorrect = Math.max(0, existing.times_correct - (existing.last_correct ? 1 : 0));
+
+  if (nextSeen <= 0) {
+    const { error } = await supabase.from('question_history').delete().eq('id', existing.id);
+    if (error) logger.error('Supabase', 'revokeQuestionHistory delete failed', error);
+    return;
+  }
+
+  const { error } = await supabase.from('question_history').update({
+    times_seen: nextSeen,
+    times_correct: nextCorrect,
+    last_correct: nextCorrect > 0
+  }).eq('id', existing.id);
+  if (error) logger.error('Supabase', 'revokeQuestionHistory failed', error);
 }
 
 /**

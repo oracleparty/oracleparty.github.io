@@ -103,6 +103,30 @@ export function modalDifficulty(tally) {
 }
 
 /**
+ * Every difficulty the final question could actually turn out to be, given
+ * the votes — the most-voted level and everything harder, since the vote acts
+ * as a floor. With no votes at all, anything is possible.
+ *
+ * This exists so the slot-machine wheel and the thing that picks the winner
+ * cannot disagree about what is on the table. The wheel used to cycle all
+ * three regardless of votes, which teased levels that could never come up; the
+ * fix for that made it cycle only the VOTED levels, which was wrong in the
+ * other direction — a room where everyone picks Easy has all three genuinely
+ * in play, and showing one pill meant the wheel stopped spinning at all in the
+ * commonest case of a small room agreeing. Possible outcomes is the set that
+ * is both honest and dramatic.
+ */
+export function allowedDifficulties(tally) {
+  const order = ['easy', 'medium', 'hard'];
+  const counts = order.map(d => (tally && tally[d]) || 0);
+  const max = Math.max(...counts);
+  if (max === 0) return [...order];
+  let floorIdx = 0;
+  for (let i = 0; i < order.length; i++) if (counts[i] === max) floorIdx = i;
+  return order.slice(floorIdx);
+}
+
+/**
  * Pick the actual final-question difficulty from a vote tally.
  *
  * The vote acts as a FLOOR: the result can never be EASIER than the most-
@@ -118,13 +142,10 @@ export function modalDifficulty(tally) {
  * Pass `randFn` to make this deterministic in tests.
  */
 export function pickWeightedDifficulty(tally, randFn = Math.random) {
-  const order = ['easy', 'medium', 'hard'];
-  const counts = order.map(d => tally[d] || 0);
-  const max = Math.max(...counts);
-  if (max === 0) return order[Math.floor(randFn() * 3)];
-  let floorIdx = 0;
-  for (let i = 0; i < order.length; i++) if (counts[i] === max) floorIdx = i;
-  const allowed = order.slice(floorIdx);
+  const allowed = allowedDifficulties(tally);
+  if (allowed.length === 3 && Math.max(...['easy', 'medium', 'hard'].map(d => tally[d] || 0)) === 0) {
+    return allowed[Math.floor(randFn() * 3)];
+  }
   const weights = allowed.map(d => Math.max(tally[d] || 0, 0.1));
   const total = weights.reduce((a, b) => a + b, 0);
   let r = randFn() * total;

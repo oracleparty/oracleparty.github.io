@@ -74,6 +74,14 @@ jobs:
       - name: Bots — added by a human, never host, never recorded
         run: node tests/harness/scenario-bots.mjs
 
+      # question_history holds COUNTERS, and accuracy is their ratio, so a
+      # host's own corrections used to damage the number they were correcting.
+      # Nothing about this is visible from the app — it surfaces weeks later as
+      # a slightly-too-low percentage on a profile page — so the rows are read
+      # directly.
+      - name: Accuracy — an override is not a second attempt, a disqualified round is none
+        run: node tests/harness/scenario-accuracy.mjs
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.

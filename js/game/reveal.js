@@ -11,7 +11,8 @@ import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
-         upsertQuestionHistory, upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
+         upsertQuestionHistory, amendQuestionHistory, revokeQuestionHistory,
+         upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
   recordQuestionOutcome, recordAnswerText,
 } from '../supabase.js';
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
@@ -458,10 +459,12 @@ export async function handleJudgmentOverride(e) {
   // Persist to DB — Realtime event will update other clients
   await updateAnswerJudgment(answerId, newCorrect, newScore);
 
-  // Update mastery for the affected player
+  // Correct the mastery record for the affected player. AMEND, not upsert:
+  // the attempt was already counted by doReveal, and the host changing their
+  // mind is not a second sighting of the question. See amendQuestionHistory.
   const player = state.players.find(p => p.id === answer.player_id);
   if (player?.user_id && answer.question_id) {
-    upsertQuestionHistory(player.user_id, answer.question_id, newCorrect);
+    amendQuestionHistory(player.user_id, answer.question_id, newCorrect);
   }
 }
 
@@ -504,13 +507,18 @@ async function handleDisqualifyRound() {
   // Persist to DB (fires Realtime updates to all clients)
   await Promise.all(updates);
 
-  // Correct mastery: doReveal() already wrote mastery with the original is_correct,
-  // so we need to overwrite it for all players who have accounts
+  // Take the attempt back out of mastery entirely. doReveal() already counted
+  // it, and a disqualified round must count neither for nor against anybody.
+  //
+  // This used to write `false`, which was the worst of the three options: it
+  // added ANOTHER times_seen on top of doReveal's and scored it as a miss, so
+  // the one action meaning "this round does not count" was the action that
+  // damaged a player's accuracy most. See revokeQuestionHistory.
   for (const answer of state.currentAnswers) {
     if (answer.question_id) {
       const player = state.players.find(p => p.id === answer.player_id);
       if (player?.user_id) {
-        upsertQuestionHistory(player.user_id, answer.question_id, false);
+        revokeQuestionHistory(player.user_id, answer.question_id);
       }
     }
   }
@@ -538,6 +546,18 @@ function recordCurrentQuestionOutcomes() {
   if (!canControlGame()) return;
   const question = state.questions[state.currentQuestion];
   if (!question) return;
+
+  // A disqualified round is the host saying this question should not have been
+  // asked, so none of it is evidence about anything. Recording it anyway was
+  // actively misleading in three directions at once: disqualify sets every
+  // answer to is_correct=false, so question_stats would have logged the
+  // question as asked-and-nobody-got-it (making a question look impossibly
+  // hard precisely when it was thrown out), answer_tally would have counted
+  // text nobody was judged on, and every player auto-marked correct before the
+  // disqualification would have registered as times_overridden — the column
+  // this project treats as its strongest signal that an answer key is wrong.
+  if (state.disqualifiedQuestions?.has(state.currentQuestion)) return;
+
   for (const answer of state.currentAnswers || []) {
     if (answer.submitted_answer === '__WAGER_LOCKED__') continue;
 

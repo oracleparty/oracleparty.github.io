@@ -594,9 +594,21 @@ and returning from a game landed you at the bottom of the transcript. The pane
 is now `max-height: 34vh` with its own scroll, and scrolls itself.
 
 **The difficulty wheel teased options nobody picked.** It cycled all three
-levels regardless of votes. It now cycles only voted ones, sent over the wire
-with the reveal so every client spins the same wheel. The final result can
-still be an unvoted level — that is the deliberate last-second switch.
+levels regardless of votes. It was changed to cycle only voted ones, sent over
+the wire with the reveal so every client spins the same wheel.
+
+**That fix was wrong in the other direction, and the next playtest found it.**
+The vote is a *floor*: an all-Easy room can still land on Medium or Hard, so
+all three were genuinely in play and cycling one pill was not honest, it was
+just still. In a small room that agrees — the commonest case — the wheel
+stopped spinning entirely and the owner reported "it doesn't cycle, it just
+chooses automatically". The wheel now visits every **possible outcome**:
+`allowedDifficulties(tally)` in `scoring-helpers.js`, which is the same set
+`pickWeightedDifficulty` draws from, so the two cannot drift apart. An
+all-Hard room still shows one pill, because Hard is then the only thing that
+can happen and a spin would be a lie. `tests/scoring.test.js` asserts both
+directions: nothing the picker can produce is missing from the wheel, and
+nothing on the wheel is unreachable.
 
 ## Categories
 
@@ -776,6 +788,53 @@ screen arrives with a freshly created row and would skip it.
 every third call, leaving the local view of `last_seen_at` up to 90s stale, so
 absence was noticed three times slower than intended.
 
+## Accuracy: `question_history` holds counters, not a verdict
+
+Every accuracy in the app — profile, leaderboard, tier, title thresholds —
+comes from `player_stats_computed`, which is `SUM(times_correct) /
+SUM(times_seen)` over `question_history`. Those are **counters**, and
+`upsertQuestionHistory` **increments** them. One call means one attempt.
+
+Three call sites used it as if it set a verdict, and each extra call added an
+attempt the player never made. Found from a 2026-08-20 playtest, where the
+owner asked whether a disqualified round affects accuracy. It did — badly:
+
+| Action | What was recorded | Effect |
+|---|---|---|
+| Host flips a judgement | a second attempt | got it right, host agreed, **50%** |
+| Host disqualifies the round | a third attempt, marked wrong | **33%** for a round that did not count |
+
+The disqualify case is the sharp one: the single action whose entire meaning
+is *this round does not count* was the action that damaged accuracy most, and
+it did so silently. There is no error and nothing renders wrong; it surfaces
+weeks later as a number that is slightly too low.
+
+Three functions now, and the distinction is the point:
+
+- **`upsertQuestionHistory`** — one NEW attempt. Called once per player per
+  question per round, from `doReveal` only.
+- **`amendQuestionHistory`** — the host changed their mind. Moves
+  `times_correct` and `last_correct`; `times_seen` untouched. Used by all
+  three override paths (reveal screen, scores screen, review overlay).
+- **`revokeQuestionHistory`** — the round was disqualified. Steps the attempt
+  back out, deleting the row when it was the only sighting.
+
+`recordCurrentQuestionOutcomes` now returns early on a disqualified question.
+Disqualifying sets every answer to `is_correct = false` first, so recording it
+logged the question as asked-and-nobody-got-it — making a thrown-out question
+look impossibly hard — and counted every auto-correct player as
+`times_overridden`, the column this project trusts most for spotting a bad
+answer key. It also fed `answer_tally` text nobody was judged on.
+
+`scenario-accuracy.mjs` reads the rows directly, because nothing about this is
+visible through the UI. Verified by reverting all three fixes: it then reports
+`seen=2` after an override, `seen=3` after a disqualification, and
+`asked=2 correct=0 overridden=1` in `question_stats` — each by name.
+
+**Whenever you add a write to `question_history`, ask whether it is a new
+attempt or a correction to one.** A correction that increments is worse than
+no correction at all.
+
 ## Question Feedback and Health
 
 **The admin's ability to act on feedback was broken and is fixed — see #5.**
@@ -852,6 +911,7 @@ node tests/harness/scenario-cohost.mjs    # promote, demote, gated controls
 node tests/harness/scenario-account.mjs  # profile, leaderboard, friends, signed-in lobby
 node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused writes
 node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
+node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
 ```
 
 **Robots must never reach the real project.** Three beacons
