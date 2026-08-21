@@ -440,7 +440,16 @@ const RPC_PROBES = [
   // answers 22P02 on the uuid cast, which is all this needs to distinguish.
   ['admin_account_details', { p_user_id: NOT_A_UUID }],
   // Migration 034. Without it a group's whole evening counts as one play each.
-  ['record_game_play', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID, p_game_key: 'probe' }],
+  // EVERY argument, in the exact names js/db/players.js sends. PostgREST
+  // resolves an RPC by its argument NAMES, so a partial set answers 404 —
+  // indistinguishable from a function that was never created. A first version
+  // of this entry passed three of seven and reported a working function as
+  // missing, which is the false alarm CLAUDE.md warns turns a check into
+  // something people stop reading.
+  ['record_game_play', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID,
+                         p_player_name: 'probe', p_category: 'history',
+                         p_subcategory: null, p_total_questions: 5,
+                         p_game_key: 'probe' }],
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
@@ -494,6 +503,24 @@ const CONSEQUENCES = [
       'no tier badge appears in any lobby',
       'NO TITLE EVER UNLOCKS — the check runs against nothing and reports success',
     ] },
+  { object: 'amend_question_history', kind: 'rpc',
+    fix: 'run migrations/041_host_can_correct_history.sql',
+    breaks: [
+      "a host flipping a judgement corrects it for THEMSELVES and silently does nothing for every other player",
+      'question_history is scoped to its owner, so the refusal returns zero rows and no error',
+    ] },
+  { object: 'revoke_question_history', kind: 'rpc',
+    fix: 'run migrations/041_host_can_correct_history.sql',
+    breaks: [
+      'a DISQUALIFIED round keeps counting against everyone except the host',
+      'and cannot be removed even for the host — question_history has no DELETE policy for anybody',
+    ] },
+  { object: 'admin_account_details', kind: 'rpc',
+    fix: 'run migrations/042_admin_account_details.sql',
+    breaks: ['the admin account panel cannot show email, sign-up method or last sign-in'] },
+  { object: 'record_game_play', kind: 'rpc',
+    fix: 'run migrations/034_count_every_round.sql',
+    breaks: ["a group's whole evening counts as one play each, under-counting the people who play most"] },
   { object: 'question_stats', kind: 'table',
     fix: 'run migrations/025_question_stats.sql',
     breaks: ['the admin Question Health page has no performance data'] },
