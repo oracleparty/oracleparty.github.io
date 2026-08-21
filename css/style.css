@@ -6031,6 +6031,113 @@ body::after {
   margin-top: 2px;
 }
 
+/* --------------------------------------------
+   ADMIN PANELS (accordion)
+
+   One row per section, closed, with the number behind it. Nine open lists
+   on a 375px phone is not a dashboard, it is a scroll. The count is what
+   makes a closed row useful: you can see there are 3 flags without opening
+   anything, which is the whole reason to come to this page.
+   -------------------------------------------- */
+
+.admin-panels {
+  border-top: 1px solid var(--color-surface-light);
+}
+
+.admin-panel {
+  border-bottom: 1px solid var(--color-surface-light);
+}
+.admin-panel:last-child { border-bottom: none; }
+
+.admin-panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--space-sm) var(--space-lg);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text);
+  font: inherit;
+}
+.admin-panel__head:active { background: var(--color-surface); }
+
+.admin-panel__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The count sits on a surface chip so it reads as data rather than as more
+   heading. Muted by default; only the two panels that can demand action —
+   flags and errors — go amber, and only when they are non-zero. A dashboard
+   where everything is highlighted highlights nothing. */
+.admin-panel__count {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-dim);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-xs);
+  white-space: nowrap;
+}
+/* Amber and red as TEXT on the same surface chip, never as a background.
+   --color-primary is a dark amber on the light theme and a light amber on
+   the two dark ones precisely so it reads against a surface; painting it as
+   a fill inverts that and the label goes to ~2.8:1 on light. This is the
+   same mistake the tier badges made (CLAUDE.md, 2026-08-18 playtest). */
+.admin-panel__count--alert {
+  color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+.admin-panel__count--error {
+  color: var(--color-danger);
+  box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+.admin-panel__chev {
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+  transition: transform 0.15s ease;
+}
+.admin-panel__head[aria-expanded="true"] .admin-panel__chev {
+  transform: rotate(180deg);
+}
+.admin-panel__head[aria-expanded="true"] .admin-panel__title {
+  color: var(--color-primary);
+}
+
+.admin-panel__body {
+  padding: 0 var(--space-lg) var(--space-md);
+}
+.admin-panel__body[hidden] { display: none; }
+
+.admin-panel__error {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-sm);
+}
+
+/* Layout was inline on the element, so the sweep reported it as an unstyled
+   class every run. It has a rule now and the noise is gone. */
+.admin-qh__controls {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-sm);
+}
+
 .admin-filters {
   display: flex;
   gap: var(--space-xs);
@@ -6085,12 +6192,28 @@ body::after {
   color: var(--color-text);
   margin-bottom: 2px;
 }
+/* Wraps rather than squeezes. Three items on one 375px line, one of which is
+   a comma-joined list of every distinct reason anybody gave, is a row that
+   fits its mock data and nothing else. This page had no mock at all until
+   now, which is why it was never measured. */
 .admin-flag-row__meta {
   display: flex;
-  gap: var(--space-sm);
+  flex-wrap: wrap;
+  gap: 2px var(--space-sm);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   margin-bottom: var(--space-xs);
+}
+.admin-flag-row__answer {
+  color: var(--color-text-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-flag-row__reasons {
+  font-style: italic;
+  min-width: 0;
 }
 .admin-flag-row__count {
   color: var(--color-danger);

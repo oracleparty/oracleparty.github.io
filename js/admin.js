@@ -31,20 +31,19 @@ async function init() {
   $('#admin-loading').style.display = 'none';
   $('#admin-content').style.display = '';
 
-  // Load all sections in parallel
-  await Promise.all([
-    loadDashboardStats(),
-    loadAnnouncement(),
-    loadFeatureFlags(),
-    loadFlaggedQueue(),
-    loadQuestionHealth(),
-    loadRecentGames(),
-    loadChatArchive(),
-    loadErrorLogs()
-  ]);
-
   attachListeners();
   attachQuestionHealthListeners();
+  attachPanels();
+
+  // Only the four numbers at the top and the count on each closed panel are
+  // fetched now. Every section's contents waits until somebody opens it —
+  // this page used to run eight full list queries before rendering, including
+  // Question Health, which is the heaviest thing on it, for an admin who came
+  // to read one flag.
+  await Promise.all([
+    loadDashboardStats(),
+    loadPanelCounts(),
+  ]);
 }
 
 
@@ -66,6 +65,184 @@ function setStatus(el, text, { sticky = false } = {}) {
       el.textContent = '';
       _statusTimers.delete(el);
     }, ADMIN_STATUS_FADE_MS));
+  }
+}
+
+// ============================================
+// PANELS
+//
+// Every section of this page used to be open at once and fetched on load:
+// nine stacked lists on a 375px phone, eight list queries before anything
+// rendered. It was comprehensive and unreadable, which for an admin page is
+// the same as being unusable — the flag you came to read was 4,000px down.
+//
+// Now each section is a closed row carrying its own number, and opens on a
+// tap. The number is the point: three flags is visible without opening
+// anything, so the page tells you where to look instead of showing you
+// everything and letting you find it.
+//
+// One open at a time. Two open panels on a phone reintroduces the scroll.
+// ============================================
+
+const PANEL_LOADERS = {
+  flagged:      loadFlaggedQueue,
+  health:       loadQuestionHealth,
+  questions:    loadQuestions,
+  games:        loadRecentGames,
+  errors:       loadErrorLogs,
+  chat:         loadChatArchive,
+  announcement: loadAnnouncement,
+  flags:        loadFeatureFlags,
+};
+
+const _panelLoaded = new Set();
+let _openPanel = null;
+
+function attachPanels() {
+  document.querySelectorAll('.admin-panel__head').forEach(head => {
+    head.onclick = () => togglePanel(head.dataset.panel);
+  });
+}
+
+const panelHead = key => document.querySelector(`.admin-panel__head[data-panel="${key}"]`);
+
+function setPanelOpen(key, open) {
+  const head = panelHead(key);
+  const body = document.getElementById(`panel-${key}`);
+  if (!head || !body) return;
+  head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  body.hidden = !open;
+}
+
+function showPanelError(key, message) {
+  const body = document.getElementById(`panel-${key}`);
+  if (!body) return;
+  // Prepended, never innerHTML — replacing the body would destroy the panel's
+  // own controls (the Question Health sort menus live in there), so the retry
+  // this error invites would fail on missing elements rather than on the
+  // original fault.
+  body.querySelector('.admin-panel__error')?.remove();
+  const p = document.createElement('p');
+  p.className = 'admin-panel__error';
+  p.textContent = `Couldn't load this section: ${message}`;
+  body.prepend(p);
+}
+
+async function togglePanel(key) {
+  if (!key) return;
+
+  if (_openPanel === key) {
+    setPanelOpen(key, false);
+    _openPanel = null;
+    return;
+  }
+  if (_openPanel) setPanelOpen(_openPanel, false);
+  setPanelOpen(key, true);
+  _openPanel = key;
+
+  // Scroll the HEADER into view, not the body: opening a panel low on the page
+  // otherwise pushes its own title off the top and the contents arrive with
+  // nothing naming them.
+  panelHead(key)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  if (_panelLoaded.has(key)) return;
+  _panelLoaded.add(key);
+
+  const load = PANEL_LOADERS[key];
+  if (!load) return;
+  try {
+    await load();
+  } catch (err) {
+    // A loader that throws used to leave "Loading..." on screen forever with
+    // the reason only in the console — the exact shape of CLAUDE.md #4.
+    // Clearing the flag lets a second tap retry.
+    _panelLoaded.delete(key);
+    logger.error('Admin', `panel ${key} failed to load`, err);
+    showPanelError(key, err?.message || String(err));
+  }
+}
+
+// ============================================
+// PANEL COUNTS
+//
+// What each closed row says. These are head-only counts, so the page learns
+// how much is behind every door without opening any of them.
+// ============================================
+
+// null means "couldn't tell", and renders as "?" — never as 0. A count that
+// falls through to zero on error makes an unreachable table and an empty one
+// look identical, which is the single most expensive confusion in this
+// project's history (CLAUDE.md #4, #6, #8).
+async function countRows(table, refine) {
+  let query = supabase.from(table).select('*', { count: 'exact', head: true });
+  if (refine) query = refine(query);
+  const { count, error } = await query;
+  if (error) {
+    logger.error('Admin', `panel count for ${table} failed`, error);
+    return null;
+  }
+  return count ?? 0;
+}
+
+function setPanelCount(key, text, tone = null) {
+  const el = document.querySelector(`[data-count="${key}"]`);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('admin-panel__count--alert', tone === 'alert');
+  el.classList.toggle('admin-panel__count--error', tone === 'error');
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+async function loadPanelCounts() {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [flags, ratings, played, questions, games, errors, chats, settings] = await Promise.all([
+    countRows('question_feedback', q => q.eq('feedback_type', 'flag')),
+    countRows('question_feedback'),
+    countRows('question_health', q => q.gt('times_asked', 0)),
+    countRows('questions', q => q.neq('format', 'removed')),
+    countRows('game_history'),
+    countRows('error_logs', q => q.gte('timestamp', sevenDaysAgo)),
+    countRows('chat_archive'),
+    fetchSiteSettings().catch(err => {
+      logger.error('Admin', 'panel counts: site settings failed', err);
+      return null;
+    }),
+  ]);
+
+  // Flags: the one number on this page somebody is meant to act on.
+  setPanelCount('flagged',
+    flags === null ? '?' : flags === 0 ? 'None' : plural(flags, 'flag'),
+    flags ? 'alert' : null);
+
+  // Question Health answers "is anything being recorded", which "0 played"
+  // alone does not: no ratings at all is a pipeline to investigate, while
+  // ratings-but-no-plays is a working one that nobody has played through.
+  setPanelCount('health',
+    played === null ? '?'
+      : played > 0 ? `${played} played`
+      : ratings ? `${plural(ratings, 'rating')}, 0 played`
+      : 'No data yet');
+
+  setPanelCount('questions', questions === null ? '?' : questions.toLocaleString());
+  setPanelCount('games',     games === null ? '?' : games === 0 ? 'None' : games.toLocaleString());
+  setPanelCount('chat',      chats === null ? '?' : chats === 0 ? 'None' : chats.toLocaleString());
+
+  setPanelCount('errors',
+    errors === null ? '?' : errors === 0 ? 'None · 7d' : `${errors} · 7d`,
+    errors ? 'error' : null);
+
+  if (settings === null) {
+    setPanelCount('announcement', '?');
+    setPanelCount('flags', '?');
+  } else {
+    const ann = settings.find(s => s.key === 'announcement');
+    setPanelCount('announcement', ann?.value?.text ? 'Live' : 'Off', ann?.value?.text ? 'alert' : null);
+
+    const on = FLAG_DEFS.filter(f =>
+      (settings.find(s => s.key === f.key)?.value?.enabled ?? f.default)).length;
+    setPanelCount('flags', on === 0 ? 'Off' : `${on} on`, on ? 'alert' : null);
   }
 }
 

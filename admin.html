@@ -30,7 +30,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260821a">
+  <link rel="stylesheet" href="css/style.css?v=20260821">
 </head>
 <body style="opacity:0">
 
@@ -66,108 +66,173 @@
         </div>
       </div>
 
-      <!-- ===== ANNOUNCEMENTS ===== -->
-      <div class="admin-section">
-        <h2 class="admin-section__title">Announcements</h2>
-        <div style="display:flex; gap:var(--space-sm);">
-          <input id="announcement-input" class="input" placeholder="Banner message for all users..." style="flex:1;">
-          <button id="btn-set-announcement" class="btn btn-primary">Set</button>
-          <button id="btn-clear-announcement" class="btn btn-secondary">Clear</button>
-        </div>
-        <p id="announcement-status" style="font-size:var(--text-xs); color:var(--color-text-muted); margin-top:var(--space-xs);"></p>
-      </div>
+      <!-- ===== PANELS =====
+           Every section used to be open at once: nine stacked lists on a
+           375px phone, each fetched on load whether or not anyone looked at
+           it. Now each is a closed row showing its name and its number, and
+           opens on a tap. Ordered by how often an admin needs it, which is
+           why Flagged Questions is first and Feature Flags is last — before
+           this, the question bank was at the very bottom of the longest page
+           in the app.
 
-      <!-- ===== FEATURE FLAGS ===== -->
-      <div class="admin-section">
-        <h2 class="admin-section__title">Feature Flags</h2>
-        <div id="feature-flags"></div>
-      </div>
+           A panel's data is fetched the first time it is opened, not on page
+           load. The counts on the closed rows are `head: true` counts, so the
+           page knows how much is behind each door without opening any. -->
+      <div class="admin-panels">
 
-      <!-- ===== FLAGGED QUEUE ===== -->
-      <div class="admin-section">
-        <h2 class="admin-section__title">Question Health</h2>
-        <div class="admin-qh__controls" style="display:flex; gap:var(--space-xs); flex-wrap:wrap; margin-bottom:var(--space-sm);">
-          <select id="qh-sort" class="input" style="flex:1; min-width:150px;">
-            <option value="flags" selected>Flags</option>
-            <option value="overrides">Overrides</option>
-            <option value="correct">% correct</option>
-            <option value="liked">% liked</option>
-            <option value="asked">Times played</option>
-          </select>
-          <select id="qh-dir" class="input" style="flex:0 0 auto; min-width:110px;">
-            <option value="desc">Most first</option>
-            <option value="asc">Least first</option>
-          </select>
-          <input id="qh-search" class="input" placeholder="Search questions..." style="flex:1; min-width:150px;">
-        </div>
-        <p id="qh-summary" style="font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:var(--space-xs);"></p>
-        <div id="qh-list"></div>
-        <button id="qh-load-more" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
-      </section>
+        <!-- ===== FLAGGED QUEUE ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="flagged" aria-expanded="false" aria-controls="panel-flagged">
+            <span class="admin-panel__title">Flagged Questions</span>
+            <span class="admin-panel__count" data-count="flagged">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-flagged" hidden>
+            <div id="flagged-queue"></div>
+          </div>
+        </section>
 
-      <section class="admin-section">
-        <h2 class="admin-section__title">Flagged Questions</h2>
-        <div id="flagged-queue"></div>
-      </div>
+        <!-- ===== QUESTION HEALTH ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="health" aria-expanded="false" aria-controls="panel-health">
+            <span class="admin-panel__title">Question Health</span>
+            <span class="admin-panel__count" data-count="health">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-health" hidden>
+            <div class="admin-qh__controls">
+              <select id="qh-sort" class="input" style="flex:1; min-width:150px;">
+                <option value="flags" selected>Flags</option>
+                <option value="overrides">Overrides</option>
+                <option value="correct">% correct</option>
+                <option value="liked">% liked</option>
+                <option value="asked">Times played</option>
+              </select>
+              <select id="qh-dir" class="input" style="flex:0 0 auto; min-width:110px;">
+                <option value="desc">Most first</option>
+                <option value="asc">Least first</option>
+              </select>
+              <input id="qh-search" class="input" placeholder="Search questions..." style="flex:1; min-width:150px;">
+            </div>
+            <p id="qh-summary" style="font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:var(--space-xs);"></p>
+            <div id="qh-list"></div>
+            <button id="qh-load-more" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+          </div>
+        </section>
 
-      <!-- ===== RECENT GAMES ===== -->
-      <div class="admin-section">
-        <h2 class="admin-section__title">Recent Games</h2>
-        <div id="recent-games"></div>
-        <button id="btn-load-more-games" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
-      </div>
+        <!-- ===== QUESTION MANAGEMENT ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="questions" aria-expanded="false" aria-controls="panel-questions">
+            <span class="admin-panel__title">Question Bank</span>
+            <span class="admin-panel__count" data-count="questions">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-questions" hidden>
+            <div class="admin-filters">
+              <input id="q-search" class="input" placeholder="Search question text..." style="flex:2;">
+              <select id="q-category" class="input" style="flex:1;">
+                <option value="">All Categories</option>
+                <option value="history">History</option>
+                <option value="science">Science</option>
+                <option value="nature">Nature</option>
+                <option value="arts-literature">Arts &amp; Lit</option>
+                <option value="culture-society">Culture</option>
+                <option value="pop-culture">Pop Culture</option>
+                <option value="world-geography">Geography</option>
+                <option value="technology">Technology</option>
+                <option value="sports">Sports</option>
+                <option value="food">Food</option>
+                <option value="logic">Logic</option>
+                <option value="wild-card">Wild Card</option>
+              </select>
+              <select id="q-format" class="input" style="flex:1;">
+                <option value="">All Formats</option>
+                <option value="open">Open</option>
+                <option value="removed">Removed</option>
+              </select>
+              <button id="btn-search-questions" class="btn btn-primary">Search</button>
+            </div>
+            <div id="question-results"></div>
+            <button id="btn-load-more" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+          </div>
+        </section>
 
-      <!-- ===== CHAT ARCHIVE ===== -->
-      <div class="admin-section">
-        <h2 class="admin-section__title">Chat Archive</h2>
-        <div id="chat-archive"></div>
-        <button id="btn-load-more-chats" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
-      </div>
+        <!-- ===== RECENT GAMES ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="games" aria-expanded="false" aria-controls="panel-games">
+            <span class="admin-panel__title">Recent Games</span>
+            <span class="admin-panel__count" data-count="games">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-games" hidden>
+            <div id="recent-games"></div>
+            <button id="btn-load-more-games" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+          </div>
+        </section>
 
-      <!-- ===== ERROR LOGS ===== -->
-      <div class="admin-section">
-        <h2 class="admin-section__title">Error Logs</h2>
-        <div style="display:flex; gap:var(--space-sm); margin-bottom:var(--space-sm);">
-          <select id="error-severity" class="input" style="flex:1;">
-            <option value="">All Types</option>
-            <option value="onerror">onerror</option>
-            <option value="unhandledrejection">unhandledrejection</option>
-          </select>
-          <button id="btn-clear-old-errors" class="btn btn-secondary">Clear 7d+</button>
-        </div>
-        <div id="error-logs"></div>
-        <button id="btn-load-more-errors" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
-      </div>
+        <!-- ===== ERROR LOGS ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="errors" aria-expanded="false" aria-controls="panel-errors">
+            <span class="admin-panel__title">Error Logs</span>
+            <span class="admin-panel__count" data-count="errors">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-errors" hidden>
+            <div style="display:flex; gap:var(--space-sm); margin-bottom:var(--space-sm);">
+              <select id="error-severity" class="input" style="flex:1;">
+                <option value="">All Types</option>
+                <option value="onerror">onerror</option>
+                <option value="unhandledrejection">unhandledrejection</option>
+              </select>
+              <button id="btn-clear-old-errors" class="btn btn-secondary">Clear 7d+</button>
+            </div>
+            <div id="error-logs"></div>
+            <button id="btn-load-more-errors" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+          </div>
+        </section>
 
-      <!-- ===== QUESTION MANAGEMENT ===== -->
-      <div class="admin-section">
-        <h2 class="admin-section__title">Question Management</h2>
-        <div class="admin-filters">
-          <input id="q-search" class="input" placeholder="Search question text..." style="flex:2;">
-          <select id="q-category" class="input" style="flex:1;">
-            <option value="">All Categories</option>
-            <option value="history">History</option>
-            <option value="science">Science</option>
-            <option value="nature">Nature</option>
-            <option value="arts-literature">Arts & Lit</option>
-            <option value="culture-society">Culture</option>
-            <option value="pop-culture">Pop Culture</option>
-            <option value="world-geography">Geography</option>
-            <option value="technology">Technology</option>
-            <option value="sports">Sports</option>
-            <option value="food">Food</option>
-            <option value="logic">Logic</option>
-            <option value="wild-card">Wild Card</option>
-          </select>
-          <select id="q-format" class="input" style="flex:1;">
-            <option value="">All Formats</option>
-            <option value="open">Open</option>
-            <option value="removed">Removed</option>
-          </select>
-          <button id="btn-search-questions" class="btn btn-primary">Search</button>
-        </div>
-        <div id="question-results"></div>
-        <button id="btn-load-more" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+        <!-- ===== CHAT ARCHIVE ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="chat" aria-expanded="false" aria-controls="panel-chat">
+            <span class="admin-panel__title">Chat Archive</span>
+            <span class="admin-panel__count" data-count="chat">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-chat" hidden>
+            <div id="chat-archive"></div>
+            <button id="btn-load-more-chats" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
+          </div>
+        </section>
+
+        <!-- ===== ANNOUNCEMENTS ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="announcement" aria-expanded="false" aria-controls="panel-announcement">
+            <span class="admin-panel__title">Announcement</span>
+            <span class="admin-panel__count" data-count="announcement">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-announcement" hidden>
+            <div style="display:flex; gap:var(--space-sm);">
+              <input id="announcement-input" class="input" placeholder="Banner message for all users..." style="flex:1;">
+              <button id="btn-set-announcement" class="btn btn-primary">Set</button>
+              <button id="btn-clear-announcement" class="btn btn-secondary">Clear</button>
+            </div>
+            <p id="announcement-status" style="font-size:var(--text-xs); color:var(--color-text-muted); margin-top:var(--space-xs);"></p>
+          </div>
+        </section>
+
+        <!-- ===== FEATURE FLAGS ===== -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="flags" aria-expanded="false" aria-controls="panel-flags">
+            <span class="admin-panel__title">Feature Flags</span>
+            <span class="admin-panel__count" data-count="flags">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-flags" hidden>
+            <div id="feature-flags"></div>
+          </div>
+        </section>
+
       </div>
 
     </div>
@@ -183,7 +248,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=20260821a"></script>
+  <script type="module" src="js/admin.js?v=20260821"></script>
 
 </body>
 </html>

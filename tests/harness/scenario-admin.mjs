@@ -157,9 +157,43 @@ try {
   }
 
   // ============================================================
+  // 2b. PANEL COUNTS
+  //
+  // The sections are closed now and load on demand, so the number on a closed
+  // row is the only thing telling an admin there is anything to look at. If
+  // that number is wrong or missing the redesign has made the page worse, not
+  // shorter — nobody opens a panel that looks empty.
+  // ============================================================
+  heading('panel counts');
+  const countOf = async key =>
+    (await admin.page.textContent(`[data-count="${key}"]`).catch(() => '') || '').trim();
+
+  const flagCount = await countOf('flagged');
+  note(`closed-panel counts: flagged=${JSON.stringify(flagCount)} questions=${JSON.stringify(await countOf('questions'))}`);
+  if (!/3\s*flags/i.test(flagCount)) {
+    problems.push(`the closed Flagged Questions row reads ${JSON.stringify(flagCount)} with three flags in the database — an admin has no reason to open it`);
+  }
+  const alerted = await admin.page.locator('[data-count="flagged"].admin-panel__count--alert').count().catch(() => 0);
+  if (alerted !== 1) {
+    problems.push('a non-zero flag count is not highlighted, so it reads the same as an empty section');
+  }
+
+  // Opening a panel is what fetches it. Everything below has to knock first.
+  const openPanel = async key => {
+    await admin.page.click(`.admin-panel__head[data-panel="${key}"]`).catch(() => {});
+    await admin.page.waitForTimeout(900);
+    const expanded = await admin.page
+      .getAttribute(`.admin-panel__head[data-panel="${key}"]`, 'aria-expanded').catch(() => null);
+    if (expanded !== 'true') {
+      problems.push(`the ${key} panel did not open when tapped`);
+    }
+  };
+
+  // ============================================================
   // 3. FLAGGED QUEUE
   // ============================================================
   heading('flagged questions');
+  await openPanel('flagged');
   const flagged = (await admin.page.textContent('#flagged-queue').catch(() => '')) || '';
   note(`flagged queue: ${flagged.replace(/\s+/g, ' ').trim().slice(0, 110)}`);
   if (/No flagged questions/i.test(flagged)) {
@@ -176,6 +210,7 @@ try {
   // 4. QUESTION HEALTH
   // ============================================================
   heading('question health');
+  await openPanel('health');
   const qhRows = await admin.page.locator('#qh-list .admin-flag-row').count().catch(() => 0);
   note(`question health rows: ${qhRows}`);
   if (qhRows === 0) {
@@ -416,6 +451,57 @@ try {
       problems.push("the admin is offered a Delete button on their OWN account row");
     }
   }
+
+  // ============================================================
+  // EVERY PANEL OPENS
+  //
+  // Each section is fetched the first time it is opened, so eight sections
+  // mean eight code paths that now run at a moment nothing used to run at.
+  // Before this they all ran at page load, where one throwing loader was
+  // loud; now a broken one shows as a panel that opens and stays blank.
+  //
+  // Also pins one-at-a-time. Two open panels on a phone is the scroll this
+  // redesign exists to remove, and it is the kind of thing that regresses
+  // silently because the page still works.
+  // ============================================================
+  heading('every panel opens');
+  await admin.goto('admin.html');
+  await admin.page.waitForTimeout(2500);
+
+  for (const key of ['flagged', 'health', 'questions', 'games', 'errors', 'chat', 'announcement', 'flags']) {
+    await admin.page.click(`.admin-panel__head[data-panel="${key}"]`).catch(() => {});
+    await admin.page.waitForTimeout(800);
+
+    const state = await admin.page.evaluate(k => {
+      const body = document.getElementById(`panel-${k}`);
+      const heads = [...document.querySelectorAll('.admin-panel__head')];
+      return {
+        expanded: heads.find(h => h.dataset.panel === k)?.getAttribute('aria-expanded'),
+        hidden: body ? body.hidden : null,
+        error: (body?.querySelector('.admin-panel__error')?.textContent || '').trim(),
+        stillLoading: /Loading\.\.\./.test(body?.textContent || ''),
+        openCount: heads.filter(h => h.getAttribute('aria-expanded') === 'true').length,
+      };
+    }, key).catch(() => ({}));
+
+    note(`${key}: ${JSON.stringify(state)}`);
+    if (state.expanded !== 'true' || state.hidden !== false) {
+      problems.push(`the ${key} panel did not open when tapped`);
+    }
+    if (state.error) problems.push(`the ${key} panel failed to load: ${state.error.slice(0, 120)}`);
+    if (state.stillLoading) problems.push(`the ${key} panel never finished loading`);
+    if (state.openCount > 1) {
+      problems.push(`opening ${key} left ${state.openCount} panels open — they are meant to be one at a time`);
+    }
+  }
+
+  // Tapping the open one again closes it.
+  await admin.page.click('.admin-panel__head[data-panel="flags"]').catch(() => {});
+  await admin.page.waitForTimeout(400);
+  const anyOpen = await admin.page.evaluate(() =>
+    document.querySelectorAll('.admin-panel__head[aria-expanded="true"]').length).catch(() => -1);
+  note(`panels open after tapping the open one again: ${anyOpen}`);
+  if (anyOpen !== 0) problems.push('tapping an open panel again does not close it');
 
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);

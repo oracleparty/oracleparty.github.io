@@ -762,9 +762,33 @@ nothing on the wheel is unreachable.
 - **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
 - **Friends** — requests, accept/decline, see friends' active lobbies
 - **Leaderboard** — global and per-category, plus a per-player mastery tree
-- **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`. The four
-  stat cards open the list they were counted from; before that they were the
-  only figures on the page that could not be checked. **An account row opens**
+- **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`.
+
+  **The page is four stat cards and eight collapsed panels**, one open at a
+  time, each opening on a tap. It used to be nine sections open at once, all
+  fetched before anything rendered — comprehensive and unreadable, which on a
+  375px phone is the same as unusable: the flag you came to read was 4,000px
+  down and the heaviest query on the page ran for an admin who never scrolled
+  to it. Each panel's data is now fetched the **first** time it is opened.
+
+  **The count on a closed row is what makes the collapse work.** "3 flags"
+  visible without opening anything is the whole point — a page that hides
+  everything behind identical doors is worse than a long one. `loadPanelCounts`
+  gets them with `head: true` counts, and a failed count renders **`?`, never
+  `0`**: an unreachable table and an empty one must not look alike (#4, #6, #8).
+  Only flags and errors go amber, and only when non-zero — colour everything
+  and it stops meaning anything. The chips take `--color-primary` as **text on
+  a surface**, not as a fill; inverting that drops the label to ~2.5:1 on the
+  light theme, which is exactly how the tier badges broke.
+
+  `scenario-admin` opens all eight and fails if two are open at once, if one
+  stays blank, or if a non-zero flag count is not highlighted. Verified by
+  breaking each: removing the close-the-other line reports seven panels open by
+  name. Ordered by how often an admin needs it, so Flagged Questions is first —
+  the question bank used to be at the bottom of the longest page in the app.
+
+  The four stat cards open the list they were counted from; before that they
+  were the only figures on the page that could not be checked. **An account row opens**
   to show who it actually is — email, sign-up method, whether the address was
   ever confirmed, last sign-in — plus games, sessions, wins and what they play.
   The identity half goes through `admin_account_details` (migration 042),
@@ -1401,8 +1425,7 @@ Known and deliberate, and reported every run: `.mastery-group`,
 are grouping wrappers the JS queries by (`closest`, `querySelector`) and shows
 or hides inline — there is nothing for CSS to say about them.
 `.feedback-btn--flag` has no rule (the flag button falls
-back to the shared `.feedback-btn` look), `.admin-qh__controls` has none
-either (its layout is inline on the element), and `watermark-all` is excluded
+back to the shared `.feedback-btn` look), and `watermark-all` is excluded
 — it is a glyph-calibration state whose cards differ by design.
 
 **COVERED is reported, never failed on.** It asks the browser, via
@@ -1424,6 +1447,13 @@ immediately found `.page-header__back` with no CSS rule anywhere: the back
 arrow on Profile and Leaderboard had shipped as a bare browser button, no
 colour, no padding, no minimum tap target. **A page with no mock is a page
 nobody is checking.**
+
+It happened again on 2026-08-21. The first mock of the admin flagged queue
+(`admin-panels`) found `.admin-flag-row__answer` and `.admin-flag-row__reasons`
+with no rule at all — three items in a non-wrapping flex row, one of which is
+every distinct reason anybody gave, comma-joined. It fitted the two short
+strings a mock would have used and nothing longer. **The section had shipped
+months earlier.**
 
 - **Always screenshot before pushing UI changes**, then read the screenshot and
   assess it honestly.

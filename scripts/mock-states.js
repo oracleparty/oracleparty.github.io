@@ -804,6 +804,82 @@ export const STATES = {
   // they are the most likely to squeeze the name to nothing, which is exactly
   // how the lobby rows broke in a live game.
   // ==========================================
+  // The page as it now arrives: four stat cards and eight closed panel rows,
+  // each carrying its own count. Mirrors loadDashboardStats() and
+  // loadPanelCounts() in js/admin.js — change them together.
+  //
+  // The counts are deliberately not all plain numbers. "None", "4,782" and
+  // "3 ratings, 0 played" are all real outputs, and the longest of them is
+  // what decides whether a panel title still fits on a 375px phone.
+  //
+  // (inject() is serialised into the browser, so these two blocks are
+  // duplicated in 'admin-drill' rather than shared — module-scope helpers do
+  // not survive the trip. See the note at the top of this file.)
+  'admin-panels': {
+    page: 'admin',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const loading = document.getElementById('admin-loading');
+      if (loading) loading.style.display = 'none';
+      const content = document.getElementById('admin-content');
+      if (content) content.style.display = '';
+
+      const vals = { 'stat-online': '11', 'stat-games': '3', 'stat-accounts': '11', 'stat-today': '24' };
+      for (const [id, v] of Object.entries(vals)) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
+      }
+
+      const counts = {
+        flagged: ['4 flags', 'alert'],
+        health: ['3 ratings, 0 played', null],
+        questions: ['4,782', null],
+        games: ['1,204', null],
+        errors: ['7 · 7d', 'error'],
+        chat: ['None', null],
+        announcement: ['Live', 'alert'],
+        flags: ['1 on', 'alert'],
+      };
+      for (const [key, [text, tone]] of Object.entries(counts)) {
+        const el = document.querySelector(`[data-count="${key}"]`);
+        if (!el) continue;
+        el.textContent = text;
+        if (tone) el.classList.add(`admin-panel__count--${tone}`);
+      }
+
+      // Flagged Questions open, because it is the panel an admin opens first
+      // and the only one whose rows carry free text a player typed.
+      const head = document.querySelector('.admin-panel__head[data-panel="flagged"]');
+      if (head) head.setAttribute('aria-expanded', 'true');
+      const body = document.getElementById('panel-flagged');
+      if (body) body.hidden = false;
+      const queue = document.getElementById('flagged-queue');
+      if (!queue) return;
+      // Mirrors loadFlaggedQueue() in js/admin.js.
+      const flagged = [
+        ['Which artist painted the ceiling of the Sistine Chapel between 1508 and 1512?',
+         'Michelangelo', 3, 'Wrong answer, Too obscure',
+         ['it also accepts Michelangelo Buonarroti surely']],
+        ['What is the capital of Australia?', 'Canberra', 1, 'Typo', []],
+      ];
+      queue.innerHTML = flagged.map(([q, a, n, reasons, notes]) => `
+        <div class="admin-flag-row">
+          <div class="admin-flag-row__text">${q}</div>
+          <div class="admin-flag-row__meta">
+            <span class="admin-flag-row__answer">A: ${a}</span>
+            <span class="admin-flag-row__count">${n} flag${n > 1 ? 's' : ''}</span>
+            <span class="admin-flag-row__reasons">${reasons}</span>
+          </div>
+          ${notes.map(t => `<div class="admin-flag-row__note">“${t}”</div>`).join('')}
+          <div class="admin-flag-row__actions">
+            <button class="btn btn-secondary">Unflag</button>
+            <button class="btn btn-secondary btn-danger-text">Remove Q</button>
+          </div>
+        </div>`).join('');
+    },
+  },
+
   'admin-drill': {
     page: 'admin',
     screen: null,
@@ -818,6 +894,19 @@ export const STATES = {
       for (const [id, v] of Object.entries(vals)) {
         const el = document.getElementById(id);
         if (el) el.textContent = v;
+      }
+
+      const counts = {
+        flagged: ['4 flags', 'alert'], health: ['612 played', null],
+        questions: ['4,782', null], games: ['1,204', null],
+        errors: ['None · 7d', null], chat: ['38', null],
+        announcement: ['Off', null], flags: ['Off', null],
+      };
+      for (const [key, [text, tone]] of Object.entries(counts)) {
+        const el = document.querySelector(`[data-count="${key}"]`);
+        if (!el) continue;
+        el.textContent = text;
+        if (tone) el.classList.add(`admin-panel__count--${tone}`);
       }
       const card = document.querySelector('[data-drill="accounts"]');
       if (card) card.classList.add('admin-stat-card--open');
