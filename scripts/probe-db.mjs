@@ -429,6 +429,18 @@ const RPC_PROBES = [
   ['record_question_outcome', { p_question_id: NOT_A_UUID, p_is_correct: true, p_overridden: false }],
   ['increment_questions_answered', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID }],
   ['record_answer_text', { p_question_id: NOT_A_UUID, p_answer: 'probe' }],
+  // Migration 041. Without these a host's judgement flip and disqualification
+  // land on their OWN history row and are silently refused for every other
+  // player — question_history is scoped to its owner and has no DELETE policy
+  // for anybody.
+  ['amend_question_history', { p_user_id: NOT_A_UUID, p_question_id: NOT_A_UUID, p_room_id: NOT_A_UUID, p_is_correct: true }],
+  ['revoke_question_history', { p_user_id: NOT_A_UUID, p_question_id: NOT_A_UUID, p_room_id: NOT_A_UUID }],
+  // Migration 042. Admin-gated, so an anonymous probe cannot get past the
+  // guard — but a MISSING function still answers 404 and a present one still
+  // answers 22P02 on the uuid cast, which is all this needs to distinguish.
+  ['admin_account_details', { p_user_id: NOT_A_UUID }],
+  // Migration 034. Without it a group's whole evening counts as one play each.
+  ['record_game_play', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID, p_game_key: 'probe' }],
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
@@ -544,13 +556,18 @@ const REQUIRED = {
   rooms:   ['id', 'code', 'host_name', 'category', 'subcategory', 'status', 'used_question_ids',
             'game_phase', 'current_question', 'question_ids', 'question_started_at',
             'countdown_started_at', 'questions_per_game', 'question_timer',
-            'auto_proceed', 'who_can_join', 'used_question_ids'],
+            'auto_proceed', 'who_can_join', 'used_question_ids',
+            // Migration 038 — the lobby's cumulative Room Scores tally. Without
+            // it the section simply never appears.
+            'room_scores'],
   answers: ['id', 'room_id', 'player_id', 'question_number', 'question_id',
             'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned'],
   game_plays: ['id', 'room_id', 'player_id', 'category', 'subcategory', 'completed_at',
                'total_questions', 'questions_answered', 'final_score', 'completed'],
   question_feedback: ['id', 'question_id', 'voter_id', 'room_id', 'player_name',
-                      'feedback_type', 'flag_reason'],
+                      'feedback_type', 'flag_reason',
+                      // Migration 039 — what somebody typed against an "Other" flag.
+                      'flag_note'],
   questions: ['id', 'question', 'correct_answer', 'acceptable_answers',
               'incorrect_answers',
               'categories', 'subcategory', 'difficulty', 'format', 'fun_fact'],
@@ -574,7 +591,12 @@ const REQUIRED = {
   question_stats:   ['question_id', 'times_asked', 'times_correct', 'times_overridden'],
   answer_tally:     ['question_id', 'answer_key', 'answer_shown', 'times_given', 'last_seen'],
   player_stats_computed: ['user_id', 'category', 'subcategory', 'questions_answered',
-                          'correct_answers', 'games_played', 'wins'],
+                          'correct_answers', 'games_played', 'wins',
+                          // Migration 040 — proficiency counts QUESTIONS, not
+                          // attempts. rowProficiency falls back to the attempt
+                          // counters without these, so nothing breaks; the
+                          // number just means the old thing.
+                          'questions_met', 'questions_mastered'],
 };
 
 console.log('\n--- COLUMNS THE APP DEPENDS ON ---');
