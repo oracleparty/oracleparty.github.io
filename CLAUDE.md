@@ -1010,12 +1010,43 @@ attempts, in which **a miss was permanent**: playing more could dilute it, and
 nothing could undo it, not even learning the answer. That made the number
 partly a record of how often somebody's phone had been awake at the reveal.
 
-**This is only as good as the resurfacing rule.** A question never asked again
-keeps its old verdict forever, so "recoverable" means "recoverable when it
-comes back". `fetchQuestionsByCategory` already re-serves missed questions at a
-flat ~5% per player per slot, and `question_history.next_eligible_at` exists on
-the live table and **is read by nothing** — that column is where a real spacing
-rule belongs. Treat the two as one feature.
+**This is only as good as the resurfacing rule**, and that rule was reading
+the wrong signal. `bucketQuestionsByHistory` in `js/question-selection.js` is
+now the single definition of "this player knows this question", and it is
+`last_correct` — the same verdict Proficiency uses.
+
+Before that, the two selection paths had two different rules and neither
+matched the profile:
+
+| | knows it = |
+|---|---|
+| `fetchQuestionsByCategory` | got it right EVERY time |
+| `fetchAllOpenQuestions` | got it right AT LEAST ONCE |
+| Proficiency (040) | got it right LAST time |
+
+The category rule is the one that bit. A question missed once and since
+learned reads `times_seen=2, times_correct=1` — not right every time, so it
+could never be filed as mastered, and wrong at least once, so it stayed in the
+redemption pool **forever**. The pool only ever grew, and the same old
+questions kept resurfacing long after they were known. **The ~5% draw rate was
+never the problem; the pool it drew from could not shrink.** Now it is
+self-cleaning both ways: learn one and it leaves, forget one and it returns.
+
+`fetchQuestionHistoryForUsers` **must** select `last_correct`. It did not, and
+the fallback (`times_correct > 0` when the column is null) means omitting it
+does not error — it silently reverts every player to the old rule.
+
+`question_history.next_eligible_at` still exists on the live table and is read
+by nothing. A scheduled interval was considered and set aside: the owner's
+judgement is that a flat ~5% per player per slot keeps repeats feeling
+incidental rather than assigned, which is right for a party game. Revisit it
+only with a measurement, not a hunch.
+
+**Guests do not shape selection**, deliberately. `playerUserIds` holds
+signed-in players only, so a room of guests gets a plain shuffle. Tracking what
+a guest has met means keeping a durable record of somebody who did not sign up,
+and smart selection is one of the things an account is for. A guest in a mixed
+room still gets a well-chosen set, because the signed-in players shape it.
 
 `questions_answered` and `correct_answers` are unchanged and still count
 attempts. They are the VOLUME measure, and the leaderboard's points are built

@@ -5,6 +5,7 @@
 import { supabase } from './client.js';
 import { logger, reportWriteFailure, writeSucceeded } from '../logger.js';
 import { CATEGORY_PAGE_SIZE, QUESTION_POOL_SIZE, WILDCARD_LIMIT, DIFFICULTY_QUESTION_LIMIT, TITLE_BATCH_SIZE } from '../constants.js';
+import { bucketQuestionsByHistory } from '../question-selection.js';
 
 /**
  * Fetch distinct categories from the questions table with counts.
@@ -68,17 +69,24 @@ export async function fetchQuestionCount(category, subcategory = null) {
   return count || 0;
 }
 
+
 /**
  * Fetch questions for a category.
  * Fetches extra and shuffles client-side since PostgREST has no random order.
- * Tries common column names for question text/answer fields.
  *
  * Smart selection (when playerUserIds provided):
- *   1. Room dedup: excludeIds filters out all questions used in this room session
- *   2. Fresh first: questions no player has seen are prioritized
- *   3. Redemption: 5% chance per player per slot of drawing a question they got wrong
- *   4. Back of line: questions ALL players got correct are used last
- *   5. Graceful degradation: falls back to least-recently-seen, never errors
+ *   1. Room dedup — excludeIds removes everything already used in this room
+ *   2. Fresh first — questions nobody signed in has met
+ *   3. Redemption — ~5% per signed-in player per slot of drawing one somebody
+ *      does not currently know. See bucketQuestionsByHistory for what
+ *      "currently" means and why it is not "ever got wrong"
+ *   4. Back of the line — questions everyone signed in currently knows
+ *   5. Graceful degradation — falls back to least-recently-seen, never errors
+ *
+ * GUESTS DO NOT SHAPE THIS. playerUserIds holds signed-in players only, so a
+ * room of guests gets a plain shuffle. That is deliberate: tracking what a
+ * guest has seen means keeping a durable record of somebody who did not sign
+ * up, and smart selection is one of the things an account is for.
  */
 export async function fetchQuestionsByCategory(category, limit, excludeIds = [], playerUserIds = [], subcategory = null) {
   // Fetch a large pool — we need enough to be selective
@@ -118,50 +126,9 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
   // Fetch question history for all logged-in players in the room
   const history = await fetchQuestionHistoryForUsers(playerUserIds);
 
-  // Build lookup: questionId → { seenBy, correctBy, wrongBy }
-  const histMap = {};
-  for (const h of history) {
-    const qid = h.question_id;
-    if (!histMap[qid]) histMap[qid] = { seenBy: new Set(), correctBy: new Set(), wrongBy: new Set(), lastSeen: 0 };
-    histMap[qid].seenBy.add(h.user_id);
-    if (h.times_correct > 0 && h.times_correct >= h.times_seen) {
-      histMap[qid].correctBy.add(h.user_id);
-    }
-    if (h.times_seen > h.times_correct) {
-      histMap[qid].wrongBy.add(h.user_id);
-    }
-    const ts = new Date(h.last_seen_at).getTime();
-    if (ts > histMap[qid].lastSeen) histMap[qid].lastSeen = ts;
-  }
-
   const loggedInCount = playerUserIds.length;
-
-  // Bucket questions
-  const fresh = [];       // No player has seen it
-  const redemption = [];  // At least one player got it wrong
-  const seenMixed = [];   // Some seen, not all mastered
-  const mastered = [];    // ALL logged-in players got it correct
-
-  for (const q of available) {
-    const h = histMap[q.id];
-    if (!h || h.seenBy.size === 0) {
-      fresh.push(q);
-    } else if (h.seenBy.size >= loggedInCount && h.correctBy.size >= loggedInCount) {
-      mastered.push(q);
-    } else if (h.wrongBy.size > 0) {
-      redemption.push(q);
-    } else {
-      seenMixed.push(q);
-    }
-  }
-
-  // Sort fallback pools by least-recently-seen
-  seenMixed.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
-  mastered.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
-
-  // Shuffle fresh and redemption pools
-  _shuffle(fresh);
-  _shuffle(redemption);
+  const { fresh, redemption, seenMixed, mastered } =
+    bucketQuestionsByHistory(available, history, playerUserIds);
 
   // Build the final selection (track IDs to prevent duplicates in fallback)
   const selected = [];
@@ -256,31 +223,13 @@ export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserId
     return _shuffle(available).slice(0, limit);
   }
 
-  // Smart selection (same logic as fetchQuestionsByCategory)
+  // Same buckets, same rule as a normal category. These two paths used to keep
+  // separate copies of this logic and had drifted into two different
+  // definitions of "knows it".
   const history = await fetchQuestionHistoryForUsers(playerUserIds);
-  const histMap = {};
-  for (const h of history) {
-    if (!histMap[h.question_id]) histMap[h.question_id] = { seenBy: new Set(), correctBy: new Set(), wrongBy: new Set(), lastSeen: 0 };
-    const e = histMap[h.question_id];
-    e.seenBy.add(h.user_id);
-    if (h.times_correct > 0) e.correctBy.add(h.user_id); else e.wrongBy.add(h.user_id);
-    e.lastSeen = Math.max(e.lastSeen, new Date(h.last_seen_at).getTime());
-  }
-
   const loggedInCount = playerUserIds.length;
-  const fresh = [], redemption = [], seenMixed = [], mastered = [];
-  for (const q of available) {
-    const h = histMap[q.id];
-    if (!h || h.seenBy.size === 0) fresh.push(q);
-    else if (h.seenBy.size >= loggedInCount && h.correctBy.size >= loggedInCount) mastered.push(q);
-    else if (h.wrongBy.size > 0) redemption.push(q);
-    else seenMixed.push(q);
-  }
-
-  seenMixed.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
-  mastered.sort((a, b) => (histMap[a.id]?.lastSeen || 0) - (histMap[b.id]?.lastSeen || 0));
-  _shuffle(fresh);
-  _shuffle(redemption);
+  const { fresh, redemption, seenMixed, mastered } =
+    bucketQuestionsByHistory(available, history, playerUserIds);
 
   const selected = [];
   const selectedIds = new Set();
@@ -360,7 +309,12 @@ export async function fetchQuestionHistoryForUsers(userIds) {
   if (!userIds || userIds.length === 0) return [];
   const { data, error } = await supabase
     .from('question_history')
-    .select('user_id, question_id, times_seen, times_correct, last_seen_at')
+    // last_correct is REQUIRED, not optional. bucketQuestionsByHistory reads it
+    // to decide whether somebody currently knows a question, and falls back to
+    // times_correct > 0 when it is null — so omitting it here would not error,
+    // it would silently revert every player to the old rule and nothing would
+    // look wrong anywhere.
+    .select('user_id, question_id, times_seen, times_correct, last_correct, last_seen_at')
     .in('user_id', userIds);
   if (error) {
     logger.error('Supabase', 'fetchQuestionHistoryForUsers failed', error);
