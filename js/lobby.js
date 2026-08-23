@@ -5,6 +5,7 @@
 
 import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from './utils.js';
 import { logger } from './logger.js';
+import { presenceNeedsRebuild } from './presence-health.js';
 import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, HEARTBEAT_DB_INTERVAL_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS,
          BOT_DISPLAY_NAME, BOT_AVATAR_COLOR, BOT_AVATAR_EMOJI, MAX_BOTS_PER_ROOM } from './constants.js';
 import {
@@ -162,53 +163,13 @@ async function init() {
   }, 8000);
 
   // Presence tracking (away/active state)
-  presenceChannel = createPresenceChannel(room.id, String(room.playerId));
-  presenceChannel
-    .on('presence', { event: 'sync' }, () => {
-      const ps = presenceChannel.presenceState();
-      // Build set of connected + active player IDs
-      const connectedActive = new Set();
-      for (const key of Object.keys(ps)) {
-        for (const p of ps[key]) {
-          if (!p.is_away) connectedActive.add(String(p.player_id));
-        }
-      }
-      // Track when each player first went away (preserve existing timestamps)
-      const newAway = new Map();
-      for (const p of players) {
-        const id = String(p.id);
-        // A bot joins no presence channel, so it is permanently "not connected"
-        // and would sit in the lobby faded to 40% opacity — the signal that
-        // says "this player's phone is asleep, don't wait for them" — while
-        // being the one player that never keeps anybody waiting.
-        if (p.is_bot) continue;
-        if (!connectedActive.has(id)) {
-          newAway.set(id, awayTimestamps.get(id) || Date.now());
-        }
-      }
-      awayTimestamps = newAway;
-      renderPlayers();
-      checkStalePresence();
-    })
-    .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        presenceReady = true;
-        notifyConnectionRestored();
-        await presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        presenceReady = false;
-        notifyConnectionLost();
-      }
-    });
-  channels.push(presenceChannel);
+  buildPresenceChannel();
 
-  // Heartbeat: re-track presence every 15s so transient failures self-heal
-  presenceHeartbeatId = setInterval(() => {
-    if (presenceChannel) {
-      presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
-        .catch(() => {});
-    }
-  }, LOBBY_PLAYER_DEBOUNCE_MS);
+  // Heartbeat: re-announce presence, and REBUILD the channel if it has died.
+  // See buildPresenceChannel — re-announcing on a dead channel is what left a
+  // returning player greyed out to the whole room, and the room greyed out to
+  // them.
+  presenceHeartbeatId = setInterval(beatPresence, LOBBY_PLAYER_DEBOUNCE_MS);
 
   // DB heartbeat: update last_seen_at every 15s for stale detection.
   // Also sends an immediate heartbeat to clear any disconnected_at from a prior refresh.
@@ -447,14 +408,28 @@ async function _loadPlayerTiers() {
 
 function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const badges = [];
+  const away = awayTimestamps.has(String(p.id));
   if (showRoleBadge) {
     if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
     if (p.is_cohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
   }
-  // Ready state is lobby state, and it is meaningless for the people who run
-  // the lobby — "Not Ready" was already suppressed for them, so showing them
-  // "Ready" was inconsistent as well as wasteful.
-  if (p.is_ready && !p.is_host && !p.is_cohost) {
+  // AWAY IS A WORD, not only a fade.
+  //
+  // Fading to 40% was the entire signal, and a playtest could not read it: it
+  // looks equally like away, gone, disabled, or still loading. The owner asked
+  // for a label, and it goes in the READY SLOT rather than beside it — a badge
+  // added to this row is what overflowed it by 71px in August, and ready state
+  // is exactly the thing that stops mattering once somebody's phone is asleep.
+  //
+  // Host and co-host DO get it, even though they get no ready badge: a host
+  // being away is the most consequential fact in the lobby, because the game
+  // cannot start without them.
+  if (away && !p.is_bot) {
+    badges.push('<span class="badge badge--away">Away</span>');
+  } else if (p.is_ready && !p.is_host && !p.is_cohost) {
+    // Ready state is lobby state, and it is meaningless for the people who run
+    // the lobby — "Not Ready" was already suppressed for them, so showing them
+    // "Ready" was inconsistent as well as wasteful.
     badges.push('<span class="badge badge--ready">Ready</span>');
   } else if (!p.is_ready && !p.is_host && !p.is_cohost) {
     badges.push('<span class="badge badge--not-ready">Not Ready</span>');
@@ -495,7 +470,6 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // second line so every row is the same height.
   const titleHtml = `<span class="name-substack">${tierHtml}${titleText}</span>`;
   const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
-  const isAway = awayTimestamps.has(String(p.id));
   const honks = getHonkCount(p.id);
   const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
   // No honking at a bot — there is nobody on the other end to startle.
@@ -525,7 +499,7 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   }
 
   return `
-    <div class="player-item${isAway ? ' player-item--away' : ''}" ${profileAttr}>
+    <div class="player-item${away ? ' player-item--away' : ''}" ${profileAttr}>
       <div class="avatar-wrap">
         ${avatarHtml}
         ${honkBadge}
@@ -1650,12 +1624,99 @@ function handleUnload() {
 // resets to false; on auto-reconnect subscribe fires again
 // and re-tracks current visibility state (self-healing).
 
+// ============================================
+// PRESENCE CHANNEL
+//
+// Built through a function because it has to be REBUILDABLE. A backgrounded
+// phone has its WebSocket suspended, and supabase-js throws "tried to
+// subscribe multiple times" on a channel that has already joined once — so a
+// dead channel cannot be revived, only replaced.
+//
+// Before this, every track() failure was swallowed by `.catch(() => {})` and
+// nothing checked whether the channel was still joined. A player who switched
+// to another app and came back stayed greyed out for everybody, and saw
+// everybody greyed out back. That symmetry is the tell: one-way state errors
+// grey one person, a dead socket greys the whole room in both directions.
+// ============================================
+
+function buildPresenceChannel() {
+  const channel = createPresenceChannel(room.id, String(room.playerId));
+  presenceChannel = channel;
+
+  channel
+    .on('presence', { event: 'sync' }, () => {
+      // Read from the channel this handler belongs to. A rebuild swaps
+      // presenceChannel out, and a late sync from the dead one would otherwise
+      // read the new channel's still-empty state and grey out the whole room.
+      const ps = channel.presenceState();
+      const connectedActive = new Set();
+      for (const key of Object.keys(ps)) {
+        for (const p of ps[key]) {
+          if (!p.is_away) connectedActive.add(String(p.player_id));
+        }
+      }
+      if (presenceChannel !== channel) return;
+
+      const newAway = new Map();
+      for (const p of players) {
+        const id = String(p.id);
+        // A bot joins no presence channel, so it is permanently "not connected"
+        // and would sit in the lobby faded to 40% opacity — the signal that
+        // says "this player's phone is asleep, don't wait for them" — while
+        // being the one player that never keeps anybody waiting.
+        if (p.is_bot) continue;
+        if (!connectedActive.has(id)) {
+          newAway.set(id, awayTimestamps.get(id) || Date.now());
+        }
+      }
+      awayTimestamps = newAway;
+      renderPlayers();
+      checkStalePresence();
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        presenceReady = true;
+        notifyConnectionRestored();
+        await channel.track({ player_id: room.playerId, is_away: document.hidden })
+          .catch(() => {});
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        presenceReady = false;
+        notifyConnectionLost();
+      }
+    });
+
+  if (!channels.includes(channel)) channels.push(channel);
+  return channel;
+}
+
+/** One presence beat: rebuild if the channel is dead, otherwise re-announce. */
+async function beatPresence() {
+  if (!presenceChannel) return;
+  if (presenceNeedsRebuild(presenceChannel)) {
+    logger.warn('Lobby', 'presence channel died — rebuilding', { state: presenceChannel.state });
+    const dead = presenceChannel;
+    const at = channels.indexOf(dead);
+    try { dead.unsubscribe(); } catch { /* already gone */ }
+    if (at !== -1) channels.splice(at, 1);
+    presenceChannel = null;
+    buildPresenceChannel();
+    return;
+  }
+  try {
+    await presenceChannel.track({ player_id: room.playerId, is_away: document.hidden });
+  } catch (err) {
+    // Not swallowed. A failing track on a channel that still claims to be
+    // joined is the case this fix exists for, and it used to be invisible.
+    logger.warn('Lobby', 'presence track failed', err);
+  }
+}
+
 async function handleVisibilityChange() {
   if (!presenceChannel) return;
-  // Always attempt to track — swallow errors so transient failures
-  // don't permanently break away detection.
-  presenceChannel.track({ player_id: room.playerId, is_away: document.hidden })
-    .catch(() => {});
+  // Coming back is exactly when the channel is most likely to be dead, so heal
+  // here rather than waiting up to 15s for the next beat — that wait is the
+  // window a returning player spends still greyed out to everybody.
+  beatPresence();
   if (document.hidden) return;
   // When tab becomes visible, send immediate DB heartbeat so other clients
   // see our last_seen_at refresh instantly (don't wait for the 15s interval).

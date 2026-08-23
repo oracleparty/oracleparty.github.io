@@ -14,6 +14,21 @@ const channels = [];
 const subHandlers = new Map();   // subId -> callback
 
 window.__fakeChannels = channels;
+
+// Kill a channel the way a mobile browser kills a backgrounded WebSocket: the
+// object survives, its state is no longer 'joined', and everything sent
+// through it fails. Presence entries tracked through it are dropped, which is
+// what makes the player disappear from everybody else's roster.
+window.__killChannel = (topicSubstring) => {
+  let killed = 0;
+  for (const ch of channels) {
+    if (!ch.topic || !ch.topic.includes(topicSubstring)) continue;
+    ch.state = 'errored';
+    window.__presenceLeave(ch.topic, window.__robotId || 'self');
+    killed++;
+  }
+  return killed;
+};
 window.__rtDispatch = (subId, payload) => {
   const handler = subHandlers.get(subId);
   if (handler) handler(payload);
@@ -109,6 +124,14 @@ class FakeChannel {
     return this;
   }
   subscribe(cb) {
+    // supabase-js REFUSES a second subscribe on the same channel — it throws
+    // "tried to subscribe multiple times". A shim that quietly allowed it
+    // would let broken healing code pass here and fail on a real phone, which
+    // is the whole class of mistake the faithfulness notes above are about.
+    if (this._joinedOnce) {
+      throw new Error("tried to subscribe multiple times. 'subscribe' can only be called a single time per channel instance");
+    }
+    this._joinedOnce = true;
     this.state = 'joined';
     for (const h of this._pgHandlers) {
       const cfg = h.config || {};
@@ -124,6 +147,13 @@ class FakeChannel {
     return this;
   }
   async track(state) {
+    // A channel whose socket has died REJECTS, it does not quietly succeed.
+    // That is the state a backgrounded phone comes back in, and the app used
+    // to swallow the rejection and stay greyed out forever. Without this the
+    // fix is untestable, because every track in the harness would succeed.
+    if (this.state !== 'joined') {
+      throw new Error(`tried to track on a channel that is ${this.state}`);
+    }
     // Goes through the shared store: a per-page object would mean every client
     // only ever sees itself present.
     await window.__presenceTrack(this.topic, window.__robotId || 'self', state);

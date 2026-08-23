@@ -5,6 +5,7 @@
 
 import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 import { logger } from '../logger.js';
+import { presenceNeedsRebuild } from '../presence-health.js';
 import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from '../constants.js';
 import {
   addPlayer,
@@ -232,66 +233,18 @@ async function init() {
   state.channels = [roomCh, answerCh, msgCh, playerCh];
 
   // Presence tracking (away/active state)
-  state.presenceChannel = createPresenceChannel(state.room.id, String(state.room.playerId));
-  state.presenceChannel
-    .on('presence', { event: 'sync' }, () => {
-      const ps = state.presenceChannel.presenceState();
-      // Build set of connected + active player IDs
-      const connectedActive = new Set();
-      for (const key of Object.keys(ps)) {
-        for (const p of ps[key]) {
-          if (!p.is_away) connectedActive.add(String(p.player_id));
-        }
-      }
-      // Track when each player first went away (preserve existing timestamps)
-      const newAway = new Map();
-      for (const p of state.players) {
-        const id = String(p.id);
-        // A bot joins no presence channel, so it is permanently "not
-        // connected". Faded at 40% opacity through every reveal and scoreboard
-        // it would read as the player everyone is waiting on, when it is the
-        // one that has always already answered.
-        if (p.is_bot) continue;
-        if (!connectedActive.has(id)) {
-          newAway.set(id, state.awayTimestamps.get(id) || Date.now());
-        }
-      }
-      state.awayTimestamps = newAway;
-      checkStalePresence();
-      // Update away classes on visible rows without full re-render
-      document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
-        row.classList.toggle('answer-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
-      });
-      document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
-        row.classList.toggle('score-anim-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
-      });
-      document.querySelectorAll('#results-list .results-row').forEach(row => {
-        row.classList.toggle('results-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
-      });
-      document.querySelectorAll('#fw-player-list .fw-player-row').forEach(row => {
-        row.classList.toggle('fw-player-row--away', state.awayTimestamps.has(String(row.dataset.playerId)));
-      });
-    })
-    .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        state.presenceReady = true;
-        notifyConnectionRestored();
-        await state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        state.presenceReady = false;
-        notifyConnectionLost();
-      }
-    });
-  state.channels.push(state.presenceChannel);
+  buildPresenceChannel();
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
-  // Heartbeat: re-track presence every 15s so transient failures self-heal
-  state.presenceHeartbeatId = setInterval(() => {
-    if (state.presenceChannel) {
-      state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
-        .catch(() => {});
-    }
-  }, LOBBY_POLL_INTERVAL);
+  // Heartbeat: re-announce presence, and REBUILD the channel if it has died.
+  //
+  // Re-announcing alone was not enough, and that is the bug this fixes. A
+  // backgrounded phone has its WebSocket suspended; on return the track() call
+  // failed on a dead channel, the failure was swallowed by `.catch(() => {})`,
+  // and nothing ever checked. The player stayed greyed out for the whole room
+  // AND saw the whole room greyed out back — the symmetry a playtest reported,
+  // and the tell that it is a dead socket rather than a state error.
+  state.presenceHeartbeatId = setInterval(beatPresence, LOBBY_POLL_INTERVAL);
 
   // DB heartbeat: update last_seen_at every 15s for stale detection.
   // Also sends an immediate heartbeat to clear any disconnected_at from a prior refresh.
@@ -660,12 +613,124 @@ window.addEventListener('pagehide', handleUnload);
 // resets to false; on auto-reconnect subscribe fires again
 // and re-tracks current visibility state (self-healing).
 
+// ============================================
+// PRESENCE CHANNEL
+//
+// Built through a function rather than inline because it has to be REBUILDABLE.
+// supabase-js throws "tried to subscribe multiple times" on a channel that has
+// already joined once, so a channel whose socket died cannot be revived — the
+// only way back is a new one.
+// ============================================
+
+function applyAwayClasses() {
+  const isAway = row => state.awayTimestamps.has(String(row.dataset.playerId));
+  document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
+    row.classList.toggle('answer-row--away', isAway(row));
+  });
+  document.querySelectorAll('#scores-animated-list .score-anim-row').forEach(row => {
+    row.classList.toggle('score-anim-row--away', isAway(row));
+  });
+  document.querySelectorAll('#results-list .results-row').forEach(row => {
+    row.classList.toggle('results-row--away', isAway(row));
+  });
+  document.querySelectorAll('#fw-player-list .fw-player-row').forEach(row => {
+    row.classList.toggle('fw-player-row--away', isAway(row));
+  });
+  // The word, not just the fade. 40% opacity alone is ambiguous — it reads as
+  // away, gone, disabled or still loading, and a playtest could not tell which.
+  document.querySelectorAll('[data-away-label]').forEach(el => {
+    el.textContent = state.awayTimestamps.has(String(el.dataset.awayLabel)) ? 'Away' : '';
+  });
+}
+
+function buildPresenceChannel() {
+  const channel = createPresenceChannel(state.room.id, String(state.room.playerId));
+  state.presenceChannel = channel;
+
+  channel
+    .on('presence', { event: 'sync' }, () => {
+      // Read from the channel this handler belongs to, not from
+      // state.presenceChannel — a rebuild swaps that out, and a late sync from
+      // the old channel would otherwise read the new one's empty state and
+      // grey out the entire room.
+      const ps = channel.presenceState();
+      const connectedActive = new Set();
+      for (const key of Object.keys(ps)) {
+        for (const p of ps[key]) {
+          if (!p.is_away) connectedActive.add(String(p.player_id));
+        }
+      }
+      if (state.presenceChannel !== channel) return;
+
+      const newAway = new Map();
+      for (const p of state.players) {
+        const id = String(p.id);
+        // A bot joins no presence channel, so it is permanently "not
+        // connected". Faded at 40% opacity through every reveal and scoreboard
+        // it would read as the player everyone is waiting on, when it is the
+        // one that has always already answered.
+        if (p.is_bot) continue;
+        if (!connectedActive.has(id)) {
+          newAway.set(id, state.awayTimestamps.get(id) || Date.now());
+        }
+      }
+      state.awayTimestamps = newAway;
+      checkStalePresence();
+      applyAwayClasses();
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        state.presenceReady = true;
+        notifyConnectionRestored();
+        await channel.track({ player_id: state.room.playerId, is_away: document.hidden })
+          .catch(() => {});
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        state.presenceReady = false;
+        notifyConnectionLost();
+      }
+    });
+
+  // Registered for cleanup. beatPresence removes the dead one before calling
+  // here, so a rebuild swaps rather than accumulates — scenario-fullgame counts
+  // live subscriptions after a game and fails on a leak.
+  if (!state.channels.includes(channel)) state.channels.push(channel);
+  return channel;
+}
+
+/**
+ * One presence beat: rebuild if the channel is dead, otherwise re-announce.
+ *
+ * A rebuild does its own track() from the subscribe callback, so this returns
+ * rather than announcing on a channel that is still joining.
+ */
+async function beatPresence() {
+  if (!state.presenceChannel) return;
+  if (presenceNeedsRebuild(state.presenceChannel)) {
+    logger.warn('Game', 'presence channel died — rebuilding', { state: state.presenceChannel.state });
+    const dead = state.presenceChannel;
+    const at = state.channels.indexOf(dead);
+    try { dead.unsubscribe(); } catch { /* already gone */ }
+    if (at !== -1) state.channels.splice(at, 1);
+    state.presenceChannel = null;
+    buildPresenceChannel();
+    return;
+  }
+  try {
+    await state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden });
+  } catch (err) {
+    // Not swallowed any more. A failing track on a channel that still claims to
+    // be joined is the case this whole fix exists for, and it used to be
+    // invisible.
+    logger.warn('Game', 'presence track failed', err);
+  }
+}
+
 function handleVisibilityChange() {
   if (!state.presenceChannel) return;
-  // Always attempt to track — swallow errors so transient failures
-  // don't permanently break away detection.
-  state.presenceChannel.track({ player_id: state.room.playerId, is_away: document.hidden })
-    .catch(() => {});
+  // Coming back is exactly when the channel is most likely to be dead, so heal
+  // here rather than waiting up to 15s for the next beat — that wait is the
+  // window a returning player spends still greyed out to everybody.
+  beatPresence();
 
   if (document.hidden) {
     // Track that we went hidden — syncToCurrentState needs to know

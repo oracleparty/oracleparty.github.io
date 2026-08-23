@@ -405,6 +405,40 @@ export const STATES = {
     },
   },
 
+  // An away player, and specifically an away CO-HOST — the combination that
+  // overflowed this row by 71px in August and made the whole page draggable
+  // sideways. "Away" replaces the Ready badge rather than joining it, so the
+  // budget is unchanged, but that has to be measured rather than asserted.
+  'lobby-away': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const rows = [...document.querySelectorAll('#player-list .player-item')];
+      // Whichever rows have a ready badge are ordinary players; fade one and
+      // relabel it exactly as _renderPlayerItem does.
+      for (const row of rows) {
+        const strip = row.querySelector('.player-item__badges');
+        if (!strip) continue;
+        const isCohost = !!strip.querySelector('.badge--cohost');
+        const ready = strip.querySelector('.badge--ready, .badge--not-ready');
+        if (!isCohost && !ready) continue;
+        row.classList.add('player-item--away');
+        if (ready) {
+          ready.className = 'badge badge--away';
+          ready.textContent = 'Away';
+        } else {
+          // A co-host carries no ready badge, so Away is appended — the two
+          // together are the widest this row ever gets.
+          const away = document.createElement('span');
+          away.className = 'badge badge--away';
+          away.textContent = 'Away';
+          strip.appendChild(away);
+        }
+      }
+    },
+  },
+
   // ==========================================
   // GAME.HTML — Question
   // ==========================================

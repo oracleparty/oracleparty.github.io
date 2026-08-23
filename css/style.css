@@ -1926,6 +1926,19 @@ body::after {
   color: var(--color-text-muted);
 }
 
+/* Away is a word, not only a fade. It sits in the READY slot rather than
+   beside it, so this row's badge budget is unchanged — a badge added here is
+   what overflowed it by 71px in August.
+
+   Muted rather than coloured: away is a fact about somebody's phone, not a
+   warning, and colouring everything is how colour stops meaning anything.
+   Slightly stronger than "Not Ready" because the row it sits on is already at
+   40% opacity, so the badge has to survive being faded too. */
+.badge--away {
+  background: var(--color-surface-light);
+  color: var(--color-text);
+}
+
 /* A bot's only badge. Deliberately grey and quiet: it must be unmistakable
    that this is not a person, without competing with Host or Ready for
    attention. Measured against the badge's own tint over each theme's surface,
