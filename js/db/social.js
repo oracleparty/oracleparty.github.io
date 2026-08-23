@@ -651,13 +651,43 @@ export async function createFriendship(userIdA, userIdB, source = 'lobby') {
     .select()
     .single();
 
-  if (error) {
-    // 23505 = already friends (unique constraint)
-    if (error.code === '23505') return { data: null, error: null };
-    logger.error('Supabase', 'createFriendship failed', error);
-    return { data: null, error };
+  if (!error) return { data, error: null };
+
+  // 23505 = already friends (unique constraint). Nothing to do, and not a
+  // failure: the state the caller wanted is the state that exists.
+  if (error.code === '23505') return { data: null, error: null };
+
+  // 23514 = a CHECK constraint refused the row.
+  //
+  // THIS IS WHY ACCEPTING A FRIEND REQUEST HAS NEVER WORKED. The live
+  // `friendships` table carries a constraint named friendships_source_check
+  // that appears in NO migration in this repo, and it rejects source =
+  // 'request' — which is the only value any caller passes, from
+  // acceptFriendRequest. So every accept died here, createFriendship returned
+  // the error, and the button showed "Error". Schema drift again (CLAUDE.md
+  // #7), and the reverse of the usual direction: the live table has a
+  // constraint the repo has never heard of.
+  //
+  // Retrying without the column lets the table's own DEFAULT decide, which is
+  // by definition a value the constraint accepts. `source` is descriptive —
+  // nothing reads it to make a decision — so losing it costs nothing next to
+  // two people not becoming friends. Logged loudly, because a schema this file
+  // cannot predict is worth knowing about even when it has been worked around.
+  if (error.code === '23514') {
+    logger.error('Supabase', 'createFriendship refused by a CHECK constraint — retrying without `source`', { source, error });
+    const retry = await supabase
+      .from('friendships')
+      .insert({ user_a, user_b })
+      .select()
+      .single();
+    if (!retry.error) return { data: retry.data, error: null };
+    if (retry.error.code === '23505') return { data: null, error: null };
+    logger.error('Supabase', 'createFriendship retry failed', retry.error);
+    return { data: null, error: retry.error };
   }
-  return { data, error: null };
+
+  logger.error('Supabase', 'createFriendship failed', error);
+  return { data: null, error };
 }
 
 /**

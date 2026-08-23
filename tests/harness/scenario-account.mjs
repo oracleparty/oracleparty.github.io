@@ -405,6 +405,47 @@ try {
   }
 
   // ============================================================
+  // 5b-iii. A CHECK CONSTRAINT NOBODY KNEW ABOUT
+  //
+  // THIS IS THE ROOT CAUSE OF THE REPORTED BUG. The live `friendships` table
+  // carries a constraint named friendships_source_check which appears in NO
+  // migration in this repo, and it REJECTS source = 'request' — the only value
+  // any caller passes, from acceptFriendRequest. So every accept died on a
+  // 23514, surfaced as the word "Error" on the button, and nobody could accept
+  // a friend request at all.
+  //
+  // No scenario could see it, because the fake store accepted any row. A store
+  // that never refuses cannot test code whose job is to survive a refusal.
+  // ============================================================
+  heading('a CHECK constraint the repo has never heard of');
+  {
+    const rows = table.store.table('friend_requests');
+    rows.length = 0;
+    rows.push({ id: 920, sender_id: carol.userId, receiver_id: alice.userId,
+                status: 'pending', created_at: new Date().toISOString() });
+    table.store.table('friendships').length = 0;
+    // Exactly the live constraint: anything but 'request'.
+    table.store.addCheck('friendships', row => row.source !== 'request', 'friendships_source_check');
+
+    const accepted = await alice.page.evaluate(async (id) => {
+      const mod = await import('./js/supabase.js');
+      const res = await mod.acceptFriendRequest(id);
+      return { error: res.error?.message || null };
+    }, 920).catch(err => ({ threw: err.message }));
+    note(`accepting against the constraint: ${JSON.stringify(accepted)}`);
+    note(`friendships now: ${table.store.table('friendships').length}`);
+
+    if (accepted.error) {
+      problems.push(`accepting failed outright against a CHECK constraint: "${accepted.error}" — this is the live bug, nobody can become anybody's friend`);
+    }
+    if (table.store.table('friendships').length !== 1) {
+      problems.push('accepting produced no friendship, so the two people are still not friends');
+    }
+    table.store.clearChecks('friendships');
+    table.store.table('friendships').length = 0;
+  }
+
+  // ============================================================
   // 5c. AN ACCEPT THE DATABASE REFUSES
   //
   // Only the RECEIVER may update a request (migration 003), and an RLS refusal
@@ -561,7 +602,10 @@ try {
       // Deliberate: sections 5c and the denyWrites tests provoke exactly these,
       // and a scenario that fails on the log line proving its own fix works is
       // a scenario nobody can add a refusal test to.
-      && !/zero rows/i.test(e));
+      && !/zero rows/i.test(e)
+      // Deliberate: section 5b-iii provokes the 23514 that the retry then
+      // works around, and the loud log is part of the fix rather than a fault.
+      && !/CHECK constraint/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
   // ============================================================

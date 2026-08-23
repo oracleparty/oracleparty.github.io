@@ -33,9 +33,21 @@
 --     request was inserted. Two people who both said yes are still not
 --     friends, five months later, and neither was ever told why.
 --
--- The client no longer depends on this constraint — it takes the newest row
--- rather than assuming one exists — so the app is correct with or without this
--- migration. This makes the DATA correct, and stops it happening again.
+-- AND THE ROOT CAUSE, found by running an earlier draft of this file:
+--
+-- The live `friendships` table has a CHECK constraint, friendships_source_check,
+-- that appears in NO migration in this repo and REJECTS source = 'request'.
+-- acceptFriendRequest is the only caller of createFriendship and it passes
+-- exactly that value. So EVERY accept has died on a 23514 for as long as that
+-- constraint has existed, the error surfaced as the word "Error" on the button,
+-- and nobody could accept a friend request at all. That is the reported bug.
+-- js/db/social.js now retries without the column, so the app works whatever the
+-- constraint turns out to allow.
+--
+-- The client no longer depends on the unique constraint either — it takes the
+-- newest row rather than assuming one exists — so the app is correct with or
+-- without this migration. This makes the DATA correct, and stops it happening
+-- again.
 -- ============================================
 
 
@@ -110,11 +122,14 @@ END $$;
 -- friendships stores the pair in sorted order (least, greatest), which is what
 -- createFriendship in js/ does, so the two agree.
 -- --------------------------------------------
-INSERT INTO friendships (user_a, user_b, source)
+-- `source` is deliberately NOT set. The live table carries a CHECK constraint
+-- named friendships_source_check which appears in no migration here and which
+-- REJECTS 'request' — the only value any caller in js/ passes. Letting the
+-- column's own default apply avoids depending on a rule this repo cannot see.
+INSERT INTO friendships (user_a, user_b)
 SELECT DISTINCT
        LEAST(a.sender_id, a.receiver_id),
-       GREATEST(a.sender_id, a.receiver_id),
-       'request'
+       GREATEST(a.sender_id, a.receiver_id)
   FROM friend_requests a
   JOIN friend_requests b
     ON b.sender_id = a.receiver_id AND b.receiver_id = a.sender_id

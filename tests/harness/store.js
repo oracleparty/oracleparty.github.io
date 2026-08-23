@@ -31,6 +31,7 @@ export class FakeStore {
     this.tables = new Map();       // name -> array of row objects
     this._denied = new Set();      // tables whose writes are refused, RLS-style
     this._missing = new Set();     // tables that answer as if they do not exist
+    this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
     this.presence = new Map();     // topic -> Map(robotId -> state)
@@ -43,6 +44,24 @@ export class FakeStore {
     if (!this.tables.has(name)) this.tables.set(name, []);
     return this.tables.get(name);
   }
+
+  /**
+   * Refuse rows a predicate rejects, the way a CHECK constraint does: error
+   * 23514, and nothing written.
+   *
+   * This exists because the live `friendships` table turned out to carry a
+   * constraint that appears in NO migration in this repo and that rejected the
+   * only `source` value any caller passes. Every accept of a friend request
+   * died on it, and no scenario could see that, because the fake store happily
+   * accepted any row at all. A store that never refuses cannot test code whose
+   * job is to survive a refusal.
+   */
+  addCheck(table, predicate, name = 'check') {
+    if (!this._checks.has(table)) this._checks.set(table, []);
+    this._checks.get(table).push({ predicate, name });
+  }
+  /** Remove every simulated CHECK on a table. */
+  clearChecks(table) { this._checks.delete(table); }
 
   /** Refuse every write to `table`, the way an RLS policy does: zero rows, no error. */
   denyWrites(table) { this._denied.add(table); }
@@ -276,6 +295,16 @@ export class FakeStore {
             return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
           }
           const row = { id: newId(table), created_at: new Date().toISOString(), ...item };
+          // CHECK constraints, evaluated on the row as it would be stored.
+          // Postgres refuses the WHOLE statement on the first violation and
+          // writes nothing, so this returns before anything is pushed.
+          const failed = (this._checks.get(table) || []).find(c => !c.predicate(row));
+          if (failed) {
+            return { data: null, error: {
+              code: '23514',
+              message: `new row for relation "${table}" violates check constraint "${failed.name}"`,
+            } };
+          }
           rows.push(row);
           created.push(row);
           this._broadcast('INSERT', table, row, null);
