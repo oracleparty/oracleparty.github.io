@@ -1373,6 +1373,42 @@ generated set.
 SQL in this project no longer has to be written blind and pasted hopefully —
 run it, prove it, then hand it over.
 
+### Slice 2 — the server records the answer (migration 046)
+
+`op_submit_answer` writes the row: verdict, wager and points, computed once.
+`op_fill_blank_answers` gives a zero to everyone who never answered, and **any
+client may call it**, which is what stops a sleeping host leaving a round
+hanging. `op_next_wager` ports `findNextAvailableWager` + `buildUsedWagersMap`;
+`op_room_total_questions` reads `array_length(question_ids) - 1`, because the
+room holds N+1 questions and **the final wager round is number N** — off by one
+there silently turns the only round that subtracts into one that does not.
+
+Three things become impossible that were reachable by anyone willing to edit a
+request: answering a question that is not on screen, answering after the timer,
+and spending a wager twice.
+
+`tests/sql/game-rules.sql` states 26 rules as `check | got | want` data and
+`verify-sql.mjs` fails on any row where the two differ, naming the rule.
+`tests/sql/scratch-schema.sql` is an **approximation** of `rooms`, `players` and
+`answers` — those predate the migrations folder, so their real definitions are
+not in this repo (#7) and the live database enforces things no migration
+declares (#10). It proves the LOGIC. Only running the migration proves it
+applies.
+
+**Writing that test found a real bug and then found a worse one in itself.**
+
+- `ON CONFLICT DO NOTHING` was wrong for the blank fill: somebody who LOCKED a
+  final wager and never typed anything already holds a row on that key, so the
+  insert bounced and they never got their zero. The client had hit this and
+  needed a second pass; the SQL now converts a placeholder in one statement.
+- Then, breaking the guard that stops a blank overwriting a real answer changed
+  **nothing any check could see**. The loop pre-filtered to players who had not
+  answered, so the guard sat behind a condition that already excluded the only
+  case it defends. The same rule stated twice, with the test only ever reaching
+  the first statement of it. The loop now runs over every player and the
+  `ON CONFLICT ... WHERE` is the sole protection — removing it fails three rules
+  by name. **A guard behind a guard is not twice as safe; it is untestable.**
+
 ## The Map
 
 A honeycomb of the question bank, above the Mastery list on the profile. The

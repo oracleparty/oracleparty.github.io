@@ -43,7 +43,18 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Migrations this script needs applied. Deliberately a list rather than "every
 // .sql in the folder": most of them touch tables that do not exist in a scratch
 // database, and a run that half-applies is worse than one that will not start.
-const MIGRATIONS = ['045_server_judges_answers.sql'];
+const MIGRATIONS = ['045_server_judges_answers.sql', '046_server_records_answers.sql'];
+
+// 046 touches rooms, players and answers, none of which any migration in this
+// repo creates — they predate the folder (CLAUDE.md #7). tests/sql/scratch-schema.sql
+// is an approximation built from the column list probe-db.mjs checks against
+// the live database, and it is applied first so the functions have something to
+// compile against.
+const SCHEMA = 'tests/sql/scratch-schema.sql';
+
+// Rules stated as data: every row is `check | got | want`, and any row where
+// the two differ is a failure that names the rule rather than a line number.
+const RULES = 'tests/sql/game-rules.sql';
 
 // ============================================
 // A scratch database
@@ -95,6 +106,17 @@ function psqlFile(conn, file) {
     : ['-h', conn.host, '-p', String(conn.port), '-U', 'postgres', '-d', 'postgres'];
   return execFileSync('psql', [...args, '-v', 'ON_ERROR_STOP=1', '-q', '-f', file], {
     encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'inherit'],
+  });
+}
+
+// Same as psqlFile, but returns the rows. Used for the game-rules script,
+// which reports by emitting `check | got | want` rather than by raising.
+function psqlFileTuples(conn, file) {
+  const args = conn.url
+    ? [conn.url]
+    : ['-h', conn.host, '-p', String(conn.port), '-U', 'postgres', '-d', 'postgres'];
+  return execFileSync('psql', [...args, '-v', 'ON_ERROR_STOP=1', '-tAF', '|', '-f', file], {
+    encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'inherit'],
   });
 }
 
@@ -231,6 +253,7 @@ function main() {
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated; END IF;
     END $$;`, { quiet: true });
 
+    psqlFile(conn, join(ROOT, SCHEMA));
     for (const m of MIGRATIONS) {
       const p = join(ROOT, 'migrations', m);
       if (!existsSync(p)) { console.error(`missing migration: ${m}`); process.exit(2); }
@@ -323,6 +346,23 @@ function main() {
 
     console.log(`✓ the server and the screen judge all ${cases.length} the same way`);
     console.log(`✓ ${normCases.length} normalisations and ${distPairs.length} edit distances agree`);
+
+    // ---- the game rules ---------------------------------------------------
+    const rulesOut = psqlFileTuples(conn, join(ROOT, RULES));
+    const ruleRows = rulesOut.split('\n').filter(l => l.trim()).map(l => l.split('|'));
+    const broken = ruleRows.filter(([, got, want]) => got !== want);
+    if (broken.length) {
+      console.error(`\n✗ ${broken.length} of ${ruleRows.length} game rules do not hold:\n`);
+      for (const [name, got, want] of broken) {
+        console.error(`  ${name}\n     got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+      }
+      process.exit(1);
+    }
+    if (ruleRows.length === 0) {
+      console.error('\n✗ the game-rules script produced no rows at all — it did not run');
+      process.exit(1);
+    }
+    console.log(`✓ all ${ruleRows.length} game rules hold`);
   } finally {
     cleanup();
   }
