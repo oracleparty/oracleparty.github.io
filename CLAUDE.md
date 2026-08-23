@@ -1754,6 +1754,32 @@ are JS query hooks on elements already styled by `.input` and `.btn`, and
 `watermark-all` is excluded
 — it is a glyph-calibration state whose cards differ by design.
 
+**`overflow-x: hidden` IS A SEATBELT, NOT A FIX, and this script accepted it as
+one.** The profile page shipped 571px wide inside a 375px phone — text cut off
+on both sides, nothing to scroll to — and the sweep called it clean twice. A
+real phone found it.
+
+Two faults stacked:
+
+- The suppression treated **any** ancestor with `overflow-x` of `hidden`,
+  `clip`, `auto` or `scroll` as making overflow acceptable. A container with
+  `overflow-y: auto` computes `overflow-x: auto` per CSS, so **every
+  `screen--scrollable` page in the app was exempt from overflow reporting
+  entirely.** Only `hidden` and `clip` suppress now: being able to drag the
+  page sideways is the exact fault this script was written for, so a scrollable
+  ancestor is not an excuse.
+- Even then, clipping is only a reasonable backstop for something NARROWER
+  than the viewport that hangs over an edge — a decorative glyph. Anything
+  **wider than the viewport** cannot be read in full at any scroll position, so
+  it is now reported whether clipped or not.
+
+The cause was mine and worth knowing: `grid-template-columns: repeat(2, 1fr)`.
+`1fr` is `minmax(auto, 1fr)`, so a column cannot shrink below its content's
+min-content width — and a `white-space: nowrap` rank line forced each column to
+~250px and the whole profile column past the phone. **Every fixed-count grid in
+the stylesheet is `minmax(0, 1fr)` now**, which is the structural fix; use that
+form for any new one.
+
 **COVERED is reported, never failed on.** It asks the browser, via
 `elementFromPoint`, whether tapping the middle of a control would actually hit
 it — the one fault class every other check is blind to, because they all

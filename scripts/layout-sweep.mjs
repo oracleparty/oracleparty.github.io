@@ -178,13 +178,41 @@ function measure(stressText) {
       // trimmed rather than dragged. Reporting them made the sweep fail at
       // random, since the positions are random, and a check that fails by
       // coin-flip is one people learn to re-run rather than read.
+      //
+      // ONLY `hidden` and `clip` suppress. `auto` and `scroll` used to as well,
+      // and that silenced this check across almost the whole app: a container
+      // with `overflow-y: auto` computes `overflow-x` to `auto` too, per CSS,
+      // so every screen--scrollable page was exempt from overflow reporting
+      // entirely. The profile page shipped 571px wide inside a 375px phone —
+      // text clipped on both sides, unscrollable — and this said it was clean.
+      //
+      // A scrollable ancestor is not an excuse anyway. Being able to drag the
+      // page sideways is the exact fault this whole script was written for.
       let clippedByAncestor = false;
       for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
         const ox = getComputedStyle(a).overflowX;
-        if (ox === 'hidden' || ox === 'clip' || ox === 'auto' || ox === 'scroll') { clippedByAncestor = true; break; }
+        if (ox === 'hidden' || ox === 'clip') { clippedByAncestor = true; break; }
       }
-      if (!clippedByAncestor) {
-        out.overflow.push(`${describe(el)} L=${b.left.toFixed(0)} R=${b.right.toFixed(0)} (viewport ${vw})`);
+
+      // WIDER THAN THE PHONE IS ALWAYS A FAULT, clipped or not.
+      //
+      // Being clipped is what stops a page being draggable, and for something
+      // narrower than the viewport that hangs over an edge — a decorative
+      // glyph — that is a fine and deliberate backstop. For something WIDER
+      // than the viewport it is not: the element cannot be seen in full at any
+      // scroll position, so the clip is hiding content rather than trimming
+      // decoration.
+      //
+      // The profile page shipped 571px wide inside a 375px phone, clipped on
+      // both sides by `.screen { overflow-x: hidden }`, with text cut off and
+      // nothing to scroll. This script called it clean, twice, and a real
+      // phone found it. `overflow-x: hidden` is a seatbelt, not a fix, and a
+      // check that accepts the seatbelt as the fix is not checking.
+      const tooWide = b.width > vw + 1;
+      if (!clippedByAncestor || tooWide) {
+        out.overflow.push(
+          `${describe(el)} L=${b.left.toFixed(0)} R=${b.right.toFixed(0)} W=${b.width.toFixed(0)} (viewport ${vw})`
+          + (tooWide && clippedByAncestor ? ' — wider than the screen and clipped, so it cannot be read at all' : ''));
       }
     }
     if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) {

@@ -1023,7 +1023,7 @@ body::after {
 /* --- Category Grid --- */
 .category-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: 1fr;
   gap: var(--space-md);
   width: 100%;
@@ -3209,7 +3209,7 @@ body::after {
 
 .wager-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-xs);
   width: 100%;
   max-width: 320px;
@@ -4814,7 +4814,7 @@ body::after {
 
 .avatar-picker__emojis {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--space-xs);
   margin-bottom: var(--space-md);
 }
@@ -5122,7 +5122,7 @@ body::after {
 
 .profile-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-sm);
   text-align: center;
 }
@@ -5146,7 +5146,7 @@ body::after {
 
 .profile-category-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-xs);
 }
 
@@ -5168,16 +5168,27 @@ body::after {
 /* Rank and what would move it, under the category name. Second line rather
    than a badge beside it: this row already carries a name, a percentage and a
    chevron, and the lobby taught expensively that anything added alongside a
-   name takes width the phone does not have. Truncates instead of pushing. */
+   name takes width the phone does not have.
+
+   WRAPS, and this is the bug that shipped. It was `white-space: nowrap` with
+   an ellipsis, which reads fine — but min-content of a nowrap string is the
+   whole string, and this sits inside a `repeat(2, 1fr)` grid whose columns
+   cannot shrink below their content. "Apprentice · 17 more correct → Scholar"
+   forced each column to ~250px, the grid to ~520px, and the whole profile
+   column wider than the phone. Because that column is centred, it overflowed
+   on BOTH sides: clipped, unreachable, and not scrollable to.
+
+   The grids are minmax(0, 1fr) now, which is the structural fix. This wraps as
+   well, because a rank line that ellipses away the number is useless — the
+   number is the entire point of the line. */
 .profile-category-row__rank {
   font-family: var(--font-body);
   font-size: var(--text-xs);
   font-weight: 500;
   color: var(--color-text-dim);
   margin-top: 1px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 .profile-category-row__accuracy {
   font-family: var(--font-heading);
@@ -5364,7 +5375,7 @@ body::after {
 
 .profile-fav-categories {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-xs);
 }
 
@@ -5430,7 +5441,7 @@ body::after {
 
 .profile-card__stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-xs);
   text-align: center;
   margin-bottom: var(--space-md);
@@ -6067,7 +6078,7 @@ body::after {
 
 .admin-stats {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-sm);
 }
 .admin-stat-card {
