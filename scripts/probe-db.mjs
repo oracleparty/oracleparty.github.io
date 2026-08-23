@@ -872,3 +872,77 @@ try {
 } catch (err) {
   console.log(`  (could not check answers: ${err.message})`);
 }
+
+// ============================================
+// UNITS IN ANSWER KEYS
+//
+// Measured because the matcher was tested against real answer keys and
+// rejected "1776 feet" for a key of "1,776 ft". Normalisation strips the
+// comma, so both sides are "1776 ft" vs "1776 feet" — a Levenshtein distance
+// of 2 against a threshold of 1. The player wrote the unit out and was marked
+// wrong.
+//
+// normalizeAnswer ALREADY expands three abbreviations this way — bil, mil and
+// k, each anchored to a preceding digit. Whether to extend that to physical
+// units is a decision about how the game judges, so this measures how many
+// answers it would touch before anybody proposes it.
+//
+// Reported, not fixed. Nothing here generates an acceptable answer: that is
+// the owner's, by rule.
+// ============================================
+
+console.log('\n--- ANSWER KEYS ENDING IN A UNIT ABBREVIATION ---');
+try {
+  // Anchored to a preceding digit, exactly like the existing expansions, so a
+  // name ending in "m" or a word ending in "ft" is not counted.
+  const UNITS = [
+    ['ft', 'feet'], ['m', 'metres/meters'], ['km', 'kilometres'], ['mi', 'miles'],
+    ['cm', 'centimetres'], ['mm', 'millimetres'], ['kg', 'kilograms'], ['lb', 'pounds'],
+    ['lbs', 'pounds'], ['oz', 'ounces'], ['mph', 'miles per hour'], ['kph', 'km per hour'],
+    ['sec', 'seconds'], ['min', 'minutes'], ['hr', 'hours'], ['yr', 'years'],
+  ];
+  const hits = new Map();
+  const examples = [];
+  let seen = 0, page = 0, more = true;
+
+  while (more && page < 12) {
+    const res = await req(`questions?select=id,question,correct_answer,acceptable_answers&limit=1000&offset=${page * 1000}`);
+    if (res.status !== 200 && res.status !== 206) {
+      console.log(`  (could not read questions: HTTP ${res.status})`);
+      more = false;
+      break;
+    }
+    const rows = JSON.parse(res.body || '[]');
+    seen += rows.length;
+    for (const r of rows) {
+      const a = String(r.correct_answer ?? '').trim();
+      if (!a) continue;
+      for (const [abbr, full] of UNITS) {
+        if (new RegExp(`\\d\\s*${abbr}\\b\\.?\\s*$`, 'i').test(a)) {
+          hits.set(abbr, (hits.get(abbr) || 0) + 1);
+          if (examples.length < 8) examples.push([r.question, a, full]);
+          break;
+        }
+      }
+    }
+    more = rows.length === 1000;
+    page++;
+  }
+
+  const total = [...hits.values()].reduce((s, n) => s + n, 0);
+  if (seen === 0) {
+    console.log('  (no questions read — nothing established)');
+  } else if (total === 0) {
+    console.log(`  checked ${seen} questions; none end in a unit abbreviation.`);
+    console.log('  So teaching the matcher unit expansions would change nothing — do not.');
+  } else {
+    console.log(`  checked ${seen} questions; ${total} end in one (${((total / seen) * 100).toFixed(1)}%)`);
+    console.log(`  by abbreviation: ${[...hits].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}=${n}`).join(', ')}`);
+    for (const [q, a, full] of examples) {
+      const qt = String(q ?? '').replace(/\s+/g, ' ').slice(0, 62);
+      console.log(`     "${qt}${qt.length >= 62 ? '…' : ''}"  ->  ${JSON.stringify(a)}  (a player may type "${full}")`);
+    }
+  }
+} catch (err) {
+  console.log(`  (could not check units: ${err.message})`);
+}
