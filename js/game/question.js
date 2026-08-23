@@ -67,6 +67,10 @@ export function showQuestionScreen() {
     $('#answer-input').value = '';
     $('#answer-input').disabled = false;
     $('#btn-submit-answer').disabled = true;
+    // Back to "Pass" for a fresh question — an empty box is the starting
+    // state, and leaving the previous round's "Submit" there would offer a
+    // word the button does not mean yet.
+    $('#btn-submit-answer').textContent = 'Pass';
     $('#submit-status').classList.add('hidden');
     state.hasSubmitted = false;
   }
@@ -184,11 +188,7 @@ export function showQuestionScreen() {
   }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
-  $('#answer-input').oninput = () => {
-    const hasText = $('#answer-input').value.length > 0;
-    const wagerOk = state.isFinalWagerRound || state.wagerExplicitlySelected;
-    $('#btn-submit-answer').disabled = !(hasText && wagerOk);
-  };
+  $('#answer-input').oninput = refreshSubmitButton;
   $('#answer-input').onkeydown = (e) => {
     if (e.key === 'Enter' && !state.hasSubmitted) {
       handleSubmitAnswer();
@@ -253,9 +253,31 @@ function selectWager(value, btnEl) {
   state.wagerExplicitlySelected = true;
   $('#wager-error').textContent = '';
 
-  // Enable submit button if answer text is present
-  const hasText = $('#answer-input').value.length > 0;
-  if (hasText) $('#btn-submit-answer').disabled = false;
+  refreshSubmitButton();
+}
+
+/**
+ * Submit is live as soon as a wager is chosen, EVEN WITH AN EMPTY BOX — and it
+ * says "Pass" then, rather than "Submit".
+ *
+ * It used to be disabled until something was typed, so a player who did not
+ * know the answer had two options: invent a character, or sit there holding
+ * the whole room until the timer ran out. Typing a single space already worked
+ * (it is trimmed to '' and shows as "No answer"), which is a trick nobody
+ * could be expected to find.
+ *
+ * The word on the button is what makes this safe. An empty Submit that silently
+ * spends your round is an accident waiting to happen; a button labelled Pass is
+ * a decision. The wager is still required first, and still spent — passing is
+ * not a free round, it is the same as being present and wrong.
+ */
+function refreshSubmitButton() {
+  const btn = $('#btn-submit-answer');
+  if (!btn) return;
+  const hasText = $('#answer-input').value.trim().length > 0;
+  const wagerOk = state.isFinalWagerRound || state.wagerExplicitlySelected;
+  btn.disabled = !wagerOk;
+  btn.textContent = hasText ? 'Submit' : 'Pass';
 }
 
 // ============================================
@@ -444,14 +466,8 @@ async function handleTimerExpired() {
 async function handleSubmitAnswer() {
   if (state.hasSubmitted) return;
   const raw = $('#answer-input').value;
-  if (raw.length === 0) {
-    // Only block if completely empty (nothing typed at all)
-    const input = $('#answer-input');
-    input.classList.remove('input--flash');
-    void input.offsetHeight;
-    input.classList.add('input--flash');
-    return;
-  }
+  // An empty box is a deliberate pass now — the button says "Pass" when it is
+  // empty, so this is not an accident. The wager below is still required.
   // Block submission if player hasn't explicitly selected a wager
   if (!state.wagerExplicitlySelected && !state.isFinalWagerRound) {
     const grid = $('#wager-grid');

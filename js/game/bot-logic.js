@@ -23,6 +23,30 @@
  * findNextAvailableWager. That should be unreachable: the bot answers exactly
  * once per question and there is one wager per question.
  */
+/**
+ * The lowest wager the bot has not spent.
+ *
+ * Used when the bot is about to submit a BLANK — which happens when the
+ * question carries no stored wrong answer, about 20% of the bank, so roughly
+ * one in ten of a bot's rounds. Staking 8 points on an empty answer looks
+ * broken, and the owner asked for the minimum instead.
+ *
+ * Worth being honest about the cost: this makes the bot slightly STRONGER than
+ * its flat 50% suggests, because it keeps its big wagers for rounds it can
+ * still win. That is accepted deliberately, and it stops here — extending the
+ * same logic to every miss, which the bot also knows about in advance, would
+ * make it close to unbeatable and would stop being a practice opponent.
+ *
+ * The same shape as findNextAvailableWager for absent humans, on purpose: a
+ * round nobody answered costs the cheapest wager either way.
+ */
+export function lowestUnusedWager(used, totalQuestions) {
+  for (let i = 1; i <= totalQuestions; i++) {
+    if (!used.has(i)) return i;
+  }
+  return 1;
+}
+
 export function pickBotWager(used, totalQuestions, rand = Math.random) {
   const available = [];
   for (let i = 1; i <= totalQuestions; i++) {

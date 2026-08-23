@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickBotWager, chooseBotAnswer } from '../js/game/bot-logic.js';
+import { pickBotWager, chooseBotAnswer, lowestUnusedWager } from '../js/game/bot-logic.js';
 
 // ============================================
 // pickBotWager
@@ -109,5 +109,41 @@ describe('chooseBotAnswer', () => {
       if (chooseBotAnswer(q, { accuracy: 0.8, rand: () => i / 1000 }).isCorrect) hits++;
     }
     expect(hits).toBe(800);
+  });
+});
+
+// ============================================
+// lowestUnusedWager — what a BLANK costs
+//
+// A bot submits a blank when the question carries no stored wrong answer, and
+// staking a high wager on an empty box looks broken. The owner asked for the
+// minimum. The important property is that it is still SPENT — the bot must not
+// get a free round out of having nothing to say.
+// ============================================
+describe('lowestUnusedWager', () => {
+  it('takes the lowest wager not yet spent', () => {
+    expect(lowestUnusedWager(new Set(), 5)).toBe(1);
+    expect(lowestUnusedWager(new Set([1]), 5)).toBe(2);
+    expect(lowestUnusedWager(new Set([1, 2, 4]), 5)).toBe(3);
+  });
+
+  it('takes the last one left', () => {
+    expect(lowestUnusedWager(new Set([1, 2, 3, 4]), 5)).toBe(5);
+  });
+
+  it('falls back to 1 when everything is spent rather than returning nothing', () => {
+    expect(lowestUnusedWager(new Set([1, 2, 3]), 3)).toBe(1);
+  });
+
+  // It has to draw from the same pool as the random picker, or a blank round
+  // could spend a wager the bot has already used and the run would end with
+  // one value spent twice and another never spent.
+  it('always returns a wager the random picker would also consider', () => {
+    const used = new Set([2, 5]);
+    const total = 6;
+    const low = lowestUnusedWager(used, total);
+    expect(used.has(low)).toBe(false);
+    expect(low).toBeGreaterThanOrEqual(1);
+    expect(low).toBeLessThanOrEqual(total);
   });
 });

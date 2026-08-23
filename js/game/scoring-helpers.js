@@ -140,8 +140,27 @@ export function allowedDifficulties(tally) {
   const counts = order.map(d => (tally && tally[d]) || 0);
   const max = Math.max(...counts);
   if (max === 0) return [...order];
+  // A TIE TAKES THE LOWEST LEVEL AS THE FLOOR, and this is the opposite of
+  // modalDifficulty on purpose. The two answer different questions:
+  // modalDifficulty asks "which single level should the wheel appear to settle
+  // on", and breaking that toward the harder one is a deliberate, tested
+  // choice. This asks "what could the result possibly BE", and a tie means
+  // more than one level genuinely could be.
+  //
+  // Taking the highest tied level here was never decided — it was inherited
+  // from modalDifficulty's loop when this function was extracted — and in a
+  // two-player game it is the common case, not an edge one: any two people who
+  // disagree produce a tie. One Easy vote and one Hard vote collapsed the floor
+  // to Hard, which made the outcome certain, which left ONE pill on the wheel.
+  // The owner reported the wheel not cycling, for the second time.
+  //
+  // It also made a tie no tie at all: the Easy voter's vote did nothing, every
+  // time. Now both stay in play and pickWeightedDifficulty weights them
+  // equally, which is what a tied vote should mean.
   let floorIdx = 0;
-  for (let i = 0; i < order.length; i++) if (counts[i] === max) floorIdx = i;
+  for (let i = 0; i < order.length; i++) {
+    if (counts[i] === max) { floorIdx = i; break; }
+  }
   return order.slice(floorIdx);
 }
 

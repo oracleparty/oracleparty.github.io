@@ -234,6 +234,10 @@ describe('modalDifficulty', () => {
     expect(modalDifficulty({ easy: 0, medium: 0, hard: 2 })).toBe('hard');
   });
 
+  // Deliberately the OPPOSITE of allowedDifficulties. This picks the single
+  // level the wheel appears to settle on before any comedic switch; that one
+  // answers what the result could possibly be, where a tie means more than one
+  // thing genuinely could happen.
   it('breaks ties toward the higher difficulty', () => {
     expect(modalDifficulty({ easy: 2, medium: 2, hard: 0 })).toBe('medium');
     expect(modalDifficulty({ easy: 0, medium: 2, hard: 2 })).toBe('hard');
@@ -270,6 +274,25 @@ describe('allowedDifficulties', () => {
   it('no votes leaves everything open', () => {
     expect(allowedDifficulties({})).toEqual(['easy', 'medium', 'hard']);
     expect(allowedDifficulties(null)).toEqual(['easy', 'medium', 'hard']);
+  });
+
+  // The wheel collapsing to a single pill is what "it doesn't cycle" looks
+  // like, and in a TWO-PLAYER game a tie is the common case rather than an
+  // edge one: any two people who disagree produce one. Taking the highest
+  // tied level made the outcome certain and killed the spin — and made the
+  // lower voter's vote do nothing at all, every time.
+  it('a tie keeps every tied level in play, so the wheel still spins', () => {
+    expect(allowedDifficulties({ easy: 1, medium: 0, hard: 1 }))
+      .toEqual(['easy', 'medium', 'hard']);
+    expect(allowedDifficulties({ easy: 0, medium: 2, hard: 2 }))
+      .toEqual(['medium', 'hard']);
+    expect(allowedDifficulties({ easy: 1, medium: 1, hard: 1 }))
+      .toEqual(['easy', 'medium', 'hard']);
+  });
+
+  // The one case where a single pill is honest: nothing else can happen.
+  it('still shows one level when the room is unanimous on hard', () => {
+    expect(allowedDifficulties({ easy: 0, medium: 0, hard: 3 })).toEqual(['hard']);
   });
 
   it('never returns a level pickWeightedDifficulty cannot actually produce', () => {

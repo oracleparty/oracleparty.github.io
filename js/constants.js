@@ -111,10 +111,12 @@ export const HEARTBEAT_DB_INTERVAL_MS = 15000;    // 15 seconds — DB heartbeat
 // A bot never hosts, never co-hosts, and nothing it does is recorded.
 export const BOT_DISPLAY_NAME = 'Practice Bot';
 export const BOT_ACCURACY = 0.5;
-// The middle of the three final-wager options (0 / 10 / 20). A bot with one
-// flat accuracy has no read on the question and no read on the standings, so
-// picking either extreme would be a strategy it does not have.
-export const BOT_FINAL_WAGER = 10;
+// The bot goes all in on the final, at the owner's instruction. It was 10 —
+// the middle option, on the reasoning that a bot with one flat accuracy has no
+// read on the question or the standings and so should not pick an extreme.
+// The owner's call overrides that: a permanent middle stake makes the last
+// round of a practice game never swing, and swinging is the point of it.
+export const BOT_FINAL_WAGER = 20;
 export const BOT_AVATAR_COLOR = '#6b7280';
 export const BOT_AVATAR_EMOJI = '\u{1F916}';
 export const MAX_BOTS_PER_ROOM = 1;

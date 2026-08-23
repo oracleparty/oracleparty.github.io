@@ -32,7 +32,7 @@ import { logger } from '../logger.js';
 import { BOT_ACCURACY, BOT_FINAL_WAGER } from '../constants.js';
 import { fetchAllAnswers, insertAnswersIfAbsent, upsertAnswers } from '../supabase.js';
 import { computeScoreEarned } from './scoring-helpers.js';
-import { pickBotWager, chooseBotAnswer } from './bot-logic.js';
+import { pickBotWager, lowestUnusedWager, chooseBotAnswer } from './bot-logic.js';
 
 /** What the bot needs to know about a question, in the shape bot-logic wants. */
 function questionFacts(question) {
@@ -99,8 +99,15 @@ export async function answerQuestionForBots() {
   const rows = [];
   for (const bot of bots) {
     if (alreadyAnswered.has(String(bot.id))) continue;
-    const wager = pickBotWager(spent.get(String(bot.id)) || new Set(), state.totalQuestions);
+    // Answer first, then wager: a BLANK takes the cheapest wager left rather
+    // than a random one. A blank is not the bot being unsure — it is the
+    // question having no stored wrong answer to give it — but staking 8 points
+    // on an empty box looks broken, and the owner chose the minimum.
     const { text, isCorrect } = chooseBotAnswer(questionFacts(question), { accuracy: BOT_ACCURACY });
+    const used = spent.get(String(bot.id)) || new Set();
+    const wager = text.trim()
+      ? pickBotWager(used, state.totalQuestions)
+      : lowestUnusedWager(used, state.totalQuestions);
     rows.push({
       roomId: state.room.id,
       playerId: bot.id,
@@ -123,9 +130,10 @@ export async function answerQuestionForBots() {
  * player writes, so the final wager list shows the bot alongside everyone else
  * instead of a permanent "Waiting...".
  *
- * The bot always wagers BOT_FINAL_WAGER — 10, the middle option. With one flat
- * accuracy it has no read on the question and no read on the standings, so
- * both 0 and 20 would be a strategy it does not have.
+ * The bot always wagers BOT_FINAL_WAGER. The owner set this to 20 — the bot
+ * goes all in every time. It is not a read on the question (it has none); it
+ * makes the last round of a practice game actually swing, which a permanent
+ * middle stake never does.
  */
 export async function lockBotFinalWagers() {
   const bots = getBots();

@@ -137,12 +137,69 @@ try {
 
   const answered = new Set();     // "name:round" already submitted
 
+  // ============================================================
+  // PASSING WITHOUT TYPING
+  //
+  // A player who did not know the answer had two options: invent a character,
+  // or sit there holding the entire room until the timer ran out. Submit was
+  // disabled on an empty box and only flashed at you. Typing a single SPACE
+  // worked — it is trimmed to '' and shows as "No answer" — which is a trick
+  // nobody could be expected to find.
+  //
+  // The WORD on the button is what makes an empty submit safe rather than an
+  // accident: "Pass" when the box is empty, "Submit" when it is not. The wager
+  // is still required, and still spent — passing is not a free round.
+  //
+  // Checked once, on the first question, before anybody answers.
+  let passChecked = false;
+  async function checkPassAffordance(r) {
+    if (passChecked) return;
+    const box = r.page.locator('#answer-input');
+    if (!await box.isVisible().catch(() => false)) return;
+    passChecked = true;
+
+    const label = async () => ((await r.page.textContent('#btn-submit-answer').catch(() => '')) || '').trim();
+    const enabled = () => r.page.isEnabled('#btn-submit-answer').catch(() => false);
+
+    await box.fill('').catch(() => {});
+    const wager = r.page.locator('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first();
+    if (await wager.count() > 0) await wager.click().catch(() => {});
+    await r.page.waitForTimeout(350);
+
+    const emptyLabel = await label();
+    note(`empty box: button says ${JSON.stringify(emptyLabel)}, enabled=${await enabled()}`);
+    if (!await enabled()) {
+      problems.push('Submit is disabled with an empty box, so a player who does not know the answer can only invent a character or hold the whole room until the timer runs out');
+    }
+    if (!/pass/i.test(emptyLabel)) {
+      problems.push(`with an empty box the button says ${JSON.stringify(emptyLabel)} — an empty "Submit" spends the round by accident, "Pass" is a decision`);
+    }
+
+    await box.fill('   ').catch(() => {});
+    await r.page.waitForTimeout(250);
+    const spacesLabel = await label();
+    note(`whitespace only: button says ${JSON.stringify(spacesLabel)}`);
+    if (!/pass/i.test(spacesLabel)) {
+      problems.push('a box holding only spaces says Submit, though it is stored as no answer at all');
+    }
+
+    await box.fill('something').catch(() => {});
+    await r.page.waitForTimeout(250);
+    const textLabel = await label();
+    note(`with text: button says ${JSON.stringify(textLabel)}`);
+    if (!/submit/i.test(textLabel)) {
+      problems.push(`with text typed the button says ${JSON.stringify(textLabel)} rather than Submit`);
+    }
+    await box.fill('').catch(() => {});
+  }
+
   async function takeTurn(r, roundHint) {
     const screen = await activeScreen(r);
 
     if (screen === 'question-screen') {
       const key = `${r.name}:${roundHint}`;
       if (answered.has(key)) return screen;
+      await checkPassAffordance(r);
       const text = r.name === 'Bob' ? 'definitely wrong' : `Answer ${roundHint + 1}`;
       if (await answerQuestion(r, text)) answered.add(key);
       return screen;
@@ -300,6 +357,7 @@ try {
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
+
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);
 } finally {
