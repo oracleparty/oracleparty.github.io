@@ -1451,6 +1451,40 @@ off the screen now, the boards read 15/1/0, and it fails if nobody scores at
 all. Verified by making the fake server pay nothing: it reports "nobody scored
 a single point all game".
 
+### Slice 4 — the server owns the clock (migration 047)
+
+`question_started_at` is what every timer derives from, and the host's browser
+used to compute it as `Date.now() + serverTimeOffset` — an **estimate** of
+server time. Harmless while only browsers read it, since every phone reads the
+same stamp and a skewed estimate skewed everybody equally.
+
+**Migration 046 ended that, and this is a hazard 046 introduced.**
+`op_submit_answer` compares the stamp against the database's own `now()`, so a
+host whose estimate ran slow would have every answer in the room refused as
+late, and one whose estimate ran fast would stop the timer expiring at all.
+`op_start_clock` stamps from `now()` — the same clock the check uses — so the
+two cannot disagree by construction. It replaces a write the client already
+made, so it costs no round trip, and it stays host-gated exactly as before: who
+may start a round is a different question from whose clock is used.
+
+Three things went wrong writing this, and all three are about measurement.
+
+- **`now()` IS TRANSACTION TIME in Postgres**, frozen for a whole `DO` block.
+  Two versions of the stale-caller check compared stamps taken before and after
+  a call and could not tell a refusal from a re-stamp, because both produced the
+  identical value — deleting the guard changed nothing either could see. The
+  check uses an ancient marker now: either it is still there or it is not.
+- Before that, the check asked whether the stamp was **recent**, which is true
+  both when a stale call is refused and when it re-stamps.
+- **The fake store mutated rows inside an RPC without broadcasting.** An UPDATE
+  inside a Postgres function reaches Realtime like any other — it is in the WAL
+  either way — so the fake left every other phone unaware. `scenario-nasty`
+  reported "the room is stuck"; the app was right and the harness was wrong.
+  **My first diagnosis blamed the new guard and was wrong** — removing the guard
+  did not fix it, which is what forced the real cause out. `_broadcast` is now
+  called by every RPC that touches `rooms` or `answers`, and any new one must do
+  the same or the app will look like it has stopped listening.
+
 ## The Map
 
 A honeycomb of the question bank, above the Mastery list on the profile. The

@@ -43,7 +43,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Migrations this script needs applied. Deliberately a list rather than "every
 // .sql in the folder": most of them touch tables that do not exist in a scratch
 // database, and a run that half-applies is worse than one that will not start.
-const MIGRATIONS = ['045_server_judges_answers.sql', '046_server_records_answers.sql'];
+const MIGRATIONS = [
+  '045_server_judges_answers.sql',
+  '046_server_records_answers.sql',
+  '047_server_owns_the_clock.sql',
+];
 
 // 046 touches rooms, players and answers, none of which any migration in this
 // repo creates — they predate the folder (CLAUDE.md #7). tests/sql/scratch-schema.sql

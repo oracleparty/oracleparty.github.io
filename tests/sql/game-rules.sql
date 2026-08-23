@@ -151,6 +151,47 @@ BEGIN
          coalesce(sum(abs(coalesce(score_earned, 0))), 0)::text, '0'
   FROM answers WHERE room_id = rid AND question_number = 3;
 
+  -- ---- the clock is the DATABASE's, not a phone's --------------------------
+  -- 046 compares the stamp against now(). If a phone's estimate of the server
+  -- clock is slow, every answer in the room is refused as late; if it is fast,
+  -- the timer never expires. Stamping from now() removes the disagreement by
+  -- construction rather than tolerating it.
+  UPDATE rooms SET game_phase = 'question', current_question = 1,
+                   question_started_at = now() - interval '10 min' WHERE id = rid;
+  DECLARE stamped timestamptz; after timestamptz;
+          ancient timestamptz := timestamptz '2020-01-01 00:00:00Z';
+  BEGIN
+    -- BEWARE: now() IS TRANSACTION TIME in Postgres, frozen for the whole of
+    -- this DO block. Two earlier versions of this check compared stamps taken
+    -- before and after a call and could not tell a refusal from a restamp,
+    -- because both produced the identical value — deleting the guard changed
+    -- nothing either could see. An ancient marker is unambiguous: either it is
+    -- still there or it is not.
+    UPDATE rooms SET game_phase = 'question', current_question = 1,
+                     question_started_at = ancient WHERE id = rid;
+    stamped := op_start_clock(rid, 'question', 1);
+    INSERT INTO result (check_name, got, want) VALUES
+      ('starting a round stamps it with the database clock',
+       (abs(extract(epoch FROM (now() - stamped))) < 5)::text, 'true');
+
+    -- A host whose screen is behind must not reset a timer everybody else is
+    -- already partway through.
+    UPDATE rooms SET question_started_at = ancient WHERE id = rid;
+    stamped := op_start_clock(rid, 'question', 0);       -- the room is on 1
+    SELECT question_started_at INTO after FROM rooms WHERE id = rid;
+    INSERT INTO result (check_name, got, want) VALUES
+      ('a stale caller cannot restart the round everyone is in',
+       (after = ancient)::text, 'true'),
+      ('and is handed the stamp actually in force',
+       (stamped = ancient)::text, 'true');
+
+    -- Same for a caller that has the question right but the phase wrong.
+    stamped := op_start_clock(rid, 'reveal', 1);
+    SELECT question_started_at INTO after FROM rooms WHERE id = rid;
+    INSERT INTO result (check_name, got, want) VALUES
+      ('nor one that has the phase wrong', (after = ancient)::text, 'true');
+  END;
+
   -- ---- __WAGER_LOCKED__ is not an answer ------------------------------------
   -- Locking a final wager writes a placeholder row. If the blank fill treated
   -- it as an answer, somebody who locked a wager and then said nothing would

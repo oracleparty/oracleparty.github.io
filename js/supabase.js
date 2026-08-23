@@ -9,7 +9,7 @@ export { supabase } from './db/client.js';
 export {
   generateRoomCode, createRoom, findRoomByCode, fetchPublicRooms,
   cleanupOrphanedRooms, cleanupAbandonedRooms, deleteRoom, deleteRoomBeacon, fetchRoom,
-  updateRoomStatus, updateGameState, saveQuestionIds, appendUsedQuestionIds,
+  updateRoomStatus, updateGameState, startClockOnServer, saveQuestionIds, appendUsedQuestionIds,
   addRoomScores, fetchRoomScores,
   getServerTimeOffset, testConnection,
   subscribeToRoom, createPresenceChannel, createHonkChannel,

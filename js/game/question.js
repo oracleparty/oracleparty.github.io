@@ -8,7 +8,7 @@ import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAns
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
-import { updateGameState, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, incrementQuestionsAnswered } from '../supabase.js';
+import { updateGameState, startClockOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -162,11 +162,19 @@ export function showQuestionScreen() {
   } else {
     // Normal flow: 1-second sync buffer before revealing question
     setTimeout(async () => {
-      // Host: write the server-authoritative timer start timestamp
+      // Host: start the round's clock.
+      //
+      // The DATABASE stamps it now (migration 047), because the server judges
+      // answers against its own now() and this used to be the host phone's
+      // ESTIMATE of that. A slow estimate would have every answer in the room
+      // refused as late; a fast one would stop the timer ever expiring. One
+      // clock, by construction. Falls back to the estimate when the function is
+      // not installed, which is exactly the old behaviour.
       if (state.room.isHost) {
-        const startedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
+        const served = await startClockOnServer(state.room.id, 'question', state.currentQuestion);
+        const startedAt = served || new Date(Date.now() + state.serverTimeOffset).toISOString();
         state.questionStartedAt = startedAt;
-        await updateGameState(state.room.id, { question_started_at: startedAt });
+        if (!served) await updateGameState(state.room.id, { question_started_at: startedAt });
       }
 
       // Reveal everything

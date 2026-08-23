@@ -9,6 +9,7 @@ import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, A
 import {
   supabase,
   updateGameState,
+  startClockOnServer,
   addRoomScores,
   submitAnswer,
   fetchAnswersForQuestion,
@@ -355,10 +356,13 @@ async function handleFinalWager() {
   // clears the previous question's stamp when the phase lands, so a stamp sent
   // in the same payload would be wiped by the transition it arrived with. This
   // is the same two-step the question screen uses, for the same reason.
-  const startedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
+  const served = await startClockOnServer(state.room.id, 'final_wager');
+  const startedAt = served || new Date(Date.now() + state.serverTimeOffset).toISOString();
   state.questionStartedAt = startedAt;
-  updateGameState(state.room.id, { question_started_at: startedAt })
-    .catch(err => logger.warn('Game', 'Could not stamp the final wager timer', err));
+  if (!served) {
+    updateGameState(state.room.id, { question_started_at: startedAt })
+      .catch(err => logger.warn('Game', 'Could not stamp the final wager timer', err));
+  }
 }
 
 async function handleShowResults() {

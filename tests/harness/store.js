@@ -12,6 +12,13 @@
 //   * Events are delivered asynchronously, never inside the caller's own
 //     await. Synchronous delivery would hide ordering races.
 //   * A client receives events for its OWN writes, exactly like Realtime.
+//   * AN RPC THAT CHANGES A ROW BROADCASTS IT. An UPDATE inside a Postgres
+//     function reaches Realtime exactly like one from a client — it is in the
+//     WAL either way — so a fake that mutated rows silently leaves every other
+//     phone unaware. Moving the clock stamp into a function made scenario-nasty
+//     report "the room is stuck" and the app was right; the store was wrong.
+//     Any new RPC that touches rooms, players, answers or chat_messages must
+//     call _broadcast, or it will look like the app has stopped listening.
 // ============================================
 
 // The game is moving off the host's phone, and the fake store has to be able to
@@ -578,6 +585,32 @@ export class FakeStore {
       return recorded;
     }
 
+    // ---- migration 047: the server owns the clock --------------------------
+    //
+    // Refuses a caller whose idea of the phase or question is behind the room's,
+    // so a host on a slow connection cannot reset a timer everybody else is
+    // already partway through. Returns the stamp actually in force either way.
+    if (name === 'op_start_clock') {
+      const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
+      if (!room) return null;
+      const onPhase = room.game_phase === args.p_phase;
+      const onQuestion = args.p_question_number == null
+        || room.current_question === args.p_question_number;
+      if (onPhase && onQuestion) {
+        const before = { ...room };
+        room.question_started_at = new Date().toISOString();
+        // AND TELL EVERYBODY. An UPDATE inside a Postgres function reaches
+        // Realtime like any other — it is in the WAL — so a fake that mutated
+        // the row silently would leave every other phone waiting forever. That
+        // is not hypothetical: moving the clock stamp into this function made
+        // scenario-nasty report "the room is stuck", and the app was right.
+        this._broadcast('UPDATE', 'rooms', { ...room }, before);
+      }
+      return room.question_started_at ?? null;
+    }
+
+    if (name === 'op_server_now') return new Date().toISOString();
+
     // ---- migration 046: the server judges and records ----------------------
     //
     // A mirror of op_submit_answer / op_fill_blank_answers. The point of having
@@ -624,18 +657,22 @@ export class FakeStore {
             // overwritten by a blank — the race that once destroyed answers
             // people had typed.
             if (String(existing.submitted_answer || '').trim() !== '__WAGER_LOCKED__') continue;
+            const before = { ...existing };
             existing.submitted_answer = '';
             existing.wager = isFinal ? 0 : nextWager(p.id);
             existing.is_correct = false;
             existing.auto_correct = false;
             existing.score_earned = 0;
+            this._broadcast('UPDATE', 'answers', { ...existing }, before);
           } else {
-            rows.push({
+            const row = {
               id: newId('answers'), room_id: room.id, player_id: p.id,
               question_number: qnum, question_id: qid,
               wager: isFinal ? 0 : nextWager(p.id),
               submitted_answer: '', is_correct: false, auto_correct: false, score_earned: 0,
-            });
+            };
+            rows.push(row);
+            this._broadcast('INSERT', 'answers', { ...row }, null);
           }
           written++;
         }
@@ -686,18 +723,26 @@ export class FakeStore {
       }
 
       const earned = verdict ? chosen : (isFinal ? -chosen : 0);
+      // Every write here is broadcast, because an UPDATE inside a Postgres
+      // function reaches Realtime exactly like one from a client — it is in the
+      // WAL either way. A fake that mutated rows silently would leave every
+      // other phone in the room unaware that anybody had answered.
       if (existing) {
+        const before = { ...existing };
         Object.assign(existing, {
           submitted_answer: text, question_id: qid, wager: chosen,
           is_correct: verdict, auto_correct: verdict, score_earned: earned,
         });
+        this._broadcast('UPDATE', 'answers', { ...existing }, before);
       } else {
-        rows.push({
+        const row = {
           id: newId('answers'), room_id: room.id, player_id: player.id,
           question_number: qnum, question_id: qid, wager: chosen,
           submitted_answer: text, is_correct: verdict, auto_correct: verdict,
           score_earned: earned,
-        });
+        };
+        rows.push(row);
+        this._broadcast('INSERT', 'answers', { ...row }, null);
       }
       return [{ is_correct: verdict, score_earned: earned, wager: chosen, question_id: qid, rejected: null }];
     }

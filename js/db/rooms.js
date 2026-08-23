@@ -301,6 +301,43 @@ export async function updateRoomStatus(roomId, status) {
  * Update game state on the room (game_phase, current_question).
  * Only the host should call this.
  */
+/**
+ * Stamp the start of a round with the DATABASE's clock (migration 047).
+ *
+ * Every timer in the game is derived from `question_started_at`, and it used to
+ * be written as `Date.now() + serverTimeOffset` from the host's phone — an
+ * ESTIMATE of server time. That was harmless while only browsers read it: every
+ * phone reads the same stamp, so a skewed estimate skewed everybody equally.
+ *
+ * It stopped being harmless when the server began judging (migration 046),
+ * because `op_submit_answer` compares the stamp against the database's own
+ * `now()`. A host whose estimate ran slow would have every answer in the room
+ * refused as late; one whose estimate ran fast would have the timer never
+ * expire. Stamping from `now()` removes the disagreement rather than tolerating
+ * it — one clock, by construction.
+ *
+ * Replaces a write the client already made, so it costs no extra round trip.
+ *
+ * → an ISO string, or null when the function is not installed (the caller then
+ *   falls back to its own estimate, exactly as before).
+ */
+export async function startClockOnServer(roomId, phase, questionNumber = null) {
+  const { data, error } = await supabase.rpc('op_start_clock', {
+    p_room_id: roomId,
+    p_phase: phase,
+    p_question_number: questionNumber,
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      logger.debug('Supabase', 'op_start_clock not installed, stamping from this device');
+    } else {
+      logger.error('Supabase', 'op_start_clock failed', error);
+    }
+    return null;
+  }
+  return data || null;
+}
+
 export async function updateGameState(roomId, updates) {
   const { error } = await supabase
     .from('rooms')
