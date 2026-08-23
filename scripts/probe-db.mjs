@@ -693,3 +693,74 @@ try {
 } catch (err) {
   console.log(`  (could not read the OpenAPI description: ${err.message})`);
 }
+
+// ============================================
+// QUESTIONS FILED WHERE NOTHING CAN FIND THEM
+//
+// `questions.subcategory` is free text with no constraint and no foreign key.
+// Category selection matches it with `LIKE 'key%'`, so a value that is not a
+// key in CATEGORY_META is a question that the subcategory that was meant to
+// hold it will never draw. There is no error, and the question still counts
+// in the bank and in every total — it simply never appears.
+//
+// The same goes for `categories`: an entry that is not one of the twelve is a
+// filing no screen offers, so nothing can select it.
+//
+// The admin page can now fix both from a phone, which is what makes finding
+// them worth doing. Before that there was nothing to do about an answer here.
+// ============================================
+
+console.log('\n--- QUESTIONS FILED UNDER SOMETHING THE APP DOES NOT KNOW ---');
+try {
+  const { CATEGORY_META, flattenSubcategories } =
+    await import('../js/categories.js').catch(() => import('./../js/categories.js'));
+
+  const known = new Set(Object.keys(CATEGORY_META));
+  const knownSubs = new Set();
+  for (const cat of known) for (const s of flattenSubcategories(cat)) knownSubs.add(s.key);
+
+  // Paged, because the bank is ~4,859 rows and PostgREST caps a page.
+  const badCats = new Map();
+  const badSubs = new Map();
+  let seen = 0, page = 0, more = true;
+  while (more && page < 12) {
+    const from = page * 1000;
+    const res = await req(`questions?select=categories,subcategory&limit=1000&offset=${from}`);
+    if (res.status !== 200 && res.status !== 206) {
+      console.log(`  (could not read questions: HTTP ${res.status})`);
+      more = false;
+      break;
+    }
+    const rows = JSON.parse(res.body || '[]');
+    seen += rows.length;
+    for (const r of rows) {
+      for (const c of r.categories || []) {
+        if (!known.has(c)) badCats.set(c, (badCats.get(c) || 0) + 1);
+      }
+      const s = r.subcategory;
+      if (s && !knownSubs.has(s)) badSubs.set(s, (badSubs.get(s) || 0) + 1);
+    }
+    more = rows.length === 1000;
+    page++;
+  }
+
+  if (seen === 0) {
+    console.log('  (no questions read — nothing established)');
+  } else {
+    console.log(`  checked ${seen} questions`);
+    if (badCats.size === 0 && badSubs.size === 0) {
+      console.log('  every question is filed under a category and subcategory the app knows.');
+    }
+    for (const [c, n] of [...badCats].sort((a, b) => b[1] - a[1])) {
+      console.log(`  *** category "${c}" is not one of the twelve — ${n} question(s), selectable by nothing`);
+    }
+    for (const [s, n] of [...badSubs].sort((a, b) => b[1] - a[1])) {
+      console.log(`  *** subcategory "${s}" is in no category's tree — ${n} question(s), never drawn by that filter`);
+    }
+    if (badCats.size || badSubs.size) {
+      console.log('  Fix from admin.html -> Question Bank -> search the question -> tap it.');
+    }
+  }
+} catch (err) {
+  console.log(`  (could not check filings: ${err.message})`);
+}
