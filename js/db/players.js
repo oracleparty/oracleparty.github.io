@@ -349,6 +349,94 @@ export async function submitAnswer({ roomId, playerId, questionNumber, questionI
   return { data, error: null };
 }
 
+// ============================================
+// The server's versions (migrations 045 / 046)
+//
+// The game is moving off the host's phone. These call the database functions
+// that judge and record an answer, so every phone in the room reads ONE verdict
+// computed once instead of each browser deciding for itself.
+//
+// Both fall back to the client-side path when the function is not installed,
+// which is what makes the JavaScript safe to deploy before the SQL is run —
+// the reverse order has broken this project repeatedly (CLAUDE.md #3).
+// ============================================
+
+/**
+ * Is this error "that function is not there"?
+ *
+ * PostgREST answers PGRST202 for a function it cannot resolve, which covers
+ * both "never created" and "created with different argument names" — and the
+ * second is just as dead to the app as the first (CLAUDE.md #6). Anything else
+ * is a real failure and must NOT be read as a missing function, or a genuine
+ * bug quietly becomes a silent fallback nobody ever notices.
+ */
+function functionMissing(error) {
+  if (!error) return false;
+  return error.code === 'PGRST202'
+    || /could not find the function/i.test(error.message || '');
+}
+
+/**
+ * Submit an answer and let the DATABASE decide what it is worth.
+ *
+ * → { row, error, unavailable }
+ *   row.rejected is null when the answer was taken; otherwise it names why and
+ *   nothing was written. A rejection is not an error — the app has to be able
+ *   to tell "the timer beat you" from "the network died".
+ */
+export async function submitAnswerViaServer({ roomId, playerId, questionNumber, answer, wager }) {
+  const { data, error } = await supabase.rpc('op_submit_answer', {
+    p_room_id: roomId,
+    p_player_id: playerId,
+    p_question_number: questionNumber,
+    p_answer: answer ?? '',
+    p_wager: wager ?? null,
+  });
+  if (error) {
+    if (functionMissing(error)) {
+      logger.debug('Supabase', 'op_submit_answer not installed, judging locally');
+      return { row: null, error: null, unavailable: true };
+    }
+    logger.error('Supabase', 'op_submit_answer failed', error);
+    return { row: null, error, unavailable: false };
+  }
+  // An installed function that returns nothing is a BUG, not an absent one.
+  // Conflating the two is exactly how a dead feature reads as a healthy
+  // fallback for months (CLAUDE.md #8).
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    logger.error('Supabase', 'op_submit_answer returned no row', { questionNumber });
+    return { row: null, error: new Error('op_submit_answer returned no row'), unavailable: false };
+  }
+  return { row, error: null, unavailable: false };
+}
+
+/**
+ * Give a zero to everyone in the room who never answered this question.
+ *
+ * ANY client may call this and it is idempotent, which is the point: the round
+ * closes as soon as any phone notices the clock has run out, instead of waiting
+ * on a host whose screen may be off.
+ *
+ * → { ok, written } — ok is false when the function is not installed, which is
+ *   the caller's cue to do it the old way.
+ */
+export async function fillBlankAnswersViaServer(roomId, questionNumber) {
+  const { data, error } = await supabase.rpc('op_fill_blank_answers', {
+    p_room_id: roomId,
+    p_question_number: questionNumber,
+  });
+  if (error) {
+    if (functionMissing(error)) {
+      logger.debug('Supabase', 'op_fill_blank_answers not installed, filling locally');
+    } else {
+      logger.error('Supabase', 'op_fill_blank_answers failed', error);
+    }
+    return { ok: false, written: 0 };
+  }
+  return { ok: true, written: Number(data) || 0 };
+}
+
 /**
  * Insert blank answers for players who never submitted, WITHOUT overwriting
  * anyone who did.

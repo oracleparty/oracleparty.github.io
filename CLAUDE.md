@@ -1409,6 +1409,44 @@ applies.
   `ON CONFLICT ... WHERE` is the sole protection — removing it fails three rules
   by name. **A guard behind a guard is not twice as safe; it is untestable.**
 
+### Slice 3 — the client asks the server (wired 2026-08-23)
+
+`submitAnswerViaServer` and `fillBlankAnswersViaServer` in `js/db/players.js`.
+`doSubmitAnswer` takes the verdict, the points and the wager from the returned
+row; the host's timer-expiry fill is one RPC instead of a loop plus a
+final-round second pass.
+
+**Both fall back to the old client-side path, and the order matters**: the
+JavaScript is safe to deploy before the SQL is run, which is the direction this
+project has repeatedly got wrong (#3). `functionMissing()` treats only
+`PGRST202` as absent — a function that exists under different argument names
+answers the same way and is just as dead (#6) — and an installed function
+returning **no rows is reported as an error, not as absence**, because
+conflating those is how a dead feature reads as a healthy fallback for months
+(#8).
+
+**A REJECTION ALSO FALLS BACK, deliberately and temporarily.** If the server's
+idea of "the current question" ever disagreed with a client's, every submission
+in every game would be refused and the game would be unplayable — far worse
+than a client-judged answer. It costs nothing today: the lockdown is RLS, in a
+later slice, and an attacker is not running our JavaScript anyway. Tighten it
+once real games log no rejections.
+
+**The fake store implements both** (`_rpc` in `tests/harness/store.js`),
+importing `fuzzyMatch` rather than reimplementing it, so a fake judge cannot
+report bugs that do not exist. It enforces the timer too — leaving that out
+would let a scenario pass on an answer the live server refuses, which is the
+shape of every "worked in the harness" bug in this file.
+
+**And the full-game scenario had never scored a point.** It typed
+`Answer ${roundHint + 1}`, where `roundHint` is a loop counter with no relation
+to the question a given phone is showing, so Alice was wrong every round and
+all three boards read 0-0-0 — in perfect agreement, which is what the scenario
+checked. **Three clients showing zero agree perfectly.** It reads the question
+off the screen now, the boards read 15/1/0, and it fails if nobody scores at
+all. Verified by making the fake server pay nothing: it reports "nobody scored
+a single point all game".
+
 ## The Map
 
 A honeycomb of the question bank, above the Mastery list on the profile. The

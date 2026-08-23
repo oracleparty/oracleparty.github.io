@@ -24,6 +24,7 @@ export {
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
   fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers,
+  submitAnswerViaServer, fillBlankAnswersViaServer,
   deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
 } from './db/players.js';
 

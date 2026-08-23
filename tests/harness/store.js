@@ -14,6 +14,22 @@
 //   * A client receives events for its OWN writes, exactly like Realtime.
 // ============================================
 
+// The game is moving off the host's phone, and the fake store has to be able to
+// stand in for the database functions doing it — otherwise every scenario
+// silently exercises the client-side fallback and the new path ships untested.
+//
+// fuzzyMatch is imported rather than reimplemented, because a fake judge that
+// disagreed with the real one would report bugs that do not exist. The SQL is
+// held to the same rule from the other side: scripts/verify-sql.mjs runs
+// thousands of cases through op_answer_matches AND this same function.
+//
+// js/utils.js registers online/offline listeners at import time, so it needs a
+// window to register them on before it will load in bare Node.
+const _noop = () => {};
+globalThis.window ??= { addEventListener: _noop, removeEventListener: _noop };
+globalThis.document ??= { body: { classList: { remove: _noop }, style: {} }, addEventListener: _noop };
+const { fuzzyMatch } = await import('../../js/utils.js');
+
 let nextId = 1;
 const uuid = () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`;
 
@@ -560,6 +576,130 @@ export class FakeStore {
         recorded++;
       }
       return recorded;
+    }
+
+    // ---- migration 046: the server judges and records ----------------------
+    //
+    // A mirror of op_submit_answer / op_fill_blank_answers. The point of having
+    // it here is NOT to re-test the SQL — verify-sql.mjs does that against a
+    // real Postgres — but to make the scenarios exercise the path the app now
+    // takes. An unimplemented RPC answers null with no error, which the client
+    // correctly falls back from, so without this every robot would keep
+    // testing the old client-side route and the new one would ship unplayed.
+    if (name === 'op_submit_answer' || name === 'op_fill_blank_answers') {
+      const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
+      if (!room) {
+        return name === 'op_submit_answer'
+          ? [{ is_correct: false, score_earned: 0, wager: null, question_id: null, rejected: 'no such room' }]
+          : 0;
+      }
+      const ids = room.question_ids || [];
+      const total = Math.max(1, (ids.length ? ids.length - 1 : room.questions_per_game) || 10);
+      const qnum = Number(args.p_question_number);
+      const isFinal = qnum >= total;
+      const qid = ids[qnum] ?? null;
+
+      // op_next_wager: the player's lowest unspent value, skipping the final
+      // round's own wager space and the __WAGER_LOCKED__ placeholder.
+      const nextWager = (playerId) => {
+        const spent = new Set(this.table('answers')
+          .filter(a => String(a.room_id) === String(room.id)
+            && String(a.player_id) === String(playerId)
+            && a.question_number < total
+            && a.wager != null
+            && String(a.submitted_answer || '').trim() !== '__WAGER_LOCKED__')
+          .map(a => a.wager));
+        for (let i = 1; i <= total; i++) if (!spent.has(i)) return i;
+        return 1;
+      };
+
+      if (name === 'op_fill_blank_answers') {
+        let written = 0;
+        for (const p of this.table('players').filter(p => String(p.room_id) === String(room.id))) {
+          const rows = this.table('answers');
+          const existing = rows.find(a => String(a.room_id) === String(room.id)
+            && String(a.player_id) === String(p.id) && a.question_number === qnum);
+          if (existing) {
+            // Only a placeholder is converted. A real answer is never
+            // overwritten by a blank — the race that once destroyed answers
+            // people had typed.
+            if (String(existing.submitted_answer || '').trim() !== '__WAGER_LOCKED__') continue;
+            existing.submitted_answer = '';
+            existing.wager = isFinal ? 0 : nextWager(p.id);
+            existing.is_correct = false;
+            existing.auto_correct = false;
+            existing.score_earned = 0;
+          } else {
+            rows.push({
+              id: newId('answers'), room_id: room.id, player_id: p.id,
+              question_number: qnum, question_id: qid,
+              wager: isFinal ? 0 : nextWager(p.id),
+              submitted_answer: '', is_correct: false, auto_correct: false, score_earned: 0,
+            });
+          }
+          written++;
+        }
+        return written;
+      }
+
+      const player = this.table('players').find(p => String(p.id) === String(args.p_player_id)
+        && String(p.room_id) === String(room.id));
+      if (!player) {
+        return [{ is_correct: false, score_earned: 0, wager: null, question_id: null, rejected: 'not in this room' }];
+      }
+      if (qnum !== room.current_question) {
+        return [{ is_correct: false, score_earned: 0, wager: null, question_id: null, rejected: 'not the current question' }];
+      }
+      // The timer, with the same generous allowance the SQL uses. Left out of
+      // this fake, a scenario would pass on an answer the live server refuses —
+      // which is the exact shape of every "worked in the harness" bug in
+      // CLAUDE.md. The app falls back rather than losing the round, so a
+      // rejection here still ends with the answer stored, as it does live.
+      if (room.question_started_at) {
+        const deadline = new Date(room.question_started_at).getTime()
+          + ((room.question_timer ?? 30) + 3) * 1000;
+        if (Date.now() > deadline) {
+          return [{ is_correct: false, score_earned: 0, wager: null, question_id: null, rejected: 'time is up' }];
+        }
+      }
+
+      const question = this.table('questions').find(q => String(q.id) === String(qid));
+      const text = String(args.p_answer ?? '');
+      const verdict = (question && text.trim())
+        ? fuzzyMatch(text, question.correct_answer, question.acceptable_answers || [])
+        : false;
+
+      const rows = this.table('answers');
+      const existing = rows.find(a => String(a.room_id) === String(room.id)
+        && String(a.player_id) === String(player.id) && a.question_number === qnum);
+
+      let chosen;
+      if (isFinal && existing?.wager != null) chosen = existing.wager;          // locked is locked
+      else if (isFinal) chosen = [0, 10, 20].includes(args.p_wager) ? args.p_wager : 0;
+      else if (existing?.wager != null) chosen = existing.wager;                // spent once, only once
+      else {
+        chosen = args.p_wager;
+        const alreadySpent = rows.some(a => String(a.room_id) === String(room.id)
+          && String(a.player_id) === String(player.id) && a.question_number < total
+          && a.wager === chosen && String(a.submitted_answer || '').trim() !== '__WAGER_LOCKED__');
+        if (chosen == null || chosen < 1 || chosen > total || alreadySpent) chosen = nextWager(player.id);
+      }
+
+      const earned = verdict ? chosen : (isFinal ? -chosen : 0);
+      if (existing) {
+        Object.assign(existing, {
+          submitted_answer: text, question_id: qid, wager: chosen,
+          is_correct: verdict, auto_correct: verdict, score_earned: earned,
+        });
+      } else {
+        rows.push({
+          id: newId('answers'), room_id: room.id, player_id: player.id,
+          question_number: qnum, question_id: qid, wager: chosen,
+          submitted_answer: text, is_correct: verdict, auto_correct: verdict,
+          score_earned: earned,
+        });
+      }
+      return [{ is_correct: verdict, score_earned: earned, wager: chosen, question_id: qid, rejected: null }];
     }
 
     // Mirrors migration 032, which the probe confirms is installed. Until this

@@ -8,7 +8,7 @@ import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAns
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
-import { updateGameState, submitAnswer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, incrementQuestionsAnswered } from '../supabase.js';
+import { updateGameState, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -393,7 +393,14 @@ async function handleTimerExpired() {
     state.currentAnswers = freshAnswers;
     const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
     const q = state.questions[state.currentQuestion];
-    if (q) {
+
+    // One call, and the database works out who is missing and what each of them
+    // still holds — including the locked-final-wager rows this used to need a
+    // whole second pass for. It is idempotent, so it does not matter how many
+    // phones make it.
+    const served = await fillBlankAnswersViaServer(state.room.id, state.currentQuestion);
+
+    if (q && !served.ok) {
       // Each absent player burns their OWN lowest unused wager, not a hardcoded
       // 1. Writing 1 for everyone gave a player two answers at wager 1 whenever
       // they had already spent it, breaking the rule that values 1..N are each
@@ -523,15 +530,51 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   //
   // Deliberately NOT applied to a deliberate submit or to auto-submitted TEXT:
   // both are the player saying something, and the last thing they said wins.
-  const submitResult = (autoSubmit && isBlank)
-    ? await insertBlankAnswers([{
-        roomId: state.room.id,
-        playerId: state.room.playerId,
-        questionNumber: state.currentQuestion,
-        questionId: q.id,
-        wager
-      }]).then(() => ({ data: null, error: null }), error => ({ data: null, error }))
-    : await submitAnswer({
+  // The verdict that actually gets stored comes from the SERVER when the server
+  // has one (migrations 045/046), so every phone in the room reads one judgement
+  // computed once rather than each browser deciding for itself. isCorrect above
+  // is still computed here, because the screen needs an answer before the round
+  // trip returns and because it is what the fallback writes.
+  //
+  // A REJECTION FALLS BACK INSTEAD OF LOSING THE ROUND, deliberately. If the
+  // server's idea of "the current question" ever disagreed with this client's,
+  // every submission in every game would be refused — and an unplayable game is
+  // far worse than a client-judged answer. It costs nothing: the lockdown is
+  // RLS in a later slice, and an attacker is not running this file anyway. Once
+  // real games show no rejections in the log, this can tighten.
+  let verdict = isCorrect;
+  let earnedFinal = scoreEarned;
+  let wagerFinal = wager;
+  let submitResult;
+
+  if (autoSubmit && isBlank) {
+    submitResult = await insertBlankAnswers([{
+      roomId: state.room.id,
+      playerId: state.room.playerId,
+      questionNumber: state.currentQuestion,
+      questionId: q.id,
+      wager
+    }]).then(() => ({ data: null, error: null }), error => ({ data: null, error }));
+  } else {
+    const server = await submitAnswerViaServer({
+      roomId: state.room.id,
+      playerId: state.room.playerId,
+      questionNumber: state.currentQuestion,
+      answer,
+      wager
+    });
+    if (server.row && !server.row.rejected) {
+      verdict = !!server.row.is_correct;
+      if (server.row.score_earned != null) earnedFinal = server.row.score_earned;
+      if (server.row.wager != null) wagerFinal = server.row.wager;
+      submitResult = { data: server.row, error: null };
+    } else {
+      if (server.row?.rejected) {
+        logger.warn('Game', 'the server refused this answer, storing it locally', {
+          reason: server.row.rejected, question: state.currentQuestion
+        });
+      }
+      submitResult = await submitAnswer({
         roomId: state.room.id,
         playerId: state.room.playerId,
         questionNumber: state.currentQuestion,
@@ -541,6 +584,8 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
         isCorrect,
         scoreEarned
       });
+    }
+  }
 
   // If the DB write failed (network drop mid-submit), revert local state and
   // allow retry — without this revert, the player thinks they submitted, gets
@@ -556,8 +601,11 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     return;
   }
 
-  // Mark wager as used AFTER DB write succeeds (prevents stale state if submit fails)
-  state.usedWagers.set(wager, isCorrect);
+  // Mark wager as used AFTER DB write succeeds (prevents stale state if submit
+  // fails). The SERVER's wager and verdict when it gave one — it may have
+  // handed back a different value, because it refuses to let one number be
+  // spent twice and this screen can be out of date about what is left.
+  state.usedWagers.set(wagerFinal, verdict);
 
   // Track question answered (fire-and-forget, skip final wager round)
   if (!state.isFinalWagerRound) {

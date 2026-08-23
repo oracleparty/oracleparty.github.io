@@ -200,7 +200,20 @@ try {
       const key = `${r.name}:${roundHint}`;
       if (answered.has(key)) return screen;
       await checkPassAffordance(r);
-      const text = r.name === 'Bob' ? 'definitely wrong' : `Answer ${roundHint + 1}`;
+      // READ THE QUESTION ON SCREEN rather than guessing from a round counter.
+      //
+      // It used to be `Answer ${roundHint + 1}`, and roundHint is a loop
+      // counter that has nothing to do with which question a given phone is
+      // actually showing — so Alice never once answered correctly and EVERY
+      // player in this scenario finished on 0. A full-game test in which
+      // nobody scores cannot detect a scoring regression at all, which matters
+      // now that the score is computed by the database rather than here.
+      //
+      // The seeded bank is "Test question N?" → "Answer N", so the screen
+      // carries everything needed.
+      const shown = await r.page.textContent('#question-text').catch(() => '');
+      const n = (shown || '').match(/\d+/)?.[0];
+      const text = r.name === 'Bob' ? 'definitely wrong' : (n ? `Answer ${n}` : 'no idea');
       if (await answerQuestion(r, text)) answered.add(key);
       return screen;
     }
@@ -313,6 +326,17 @@ try {
     scoreboards.push({ name: r.name, board });
   }
   for (const s of scoreboards) note(`${s.name} scoreboard: ${JSON.stringify(s.board).slice(0, 120)}`);
+
+  // SOMEBODY MUST HAVE SCORED. Agreement is worthless on its own — three
+  // clients all showing 0 agree perfectly, and that is what this scenario
+  // asserted for its whole life while Alice answered every question wrong
+  // without anybody noticing. A board of zeroes cannot detect a scoring
+  // regression, which is the thing that moved to the database.
+  const anyPoints = scoreboards.some(s =>
+    s.board.some(entry => Number(entry.split('=').pop()) > 0));
+  if (!anyPoints) {
+    problems.push('nobody scored a single point all game — the scoreboard cannot be measuring anything');
+  }
 
   const nonEmpty = scoreboards.filter(s => s.board.length > 0);
   if (nonEmpty.length > 1) {
