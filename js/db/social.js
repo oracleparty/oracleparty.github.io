@@ -400,14 +400,23 @@ export async function sendFriendRequest(senderId, receiverId) {
     return { data: null, error: { message: 'Already friends' }, autoAccepted: false };
   }
 
-  // Check for reverse pending request — auto-accept if found
-  const { data: reverseReq } = await supabase
+  // Check for reverse pending request — auto-accept if found.
+  //
+  // maybeSingle() ERRORS when more than one row matches, and both guards here
+  // used to discard that error. A guard that fails then reads as "nothing
+  // found" and falls straight through to the insert — failing open on exactly
+  // the check meant to stop a duplicate.
+  const { data: reverseReq, error: reverseErr } = await supabase
     .from('friend_requests')
     .select('*')
     .eq('sender_id', receiverId)
     .eq('receiver_id', senderId)
     .eq('status', 'pending')
     .maybeSingle();
+  if (reverseErr) {
+    logger.error('Supabase', 'sendFriendRequest reverse lookup failed', reverseErr);
+    return { data: null, error: reverseErr, autoAccepted: false };
+  }
 
   if (reverseReq) {
     // Auto-accept: they already want to be our friend
@@ -415,17 +424,53 @@ export async function sendFriendRequest(senderId, receiverId) {
     return { data: result.data, error: result.error, autoAccepted: true };
   }
 
-  // Check for existing same-direction pending request
-  const { data: existingReq } = await supabase
+  // Check for an existing request in this direction — of ANY status.
+  //
+  // friend_requests is UNIQUE(sender_id, receiver_id), so there is at most one
+  // row per direction ever. Filtering on status='pending' therefore hid the
+  // case that matters: a request that was DECLINED, or accepted and later
+  // unfriended, leaves the row behind, the insert below hits 23505, and the
+  // app reported "Friend request already sent" — which is false, permanent,
+  // and unexplainable to the person staring at it. You could never ask that
+  // person again.
+  const { data: existingReq, error: existingErr } = await supabase
     .from('friend_requests')
-    .select('id')
+    .select('id, status')
     .eq('sender_id', senderId)
     .eq('receiver_id', receiverId)
-    .eq('status', 'pending')
     .maybeSingle();
+  if (existingErr) {
+    logger.error('Supabase', 'sendFriendRequest existing lookup failed', existingErr);
+    return { data: null, error: existingErr, autoAccepted: false };
+  }
 
-  if (existingReq) {
+  if (existingReq?.status === 'pending') {
     return { data: null, error: { message: 'Friend request already sent' }, autoAccepted: false };
+  }
+  if (existingReq) {
+    // Revive the dead row rather than inserting a second one the unique
+    // constraint would refuse.
+    const { data: revived, error: reviveErr } = await supabase
+      .from('friend_requests')
+      .update({ status: 'pending', created_at: new Date().toISOString() })
+      .eq('id', existingReq.id)
+      .select();
+    if (reviveErr) {
+      logger.error('Supabase', 'sendFriendRequest revive failed', reviveErr);
+      return { data: null, error: reviveErr, autoAccepted: false };
+    }
+    if (!revived || revived.length === 0) {
+      // Only the RECEIVER may update a request (migration 003), so the sender
+      // cannot revive their own declined one. Say so rather than claiming the
+      // request was sent.
+      logger.error('Supabase', 'sendFriendRequest revive affected zero rows (RLS)', { id: existingReq.id });
+      return {
+        data: null,
+        error: { message: 'They declined an earlier request, so a new one has to come from them.' },
+        autoAccepted: false,
+      };
+    }
+    return { data: revived[0], error: null, autoAccepted: false };
   }
 
   const { data, error } = await supabase
@@ -495,15 +540,26 @@ export async function acceptFriendRequest(requestId) {
     return { error: fetchErr };
   }
 
-  // Update status
-  const { error: updateErr } = await supabase
+  // Update status.
+  //
+  // .select() so the row count can be checked. Only the RECEIVER may update a
+  // request (migration 003), and an RLS refusal returns ZERO ROWS AND NO ERROR
+  // — so without this, somebody accepting a request that is not theirs, or
+  // accepting from a stale list after the sender withdrew it, saw "Accepted!"
+  // and became nobody's friend. That is CLAUDE.md #4 exactly.
+  const { data: updated, error: updateErr } = await supabase
     .from('friend_requests')
     .update({ status: 'accepted' })
-    .eq('id', requestId);
+    .eq('id', requestId)
+    .select();
 
   if (updateErr) {
     logger.error('Supabase', 'acceptFriendRequest update failed', updateErr);
     return { error: updateErr };
+  }
+  if (!updated || updated.length === 0) {
+    logger.error('Supabase', 'acceptFriendRequest affected zero rows (RLS or withdrawn)', { requestId });
+    return { error: { message: "That request couldn't be accepted — it may have been withdrawn already." } };
   }
 
   // Create friendship (canonical ordering)

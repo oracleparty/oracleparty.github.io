@@ -1090,6 +1090,11 @@ async function loadFriendsTab(userId) {
             logger.error('Profile', 'acceptFriendRequest failed', error);
             acceptBtn.textContent = 'Error';
             acceptBtn.disabled = false;
+            // SAY WHY. A bare "Error" is why a playtest report about this
+            // could not be acted on at all: the person accepting saw one word,
+            // the reason reached a log nobody was reading, and both of us were
+            // left guessing at what the database had actually said.
+            showToast(error.message || "Couldn't accept that request — try again");
             setTimeout(() => { acceptBtn.textContent = origText; }, 2000);
             return;
           }

@@ -306,6 +306,81 @@ try {
   }
 
   // ============================================================
+  // 5b. ASKING AGAIN AFTER A DECLINE
+  //
+  // friend_requests is UNIQUE(sender_id, receiver_id), so there is at most one
+  // row per direction EVER. The send path filtered its "already exists?" check
+  // on status='pending', so a DECLINED row was invisible to it, the insert hit
+  // the unique constraint, and the app reported "Friend request already sent"
+  // — false, permanent, and unexplainable to the person looking at it. You
+  // could never ask that person again as long as the account existed.
+  //
+  // Driven through the db layer rather than the UI: the bug is in what the
+  // guard looks at, and the UI cannot even reach the second attempt.
+  // ============================================================
+  heading('asking again after a decline');
+  {
+    const rows = table.store.table('friend_requests');
+    rows.length = 0;
+    rows.push({ id: 900, sender_id: alice.userId, receiver_id: carol.userId, status: 'declined',
+                created_at: new Date(Date.now() - 86400000).toISOString() });
+
+    const again = await alice.page.evaluate(async ([from, to]) => {
+      const mod = await import('./js/supabase.js');
+      const res = await mod.sendFriendRequest(from, to);
+      return { error: res.error?.message || null, autoAccepted: res.autoAccepted };
+    }, [alice.userId, carol.userId]).catch(err => ({ threw: err.message }));
+    note(`re-sending after a decline: ${JSON.stringify(again)}`);
+
+    const after = table.store.table('friend_requests');
+    note(`rows now: ${JSON.stringify(after.map(r => r.status))}`);
+
+    if (again.error) {
+      problems.push(`a declined request could not be re-sent: "${again.error}" — the person can never be asked again`);
+    }
+    if (after.length !== 1) {
+      problems.push(`re-sending produced ${after.length} rows for one pair, and the table is UNIQUE on that pair`);
+    }
+    if (after[0]?.status !== 'pending') {
+      problems.push(`the request is "${after[0]?.status}" after being re-sent, so it will never appear in their list`);
+    }
+  }
+
+  // ============================================================
+  // 5c. AN ACCEPT THE DATABASE REFUSES
+  //
+  // Only the RECEIVER may update a request (migration 003), and an RLS refusal
+  // returns ZERO ROWS AND NO ERROR. Without a row-count check the page said
+  // "Accepted!" and the two people were not friends — the same silent-success
+  // shape as CLAUDE.md #4 and #5, in the one feature where both parties
+  // remember what they were told.
+  // ============================================================
+  heading('an accept the database refuses');
+  {
+    const rows = table.store.table('friend_requests');
+    rows.length = 0;
+    rows.push({ id: 901, sender_id: carol.userId, receiver_id: alice.userId, status: 'pending',
+                created_at: new Date().toISOString() });
+    table.store.table('friendships').length = 0;
+    table.store.denyWrites('friend_requests');
+
+    const refused = await alice.page.evaluate(async (id) => {
+      const mod = await import('./js/supabase.js');
+      const res = await mod.acceptFriendRequest(id);
+      return { error: res.error?.message || null };
+    }, 901).catch(err => ({ threw: err.message }));
+    note(`accept when refused: ${JSON.stringify(refused)}`);
+    table.store.allowWrites('friend_requests');
+
+    if (!refused.error) {
+      problems.push('a refused accept reported success — the two people are told they are friends and are not');
+    }
+    if (table.store.table('friendships').length > 0) {
+      problems.push('a refused accept created a friendship anyway');
+    }
+  }
+
+  // ============================================================
   // 6. SIGNED-IN PLAYERS IN A LOBBY
   // ============================================================
   heading('a lobby of signed-in players');
@@ -424,7 +499,11 @@ try {
     // above — logging it is the correct behaviour being tested, not a fault.
     const real = r.consoleErrors.filter(e =>
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e)
-      && !/updateProfile failed|PGRST116/i.test(e));
+      && !/updateProfile failed|PGRST116/i.test(e)
+      // Deliberate: sections 5c and the denyWrites tests provoke exactly these,
+      // and a scenario that fails on the log line proving its own fix works is
+      // a scenario nobody can add a refusal test to.
+      && !/zero rows/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
   // ============================================================
