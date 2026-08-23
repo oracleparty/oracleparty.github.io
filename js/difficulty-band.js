@@ -23,12 +23,28 @@
 // the second time and getting it right is evidence that it is gettable.
 // ============================================
 
-// Below this, a percentage is not worth printing. 20 matches
-// MIN_QUESTIONS_FOR_TITLE — this project's existing answer to "how much is
-// enough to say something" — and a high threshold costs nothing here, because
-// the stored difficulty covers everything underneath it. The only price of
-// waiting is that the switch happens later.
-export const MIN_PLAYS_FOR_MEASURED_DIFFICULTY = 20;
+// Below this, a percentage is not worth printing.
+//
+// THREE, not twenty, and the owner's reasoning is better than mine was. I set
+// it to 20 on the grounds that a high threshold "costs nothing", because the
+// stored difficulty covers everything underneath. That was wrong in a way the
+// argument concealed: at 20 the measured half would never appear for anybody
+// for months, so it could not be seen, could not be judged, and could not be
+// tested by the person who has to decide whether it is any good. A feature
+// nobody can reach is not cautious, it is undeliverable.
+//
+// Three is the lowest number where a percentage is not simply binary. It is
+// reachable in about two games with two people, which means the switchover is
+// something the owner can watch happen rather than take on trust.
+//
+// What keeps it honest at three is that the SAMPLE IS ALWAYS PRINTED beside
+// the number. "100% get this right, from 3 plays" is self-evidently thin to
+// anybody reading it; "100%" alone would not be. That is the whole reason a
+// low threshold is safe here.
+//
+// RAISE THIS once real games have been played — 20 is a good target — and the
+// only thing that changes is that the bands get steadier.
+export const MIN_PLAYS_FOR_MEASURED_DIFFICULTY = 3;
 
 // Measured bands. Four, because "Very Hard" is a real thing a question can be
 // and the stored scale (easy/medium/hard) has no room for it — which is part
@@ -71,7 +87,7 @@ export function describeDifficulty({ storedDifficulty, timesAsked, timesCorrect 
       label: band.label,
       // The sample is part of the claim. "12%" and "12% of 20 plays" are
       // different statements and must not be printed as if they were the same.
-      detail: `${pct}% get this right, from ${asked} plays`,
+      detail: `${pct}% get this right, from ${asked} play${asked === 1 ? '' : 's'}`,
       measured: true,
       plays: asked,
     };

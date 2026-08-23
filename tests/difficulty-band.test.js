@@ -18,13 +18,14 @@ describe('describeDifficulty — before there is data', () => {
     expect(describeDifficulty({ storedDifficulty: 'MEDIUM' }).label).toBe('Medium');
   });
 
-  // A handful of plays is exactly the case the owner flagged. It must not
-  // produce a percentage.
-  it('does not print a percentage from a handful of plays', () => {
-    const d = describeDifficulty({ storedDifficulty: 'medium', timesAsked: 3, timesCorrect: 0 });
-    expect(d.measured).toBe(false);
-    expect(d.label).toBe('Medium');
-    expect(d.detail).toBe('');
+  // One or two plays is still binary — 0% or 100% — and says nothing.
+  it('does not print a percentage from one or two plays', () => {
+    for (const asked of [1, 2]) {
+      const d = describeDifficulty({ storedDifficulty: 'medium', timesAsked: asked, timesCorrect: 0 });
+      expect(d.measured, `${asked} plays`).toBe(false);
+      expect(d.label).toBe('Medium');
+      expect(d.detail).toBe('');
+    }
   });
 
   it('holds out until the very last play below the threshold', () => {
@@ -42,11 +43,16 @@ describe('describeDifficulty — before there is data', () => {
 });
 
 describe('describeDifficulty — once it has been played', () => {
-  const played = (correct, asked = MIN_PLAYS_FOR_MEASURED_DIFFICULTY) =>
+  // Twenty on purpose, not the threshold constant: the band boundaries need a
+  // sample where the fractions land exactly, and pinning them to a constant
+  // that is expected to change would make this test quietly measure something
+  // else the day it does. It did — lowering the threshold to 3 turned
+  // "14 correct of 20" into "14 of 3".
+  const played = (correct, asked = 20) =>
     describeDifficulty({ storedDifficulty: 'medium', timesAsked: asked, timesCorrect: correct });
 
   it('switches over at the threshold', () => {
-    const d = played(10);
+    const d = played(1, MIN_PLAYS_FOR_MEASURED_DIFFICULTY);
     expect(d.measured).toBe(true);
     expect(d.plays).toBe(MIN_PLAYS_FOR_MEASURED_DIFFICULTY);
   });
@@ -76,6 +82,15 @@ describe('describeDifficulty — once it has been played', () => {
     const d = describeDifficulty({ storedDifficulty: 'hard', timesAsked: 37, timesCorrect: 12 });
     expect(d.detail).toMatch(/32%/);
     expect(d.detail).toMatch(/37 plays/);
+  });
+
+  // THIS is what makes a low threshold safe. At three plays the number is
+  // thin, and the line says so plainly enough that nobody mistakes it for a
+  // fact about the question.
+  it('makes a thin sample obvious in the text itself', () => {
+    const d = describeDifficulty({ storedDifficulty: 'medium', timesAsked: 3, timesCorrect: 3 });
+    expect(d.measured).toBe(true);
+    expect(d.detail).toBe('100% get this right, from 3 plays');
   });
 
   // A host flipping judgements can in principle push times_correct past

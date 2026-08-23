@@ -1375,7 +1375,7 @@ a percentage from two plays is noise wearing a number's clothes.
 So `describeDifficulty` in `js/difficulty-band.js` has two sources and the
 switch between them is the whole design:
 
-- **Under `MIN_PLAYS_FOR_MEASURED_DIFFICULTY` (20)** — the question's stored
+- **Under `MIN_PLAYS_FOR_MEASURED_DIFFICULTY` (3)** — the question's stored
   `difficulty`, which all 4,859 carry from the original import. Honest from the
   first game, no migration, nothing to wait for.
 - **At or above it** — what actually happened, in four bands (Easy ≥75%,
@@ -1383,10 +1383,18 @@ switch between them is the whole design:
   "18% get this right, from 124 plays". `12%` and `12% of 20 plays` are
   different claims and must never look alike.
 
-**A high threshold costs nothing here**, which is why it is 20 rather than 3:
-the stored value covers everything underneath it, so the only price of waiting
-is that the changeover happens later. It needs no announcement — the line just
-gets truer as people play.
+**It was 20, and that was wrong.** The argument for it — a high threshold
+"costs nothing", because the stored value covers everything underneath —
+concealed the real cost: at 20 the measured half would not appear for anybody
+for months, so it could not be seen, judged, or tested by the person who has to
+decide whether it is any good. **A feature nobody can reach is not cautious, it
+is undeliverable**, and the owner said so. Three is the lowest number where a
+percentage is not simply binary, and it is reachable in about two games.
+
+What makes three safe is that **the sample is always printed beside the
+number**. "100% get this right, from 3 plays" is self-evidently thin to
+anybody reading it; "100%" alone would not be. Raise it once real games have
+been played and the only thing that changes is that the bands get steadier.
 
 **Counted over every play, repeats included.** The owner's call, and it is
 already what `question_stats` records, so the measure and the store agree
