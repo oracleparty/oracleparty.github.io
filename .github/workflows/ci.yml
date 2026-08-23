@@ -18,3 +18,33 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  # The game is moving off the host's phone, which means the rule for judging an
+  # answer now exists twice: once in js/utils.js, which decides what the player
+  # SEES, and once in SQL, which decides what they SCORE. Two implementations of
+  # one rule is the most dangerous shape in this codebase, so they are not
+  # trusted to agree — they are checked, on every push, against a scratch
+  # database that has nothing to do with the live project.
+  sql-parity:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: node scripts/verify-sql.mjs
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432/postgres

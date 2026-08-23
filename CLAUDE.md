@@ -1307,6 +1307,72 @@ the stylesheet are `repeat(N, minmax(0, 1fr))` now.
 **When a measurement and a person disagree about what is on the screen, the
 person is looking at the screen.**
 
+## Moving the game off the host's phone
+
+The rebuild in #1, started 2026-08-23 at the owner's instruction. Done in
+slices that can each be felt in a real game, because a rebuild nobody can test
+until the end is a rebuild nobody can test.
+
+**AUTHORITY IS NOT INITIATIVE, and that distinction is what makes this
+possible at all.** There is no application server here — Supabase is Postgres,
+Realtime and Auth — and Postgres cannot wake itself up on a timer. So a client
+still has to ask. What changes is that the ANSWER no longer comes from the
+asker: the database decides, in a SECURITY DEFINER function, and every client
+gets the same decision. It also means *any* client may ask, which is the fix
+for the stalled game: a host whose phone sleeps stops being the only device
+that can move things along.
+
+**What this cannot do, and must not be claimed to.** These functions do not
+know who is calling. A guest has no `auth.uid()` — that is what guest play
+means — so somebody with the room code can still act as another player in that
+room. This stops a score being conjured from nothing; it does not stop a person
+already in your game meddling. Closing that needs sign-in, which ends guest
+play, and the owner has not asked for it.
+
+### Slice 1 — the server judges (migration 045)
+
+`op_answer_matches(submitted, correct, alternates)` is a port of `fuzzyMatch`
+in `js/utils.js`, with `op_normalize`, `op_levenshtein` and `op_digits_match`
+under it.
+
+**This creates the most dangerous shape in the codebase: one rule, two
+implementations.** The player watches the JavaScript decide green or red; the
+score comes from the SQL. If they ever disagree, the screen and the scoreboard
+say different things about the same answer — worse than the bug being fixed.
+
+So they are not maintained as two things that ought to agree.
+`scripts/verify-sql.mjs` runs **1,621 cases through both** and fails on any
+disagreement, plus every normalisation and a sample of edit distances. It
+stands up a throwaway Postgres (or takes `PGURL`), applies the migration, and
+never has the Supabase credentials. It runs in CI on every push.
+
+Verified by breaking the SQL three ways: restoring the `Math.max(1, …)`
+Levenshtein floor reports 102 disagreements, writing the word boundary as `\b`
+instead of `\y` reports 13, and removing the accent fold reports 7.
+
+Two things that cost real time and will again:
+
+- **`\b` is a BACKSPACE in Postgres regexes.** Word boundary is `\y`. Written
+  the JavaScript way, the numeric-abbreviation rules ("2 bil" → "2 billion")
+  match nothing and fail silently.
+- **The generated cases are the ones that earn their keep.** Removing the
+  accent fold does *not* break the hand-written `Sao Paulo` / `São Paulo`
+  case — unfolded, "so paulo" and "sao paulo" are one edit apart and the fuzzy
+  tolerance covers it, so it passes for the wrong reason. A mutated
+  `"Se Pauo."` is what caught it. **A rule can be broken in a way that every
+  case written to describe it still passes.**
+
+**No extensions.** `unaccent` and `fuzzystrmatch` would both be tidier and both
+are a bet on what is installed on the live project — the commonest source of
+"worked in the harness, dead in production" in this repo (#3, #7, #10). The
+accent fold is a `translate()` over a generous list; anything missing from it
+is stripped rather than folded, which is why accented answers are in the
+generated set.
+
+**There is a local Postgres in the dev container** (`/usr/lib/postgresql/16`).
+SQL in this project no longer has to be written blind and pasted hopefully —
+run it, prove it, then hand it over.
+
 ## The Map
 
 A honeycomb of the question bank, above the Mastery list on the profile. The
