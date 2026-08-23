@@ -290,8 +290,14 @@ describe('allowedDifficulties', () => {
       .toEqual(['easy', 'medium', 'hard']);
   });
 
-  // The one case where a single pill is honest: nothing else can happen.
-  it('still shows one level when the room is unanimous on hard', () => {
+  // allowedDifficulties answers what can HAPPEN, and for a room unanimous on
+  // hard the answer really is one thing.
+  //
+  // The WHEEL no longer follows it. The owner settled that separately: it now
+  // spins through all three whatever the room voted, because a slot machine
+  // showing symbols it will not land on is not lying, it is a slot machine.
+  // The reels are theatre; the landing is this function.
+  it('reports one level when the room is unanimous on hard', () => {
     expect(allowedDifficulties({ easy: 0, medium: 0, hard: 3 })).toEqual(['hard']);
   });
 

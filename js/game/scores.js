@@ -771,14 +771,20 @@ function playDifficultyRevealAnimation(mostVoted, winner, voted = null) {
     const finalEl = overlay.querySelector('.difficulty-reveal__final');
     const ALL = ['easy', 'medium', 'hard'];
 
-    // The wheel only visits difficulties somebody chose. It used to cycle all
-    // three every time, so in a room where nobody picked Easy the pill still
-    // lit up on the way past and looked like a live possibility.
+    // THE WHEEL ALWAYS VISITS ALL THREE. The owner settled this, and it has
+    // flip-flopped twice already, so: do not narrow it again without them.
     //
-    // The FINAL result can still be an unvoted level — that is the deliberate
-    // last-second switch, and it stays. What changes is that the wheel no
-    // longer teases options that were never in contention.
-    const order = (Array.isArray(voted) && voted.length) ? voted : ALL;
+    // It cycled all three originally, was narrowed to only the levels that
+    // could actually win — on the reasoning that lighting up an impossible
+    // option is a lie — and the owner's answer is that a slot machine showing
+    // symbols it will not land on is not lying, it is a slot machine. The
+    // reels are theatre; the landing is real.
+    //
+    // `voted` still governs what can actually HAPPEN, through
+    // pickWeightedDifficulty. Nothing about the outcome changes here; only how
+    // long the animation is worth watching, which in a small room that agrees
+    // was previously not at all.
+    const order = ALL;
     const setActive = (d) => {
       pills.forEach(p => p.classList.remove('dr-pill--active', 'dr-pill--settling', 'dr-pill--gotcha'));
       if (d) overlay.querySelector(`.dr-pill[data-difficulty="${d}"]`)?.classList.add('dr-pill--active');
@@ -799,10 +805,11 @@ function playDifficultyRevealAnimation(mostVoted, winner, voted = null) {
     // every third tick. When only one difficulty was voted there is nothing to
     // cycle through, so it holds on that one and settles sooner rather than
     // strobing a single pill.
-    const soleChoice = order.length === 1;
-    const ticks = soleChoice ? 6 : 22;
+    // Always a real spin now — there is no longer a one-pill case to special
+    // case, because the wheel visits every level whatever the room voted.
+    const ticks = 22;
     let i = 0;
-    let speed = soleChoice ? 140 : 60;  // ms
+    let speed = 60;  // ms
     const cycle = () => {
       setActive(order[i % order.length]);
       i++;

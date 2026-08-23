@@ -751,6 +751,17 @@ is now `max-height: 34vh` with its own scroll, and scrolls itself.
 levels regardless of votes. It was changed to cycle only voted ones, sent over
 the wire with the reveal so every client spins the same wheel.
 
+**THE WHEEL NOW ALWAYS VISITS ALL THREE, and this has flip-flopped twice — do
+not narrow it again without the owner.** It cycled all three originally, was
+narrowed to only outcomes that could actually win, and the owner's answer is
+that a slot machine showing symbols it will not land on is not lying, it is a
+slot machine: the reels are theatre, the landing is real.
+`allowedDifficulties` still governs what can HAPPEN, through
+`pickWeightedDifficulty`. Only the animation changed.
+
+The history below is kept because the reasoning at each step was sound and the
+conclusion still moved:
+
 **That fix was wrong in the other direction, and the next playtest found it.**
 The vote is a *floor*: an all-Easy room can still land on Medium or Hard, so
 all three were genuinely in play and cycling one pill was not honest, it was
