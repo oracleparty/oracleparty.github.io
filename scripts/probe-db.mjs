@@ -774,3 +774,101 @@ try {
 } catch (err) {
   console.log(`  (could not check filings: ${err.message})`);
 }
+
+// ============================================
+// UNGRADEABLE ANSWERS
+//
+// CLAUDE.md has carried three content rules since long before this section
+// existed, and nothing had ever measured them against the bank:
+//
+//   * date questions should ask for the YEAR, unless the exact date is famous
+//   * number questions should accept ranges or rounded values
+//   * flag any imported question expecting an exact date or a specific number
+//
+// They matter because judging is fuzzy matching against the answer key plus
+// stored alternates. Under four characters the match is exact, and above that
+// it allows one typo per four characters — so "8,848" and "8848" are two
+// different answers, and a player who knows Everest is about 8,850m is marked
+// wrong. There is no error and no complaint: the player simply believes they
+// got it wrong.
+//
+// These are CANDIDATES FOR A HUMAN TO READ, not verdicts. "9/11" and "1776"
+// are exact dates that belong in the bank. The point is to produce a short
+// list somebody can go through, which is only worth doing now that the admin
+// page can edit an answer key from a phone.
+// ============================================
+
+console.log('\n--- ANSWERS THAT MAY BE UNGRADEABLE (candidates, not verdicts) ---');
+try {
+  // A full date: a month name or a numeric d/m/y, as opposed to a bare year.
+  const MONTH = '(january|february|march|april|may|june|july|august|september|october|november|december)';
+  const FULL_DATE = new RegExp(`(\\b\\d{1,2}\\s+${MONTH}\\b|\\b${MONTH}\\s+\\d{1,2}\\b|\\b\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}\\b)`, 'i');
+  // A number with four or more significant digits that is not a bare year.
+  // 1969 is a year; 8,848 and 299792458 are figures somebody has to reproduce.
+  const BIG_NUMBER = /(\d[\d,\.]{3,})/;
+  const isBareYear = t => /^\s*(circa\s+|c\.\s*|around\s+)?\d{3,4}\s*(bc|bce|ad|ce)?\s*$/i.test(t);
+
+  const flagged = { dates: [], numbers: [], long: [] };
+  let seen = 0, withAlts = 0, page = 0, more = true;
+
+  while (more && page < 12) {
+    const res = await req(`questions?select=id,question,correct_answer,acceptable_answers&limit=1000&offset=${page * 1000}`);
+    if (res.status !== 200 && res.status !== 206) {
+      console.log(`  (could not read questions: HTTP ${res.status})`);
+      more = false;
+      break;
+    }
+    const rows = JSON.parse(res.body || '[]');
+    seen += rows.length;
+    for (const r of rows) {
+      const a = String(r.correct_answer ?? '').trim();
+      if (!a) continue;
+      const alts = Array.isArray(r.acceptable_answers) ? r.acceptable_answers.length : 0;
+      if (alts > 0) withAlts++;
+
+      // An alternate is the author saying "I have thought about how this is
+      // typed", so a question with one is not a candidate for review.
+      if (alts > 0) continue;
+
+      if (FULL_DATE.test(a)) {
+        flagged.dates.push([r.id, r.question, a]);
+      } else if (!isBareYear(a) && BIG_NUMBER.test(a)) {
+        flagged.numbers.push([r.id, r.question, a]);
+      } else if (a.length > 60) {
+        flagged.long.push([r.id, r.question, a]);
+      }
+    }
+    more = rows.length === 1000;
+    page++;
+  }
+
+  const show = (label, rows, why) => {
+    const pct = seen ? ((rows.length / seen) * 100).toFixed(1) : '0.0';
+    console.log(`\n  ${label}: ${rows.length} of ${seen} (${pct}%) — ${why}`);
+    for (const [, q, a] of rows.slice(0, 6)) {
+      const qt = String(q ?? '').replace(/\s+/g, ' ').slice(0, 68);
+      console.log(`     "${qt}${qt.length >= 68 ? '…' : ''}"  ->  ${JSON.stringify(String(a).slice(0, 44))}`);
+    }
+    if (rows.length > 6) console.log(`     ...and ${rows.length - 6} more`);
+  };
+
+  if (seen === 0) {
+    console.log('  (no questions read — nothing established)');
+  } else {
+    console.log(`  checked ${seen} questions; ${withAlts} carry at least one acceptable alternate`);
+    console.log('  Only questions with NO alternates are listed — an alternate means somebody');
+    console.log('  has already thought about how the answer gets typed.');
+    show('exact dates', flagged.dates,
+      'a day and month, where the rule asks for the year unless the date is famous');
+    show('specific numbers', flagged.numbers,
+      'four or more digits with no rounded or ranged alternate accepted');
+    show('very long answers', flagged.long,
+      'over 60 characters, so fuzzy matching allows 15+ typos and almost anything passes');
+    if (flagged.dates.length || flagged.numbers.length || flagged.long.length) {
+      console.log('\n  Fix from admin.html -> Question Bank -> search the question -> tap it,');
+      console.log('  and add the forms a player would actually type as alternates.');
+    }
+  }
+} catch (err) {
+  console.log(`  (could not check answers: ${err.message})`);
+}
