@@ -1362,6 +1362,50 @@ visible through the UI. Verified by reverting all three fixes: it then reports
 attempt or a correction to one.** A correction that increments is worse than
 no correction at all.
 
+## How hard was that? Stored now, measured later
+
+`#reveal-difficulty` had been in `game.html` since the beginning and the code
+only ever **hid** it. The slot existed and was never once filled.
+
+The owner asked for a difficulty band on the reveal and immediately asked the
+right question back: doesn't that need a minimum sample? It does. The last
+probe read `game_plays` at **9 rows** — there is essentially no play data, and
+a percentage from two plays is noise wearing a number's clothes.
+
+So `describeDifficulty` in `js/difficulty-band.js` has two sources and the
+switch between them is the whole design:
+
+- **Under `MIN_PLAYS_FOR_MEASURED_DIFFICULTY` (20)** — the question's stored
+  `difficulty`, which all 4,859 carry from the original import. Honest from the
+  first game, no migration, nothing to wait for.
+- **At or above it** — what actually happened, in four bands (Easy ≥75%,
+  Medium ≥50%, Hard ≥25%, Very Hard below), **with the sample attached**:
+  "18% get this right, from 124 plays". `12%` and `12% of 20 plays` are
+  different claims and must never look alike.
+
+**A high threshold costs nothing here**, which is why it is 20 rather than 3:
+the stored value covers everything underneath it, so the only price of waiting
+is that the changeover happens later. It needs no announcement — the line just
+gets truer as people play.
+
+**Counted over every play, repeats included.** The owner's call, and it is
+already what `question_stats` records, so the measure and the store agree
+without anything being reinterpreted.
+
+Read from **`question_health`, not `question_stats`**. The table is locked to
+visitors deliberately (#2) so a player cannot forge question performance; the
+view over it is readable, which is what makes this possible from a player's
+browser at all. A failed read falls back to the stored band — nobody loses a
+reveal because a stat did not load.
+
+**Colour only when measured.** An unmeasured band is the value the question
+shipped with, and painting that as evidence would be the same overclaim as
+printing a percentage from two plays.
+
+**Still parked, deliberately:** "what everyone typed" from `answer_tally`. It
+needs volume the game does not have, and the owner said so first. The data
+accrues either way, so it can be switched on the day it is worth reading.
+
 ## Question Feedback and Health
 
 **The admin's ability to act on feedback was broken and is fixed — see #5.**

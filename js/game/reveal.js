@@ -13,8 +13,9 @@ import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js
 import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
          upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
          upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
-  recordQuestionOutcome, recordAnswerText,
+  recordQuestionOutcome, recordAnswerText, fetchQuestionPlayStats,
 } from '../supabase.js';
+import { describeDifficulty } from '../difficulty-band.js';
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
@@ -133,6 +134,23 @@ export async function showRevealScreen() {
   if (state.resultsRevealed) {
     doReveal();
   }
+}
+
+/**
+ * Paint the difficulty line, or hide it when there is nothing honest to say.
+ *
+ * The detail is only ever present when the band came from real plays, so the
+ * sample is always attached to the claim: "12%" and "12% of 20 plays" are
+ * different statements and must not look alike.
+ */
+function renderDifficultyBand(el, band) {
+  if (!band) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.dataset.band = band.label.toLowerCase().replace(/\s+/g, '-');
+  el.dataset.measured = band.measured ? 'true' : 'false';
+  el.innerHTML = band.detail
+    ? `<span class="reveal__difficulty-label">${escapeHtml(band.label)}</span><span class="reveal__difficulty-detail">${escapeHtml(band.detail)}</span>`
+    : `<span class="reveal__difficulty-label">${escapeHtml(band.label)}</span>`;
 }
 
 export function updateHonkBadges() {
@@ -338,6 +356,34 @@ export function doReveal() {
 
   // Show correct answer and difficulty
   $('.reveal__correct').style.display = '';
+
+  // HOW HARD WAS THAT?
+  //
+  // #reveal-difficulty has been in game.html since the beginning and the code
+  // only ever HID it — the slot existed and was never once filled.
+  //
+  // Stored difficulty until a question has been played enough to speak for
+  // itself, then what actually happened. See difficulty-band.js: there is
+  // essentially no play data yet, so a percentage would be noise for a long
+  // while, and the stored value covers that gap honestly.
+  const diffEl = $('#reveal-difficulty');
+  const revealedQ = state.questions[state.currentQuestion];
+  if (diffEl && revealedQ) {
+    const immediate = describeDifficulty({ storedDifficulty: revealedQ.difficulty });
+    renderDifficultyBand(diffEl, immediate);
+    // Then upgrade to the measured band if the numbers are there. Fire and
+    // forget — nobody should lose a reveal because a stat did not load.
+    fetchQuestionPlayStats(revealedQ.id).then(stats => {
+      if (!stats) return;
+      // The reveal may have moved on while this was in flight.
+      if (state.questions[state.currentQuestion]?.id !== revealedQ.id) return;
+      renderDifficultyBand(diffEl, describeDifficulty({
+        storedDifficulty: revealedQ.difficulty,
+        timesAsked: stats.times_asked,
+        timesCorrect: stats.times_correct,
+      }));
+    }).catch(() => {});
+  }
 
   // Show fun fact if the question has one
   const funFact = getFunFact(state.questions[state.currentQuestion]);

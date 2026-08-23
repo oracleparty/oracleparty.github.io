@@ -3433,7 +3433,36 @@ body::after {
   margin-top: var(--space-xs);
   background: var(--color-bg-deep);
   color: var(--color-text-dim);
+  gap: var(--space-xs);
+  align-items: baseline;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
 }
+
+/* The band itself never breaks across lines; the sample beside it may. */
+.reveal__difficulty-label { white-space: nowrap; }
+
+/* The sample line, only ever present when the band came from real plays.
+   Lower case and un-tracked so it reads as a sentence beside the label rather
+   than as a second badge. */
+.reveal__difficulty-detail {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+/* Colour only once it MEANS something. An unmeasured band is the stored value
+   the question shipped with, and painting that as if it were evidence would be
+   the same overclaim as printing a percentage from two plays.
+
+   Text on the existing surface, never a fill — the tier badges broke by
+   inverting exactly this. */
+.reveal__difficulty[data-measured="true"][data-band="easy"]      { color: var(--color-success, #2a7); }
+.reveal__difficulty[data-measured="true"][data-band="hard"],
+.reveal__difficulty[data-measured="true"][data-band="very-hard"] { color: var(--color-primary); }
 
 .reveal__fun-fact {
   font-size: var(--text-xs);

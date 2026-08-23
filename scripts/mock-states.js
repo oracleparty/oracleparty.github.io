@@ -576,11 +576,17 @@ export const STATES = {
       document.getElementById('reveal-progress').textContent = 'Question 3 of 10';
       document.getElementById('reveal-question-text').textContent = 'What ancient wonder was located in the city of Babylon?';
       document.getElementById('reveal-answer').textContent = 'Hanging Gardens';
-      document.getElementById('reveal-difficulty').textContent = 'Medium';
-      // Base class only. `reveal__difficulty--medium` was invented here and
-      // exists in neither the app nor the stylesheet — reveal.js in fact hides
-      // this element outright.
-      document.getElementById('reveal-difficulty').className = 'reveal__difficulty';
+      // The MEASURED form, which is the longest this line ever gets — a band
+      // plus the sample it rests on. reveal.js used to hide this element
+      // outright; the slot had been in game.html from the beginning and was
+      // never once filled.
+      const diffEl = document.getElementById('reveal-difficulty');
+      diffEl.className = 'reveal__difficulty';
+      diffEl.dataset.band = 'very-hard';
+      diffEl.dataset.measured = 'true';
+      diffEl.style.display = '';
+      diffEl.innerHTML = '<span class="reveal__difficulty-label">Very Hard</span>'
+        + '<span class="reveal__difficulty-detail">18% get this right, from 124 plays</span>';
       const fb = document.getElementById('reveal-feedback');
       if (fb) fb.style.display = '';
 

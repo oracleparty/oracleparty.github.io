@@ -474,6 +474,31 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
  * Falls back to nothing if migration 043 is unapplied; `recordOwnHistory`
  * below is what runs until then.
  */
+/**
+ * Per-question play record, for the difficulty line on the reveal.
+ *
+ * Reads `question_health`, NOT `question_stats`. The underlying table is locked
+ * to visitors deliberately — every write goes through a SECURITY DEFINER
+ * function so a player cannot forge question performance — but the view over it
+ * is readable, which is what makes this possible from a player's browser at all.
+ *
+ * Returns null on any failure, and the caller falls back to the question's
+ * stored difficulty. Nobody should lose a reveal because a stat did not load.
+ */
+export async function fetchQuestionPlayStats(questionId) {
+  if (!questionId) return null;
+  const { data, error } = await supabase
+    .from('question_health')
+    .select('times_asked, times_correct')
+    .eq('id', questionId)
+    .maybeSingle();
+  if (error) {
+    logger.warn('Supabase', 'fetchQuestionPlayStats failed', error);
+    return null;
+  }
+  return data || null;
+}
+
 export async function recordRoundHistory(roomId, questionId) {
   if (!roomId || !questionId) {
     logger.warn('Supabase', 'recordRoundHistory called without room or question', { roomId, questionId });
