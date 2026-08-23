@@ -406,17 +406,27 @@ export async function sendFriendRequest(senderId, receiverId) {
   // used to discard that error. A guard that fails then reads as "nothing
   // found" and falls straight through to the insert — failing open on exactly
   // the check meant to stop a duplicate.
-  const { data: reverseReq, error: reverseErr } = await supabase
+  //
+  // NOT maybeSingle(). The live table turned out to have DUPLICATE rows for the
+  // same pair — three of them for one pair — which means the
+  // UNIQUE(sender_id, receiver_id) that migration 003 declares was never
+  // actually created (CLAUDE.md #7). maybeSingle ERRORS on more than one row,
+  // so on the real data this guard could only ever fail. Migration 044 adds the
+  // constraint, but this must not depend on it: the duplicates it is meant to
+  // survive are exactly what exists today, on this owner's account.
+  const { data: reverseRows, error: reverseErr } = await supabase
     .from('friend_requests')
     .select('*')
     .eq('sender_id', receiverId)
     .eq('receiver_id', senderId)
     .eq('status', 'pending')
-    .maybeSingle();
+    .order('created_at', { ascending: false })
+    .limit(1);
   if (reverseErr) {
     logger.error('Supabase', 'sendFriendRequest reverse lookup failed', reverseErr);
     return { data: null, error: reverseErr, autoAccepted: false };
   }
+  const reverseReq = reverseRows?.[0] || null;
 
   if (reverseReq) {
     // Auto-accept: they already want to be our friend
@@ -433,16 +443,22 @@ export async function sendFriendRequest(senderId, receiverId) {
   // app reported "Friend request already sent" — which is false, permanent,
   // and unexplainable to the person staring at it. You could never ask that
   // person again.
-  const { data: existingReq, error: existingErr } = await supabase
+  //
+  // Newest first and limit 1, for the same reason as the reverse lookup above:
+  // duplicates exist on the live table and this cannot be the thing that
+  // breaks because of them.
+  const { data: existingRows, error: existingErr } = await supabase
     .from('friend_requests')
     .select('id, status')
     .eq('sender_id', senderId)
     .eq('receiver_id', receiverId)
-    .maybeSingle();
+    .order('created_at', { ascending: false })
+    .limit(1);
   if (existingErr) {
     logger.error('Supabase', 'sendFriendRequest existing lookup failed', existingErr);
     return { data: null, error: existingErr, autoAccepted: false };
   }
+  const existingReq = existingRows?.[0] || null;
 
   if (existingReq?.status === 'pending') {
     return { data: null, error: { message: 'Friend request already sent' }, autoAccepted: false };
@@ -504,7 +520,25 @@ export async function fetchPendingRequests(userId) {
     logger.error('Supabase', 'fetchPendingRequests failed', error);
     return [];
   }
-  return data || [];
+
+  // One row per sender, newest first.
+  //
+  // The live table holds duplicate rows for the same pair — the
+  // UNIQUE(sender_id, receiver_id) that migration 003 declares was never
+  // created — so one person could appear in this list three times, with three
+  // Accept buttons, and accepting one left the other two sitting there looking
+  // unanswered. Migration 044 fixes the data; this makes the screen truthful
+  // whether or not it has been run, and stays correct afterwards because a
+  // deduplicated list of unique rows is just the list.
+  const seen = new Set();
+  const unique = [];
+  for (const row of data || []) {
+    const key = String(row.sender_id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(row);
+  }
+  return unique;
 }
 
 /**

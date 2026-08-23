@@ -248,7 +248,22 @@ export class FakeStore {
           }
           return { data: result[0], error: null };
         }
-        if (modifiers.maybeSingle) return { data: result[0] ?? null, error: null };
+        if (modifiers.maybeSingle) {
+          // maybeSingle tolerates ZERO rows and nothing else. PostgREST errors
+          // on more than one, exactly as .single() does — the "maybe" is about
+          // absence, not about multiplicity.
+          //
+          // The shim used to return the first row instead, and that hid a real
+          // bug for as long as this harness has existed: two guards in
+          // sendFriendRequest used maybeSingle on a lookup that was not
+          // actually unique, discarded the error, and so failed OPEN on live
+          // data that had duplicate rows. Every scenario passed. The owner's
+          // own account has three rows for one pair because of it.
+          if (result.length > 1) {
+            return { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116', details: `The result contains ${result.length} rows` } };
+          }
+          return { data: result[0] ?? null, error: null };
+        }
         return { data: result, error: null, count: result.length };
       }
 

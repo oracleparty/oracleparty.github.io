@@ -347,6 +347,64 @@ try {
   }
 
   // ============================================================
+  // 5b-ii. DUPLICATE ROWS FOR THE SAME PAIR
+  //
+  // Measured on the live database: three rows for one (sender, receiver) pair,
+  // which the declared UNIQUE(sender_id, receiver_id) makes impossible — so
+  // that constraint was never created. Migration 044 adds it and cleans up,
+  // but the client must not DEPEND on it: the duplicates it has to survive are
+  // the ones sitting in the owner's account right now.
+  //
+  // Both lookups used maybeSingle(), which ERRORS on more than one row, so on
+  // the real data every guard on that pair could only fail. That is how the
+  // duplicates were written in the first place, and how two people who each
+  // sent the other a request are still not friends five months later.
+  // ============================================================
+  heading('duplicate rows for one pair');
+  {
+    const rows = table.store.table('friend_requests');
+    rows.length = 0;
+    // Three from Carol to Alice, exactly the shape found live.
+    for (let i = 0; i < 3; i++) {
+      rows.push({ id: 910 + i, sender_id: carol.userId, receiver_id: alice.userId,
+                  status: 'pending', created_at: new Date(Date.now() - (3 - i) * 60000).toISOString() });
+    }
+
+    // Alice's pending list must show ONE Carol, not three. Three Accept buttons
+    // for one person means accepting once leaves two looking unanswered.
+    const listed = await alice.page.evaluate(async (uid) => {
+      const mod = await import('./js/supabase.js');
+      const pending = await mod.fetchPendingRequests(uid);
+      return pending.map(r => r.sender_id);
+    }, alice.userId).catch(err => ({ threw: err.message }));
+    note(`pending senders shown to Alice: ${JSON.stringify(listed)}`);
+    if (!Array.isArray(listed) || listed.length !== 1) {
+      problems.push(`one person's duplicated requests appear ${Array.isArray(listed) ? listed.length : '?'} times in the list — accepting one leaves the others looking unanswered`);
+    }
+
+    // And Alice sending to Carol must AUTO-ACCEPT off the duplicated reverse
+    // requests rather than erroring or inserting a mirror-image row. Failing
+    // this is precisely what left two willing people unfriended.
+    const sent = await alice.page.evaluate(async ([from, to]) => {
+      const mod = await import('./js/supabase.js');
+      const res = await mod.sendFriendRequest(from, to);
+      return { error: res.error?.message || null, autoAccepted: !!res.autoAccepted };
+    }, [alice.userId, carol.userId]).catch(err => ({ threw: err.message }));
+    note(`sending into duplicated reverse requests: ${JSON.stringify(sent)}`);
+
+    if (sent.error) {
+      problems.push(`duplicate rows made sending fail outright: "${sent.error}"`);
+    }
+    if (!sent.autoAccepted) {
+      problems.push('a request back to somebody who already asked was not auto-accepted — this is how two people who both said yes stayed unfriended');
+    }
+    if (table.store.table('friendships').length === 0) {
+      problems.push('the mutual request created no friendship');
+    }
+    table.store.table('friendships').length = 0;
+  }
+
+  // ============================================================
   // 5c. AN ACCEPT THE DATABASE REFUSES
   //
   // Only the RECEIVER may update a request (migration 003), and an RLS refusal
