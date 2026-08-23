@@ -6178,6 +6178,53 @@ body::after {
   flex-direction: column;
   gap: 2px;
 }
+/* `.input` is centred and large, which is right for a 6-digit room code and
+   wrong for editing a paragraph of question text — the cursor jumps around as
+   you type and long text is unreadable. Scoped to the two admin editors so no
+   other input in the app moves. */
+.admin-q-row__edit .input,
+.qh-alts {
+  text-align: left;
+  font-size: var(--text-sm);
+  padding: var(--space-sm);
+}
+
+/* Same shape as the label elements around it, for a field whose control is a
+   row of buttons rather than one input. */
+.admin-q-edit__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-q-edit__label {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+
+/* Twelve of these on a 375px phone, so they wrap and each one has to stay a
+   real tap target on its own line. */
+.admin-cat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+.admin-cat-chip {
+  font-size: var(--text-xs);
+  padding: var(--space-xs) var(--space-sm);
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-surface-light);
+  background: var(--color-surface);
+  color: var(--color-text-dim);
+  cursor: pointer;
+}
+/* Amber as text and outline, never as a fill — see .admin-panel__count. */
+.admin-cat-chip--on {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+
 .admin-q-edit__status {
   font-size: var(--text-xs);
   color: var(--color-success);

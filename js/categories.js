@@ -145,6 +145,37 @@ export function resolveCategoryLabel(category, subcategoryKey) {
 }
 
 /**
+ * Every subcategory of a category, depth-first, with how deep each one sits.
+ *
+ * The tree is uneven — Nature is one level, World Geography is three — so a
+ * picker cannot assume a shape. Returning depth lets the caller indent rather
+ * than flatten "Capitals" and "Natural" into the same list and lose which is
+ * which.
+ *
+ * Wild Card's options live under `wildCardOptions` rather than
+ * `subcategories`, and they are real stored values, so they belong here too.
+ * Leaving them out would make it impossible to file a question the way the
+ * host screen already offers to play it.
+ *
+ * → [{ key, label, depth }]
+ */
+export function flattenSubcategories(category) {
+  const meta = CATEGORY_META[category];
+  if (!meta) return [];
+  const out = [];
+  (function walk(nodes, depth) {
+    for (const node of nodes || []) {
+      out.push({ key: node.key, label: node.label, depth });
+      if (node.children) walk(node.children, depth + 1);
+    }
+  })(meta.subcategories, 0);
+  for (const opt of meta.wildCardOptions || []) {
+    if (!out.some(o => o.key === opt.key)) out.push({ key: opt.key, label: opt.label, depth: 0 });
+  }
+  return out;
+}
+
+/**
  * Resolve the icon for a subcategory key. Falls back to the category icon.
  */
 export function resolveSubcategoryIcon(category, subcategoryKey) {

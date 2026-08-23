@@ -880,6 +880,65 @@ export const STATES = {
     },
   },
 
+  // The question editor, open. Twelve category chips wrap on a 375px phone
+  // and each has to stay a real tap target on its own line, which is exactly
+  // the kind of thing that fits in a mock with four chips and breaks with
+  // twelve. Mirrors createQuestionRow() in js/admin.js.
+  'admin-question-edit': {
+    page: 'admin',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const loading = document.getElementById('admin-loading');
+      if (loading) loading.style.display = 'none';
+      const content = document.getElementById('admin-content');
+      if (content) content.style.display = '';
+
+      const head = document.querySelector('.admin-panel__head[data-panel="questions"]');
+      if (head) head.setAttribute('aria-expanded', 'true');
+      const body = document.getElementById('panel-questions');
+      if (body) body.hidden = false;
+      const results = document.getElementById('question-results');
+      if (!results) return;
+
+      const cats = [
+        ['history', 'History'], ['science', 'Science'], ['nature', 'Nature'],
+        ['arts-literature', 'Arts & Literature'], ['culture-society', 'Culture & Society'],
+        ['pop-culture', 'Pop Culture'], ['world-geography', 'World Geography'],
+        ['technology', 'Technology'], ['sports', 'Sports'], ['food', 'Food'],
+        ['logic', 'Logic'], ['wild-card', 'Wild Card'],
+      ];
+      const on = new Set(['culture-society']);
+      const chips = cats.map(([k, label]) =>
+        `<button type="button" class="admin-cat-chip${on.has(k) ? ' admin-cat-chip--on' : ''}"
+                 data-cat="${k}" aria-pressed="${on.has(k)}">${label}</button>`).join('');
+
+      results.innerHTML = `
+        <div class="admin-q-row">
+          <div class="admin-q-row__summary">
+            <div class="admin-q-row__text">Which language has the most native speakers in the world?</div>
+            <div class="admin-q-row__meta"><span>culture-society</span><span>open</span><span>medium</span></div>
+          </div>
+          <div class="admin-q-row__edit">
+            <label>Question<textarea class="input admin-q-edit__text" rows="3">Which language has the most native speakers in the world?</textarea></label>
+            <label>Answer<input class="input admin-q-edit__answer" value="Mandarin Chinese"></label>
+            <label>Alternates (comma-separated)<input class="input admin-q-edit__alts" value="Mandarin, Chinese"></label>
+            <div class="admin-q-edit__field">
+              <span class="admin-q-edit__label">Categories</span>
+              <div class="admin-cat-chips">${chips}</div>
+            </div>
+            <label>Subcategory<select class="input admin-q-edit__subcategory">
+              <option value="language" selected>Language</option>
+            </select></label>
+            <label>Format<select class="input admin-q-edit__format"><option selected>Open</option></select></label>
+            <label>Difficulty<select class="input admin-q-edit__difficulty"><option selected>Medium</option></select></label>
+            <button class="btn btn-primary admin-q-edit__save">Save</button>
+            <span class="admin-q-edit__status">Saved!</span>
+          </div>
+        </div>`;
+    },
+  },
+
   'admin-drill': {
     page: 'admin',
     screen: null,

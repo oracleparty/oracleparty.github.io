@@ -787,6 +787,27 @@ nothing on the wheel is unreachable.
   name. Ordered by how often an admin needs it, so Flagged Questions is first —
   the question bank used to be at the bottom of the longest page in the app.
 
+  **A question can be refiled from the page.** The Question Bank editor now
+  carries category chips and a subcategory menu alongside text, answer,
+  alternates, format and difficulty — a language question stuck in Food and
+  Drink used to need the Supabase SQL editor. `categories` is an array (11% of
+  questions carry more than one, deliberately), so it is chips rather than a
+  menu; the subcategory list is rebuilt from whichever categories are ticked,
+  so it can never offer a filing that belongs to a category the question is not
+  in. A value stored under a category that gets unticked is offered back under
+  "Currently filed as" rather than vanishing, because vanishing from the menu
+  would mean silently cleared on save. **Saving with no category is refused** —
+  a question in none is drawable by nothing and findable by no filter, which is
+  worse than deleted because it still counts in the bank.
+
+  `flattenSubcategories` in `categories.js` is the single source for that menu,
+  and `tests/categories.test.js` pins two things about it: every key it offers
+  resolves back to a real node, and no key prefixes an unrelated one. The
+  second matters because selection matches with `LIKE 'key%'`, so a collision
+  between branches would silently drag one subcategory's questions into
+  another's — children like `human` → `human-countries` are meant to nest and
+  are exempted by descent, not by name.
+
   The four stat cards open the list they were counted from; before that they
   were the only figures on the page that could not be checked. **An account row opens**
   to show who it actually is — email, sign-up method, whether the address was
@@ -847,12 +868,15 @@ nothing on the wheel is unreachable.
   targets. Ask for a screen before working on this — it is not a licence to
   restyle working screens on a hunch.
 
-  One measured target exists: the question screen's content stops at 448px
+  One measured target existed: the question screen's content stops at 448px
   whatever the phone, leaving **47% of an iPhone 14 empty below the answer
-  box** (33% on a smaller SE). The proposal is to fill it only AFTER the player
-  submits — avatars lighting up as others answer, and where you stand — so the
-  screen stays calm while you are still thinking and becomes a waiting room
-  once you are done. Not agreed yet.
+  box** (33% on a smaller SE). The proposal was to fill it only AFTER the
+  player submits — avatars lighting up as others answer, and where you stand.
+  **The owner looked at it on a real phone on 2026-08-23 and does not see a
+  problem**, so it is parked. A measurement said the space was empty; a person
+  holding the device said the screen reads fine. **Do not reopen this on the
+  strength of the number alone** — it was never evidence that the screen looks
+  wrong, only that there is room in it.
 
 - **Bot characters.** The plumbing is built (below); the cast is not. Names,
   per-category strengths, speed, wager habits, honking, and the leaderboard
@@ -1425,7 +1449,9 @@ Known and deliberate, and reported every run: `.mastery-group`,
 are grouping wrappers the JS queries by (`closest`, `querySelector`) and shows
 or hides inline — there is nothing for CSS to say about them.
 `.feedback-btn--flag` has no rule (the flag button falls
-back to the shared `.feedback-btn` look), and `watermark-all` is excluded
+back to the shared `.feedback-btn` look), the seven `.admin-q-edit__*` classes
+are JS query hooks on elements already styled by `.input` and `.btn`, and
+`watermark-all` is excluded
 — it is a glyph-calibration state whose cards differ by design.
 
 **COVERED is reported, never failed on.** It asks the browser, via

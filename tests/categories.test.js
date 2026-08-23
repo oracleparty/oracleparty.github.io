@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   CATEGORY_META,
   findSubcategoryNode,
+  flattenSubcategories,
   resolveCategoryLabel,
   resolveSubcategoryIcon,
 } from '../js/categories.js';
@@ -155,5 +156,84 @@ describe('resolveSubcategoryIcon', () => {
   it('resolves wild-card option icons', () => {
     const opt = CATEGORY_META['wild-card'].wildCardOptions.find(o => o.key === '__all_questions__');
     expect(resolveSubcategoryIcon('wild-card', '__all_questions__')).toBe(opt.emoji || opt.icon);
+  });
+});
+
+// ============================================
+// flattenSubcategories feeds the admin question editor's subcategory picker.
+// A key it omits is a filing an admin cannot choose, and a key it invents is a
+// filing that matches no question — both are silent, because `subcategory` is
+// a free text column with no constraint behind it.
+
+describe('flattenSubcategories', () => {
+  it('returns every subcategory of a flat category', () => {
+    const keys = flattenSubcategories('nature').map(s => s.key);
+    expect(keys).toEqual(['animals', 'plants', 'environment']);
+  });
+
+  it('descends into children and records how deep each one is', () => {
+    const geo = flattenSubcategories('world-geography');
+    const byKey = Object.fromEntries(geo.map(s => [s.key, s.depth]));
+
+    expect(byKey['human']).toBe(0);
+    expect(byKey['human-countries']).toBe(1);
+    expect(byKey['human-countries-capitals']).toBe(2);
+    expect(byKey['natural']).toBe(0);
+  });
+
+  it('keeps depth-first order, so a child follows its parent', () => {
+    const keys = flattenSubcategories('world-geography').map(s => s.key);
+    expect(keys.indexOf('human-countries')).toBe(keys.indexOf('human') + 1);
+    expect(keys.indexOf('human-countries-capitals')).toBe(keys.indexOf('human-countries') + 1);
+  });
+
+  it('includes wild-card options, which live outside `subcategories`', () => {
+    const meta = CATEGORY_META['wild-card'];
+    const keys = flattenSubcategories('wild-card').map(s => s.key);
+    for (const opt of meta.wildCardOptions || []) {
+      expect(keys).toContain(opt.key);
+    }
+  });
+
+  it('returns nothing for a category that does not exist', () => {
+    expect(flattenSubcategories('not-a-category')).toEqual([]);
+    expect(flattenSubcategories(undefined)).toEqual([]);
+  });
+
+  // The picker's whole promise is that choosing an entry files the question
+  // somewhere the game can find it again. That only holds if every key it
+  // offers is a real node in the tree it came from.
+  it('every key it offers resolves back to a node in that category', () => {
+    for (const category of Object.keys(CATEGORY_META)) {
+      const meta = CATEGORY_META[category];
+      const wildCardKeys = new Set((meta.wildCardOptions || []).map(o => o.key));
+      for (const { key, label } of flattenSubcategories(category)) {
+        expect(typeof key, `${category}/${key}`).toBe('string');
+        expect(label, `${category}/${key} has no label`).toBeTruthy();
+        if (wildCardKeys.has(key)) continue;
+        expect(findSubcategoryNode(meta, key), `${category}/${key} is not in the tree`).toBeTruthy();
+      }
+    }
+  });
+
+  // Selection matches with LIKE 'key%', so two subcategories where one key is
+  // a prefix of the other are indistinguishable to the query — asking for the
+  // shorter one silently drags in the longer one's questions. Children are
+  // deliberately named that way ('human' → 'human-countries'), so the check is
+  // for collisions BETWEEN branches, which nothing intends.
+  it('no subcategory key prefixes an unrelated one', () => {
+    for (const category of Object.keys(CATEGORY_META)) {
+      const meta = CATEGORY_META[category];
+      const subs = flattenSubcategories(category);
+      for (const a of subs) {
+        for (const b of subs) {
+          if (a.key === b.key || !b.key.startsWith(a.key)) continue;
+          // b is under a's prefix — legitimate only if b really descends from a.
+          const node = findSubcategoryNode(meta, a.key);
+          const descends = !!node && !!findSubcategoryNode({ subcategories: node.children || [] }, b.key);
+          expect(descends, `${category}: "${b.key}" is caught by "${a.key}" but is not its child`).toBe(true);
+        }
+      }
+    }
   });
 });

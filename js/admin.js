@@ -5,7 +5,11 @@
 
 import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
-import { CATEGORY_META } from './categories.js';
+import { CATEGORY_META, flattenSubcategories } from './categories.js';
+
+// Chip order for the question editor. CATEGORY_META's own order is the order
+// the host screen shows, so the two agree.
+const CATEGORY_KEYS = Object.keys(CATEGORY_META);
 import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
   fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
@@ -1128,6 +1132,14 @@ function createQuestionRow(q) {
       <label>Question<textarea class="input admin-q-edit__text" rows="3">${escapeText(text)}</textarea></label>
       <label>Answer<input class="input admin-q-edit__answer" value="${escapeText(answer)}"></label>
       <label>Alternates (comma-separated)<input class="input admin-q-edit__alts" value="${escapeText(Array.isArray(alternates) ? alternates.join(', ') : '')}"></label>
+      <div class="admin-q-edit__field">
+        <span class="admin-q-edit__label">Categories</span>
+        <div class="admin-cat-chips">${CATEGORY_KEYS.map(key => `
+          <button type="button" class="admin-cat-chip${(q.categories || []).includes(key) ? ' admin-cat-chip--on' : ''}"
+                  data-cat="${key}" aria-pressed="${(q.categories || []).includes(key)}">${escapeText(CATEGORY_META[key].label)}</button>`).join('')}
+        </div>
+      </div>
+      <label>Subcategory<select class="input admin-q-edit__subcategory"></select></label>
       <label>Format
         <select class="input admin-q-edit__format">
           <option value="open" ${q.format === 'open' ? 'selected' : ''}>Open</option>
@@ -1152,6 +1164,55 @@ function createQuestionRow(q) {
     edit.style.display = edit.style.display === 'none' ? '' : 'none';
   };
 
+  // ------------------------------------------
+  // Categories and subcategory
+  //
+  // A question filed in the wrong place used to need the Supabase SQL editor
+  // — a language question sitting in Food and Drink was unfixable from a
+  // phone. `categories` is an array (11% of questions carry more than one and
+  // that is deliberate), so it is chips rather than a menu.
+  // ------------------------------------------
+  const subSelect = row.querySelector('.admin-q-edit__subcategory');
+
+  const selectedCategories = () =>
+    [...row.querySelectorAll('.admin-cat-chip--on')].map(b => b.dataset.cat);
+
+  // The subcategory list is drawn from whichever categories are ticked, so it
+  // can never offer a subcategory that belongs to a category this question is
+  // not in. Rebuilt on every chip tap, keeping the current value if it is
+  // still reachable — untick the wrong category first and the right filing
+  // would otherwise vanish under you mid-edit.
+  function rebuildSubcategories() {
+    const keep = subSelect.value || q.subcategory || '';
+    const cats = selectedCategories();
+    let html = '<option value="">— none —</option>';
+    for (const cat of cats) {
+      const subs = flattenSubcategories(cat);
+      if (!subs.length) continue;
+      html += `<optgroup label="${escapeText(CATEGORY_META[cat].label)}">` +
+        subs.map(s =>
+          `<option value="${escapeText(s.key)}">${'  '.repeat(s.depth)}${escapeText(s.label)}</option>`
+        ).join('') + '</optgroup>';
+    }
+    // A value stored against a category that is no longer ticked would silently
+    // disappear from the menu and then be silently cleared on save. Offer it
+    // back, labelled, so removing it is a decision rather than a side effect.
+    if (keep && !html.includes(`value="${keep}"`)) {
+      html += `<optgroup label="Currently filed as"><option value="${escapeText(keep)}">${escapeText(keep)}</option></optgroup>`;
+    }
+    subSelect.innerHTML = html;
+    subSelect.value = keep;
+  }
+  rebuildSubcategories();
+
+  row.querySelectorAll('.admin-cat-chip').forEach(chip => {
+    chip.onclick = () => {
+      const on = chip.classList.toggle('admin-cat-chip--on');
+      chip.setAttribute('aria-pressed', String(on));
+      rebuildSubcategories();
+    };
+  });
+
   // Save handler
   row.querySelector('.admin-q-edit__save').onclick = async () => {
     const statusEl = row.querySelector('.admin-q-edit__status');
@@ -1169,10 +1230,23 @@ function createQuestionRow(q) {
     const altsCol = q.acceptable_answers !== undefined ? 'acceptable_answers'
       : q.acceptable_alternates !== undefined ? 'acceptable_alternates' : 'alternates';
 
+    const newCategories = selectedCategories();
+    const newSubcategory = subSelect.value || null;
+
+    // A question in no category is drawable by nothing and unfindable by
+    // category filter — it is not deleted, it is worse, because it still
+    // counts in the bank. Refuse rather than save it.
+    if (newCategories.length === 0) {
+      setStatus(statusEl, 'Pick at least one category — a question in none can never be drawn.', { sticky: true });
+      return;
+    }
+
     const updates = {
       [textCol]: newText,
       [answerCol]: newAnswer,
       [altsCol]: newAlts,
+      categories: newCategories,
+      subcategory: newSubcategory,
       format: newFormat,
       difficulty: newDifficulty
     };
@@ -1195,6 +1269,16 @@ function createQuestionRow(q) {
     }
     // Update the summary text
     row.querySelector('.admin-q-row__text').textContent = newText.length > 80 ? newText.slice(0, 80) + '\u2026' : newText;
+    // And the summary line, or the row goes on claiming the old filing until
+    // the page is searched again \u2014 the "the screen is now telling the truth"
+    // rule from CLAUDE.md #5, which is about more than the error case.
+    const metaSpans = row.querySelectorAll('.admin-q-row__meta span');
+    if (metaSpans[0]) metaSpans[0].textContent = newCategories.join(', ');
+    if (metaSpans[1]) metaSpans[1].textContent = newFormat;
+    if (metaSpans[2]) metaSpans[2].textContent = newDifficulty;
+    // So the next tap on this row starts from what was actually stored.
+    q.categories = newCategories;
+    q.subcategory = newSubcategory;
     setStatus(statusEl, 'Saved!');
   };
 

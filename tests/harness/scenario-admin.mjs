@@ -495,8 +495,100 @@ try {
     }
   }
 
-  // Tapping the open one again closes it.
-  await admin.page.click('.admin-panel__head[data-panel="flags"]').catch(() => {});
+  // ============================================================
+  // REFILING A QUESTION
+  //
+  // A question in the wrong category needed the Supabase SQL editor — a
+  // language question stuck in Food and Drink could not be moved from a
+  // phone. The chips and the subcategory menu are the fix, and the thing to
+  // check is not that they render but that what they write reaches the row:
+  // `categories` is an array and `subcategory` a free text column with no
+  // constraint behind it, so a wrong value is stored happily and shows up
+  // months later as a question nobody can find.
+  // ============================================================
+  heading('refiling a question');
+  await admin.page.click('.admin-panel__head[data-panel="questions"]').catch(() => {});
+  await admin.page.waitForTimeout(1200);
+
+  const qRow = admin.page.locator('#question-results .admin-q-row').first();
+  if (!await qRow.isVisible().catch(() => false)) {
+    problems.push('the question bank listed nothing to edit');
+  } else {
+    // The bank lists newest first, so the first row is NOT q1. Read the id off
+    // the row being edited rather than assuming which one it is — asserting on
+    // q1 made this report a working save as a silent failure.
+    const editedId = await qRow.getAttribute('data-qid').catch(() => null);
+    note(`editing question: ${editedId}`);
+    await qRow.locator('.admin-q-row__summary').click().catch(() => {});
+    await admin.page.waitForTimeout(400);
+
+    const chipCount = await qRow.locator('.admin-cat-chip').count().catch(() => 0);
+    note(`category chips offered: ${chipCount}`);
+    if (chipCount !== 12) {
+      problems.push(`the editor offers ${chipCount} category chips, expected 12 — a category with no chip cannot be filed into`);
+    }
+
+    // Seeded as history. Move it to culture-society, and file it under a
+    // subcategory that only exists in the new category — which is the case
+    // the picker has to get right, because the list is rebuilt from whatever
+    // is ticked.
+    await qRow.locator('.admin-cat-chip[data-cat="history"]').click().catch(() => {});
+    await qRow.locator('.admin-cat-chip[data-cat="culture-society"]').click().catch(() => {});
+    await admin.page.waitForTimeout(300);
+
+    const subOptions = await qRow.locator('.admin-q-edit__subcategory option').allTextContents().catch(() => []);
+    note(`subcategories offered after switching category: ${subOptions.map(s => s.trim()).join(', ')}`);
+    if (!subOptions.some(s => /Language/i.test(s))) {
+      problems.push('switching category did not rebuild the subcategory list — it still offers the old category\'s filings');
+    }
+    if (subOptions.some(s => /Ancient|Medieval/i.test(s))) {
+      problems.push('the subcategory list still offers History filings after History was unticked');
+    }
+
+    await qRow.locator('.admin-q-edit__subcategory').selectOption('language').catch(() => {});
+    await qRow.locator('.admin-q-edit__save').click().catch(() => {});
+    await admin.page.waitForTimeout(1200);
+
+    const refiled = table.store.table('questions').find(q => q.id === editedId);
+    note(`stored filing: categories=${JSON.stringify(refiled?.categories)} subcategory=${JSON.stringify(refiled?.subcategory)}`);
+    if (JSON.stringify(refiled?.categories) !== JSON.stringify(['culture-society'])) {
+      problems.push(`refiling did not write the categories (row says ${JSON.stringify(refiled?.categories)})`);
+    }
+    if (refiled?.subcategory !== 'language') {
+      problems.push(`refiling did not write the subcategory (row says ${JSON.stringify(refiled?.subcategory)})`);
+    }
+
+    // The row on screen must agree with what was stored, or the next tap
+    // edits from a stale starting point.
+    const summary = (await qRow.locator('.admin-q-row__meta').textContent().catch(() => '')) || '';
+    if (!summary.includes('culture-society')) {
+      problems.push(`the row still shows the old category after saving: ${summary.replace(/\s+/g, ' ').trim()}`);
+    }
+
+    // A question in no category is drawable by nothing, and the editor must
+    // refuse rather than store it.
+    await qRow.locator('.admin-cat-chip[data-cat="culture-society"]').click().catch(() => {});
+    await qRow.locator('.admin-q-edit__save').click().catch(() => {});
+    await admin.page.waitForTimeout(800);
+    const stranded = table.store.table('questions').find(q => q.id === editedId);
+    const refusal = (await qRow.locator('.admin-q-edit__status').textContent().catch(() => '')) || '';
+    note(`saving with no category said: ${JSON.stringify(refusal.trim())}`);
+    if ((stranded?.categories || []).length === 0) {
+      problems.push('a question was saved into no category at all — nothing can ever draw it again');
+    }
+    if (!/at least one category/i.test(refusal)) {
+      problems.push(`saving with no category gave an unhelpful message: ${JSON.stringify(refusal.trim())}`);
+    }
+  }
+
+  // Tapping the open one again closes it. Whichever one is open — the
+  // section above leaves the question bank showing, and hardcoding a panel
+  // name here made this report "does not close" when it had merely opened a
+  // different one.
+  const openNow = await admin.page.evaluate(() =>
+    document.querySelector('.admin-panel__head[aria-expanded="true"]')?.dataset.panel).catch(() => null);
+  note(`panel open before the close test: ${openNow}`);
+  if (openNow) await admin.page.click(`.admin-panel__head[data-panel="${openNow}"]`).catch(() => {});
   await admin.page.waitForTimeout(400);
   const anyOpen = await admin.page.evaluate(() =>
     document.querySelectorAll('.admin-panel__head[aria-expanded="true"]').length).catch(() => -1);
