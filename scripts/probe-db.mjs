@@ -776,173 +776,60 @@ try {
 }
 
 // ============================================
-// UNGRADEABLE ANSWERS
+// ANSWER KEYS WORTH A SECOND LOOK
 //
-// CLAUDE.md has carried three content rules since long before this section
-// existed, and nothing had ever measured them against the bank:
+// The rules live in js/answer-health.js and are shared with the admin page,
+// which runs the same scan in the browser and lists the same questions as
+// editable rows. Two copies would drift, and the whole value of this is that
+// the CI log and the phone say the same thing.
 //
-//   * date questions should ask for the YEAR, unless the exact date is famous
-//   * number questions should accept ranges or rounded values
-//   * flag any imported question expecting an exact date or a specific number
-//
-// They matter because judging is fuzzy matching against the answer key plus
-// stored alternates. Under four characters the match is exact, and above that
-// it allows one typo per four characters — so "8,848" and "8848" are two
-// different answers, and a player who knows Everest is about 8,850m is marked
-// wrong. There is no error and no complaint: the player simply believes they
-// got it wrong.
-//
-// These are CANDIDATES FOR A HUMAN TO READ, not verdicts. "9/11" and "1776"
-// are exact dates that belong in the bank. The point is to produce a short
-// list somebody can go through, which is only worth doing now that the admin
-// page can edit an answer key from a phone.
+// CANDIDATES, NOT VERDICTS. "9/11" and "1776" are exact dates that belong in
+// the bank. Nothing here writes an acceptable answer: that is the owner's, by
+// rule, and the value of this bank is that it is not model-written.
 // ============================================
 
-console.log('\n--- ANSWERS THAT MAY BE UNGRADEABLE (candidates, not verdicts) ---');
+console.log('\n--- ANSWER KEYS WORTH A SECOND LOOK (candidates, not verdicts) ---');
 try {
-  // A full date: a month name or a numeric d/m/y, as opposed to a bare year.
-  const MONTH = '(january|february|march|april|may|june|july|august|september|october|november|december)';
-  const FULL_DATE = new RegExp(`(\\b\\d{1,2}\\s+${MONTH}\\b|\\b${MONTH}\\s+\\d{1,2}\\b|\\b\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}\\b)`, 'i');
-  // A number with four or more significant digits that is not a bare year.
-  // 1969 is a year; 8,848 and 299792458 are figures somebody has to reproduce.
-  const BIG_NUMBER = /(\d[\d,\.]{3,})/;
-  const isBareYear = t => /^\s*(circa\s+|c\.\s*|around\s+)?\d{3,4}\s*(bc|bce|ad|ce)?\s*$/i.test(t);
+  const { findAnswersNeedingReview } = await import('../js/answer-health.js');
 
-  const flagged = { dates: [], numbers: [], long: [] };
-  let seen = 0, withAlts = 0, page = 0, more = true;
-
-  while (more && page < 12) {
+  const rows = [];
+  let page = 0, ok = true;
+  while (page < 12) {
     const res = await req(`questions?select=id,question,correct_answer,acceptable_answers&limit=1000&offset=${page * 1000}`);
     if (res.status !== 200 && res.status !== 206) {
       console.log(`  (could not read questions: HTTP ${res.status})`);
-      more = false;
+      ok = false;
       break;
     }
-    const rows = JSON.parse(res.body || '[]');
-    seen += rows.length;
-    for (const r of rows) {
-      const a = String(r.correct_answer ?? '').trim();
-      if (!a) continue;
-      const alts = Array.isArray(r.acceptable_answers) ? r.acceptable_answers.length : 0;
-      if (alts > 0) withAlts++;
-
-      // An alternate is the author saying "I have thought about how this is
-      // typed", so a question with one is not a candidate for review.
-      if (alts > 0) continue;
-
-      if (FULL_DATE.test(a)) {
-        flagged.dates.push([r.id, r.question, a]);
-      } else if (!isBareYear(a) && BIG_NUMBER.test(a)) {
-        flagged.numbers.push([r.id, r.question, a]);
-      } else if (a.length > 60) {
-        flagged.long.push([r.id, r.question, a]);
-      }
-    }
-    more = rows.length === 1000;
+    const batch = JSON.parse(res.body || '[]');
+    rows.push(...batch);
+    if (batch.length < 1000) break;
     page++;
   }
 
-  const show = (label, rows, why) => {
-    const pct = seen ? ((rows.length / seen) * 100).toFixed(1) : '0.0';
-    console.log(`\n  ${label}: ${rows.length} of ${seen} (${pct}%) — ${why}`);
-    for (const [, q, a] of rows.slice(0, 6)) {
-      const qt = String(q ?? '').replace(/\s+/g, ' ').slice(0, 68);
-      console.log(`     "${qt}${qt.length >= 68 ? '…' : ''}"  ->  ${JSON.stringify(String(a).slice(0, 44))}`);
-    }
-    if (rows.length > 6) console.log(`     ...and ${rows.length - 6} more`);
-  };
-
-  if (seen === 0) {
-    console.log('  (no questions read — nothing established)');
+  if (!ok || rows.length === 0) {
+    if (ok) console.log('  (no questions read — nothing established)');
   } else {
-    console.log(`  checked ${seen} questions; ${withAlts} carry at least one acceptable alternate`);
-    console.log('  Only questions with NO alternates are listed — an alternate means somebody');
-    console.log('  has already thought about how the answer gets typed.');
-    show('exact dates', flagged.dates,
-      'a day and month, where the rule asks for the year unless the date is famous');
-    show('specific numbers', flagged.numbers,
-      'four or more digits with no rounded or ranged alternate accepted');
-    show('very long answers', flagged.long,
-      'over 60 characters, so fuzzy matching allows 15+ typos and almost anything passes');
-    if (flagged.dates.length || flagged.numbers.length || flagged.long.length) {
-      console.log('\n  Fix from admin.html -> Question Bank -> search the question -> tap it,');
-      console.log('  and add the forms a player would actually type as alternates.');
+    const found = findAnswersNeedingReview(rows);
+    const withAlts = rows.filter(r => Array.isArray(r.acceptable_answers) && r.acceptable_answers.length).length;
+    console.log(`  checked ${rows.length} questions; ${withAlts} carry at least one acceptable alternate`);
+    console.log('  Questions that already have an alternate are skipped — an alternate is the');
+    console.log('  author saying they have thought about how the answer gets typed.');
+
+    if (found.length === 0) {
+      console.log('  Nothing needs a second look.');
+    } else {
+      const byKind = new Map();
+      for (const f of found) byKind.set(f.finding.label, (byKind.get(f.finding.label) || 0) + 1);
+      console.log(`  ${found.length} worth a look: ${[...byKind].map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')}`);
+      for (const { question, finding } of found) {
+        const qt = String(question.question ?? '').replace(/\s+/g, ' ').slice(0, 58);
+        console.log(`     [${finding.kind}] "${qt}${qt.length >= 58 ? '\u2026' : ''}"  ->  ${JSON.stringify(String(question.correct_answer).slice(0, 40))}`);
+      }
+      console.log('\n  The same list is on admin.html -> Question Bank -> "Review answer keys",');
+      console.log('  where each row opens for editing. Add the forms a player would actually type.');
     }
   }
 } catch (err) {
   console.log(`  (could not check answers: ${err.message})`);
-}
-
-// ============================================
-// UNITS IN ANSWER KEYS
-//
-// Measured because the matcher was tested against real answer keys and
-// rejected "1776 feet" for a key of "1,776 ft". Normalisation strips the
-// comma, so both sides are "1776 ft" vs "1776 feet" — a Levenshtein distance
-// of 2 against a threshold of 1. The player wrote the unit out and was marked
-// wrong.
-//
-// normalizeAnswer ALREADY expands three abbreviations this way — bil, mil and
-// k, each anchored to a preceding digit. Whether to extend that to physical
-// units is a decision about how the game judges, so this measures how many
-// answers it would touch before anybody proposes it.
-//
-// Reported, not fixed. Nothing here generates an acceptable answer: that is
-// the owner's, by rule.
-// ============================================
-
-console.log('\n--- ANSWER KEYS ENDING IN A UNIT ABBREVIATION ---');
-try {
-  // Anchored to a preceding digit, exactly like the existing expansions, so a
-  // name ending in "m" or a word ending in "ft" is not counted.
-  const UNITS = [
-    ['ft', 'feet'], ['m', 'metres/meters'], ['km', 'kilometres'], ['mi', 'miles'],
-    ['cm', 'centimetres'], ['mm', 'millimetres'], ['kg', 'kilograms'], ['lb', 'pounds'],
-    ['lbs', 'pounds'], ['oz', 'ounces'], ['mph', 'miles per hour'], ['kph', 'km per hour'],
-    ['sec', 'seconds'], ['min', 'minutes'], ['hr', 'hours'], ['yr', 'years'],
-  ];
-  const hits = new Map();
-  const examples = [];
-  let seen = 0, page = 0, more = true;
-
-  while (more && page < 12) {
-    const res = await req(`questions?select=id,question,correct_answer,acceptable_answers&limit=1000&offset=${page * 1000}`);
-    if (res.status !== 200 && res.status !== 206) {
-      console.log(`  (could not read questions: HTTP ${res.status})`);
-      more = false;
-      break;
-    }
-    const rows = JSON.parse(res.body || '[]');
-    seen += rows.length;
-    for (const r of rows) {
-      const a = String(r.correct_answer ?? '').trim();
-      if (!a) continue;
-      for (const [abbr, full] of UNITS) {
-        if (new RegExp(`\\d\\s*${abbr}\\b\\.?\\s*$`, 'i').test(a)) {
-          hits.set(abbr, (hits.get(abbr) || 0) + 1);
-          if (examples.length < 8) examples.push([r.question, a, full]);
-          break;
-        }
-      }
-    }
-    more = rows.length === 1000;
-    page++;
-  }
-
-  const total = [...hits.values()].reduce((s, n) => s + n, 0);
-  if (seen === 0) {
-    console.log('  (no questions read — nothing established)');
-  } else if (total === 0) {
-    console.log(`  checked ${seen} questions; none end in a unit abbreviation.`);
-    console.log('  So teaching the matcher unit expansions would change nothing — do not.');
-  } else {
-    console.log(`  checked ${seen} questions; ${total} end in one (${((total / seen) * 100).toFixed(1)}%)`);
-    console.log(`  by abbreviation: ${[...hits].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}=${n}`).join(', ')}`);
-    for (const [q, a, full] of examples) {
-      const qt = String(q ?? '').replace(/\s+/g, ' ').slice(0, 62);
-      console.log(`     "${qt}${qt.length >= 62 ? '…' : ''}"  ->  ${JSON.stringify(a)}  (a player may type "${full}")`);
-    }
-  }
-} catch (err) {
-  console.log(`  (could not check units: ${err.message})`);
 }

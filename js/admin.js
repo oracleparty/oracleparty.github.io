@@ -6,6 +6,7 @@
 import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, flattenSubcategories } from './categories.js';
+import { findAnswersNeedingReview } from './answer-health.js';
 
 // Chip order for the question editor. CATEGORY_META's own order is the order
 // the host screen shows, so the two agree.
@@ -1058,6 +1059,9 @@ let _questionOffset = 0;
 const PAGE_SIZE = ADMIN_PAGE_SIZE;
 
 async function loadQuestions() {
+  // Clear the review summary — leaving it up would have it describing a list
+  // that has just been replaced by search results.
+  setStatus($('#q-review-summary'), '');
   const search = $('#q-search').value.trim();
   const category = $('#q-category').value;
   const format = $('#q-format').value;
@@ -1066,6 +1070,86 @@ async function loadQuestions() {
   const questions = await fetchQuestions(search, category, format, 0);
   renderQuestions(questions);
   $('#btn-load-more').style.display = questions.length >= PAGE_SIZE ? '' : 'none';
+}
+
+// ============================================
+// REVIEW ANSWER KEYS
+//
+// The same rules the CI probe runs, in the browser, so the list lands on the
+// phone that can edit them instead of in a workflow log the owner would have
+// to be talked through. `answer-health.js` is shared by both, so the two can
+// never disagree about what counts.
+//
+// Deliberately behind a button. It reads four columns for the whole bank —
+// about 4,900 rows — which is far too much to do on every page load, and the
+// answer changes only when somebody edits a question.
+// ============================================
+
+async function reviewAnswerKeys() {
+  const summary = $('#q-review-summary');
+  const results = $('#question-results');
+  const btn = $('#btn-review-answers');
+  if (!summary || !results) return;
+
+  btn.disabled = true;
+  setStatus(summary, 'Reading the question bank...', { sticky: true });
+  results.innerHTML = '';
+  $('#btn-load-more').style.display = 'none';
+
+  // Paged, because PostgREST caps a single response. Only the four columns the
+  // rules read, so this is a few hundred KB rather than a few megabytes.
+  const rows = [];
+  try {
+    for (let page = 0; page < 12; page++) {
+      const from = page * 1000;
+      const { data, error } = await supabase
+        .from('questions')
+        .select('id, question, correct_answer, acceptable_answers, categories, subcategory, format, difficulty')
+        .range(from, from + 999);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+  } catch (err) {
+    logger.error('Admin', 'reviewAnswerKeys failed', err);
+    setStatus(summary, `Couldn't read the question bank: ${err.message || err}`, { sticky: true });
+    btn.disabled = false;
+    return;
+  }
+
+  const found = findAnswersNeedingReview(rows);
+  btn.disabled = false;
+
+  if (rows.length === 0) {
+    setStatus(summary, 'No questions were readable, so nothing was checked.', { sticky: true });
+    return;
+  }
+  if (found.length === 0) {
+    setStatus(summary, `Checked ${rows.length.toLocaleString()} questions — none need a second look.`, { sticky: true });
+    return;
+  }
+
+  const byKind = {};
+  for (const f of found) byKind[f.finding.label] = (byKind[f.finding.label] || 0) + 1;
+  setStatus(summary,
+    `${found.length} of ${rows.length.toLocaleString()} worth a look — ` +
+    Object.entries(byKind).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ') +
+    '. Tap one to add the forms people would actually type. These are candidates, not mistakes.',
+    { sticky: true });
+
+  // Unit findings first: they are the ones that name the exact spelling to add,
+  // so they are the cheapest to act on.
+  const order = { unit: 0, number: 1, date: 2, long: 3 };
+  found.sort((a, b) => (order[a.finding.kind] ?? 9) - (order[b.finding.kind] ?? 9));
+
+  for (const { question, finding } of found) {
+    const row = createQuestionRow(question);
+    const note = document.createElement('p');
+    note.className = 'admin-review__note';
+    note.textContent = `${finding.label} — ${finding.why}`;
+    row.querySelector('.admin-q-row__summary')?.appendChild(note);
+    results.appendChild(row);
+  }
 }
 
 async function loadMoreQuestions() {
@@ -1314,6 +1398,7 @@ function attachListeners() {
 
   // Question search
   $('#btn-search-questions').onclick = loadQuestions;
+  $('#btn-review-answers').onclick = reviewAnswerKeys;
   $('#q-search').onkeydown = (e) => { if (e.key === 'Enter') loadQuestions(); };
   $('#btn-load-more').onclick = loadMoreQuestions;
 
@@ -1376,7 +1461,20 @@ init();
 
 const QH_PAGE_SIZE = 25;
 // Minimum plays/votes before a percentage is trustworthy enough to rank by.
-const QH_MIN_SAMPLE = 3;
+//
+// 1 while the data is thin, at the owner's request: with two people testing,
+// nothing ever reaches 3, so both percentage sorts showed an empty list and
+// there was no way to tell whether ratings were being recorded at all. An
+// empty list for "not enough data yet" looks exactly like an empty list for
+// "the write is broken", which is the confusion this whole project keeps
+// paying for.
+//
+// The reasoning behind 3 has not changed and still applies once real games
+// have been played: one thumbs-up is 100% liked and would outrank 47 likes
+// against 3 dislikes. RAISE THIS BACK TO 3 once the game has had a few real
+// sessions. Until then the raw count sits next to every percentage, which is
+// what makes a 100%-from-one-vote readable rather than misleading.
+const QH_MIN_SAMPLE = 1;
 let _qhOffset = 0;
 // Flags first. Overrides are the better long-term evidence that an answer key
 // is wrong — a host flipping a judgement is a human saying so, and it costs the
@@ -1504,6 +1602,10 @@ async function renderAnswerTally(row, q) {
 function createHealthRow(q) {
   const row = document.createElement('div');
   row.className = 'admin-flag-row';
+  // So a check can name which question is on screen. Without it the row is
+  // anonymous and any assertion about the list can only count rows, which
+  // cannot tell "the thin-sample one is missing" from "there are fewer".
+  row.dataset.qid = q.id;
   row.style.cssText = 'padding:var(--space-sm) 0; border-bottom:1px solid var(--color-border);';
 
   const pct = q.pct_correct == null ? '—' : `${q.pct_correct}% (${q.times_asked})`;
@@ -1611,9 +1713,13 @@ async function loadQuestionHealth() {
     // State the minimum out loud. A hidden threshold silently drops rows and
     // is impossible to question later without reading the source.
     if (_qhSort === 'correct') {
-      parts.push(`Showing questions played at least ${QH_MIN_SAMPLE}× (percentages below that are noise).`);
+      parts.push(QH_MIN_SAMPLE > 1
+        ? `Showing questions played at least ${QH_MIN_SAMPLE}× (percentages below that are noise).`
+        : 'Showing every question that has been played at all — a percentage from one or two plays is noise, so read the count beside it.');
     } else if (_qhSort === 'liked') {
-      parts.push(`Showing questions with at least ${QH_MIN_SAMPLE} votes (percentages below that are noise).`);
+      parts.push(QH_MIN_SAMPLE > 1
+        ? `Showing questions with at least ${QH_MIN_SAMPLE} votes (percentages below that are noise).`
+        : 'Showing every question with any vote at all — a percentage from one or two votes is noise, so read the count beside it.');
     }
 
     parts.push(played === 0

@@ -6225,6 +6225,22 @@ body::after {
   font-weight: 600;
 }
 
+.admin-review__summary {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  margin-bottom: var(--space-sm);
+}
+
+/* Sits under the question text on a flagged row, saying what to add and why.
+   Amber as TEXT, never as a fill — see .admin-panel__count. */
+.admin-review__note {
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
 .admin-q-edit__status {
   font-size: var(--text-xs);
   color: var(--color-success);

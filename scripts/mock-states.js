@@ -939,6 +939,50 @@ export const STATES = {
     },
   },
 
+  // The answer-key review, with a flagged row open. The note under a question
+  // is the longest run of explanatory text anywhere on this page, and it sits
+  // inside a row that also has to fit a question. Mirrors reviewAnswerKeys().
+  'admin-answer-review': {
+    page: 'admin',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const loading = document.getElementById('admin-loading');
+      if (loading) loading.style.display = 'none';
+      const content = document.getElementById('admin-content');
+      if (content) content.style.display = '';
+
+      const head = document.querySelector('.admin-panel__head[data-panel="questions"]');
+      if (head) head.setAttribute('aria-expanded', 'true');
+      const body = document.getElementById('panel-questions');
+      if (body) body.hidden = false;
+
+      const summary = document.getElementById('q-review-summary');
+      if (summary) summary.textContent =
+        '22 of 4,859 worth a look — 2 unit abbreviated, 16 exact figure, 4 exact date. '
+        + 'Tap one to add the forms people would actually type. These are candidates, not mistakes.';
+
+      const results = document.getElementById('question-results');
+      if (!results) return;
+      const flagged = [
+        ['How tall is One World Trade Center?', '1,776 ft', 'culture-society', 'Unit abbreviated',
+         'A player who writes the unit out — "feet" — is marked wrong. Add that spelling as an alternate.'],
+        ['In the 1994 movie Speed, what minimum speed must the bus maintain?', '50 mph', 'pop-culture', 'Unit abbreviated',
+         'A player who writes the unit out — "miles per hour" — is marked wrong. Add that spelling as an alternate.'],
+        ['What are the first 6 digits of Pi?', '3.14159', 'science', 'Exact figure',
+         'Digits are matched exactly — no typo tolerance at all — so a rounded or differently-punctuated answer fails. Add the forms people would type.'],
+      ];
+      results.innerHTML = flagged.map(([q, a, cat, label, why]) => `
+        <div class="admin-q-row">
+          <div class="admin-q-row__summary">
+            <div class="admin-q-row__text">${q}</div>
+            <div class="admin-q-row__meta"><span>${cat}</span><span>open</span><span>medium</span></div>
+            <p class="admin-review__note">${label} — ${why}</p>
+          </div>
+        </div>`).join('');
+    },
+  },
+
   'admin-drill': {
     page: 'admin',
     screen: null,

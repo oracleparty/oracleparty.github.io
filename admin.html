@@ -152,6 +152,11 @@
               </select>
               <button id="btn-search-questions" class="btn btn-primary">Search</button>
             </div>
+            <!-- Runs the same rules as the CI probe, in the browser, so the
+                 list of answer keys worth a look is on the phone that can edit
+                 them rather than in a workflow log. -->
+            <button id="btn-review-answers" class="btn btn-secondary btn-block" style="margin-bottom:var(--space-sm);">Review answer keys</button>
+            <p id="q-review-summary" class="admin-review__summary"></p>
             <div id="question-results"></div>
             <button id="btn-load-more" class="btn btn-secondary" style="display:none; margin-top:var(--space-sm);">Load More</button>
           </div>

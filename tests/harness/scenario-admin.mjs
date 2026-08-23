@@ -31,6 +31,18 @@ try {
     difficulty: 'medium', format: 'open', fun_fact: null, discarded: false,
   })));
 
+  // Two more for the answer-key review. They differ in exactly one thing —
+  // whether somebody has already added an alternate — because that is the
+  // distinction the scan is built on and the one most likely to break.
+  table.store.seed('questions', [
+    { id: 'q-unit', question: 'How tall is One World Trade Center?',
+      correct_answer: '1,776 ft', acceptable_answers: [], categories: ['culture-society'],
+      subcategory: null, difficulty: 'medium', format: 'open', fun_fact: null, discarded: false },
+    { id: 'q-unit-ok', question: 'How tall is the Eiffel Tower?',
+      correct_answer: '1,083 ft', acceptable_answers: ['1083 feet'], categories: ['culture-society'],
+      subcategory: null, difficulty: 'medium', format: 'open', fun_fact: null, discarded: false },
+  ]);
+
   // question_health is a VIEW in the real database. The store serves it as a
   // plain table, which is fine — the page only reads it.
   table.store.seed('question_health', [
@@ -217,6 +229,36 @@ try {
     const qhText = (await admin.page.textContent('#qh-list').catch(() => '')) || '';
     problems.push(`question health listed nothing — page says: ${qhText.replace(/\s+/g, ' ').trim().slice(0, 90)}`);
   }
+
+  // Both percentage sorts must show something with a one-vote sample. The
+  // owner reported the opposite: testing with one friend, nothing reached the
+  // old minimum of 3, so "% liked" was empty — and an empty list for "not
+  // enough data yet" is indistinguishable from one for "the write is broken",
+  // which is the confusion this project keeps paying for.
+  for (const [sort, what] of [['liked', 'votes'], ['correct', 'plays']]) {
+    await admin.page.selectOption('#qh-sort', sort).catch(() => {});
+    await admin.page.waitForTimeout(900);
+    const ids = await admin.page.evaluate(() =>
+      [...document.querySelectorAll('#qh-list .admin-flag-row')].map(r => r.dataset.qid)).catch(() => []);
+    const summary = (await admin.page.textContent('#qh-summary').catch(() => '')) || '';
+    note(`sorted by ${sort}: ${JSON.stringify(ids)} — ${summary.replace(/\s+/g, ' ').trim().slice(0, 86)}`);
+    if (ids.length === 0) {
+      problems.push(`sorting by "${sort}" listed nothing, with seeded ${what} in the database — a thin sample must still be shown, or "no data yet" looks like a broken write`);
+    }
+    // q3 is the THIN one — 1 vote, 4 plays. Counting rows would not catch a
+    // revert to a minimum of 3, because the other two seeded questions clear
+    // it; naming the question that must survive does.
+    if (!ids.includes('q3')) {
+      problems.push(`sorting by "${sort}" hid the thinnest-sampled question, so a room of two people sees an empty list and cannot tell recording from silence`);
+    }
+    // And it has to say the sample is thin, or a 100%-from-one-vote reads as
+    // a fact about the question.
+    if (!/noise/i.test(summary)) {
+      problems.push(`sorting by "${sort}" does not warn that a small-sample percentage is noise`);
+    }
+  }
+  await admin.page.selectOption('#qh-sort', 'flags').catch(() => {});
+  await admin.page.waitForTimeout(900);
 
   const sortValue = await admin.page.inputValue('#qh-sort').catch(() => null);
   note(`question health opens sorted by: ${sortValue}`);
@@ -579,6 +621,45 @@ try {
     if (!/at least one category/i.test(refusal)) {
       problems.push(`saving with no category gave an unhelpful message: ${JSON.stringify(refusal.trim())}`);
     }
+  }
+
+  // ============================================================
+  // REVIEWING ANSWER KEYS
+  //
+  // The same rules the CI probe runs, in the browser. What matters is that
+  // the list is SHORT and RIGHT: a review list that flags ordinary answers is
+  // one nobody reads twice, so the control — a question whose alternate has
+  // already been added — matters as much as the hit.
+  // ============================================================
+  heading('reviewing answer keys');
+  await admin.page.click('#btn-review-answers').catch(() => {});
+  await admin.page.waitForTimeout(1500);
+
+  const reviewSummary = (await admin.page.textContent('#q-review-summary').catch(() => '')) || '';
+  note(`review says: ${reviewSummary.replace(/\s+/g, ' ').trim().slice(0, 130)}`);
+
+  const reviewed = await admin.page.evaluate(() =>
+    [...document.querySelectorAll('#question-results .admin-q-row')].map(r => ({
+      qid: r.dataset.qid,
+      note: (r.querySelector('.admin-review__note')?.textContent || '').trim(),
+    }))).catch(() => []);
+  note(`flagged: ${JSON.stringify(reviewed.map(r => r.qid))}`);
+
+  if (!reviewed.some(r => r.qid === 'q-unit')) {
+    problems.push('the answer-key review did not flag "1,776 ft", where a player writing "feet" is marked wrong');
+  }
+  if (reviewed.some(r => r.qid === 'q-unit-ok')) {
+    problems.push('the review flagged a question that already has an alternate — nagging about work already done is how a review list stops being read');
+  }
+  if (reviewed.some(r => /^q\d+$/.test(r.qid || ''))) {
+    problems.push('the review flagged an ordinary answer like "Answer 1", so the list is noise');
+  }
+  const withNote = reviewed.filter(r => r.note.length > 20).length;
+  if (reviewed.length > 0 && withNote !== reviewed.length) {
+    problems.push(`${reviewed.length - withNote} flagged row(s) do not say what to do about it`);
+  }
+  if (!/candidates, not mistakes/i.test(reviewSummary)) {
+    problems.push('the review does not say these are candidates rather than mistakes');
   }
 
   // Tapping the open one again closes it. Whichever one is open — the
