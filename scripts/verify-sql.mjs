@@ -115,7 +115,11 @@ function psqlFileTuples(conn, file) {
   const args = conn.url
     ? [conn.url]
     : ['-h', conn.host, '-p', String(conn.port), '-U', 'postgres', '-d', 'postgres'];
-  return execFileSync('psql', [...args, '-v', 'ON_ERROR_STOP=1', '-tAF', '|', '-f', file], {
+  // -q matters: without it psql echoes a command tag for every statement
+  // ("CREATE TABLE", "DO"), and those lines were being counted as rules that
+  // passed — the reported total was two higher than the number of rules that
+  // exist, and any malformed row would have passed the same way.
+  return execFileSync('psql', [...args, '-v', 'ON_ERROR_STOP=1', '-q', '-tAF', '|', '-f', file], {
     encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'inherit'],
   });
 }
@@ -350,6 +354,16 @@ function main() {
     // ---- the game rules ---------------------------------------------------
     const rulesOut = psqlFileTuples(conn, join(ROOT, RULES));
     const ruleRows = rulesOut.split('\n').filter(l => l.trim()).map(l => l.split('|'));
+    // Anything that is not exactly `check | got | want` is a broken fixture,
+    // not a rule. Left as-is it counts as a rule whose got and want are both
+    // undefined, which passes — a line the script cannot read must never be
+    // read as good news.
+    const malformed = ruleRows.filter(r => r.length !== 3);
+    if (malformed.length) {
+      console.error(`\n✗ ${malformed.length} line(s) from the rules script are not check|got|want:\n`);
+      for (const m of malformed.slice(0, 10)) console.error(`  ${JSON.stringify(m.join('|'))}`);
+      process.exit(1);
+    }
     const broken = ruleRows.filter(([, got, want]) => got !== want);
     if (broken.length) {
       console.error(`\n✗ ${broken.length} of ${ruleRows.length} game rules do not hold:\n`);

@@ -35,7 +35,12 @@ BEGIN
 
   INSERT INTO rooms (id, code, question_ids, current_question, questions_per_game,
                      question_timer, question_started_at, game_phase)
-  VALUES (rid, '123456', q, 0, 3, 30, now(), 'question');
+  -- A random code, not a fixed one: rooms.code is UNIQUE, so a hardcoded value
+  -- made this script runnable exactly once per database. verify-sql.mjs always
+  -- starts a fresh one and so never saw it, but running it by hand against an
+  -- existing scratch database failed on the second go — and the failure looked
+  -- like a broken rule rather than a broken fixture.
+  VALUES (rid, lpad((random() * 999999)::int::text, 6, '0'), q, 0, 3, 30, now(), 'question');
 
   INSERT INTO players (id, room_id, display_name, is_host, joined_at)
   VALUES (alice, rid, 'Alice', true, now() - interval '2 min'),

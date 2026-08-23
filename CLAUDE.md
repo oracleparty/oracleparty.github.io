@@ -1387,8 +1387,12 @@ Three things become impossible that were reachable by anyone willing to edit a
 request: answering a question that is not on screen, answering after the timer,
 and spending a wager twice.
 
-`tests/sql/game-rules.sql` states 26 rules as `check | got | want` data and
-`verify-sql.mjs` fails on any row where the two differ, naming the rule.
+`tests/sql/game-rules.sql` states 24 rules as `check | got | want` data and
+`verify-sql.mjs` fails on any row where the two differ, naming the rule — and
+on any line that is not exactly three fields, because a line the script cannot
+read counted as a rule whose `got` and `want` were both `undefined` and
+therefore passed. That is how the total read 26: psql echoes a command tag per
+statement unless given `-q`, and two of them were being counted as rules.
 `tests/sql/scratch-schema.sql` is an **approximation** of `rooms`, `players` and
 `answers` — those predate the migrations folder, so their real definitions are
 not in this repo (#7) and the live database enforces things no migration
