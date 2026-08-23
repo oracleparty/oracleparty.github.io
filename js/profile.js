@@ -35,6 +35,7 @@ import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
 import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress } from './titles.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon } from './categories.js';
+import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
 
 // ============================================
 // CONSTANTS
@@ -787,6 +788,46 @@ export async function initProfilePage() {
     `;
   }
 
+  // ------------------------------------------
+  // STRENGTHS RADAR
+  //
+  // Drawn from the SAME merged rows as everything else on this page, so the
+  // shape and the list below it can never disagree.
+  //
+  // Proficiency, not mastery: mastery would be near zero for everybody,
+  // because the bank holds 4,859 questions, and a chart that is a dot for
+  // every player is not a chart.
+  // ------------------------------------------
+  const radarSection = $('#profile-radar-section');
+  const radarEl = $('#profile-radar');
+  if (radarSection && radarEl) {
+    const byCategory = {};
+    for (const row of mergedCategoryRows(stats)) {
+      const prof = rowProficiency(row);
+      if (prof) byCategory[row.category] = prof;
+    }
+    const axesInput = Object.entries(CATEGORY_META)
+      .map(([key, meta]) => ({ key, label: meta.label, emoji: meta.emoji || meta.icon }));
+    const { axes, anyData } = buildRadarAxes(axesInput, byCategory);
+
+    // Hidden entirely until there is something to draw. An empty twelve-sided
+    // outline says nothing and looks broken.
+    radarSection.style.display = anyData ? '' : 'none';
+    if (anyData) {
+      radarEl.innerHTML = renderRadarSvg(axes);
+      const caption = $('#profile-radar-caption');
+      if (caption) {
+        const { strongest, weakest } = radarExtremes(axes);
+        const bits = [];
+        if (strongest) bits.push(`Strongest ${strongest.label} ${Math.round(strongest.value * 100)}%`);
+        if (weakest) bits.push(`weakest ${weakest.label} ${Math.round(weakest.value * 100)}%`);
+        const untried = axes.filter(a => !a.hasData).length;
+        if (untried > 0) bits.push(`${untried} not tried yet`);
+        caption.textContent = bits.join(' \u00b7 ');
+      }
+    }
+  }
+
   // Per-category breakdown
   if (categoriesEl) {
     // ONE row per category, sorted strongest first.
@@ -1482,6 +1523,64 @@ async function _batchFetchProfiles(userIds) {
   const map = {};
   for (const p of (data || [])) map[p.user_id] = p;
   return map;
+}
+
+/**
+ * The radar, as inline SVG. No library — this project has one runtime
+ * dependency and it is not a charting one.
+ *
+ * Emoji sit OUTSIDE the outer ring at each axis, so nothing has to fit text
+ * around a circle at 375px. An axis with no data is dimmed rather than drawn
+ * at zero, because "never tried" and "bad at" are different facts.
+ */
+function renderRadarSvg(axes) {
+  const V = RADAR_VIEWBOX;
+  const R = 34;          // outer ring
+  const LABEL_R = 44;    // where the emoji sit, outside the ring
+  const n = axes.length;
+
+  const rings = [0.25, 0.5, 0.75, 1]
+    .map(f => `<polygon class="radar__ring" points="${polygonPoints(radarPoints(n, f, R))}"/>`)
+    .join('');
+
+  const spokes = radarPoints(n, 1, R)
+    .map(p => `<line class="radar__spoke" x1="${V / 2}" y1="${V / 2}" x2="${p.x.toFixed(2)}" y2="${p.y.toFixed(2)}"/>`)
+    .join('');
+
+  // The shape spans ONLY the axes with data.
+  //
+  // Drawing an untried category at the centre and joining it up looked wrong
+  // in a way the numbers did not predict: three zeroes among twelve pull three
+  // vertices to the middle, and the outline crosses itself into a jagged star
+  // that reads as broken rather than as a profile. Skipping those vertices
+  // gives the honest shape — the outline of what is actually known — and the
+  // dim emoji still says which categories are missing from it.
+  const all = radarPoints(n, axes.map(a => a.value), R);
+  const played = all.filter((_, i) => axes[i].hasData);
+  const shape = played.length >= 3
+    ? `<polygon class="radar__shape" points="${polygonPoints(played)}"/>`
+    // Under three points there is no polygon to draw. The dots below carry it,
+    // which is the right amount of ceremony for somebody two categories in.
+    : '';
+
+  const dots = all
+    .map((p, i) => axes[i].hasData
+      ? `<circle class="radar__dot" cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="1.6"/>`
+      : '')
+    .join('');
+
+  const labels = radarPoints(n, 1, LABEL_R).map((p, i) => {
+    const a = axes[i];
+    const title = a.hasData
+      ? `${a.label}: ${Math.round(a.value * 100)}% of ${a.met}`
+      : `${a.label}: not tried yet`;
+    return `<text class="radar__label${a.hasData ? '' : ' radar__label--untried'}" x="${p.x.toFixed(2)}" y="${p.y.toFixed(2)}"
+      text-anchor="middle" dominant-baseline="central">${escapeHtml(a.emoji)}<title>${escapeHtml(title)}</title></text>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${V} ${V}" role="img" aria-label="Proficiency by category">
+    ${rings}${spokes}${shape}${dots}${labels}
+  </svg>`;
 }
 
 // ============================================

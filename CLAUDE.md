@@ -1257,6 +1257,41 @@ that is not there at 375px. Below the volume gate it says how many more
 QUESTIONS are needed rather than anything about accuracy, because accuracy
 cannot buy a rank there and saying so would be a promise that cannot be cashed.
 
+## The shape of what you know
+
+A radar at the top of the profile, twelve axes, one per category. The owner
+asked for it: "those spider web charts that display strengths and weaknesses".
+
+**Labelled with emoji, because every category already has one.** Twelve text
+labels around a circle at 375px is unreadable; twelve emoji are not, and they
+carry a `<title>` so the exact figure is still available.
+
+**Proficiency, not mastery.** Mastery would be near zero for everybody — the
+bank holds 4,859 questions — and a chart that is a dot for every player is not
+a chart.
+
+**AN UNPLAYED CATEGORY IS NOT A ZERO,** and this is the whole reason
+`buildRadarAxes` exists rather than a one-line map. "Never tried Sports" and
+"bad at Sports" are different facts, and a radar that draws both at the origin
+says the second about somebody who has done the first.
+
+The first version still drew untried axes at the centre and joined them up,
+distinguishing them only by dimming the emoji. **It looked broken** — three
+zeroes among twelve pull three vertices to the middle and the outline crosses
+itself into a jagged star. The shape now spans only the axes with data, which
+is both the honest outline and the better-looking one. Under three such axes
+there is no polygon at all, just dots.
+
+`radarExtremes` needs at least 5 questions met before it will call a category
+your strongest or weakest, and never names the same one as both.
+
+**The sweep is the authority on this layout, not an ad-hoc screenshot.** A
+throwaway Playwright script rendered profile.html with sections 571px wide and
+text clipped, which looked like a serious overflow and was not: the sweep sets
+the active `.screen` to `display: flex` before measuring, and without that
+nothing inside it is width-constrained. If a hand-rolled render disagrees with
+the sweep, suspect the render.
+
 ## The forty titles nobody could see
 
 The Title Builder was a padlock reading "Reach Apprentice to unlock", and that

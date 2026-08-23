@@ -7069,3 +7069,58 @@ body[style*="opacity: 0"] {
   font-weight: 700;
   cursor: pointer;
 }
+
+
+/* ============================================
+   STRENGTHS RADAR
+
+   Twelve categories, labelled with the emoji each already has, so no text has
+   to fit around a circle at 375px. An axis with no data is DIM rather than
+   drawn at zero: "never tried" and "bad at" are different facts.
+   ============================================ */
+
+.radar {
+  display: flex;
+  justify-content: center;
+}
+.radar svg {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  overflow: visible;
+}
+
+.radar__ring {
+  fill: none;
+  stroke: var(--color-surface-light);
+  stroke-width: 0.4;
+}
+.radar__spoke {
+  stroke: var(--color-surface-light);
+  stroke-width: 0.3;
+}
+
+/* The shape reads at a glance and the outline carries the precision. Filled
+   with the primary at low opacity so the rings stay visible through it — a
+   solid fill would hide the scale the shape is being read against. */
+.radar__shape {
+  fill: var(--color-primary);
+  fill-opacity: 0.22;
+  stroke: var(--color-primary);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+}
+.radar__dot { fill: var(--color-primary); }
+
+.radar__label { font-size: 6px; }
+/* Not hidden — the category still exists and is still worth wanting. Just
+   quiet enough that the shape is obviously not a verdict on it. */
+.radar__label--untried { opacity: 0.32; }
+
+.radar__caption {
+  margin-top: var(--space-sm);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}

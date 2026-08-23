@@ -1297,6 +1297,41 @@ export const STATES = {
         `).join('');
       }
 
+      // The radar, with a realistic mix: some strong, some weak, several never
+      // tried. The untried ones are the case worth rendering — they must read
+      // as "not yet" rather than as a zero score.
+      const radarSection = document.getElementById('profile-radar-section');
+      const radarEl = document.getElementById('profile-radar');
+      if (radarSection && radarEl) {
+        radarSection.style.display = '';
+        const AX = [
+          ['⏳', 0.81], ['⚗️', 0.64], ['🌿', 0.0], ['📜', 0.42],
+          ['🏛️', 0.55], ['🎬', 0.43], ['🌍', 0.0], ['💻', 0.71],
+          ['⚽', 0.18], ['🍕', 0.0], ['🧩', 0.6], ['🃏', 0.33],
+        ];
+        const V = 100, R = 34, LR = 44, C = V / 2, n = AX.length;
+        const pts = (val, radius) => AX.map((a, i) => {
+          const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
+          const r = (val === null ? a[1] : val) * radius;
+          return `${(C + Math.cos(ang) * r).toFixed(2)},${(C + Math.sin(ang) * r).toFixed(2)}`;
+        }).join(' ');
+        const rings = [0.25, 0.5, 0.75, 1]
+          .map(f => `<polygon class="radar__ring" points="${pts(f, R)}"/>`).join('');
+        const spokes = pts(1, R).split(' ')
+          .map(p => `<line class="radar__spoke" x1="${C}" y1="${C}" x2="${p.split(',')[0]}" y2="${p.split(',')[1]}"/>`).join('');
+        const dots = pts(null, R).split(' ').map((p, i) => AX[i][1] > 0
+          ? `<circle class="radar__dot" cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="1.6"/>` : '').join('');
+        const labels = pts(1, LR).split(' ').map((p, i) =>
+          `<text class="radar__label${AX[i][1] > 0 ? '' : ' radar__label--untried'}" x="${p.split(',')[0]}" y="${p.split(',')[1]}" text-anchor="middle" dominant-baseline="central">${AX[i][0]}</text>`).join('');
+        // The shape spans only the axes with data — mirrors renderRadarSvg.
+        // Joining untried categories at the centre crossed the outline into a
+        // jagged star that read as broken rather than as a profile.
+        const playedPts = pts(null, R).split(' ').filter((_, i) => AX[i][1] > 0).join(' ');
+        radarEl.innerHTML = `<svg viewBox="0 0 ${V} ${V}" role="img" aria-label="Proficiency by category">${rings}${spokes}<polygon class="radar__shape" points="${playedPts}"/>${dots}${labels}</svg>`;
+        const cap = document.getElementById('profile-radar-caption');
+        if (cap) cap.textContent = 'Strongest History 81% · weakest Sports 18% · 3 not tried yet';
+      }
+
       const catsEl = document.getElementById('profile-categories');
       if (catsEl) {
         // Sorted strongest first, each carrying the rank line — mirrors the
