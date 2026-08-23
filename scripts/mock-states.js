@@ -1155,6 +1155,53 @@ export const STATES = {
     },
   },
 
+  // The moment you earn something. Both loud tiers are rendered, because they
+  // are different shapes: fullscreen dims the game and carries a dismiss
+  // button, the quieter one floats and must not swallow taps.
+  'celebration-legendary': {
+    page: 'game',
+    screen: 'scores-screen',
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const el = document.createElement('div');
+      el.id = 'title-celebration';
+      el.className = 'celebration celebration--in';
+      el.dataset.tier = 'fullscreen';
+      el.dataset.rarity = 'legendary';
+      el.innerHTML = `
+        <div class="celebration__card">
+          <div class="celebration__kicker">legendary</div>
+          <div class="celebration__word">Phantom</div>
+          <div class="celebration__sub">added to your titles</div>
+          <div class="celebration__more">+2 more unlocked</div>
+          <button type="button" class="celebration__dismiss">Nice</button>
+        </div>`;
+      document.body.appendChild(el);
+    },
+  },
+
+  'celebration-common': {
+    page: 'game',
+    screen: 'scores-screen',
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const el = document.createElement('div');
+      el.id = 'title-celebration';
+      el.className = 'celebration celebration--in';
+      el.dataset.tier = 'toast';
+      el.dataset.rarity = 'common';
+      // An UPGRADE, which is a different sentence from a first unlock —
+      // "Brave II" is not a new word and must not claim to be.
+      el.innerHTML = `
+        <div class="celebration__card">
+          <div class="celebration__kicker">Level 2</div>
+          <div class="celebration__word">Relentless</div>
+          <button type="button" class="celebration__dismiss">Nice</button>
+        </div>`;
+      document.body.appendChild(el);
+    },
+  },
+
   // ==========================================
   // PRIVACY.HTML
   //

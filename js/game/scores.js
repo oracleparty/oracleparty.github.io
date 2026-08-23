@@ -35,7 +35,8 @@ import {
   deleteQuestionFeedbackByVoter,
 } from '../supabase.js';
 import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../auth.js';
-import { evaluateUnlocks, hasReachedApprentice } from '../titles.js';
+import { evaluateUnlocks, hasReachedApprentice, planCelebration } from '../titles.js';
+import { showCelebration } from '../celebration.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties } from './scoring-helpers.js';
@@ -1040,9 +1041,12 @@ export async function showResultsScreen() {
         if (!authUser.profile.title_builder_unlocked && hasReachedApprentice(freshStats)) {
           await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', uid);
         }
-        // (Phase 4 will add celebration display here)
+        // Show it. This was a console.debug for as long as the title system has
+        // existed, so every reward in the game was invisible at the exact
+        // moment it was earned.
         if (newUnlocks.length > 0) {
           logger.debug('Titles', 'New unlocks', newUnlocks.map(u => u.word + ' L' + u.level));
+          showCelebration(planCelebration(newUnlocks));
         }
       }).catch(err => logger.warn('Titles', 'Evaluation failed', err));
     }

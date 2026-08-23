@@ -6937,3 +6937,106 @@ body[style*="opacity: 0"] {
 .title-card[data-rarity="rare"]      { border-left: 3px solid var(--color-info, #5C8DC2); }
 .title-card[data-rarity="epic"]      { border-left: 3px solid #8B5CF6; }
 .title-card[data-rarity="legendary"] { border-left: 3px solid var(--color-primary); }
+
+
+/* ============================================
+   TITLE CELEBRATION
+
+   Scaled to rarity, at the owner's instruction: a common is a quiet card, a
+   legendary takes the screen for a beat. If everything celebrates equally,
+   nothing does.
+   ============================================ */
+
+.celebration {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  opacity: 0;
+  transition: opacity 0.25s var(--ease-out, ease-out);
+}
+.celebration[hidden] { display: none; }
+.celebration--in { opacity: 1; }
+
+/* The quiet tiers must NOT swallow taps meant for the game underneath — this
+   sits over the whole screen and clears itself after three seconds, so a
+   scoreboard button beneath it would be dead for that whole time. */
+.celebration[data-tier="toast"],
+.celebration[data-tier="results"] {
+  pointer-events: none;
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+.celebration[data-tier="toast"] .celebration__dismiss,
+.celebration[data-tier="results"] .celebration__dismiss { display: none; }
+
+/* Fullscreen dims the game behind it, which is the whole point of the tier.
+   A DARK scrim in every theme, not a theme-coloured one: on the light theme
+   --color-bg-deep is nearly white, so dimming with it dimmed nothing and the
+   card looked like it was floating over a working screen. The card carries its
+   own background, so its contrast is unaffected by what is behind. */
+.celebration[data-tier="fullscreen"] {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.celebration__card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-light);
+  border-radius: var(--radius-lg, 1rem);
+  padding: var(--space-lg);
+  text-align: center;
+  max-width: 320px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  transform: translateY(8px) scale(0.98);
+  transition: transform 0.25s var(--ease-out, ease-out);
+}
+.celebration--in .celebration__card { transform: none; }
+
+.celebration[data-tier="fullscreen"] .celebration__card {
+  border-color: var(--color-primary);
+}
+
+.celebration__kicker {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+/* Rarity as TEXT, never as a fill — the tier badges broke by inverting this. */
+.celebration[data-rarity="rare"] .celebration__kicker      { color: var(--color-info, #5C8DC2); }
+.celebration[data-rarity="epic"] .celebration__kicker      { color: #8B5CF6; }
+.celebration[data-rarity="legendary"] .celebration__kicker { color: var(--color-primary); }
+
+.celebration__word {
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--color-text);
+  margin: var(--space-xs) 0 2px;
+  overflow-wrap: anywhere;
+}
+.celebration__sub,
+.celebration__more {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.celebration__more { margin-top: var(--space-xs); }
+
+.celebration__dismiss {
+  margin-top: var(--space-md);
+  min-height: 44px;
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-full, 999px);
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-bg-deep);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 700;
+  cursor: pointer;
+}

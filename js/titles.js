@@ -269,8 +269,50 @@ export const TITLE_WORDS = {
 export const RARITY_CELEBRATION = {
   common: 'toast',
   rare: 'results',
+  // EPIC WAS MISSING. Three words carry rarity 'epic' — Antiquity, Dynasty,
+  // Revolution — and this table has never had a key for them, so every lookup
+  // for those returned undefined. Nothing noticed, because nothing has ever
+  // read this table at all: it was written, exported, and wired to nothing.
+  epic: 'fullscreen',
   legendary: 'fullscreen'
 };
+
+/**
+ * What to show for a batch of unlocks, and how loudly.
+ *
+ * → { tier, lead, others, count } or null when there is nothing to celebrate.
+ *
+ * ONE celebration for the batch, not one per word. Early on several commons
+ * unlock at once — reaching Apprentice in a category can trip three at a time
+ * — and six overlays in a row is not a reward, it is a queue to dismiss. The
+ * loudest thing in the batch decides the tier, the rarest word leads, and the
+ * rest are counted.
+ *
+ * The owner's rule: scale to rarity. If everything celebrates equally, nothing
+ * does — so a common is a toast you can ignore, a rare interrupts the results
+ * screen, and a legendary takes the screen for a beat.
+ */
+export function planCelebration(newUnlocks) {
+  const list = (newUnlocks || []).filter(u => u && u.word);
+  if (list.length === 0) return null;
+
+  const rank = { common: 0, rare: 1, epic: 2, legendary: 3 };
+  const sorted = [...list].sort((a, b) => {
+    const byRarity = (rank[b.rarity] ?? 0) - (rank[a.rarity] ?? 0);
+    if (byRarity) return byRarity;
+    // A brand-new word beats an upgrade of one already held: the first time
+    // you see a word is the moment worth marking.
+    return (b.isNew === true) - (a.isNew === true);
+  });
+
+  const lead = sorted[0];
+  return {
+    tier: RARITY_CELEBRATION[lead.rarity] || 'toast',
+    lead,
+    others: sorted.slice(1),
+    count: sorted.length,
+  };
+}
 
 // ============================================
 // TIER THRESHOLDS (matches utils.js calculateTitle)

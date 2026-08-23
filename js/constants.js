@@ -109,6 +109,12 @@ export const HEARTBEAT_DB_INTERVAL_MS = 15000;    // 15 seconds — DB heartbeat
 //     not know it.
 //
 // A bot never hosts, never co-hosts, and nothing it does is recorded.
+// How long a title celebration stays up before clearing itself. Both are
+// deliberately short: this fires between rounds, and a reward that has to be
+// dismissed before play continues stops being a reward on the second one.
+export const CELEBRATION_FULLSCREEN_MS = 4000;
+export const CELEBRATION_CARD_MS = 3000;
+
 export const BOT_DISPLAY_NAME = 'Practice Bot';
 export const BOT_ACCURACY = 0.5;
 // The bot goes all in on the final, at the owner's instruction. It was 10 —

@@ -1276,6 +1276,45 @@ category names, so hiding those behind a riddle is thin — the player can see
 their own categories on the same page. The eight era words (Antiquity, Dynasty,
 Atomic…) are worth hiding. Raised with the owner; not changed without them.
 
+## Earning something was a console.debug line
+
+`RARITY_CELEBRATION` was written, exported, and wired to nothing. The unlock
+path ended:
+
+```js
+// (Phase 4 will add celebration display here)
+if (newUnlocks.length > 0) logger.debug('Titles', 'New unlocks', ...)
+```
+
+So every reward in this game was invisible at the exact moment it was earned.
+The gallery makes the collection browsable; this is what makes filling it feel
+like anything.
+
+**The table had no `epic` key**, though three words carry that rarity, so those
+lookups returned `undefined`. Nobody noticed because nothing read the table.
+
+`planCelebration` gives **one** celebration per batch, not one per word.
+Reaching Apprentice in a category can trip several commons at once, and six
+overlays in a row is a queue to dismiss rather than a reward. The rarest word
+leads, ties go to a brand-new word over an upgrade of one already held, and the
+rest are counted. Tier scales to rarity at the owner's instruction: common is a
+quiet card that ignores taps, legendary dims the screen for a beat.
+
+**Everything self-clears.** This fires between rounds, and a reward that must
+be dismissed before play continues stops being a reward on the second
+occurrence. The quiet tiers set `pointer-events: none` — they cover the whole
+viewport for three seconds, so without it a scoreboard button underneath would
+be dead for that whole time.
+
+**The scrim is a dark rgba, not a theme colour.** `--color-bg-deep` is nearly
+white on the light theme, so dimming with it dimmed nothing and the card looked
+like it was floating over a working screen. The card carries its own
+background, so its contrast is unaffected by what is behind it.
+
+It fires from two places: the end of a game, and sign-in — a loyalty streak
+crossing a day boundary earns something with nobody playing, and that would
+otherwise never be seen.
+
 ## Accuracy: `question_history` holds counters, not a verdict
 
 Every accuracy in the app — profile, leaderboard, tier, title thresholds —

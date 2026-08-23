@@ -6,7 +6,8 @@ import { $, calculateTitle, escapeHtml } from './utils.js';
 import { FRIEND_REQUEST_TOAST_MS } from './constants.js';
 import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest, unsubscribe } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
-import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle } from './titles.js';
+import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle, planCelebration } from './titles.js';
+import { showCelebration } from './celebration.js';
 import { logger } from './logger.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
@@ -205,6 +206,11 @@ export async function initAuth() {
       for (const u of newUnlocks) {
         await upsertTitleUnlock(session.user.id, u.wordId, u.level);
       }
+      // Anything earned since last time, shown on arrival. The other path fires
+      // at the end of a game; this one catches what was unlocked while the
+      // player was away — a loyalty streak crossing a day boundary earns
+      // something with nobody playing.
+      if (newUnlocks.length > 0) showCelebration(planCelebration(newUnlocks));
       if (!profile.title_builder_unlocked && hasReachedApprentice(stats)) {
         await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', session.user.id);
       }

@@ -10,6 +10,7 @@ import {
   mergedCategoryRows,
   tierProgress,
   TIER_ORDER,
+  planCelebration,
 } from '../js/titles.js';
 
 // ============================================
@@ -640,5 +641,69 @@ describe('tierProgress', () => {
     const p = tierProgress(row(20, 20));
     const justShort = tierProgress(row(20 + p.needed - 1, 20 + p.needed - 1));
     expect(justShort.tier).toBe('Apprentice');
+  });
+});
+
+// ============================================
+// planCelebration — one celebration per batch, scaled to rarity
+//
+// Unlocking a title was a console.debug line for as long as the title system
+// has existed, so every reward in the game was invisible at the moment it was
+// earned. RARITY_CELEBRATION had been written, exported, and wired to nothing
+// — which is also why nobody noticed it had no entry for 'epic', though three
+// words carry that rarity.
+// ============================================
+describe('planCelebration', () => {
+  const u = (word, rarity, extra = {}) =>
+    ({ wordId: word.toLowerCase(), word, rarity, level: 1, isNew: true, isUpgrade: false, ...extra });
+
+  it('says nothing when nothing was unlocked', () => {
+    expect(planCelebration([])).toBe(null);
+    expect(planCelebration(null)).toBe(null);
+    expect(planCelebration([{ rarity: 'common' }])).toBe(null); // no word — nothing to show
+  });
+
+  it('scales the tier to the rarity', () => {
+    expect(planCelebration([u('Brave', 'common')]).tier).toBe('toast');
+    expect(planCelebration([u('Mighty', 'rare')]).tier).toBe('results');
+    expect(planCelebration([u('Phantom', 'legendary')]).tier).toBe('fullscreen');
+  });
+
+  // Antiquity, Dynasty and Revolution are epic, and the table had no key for
+  // them, so every lookup returned undefined and they would have celebrated as
+  // nothing at all.
+  it('handles epic, which the table used to have no entry for', () => {
+    expect(planCelebration([u('Antiquity', 'epic')]).tier).toBe('fullscreen');
+  });
+
+  it('falls back to the quietest tier for a rarity it does not know', () => {
+    expect(planCelebration([u('Odd', 'mythic')]).tier).toBe('toast');
+  });
+
+  // ONE celebration for the batch. Reaching Apprentice in a category can trip
+  // several commons at once, and six overlays in a row is a queue to dismiss
+  // rather than a reward.
+  it('gives one celebration for a batch, led by the rarest', () => {
+    const plan = planCelebration([
+      u('Brave', 'common'), u('Phantom', 'legendary'), u('Mighty', 'rare'),
+    ]);
+    expect(plan.tier).toBe('fullscreen');
+    expect(plan.lead.word).toBe('Phantom');
+    expect(plan.count).toBe(3);
+    expect(plan.others).toHaveLength(2);
+  });
+
+  it('leads with a brand-new word over an upgrade of the same rarity', () => {
+    const plan = planCelebration([
+      u('Brave', 'rare', { isNew: false, isUpgrade: true, level: 2 }),
+      u('Mighty', 'rare'),
+    ]);
+    expect(plan.lead.word).toBe('Mighty');
+  });
+
+  it('keeps the level on an upgrade, so the card can say so', () => {
+    const plan = planCelebration([u('Brave', 'common', { isNew: false, isUpgrade: true, level: 3 })]);
+    expect(plan.lead.isUpgrade).toBe(true);
+    expect(plan.lead.level).toBe(3);
   });
 });
