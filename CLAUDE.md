@@ -1198,6 +1198,54 @@ are identical and whose question verdicts are not.
 **`MIN_QUESTIONS_FOR_TITLE` now counts distinct questions, not attempts**, so
 it is marginally harder to reach. That is deliberate and more honest.
 
+## Ranks were invisible, and Wild Card was counted three times
+
+Four faults on the profile, all reported from one playtest.
+
+**Wild Card appeared three times under Proficiency.** `player_stats_computed`
+is meant to emit one rollup per category — the row where `subcategory` is null
+— and it emitted three the app could not tell apart, because the filter is
+`!s.subcategory` and `null`, `''` and `undefined` all land in that bucket while
+staying separate rows. `mergedCategoryRows` in `titles.js` sums them, which
+cannot under-report and is the identity when there is only one. **The profile's
+totals ran over the same rows**, so games, wins and questions were inflated
+too, not just the list.
+
+**Subcategory rows had no icons.** One line held two mistakes: it read
+`subNode.icon`, the HIEROGLYPH, while the category row above it reads the
+emoji — so the two halves of one list disagreed about what an icon is — and it
+rendered nothing at all when the node was not found, which is every wild-card
+subcategory (they live under `wildCardOptions`) and every value the tree does
+not know. `resolveSubcategoryIcon` handles both and falls back to the
+category's own icon, so a row can never come out blank.
+
+**Nothing was sorted.** Mastery and Proficiency both rendered in whatever order
+the query returned. Mastery is now most-mastered first, and its subcategory
+rows are sorted **per level by the whole branch's total**, so a child still
+sits under its own parent and a parent whose own count is 0 but whose children
+hold 40 is near the top. Proficiency sorts by accuracy, ties to the bigger
+sample — 100% from two questions must not outrank 92% from sixty.
+
+**A rank is `accuracy × log2(questions met)`** against fixed thresholds
+(Apprentice 3.0, Scholar 4.5, Master 5.5, Oracle 6.5), with no rank at all
+below `MIN_QUESTIONS_FOR_TITLE` distinct questions whatever the accuracy. That
+is a defensible rule and completely unguessable from outside, and **the app
+said nothing about it anywhere** — the owner asked where their ranks were and
+how to improve them and neither question had an answer on screen.
+
+`tierProgress(row)` returns the rank held, the one above, and how many more
+questions getting them right would take. **The count is simulated, not
+solved**: answering one more correctly moves both halves of the fraction, so
+there is no clean closed form and an approximation would be a number the player
+answers and fails to hit. `tests/titles.test.js` pins that the count actually
+reaches the next rank and that one fewer does not.
+
+It renders as a second line under the category name, never a badge beside it.
+The lobby taught that expensively: anything added alongside a name takes width
+that is not there at 375px. Below the volume gate it says how many more
+QUESTIONS are needed rather than anything about accuracy, because accuracy
+cannot buy a rank there and saying so would be a promise that cannot be cashed.
+
 ## Accuracy: `question_history` holds counters, not a verdict
 
 Every accuracy in the app — profile, leaderboard, tier, title thresholds —

@@ -283,6 +283,66 @@ const TIER_THRESHOLDS = {
   Oracle: 6.5
 };
 
+export const TIER_ORDER = ['Apprentice', 'Scholar', 'Master', 'Oracle'];
+
+/**
+ * Where somebody stands in a category, and what it would take to move up.
+ *
+ * → { tier, next, needed, met, required } or null when there is no data.
+ *
+ *   tier     the rank they hold now, or null for none yet
+ *   next     the rank above it, or null at Oracle
+ *   needed   how many more questions they would have to get right to reach it,
+ *            or null when that is more than this can sensibly say
+ *   met      distinct questions seen
+ *   required MIN_QUESTIONS_FOR_TITLE — no rank at all below this, whatever the
+ *            accuracy, so a player on 3 questions needs volume before anything
+ *            else and should be told that rather than a misleading number
+ *
+ * WHY THIS EXISTS. A rank is accuracy x log2(questions met), against fixed
+ * thresholds. That is a defensible rule and completely unguessable from the
+ * outside: the owner asked where their ranks were and how to improve them, and
+ * nothing in the app answered either question. A progression nobody can see is
+ * not a progression.
+ *
+ * `needed` is SIMULATED rather than solved. Answering one more question right
+ * moves both halves of the fraction, so there is no clean closed form, and an
+ * approximation here would be a number a player then fails to hit. Stepping
+ * forward is exact and costs nothing at this size.
+ */
+export function tierProgress(row) {
+  const prof = rowProficiency(row);
+  if (!prof) return null;
+
+  const scoreOf = (mastered, met) => (met > 0 ? (mastered / met) * Math.log2(met) : 0);
+  const tierAt = (mastered, met) => {
+    if (met < MIN_QUESTIONS_FOR_TITLE) return null;
+    const score = scoreOf(mastered, met);
+    for (let i = TIER_ORDER.length - 1; i >= 0; i--) {
+      if (score >= TIER_THRESHOLDS[TIER_ORDER[i]]) return TIER_ORDER[i];
+    }
+    return null;
+  };
+
+  const tier = tierAt(prof.mastered, prof.met);
+  const next = tier ? TIER_ORDER[TIER_ORDER.indexOf(tier) + 1] || null : TIER_ORDER[0];
+  const base = { tier, next, met: prof.met, required: MIN_QUESTIONS_FOR_TITLE };
+  if (!next) return { ...base, needed: 0 };
+
+  // Capped rather than unbounded. A player far below a threshold is not helped
+  // by "you need 312 more" — that is a different message, and this returns null
+  // so the caller can say the honest thing instead of a discouraging one.
+  let mastered = prof.mastered;
+  let met = prof.met;
+  for (let i = 1; i <= 200; i++) {
+    mastered++; met++;
+    if (tierAt(mastered, met) === next || (tierAt(mastered, met) && TIER_ORDER.indexOf(tierAt(mastered, met)) >= TIER_ORDER.indexOf(next))) {
+      return { ...base, needed: i };
+    }
+  }
+  return { ...base, needed: null };
+}
+
 // ============================================
 // UNLOCK EVALUATION
 // ============================================
@@ -336,6 +396,39 @@ export function computeCategoryTiers(stats) {
  */
 export function categoryRollupRows(stats) {
   return (stats || []).filter(s => !s.subcategory);
+}
+
+/**
+ * One row per category, with the counters of every rollup row for it merged.
+ *
+ * `player_stats_computed` is meant to emit exactly one rollup per category —
+ * the row where `subcategory` is null — but the profile showed WILD CARD THREE
+ * TIMES, which means it emitted three rows the app could not tell apart. The
+ * filter above is `!s.subcategory`, so null, '' and undefined all land in the
+ * same bucket while remaining separate rows, and each one renders as another
+ * identical line under the same name.
+ *
+ * Merging is the right answer rather than picking one: whichever way those
+ * rows came to be split, together they describe the category, and showing one
+ * of three would quietly under-report it. It is also self-healing — with a
+ * single rollup per category, merging is the identity.
+ */
+export function mergedCategoryRows(stats) {
+  const byCategory = new Map();
+  for (const s of categoryRollupRows(stats)) {
+    const key = String(s.category ?? '');
+    const acc = byCategory.get(key);
+    if (!acc) {
+      byCategory.set(key, { ...s, subcategory: null });
+      continue;
+    }
+    for (const col of ['games_played', 'wins', 'questions_answered', 'correct_answers',
+                       'questions_met', 'questions_mastered']) {
+      if (s[col] == null && acc[col] == null) continue;
+      acc[col] = (acc[col] || 0) + (s[col] || 0);
+    }
+  }
+  return [...byCategory.values()];
 }
 
 /**

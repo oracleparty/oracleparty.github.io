@@ -33,8 +33,8 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency } from './titles.js';
-import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode } from './categories.js';
+import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress } from './titles.js';
+import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon } from './categories.js';
 
 // ============================================
 // CONSTANTS
@@ -592,7 +592,13 @@ export async function initProfilePage() {
       `;
 
       // Per-category rows (only categories the player has mastered at least 1 question)
-      const catKeys = Object.entries(_mastery).filter(([k]) => !k.includes('|'));
+      // Most mastered first, at the owner's request. Object key order is
+      // insertion order, which is whatever the query happened to return —
+      // meaningless to a reader, and it put the category somebody has barely
+      // touched above the one they have nearly finished.
+      const catKeys = Object.entries(_mastery)
+        .filter(([k]) => !k.includes('|'))
+        .sort((a, b) => b[1] - a[1]);
       if (catKeys.length > 0) {
         masteryHtml += catKeys.map(([cat, mastered]) => {
           const meta = CATEGORY_META[cat] || { icon: '?', label: cat };
@@ -603,16 +609,30 @@ export async function initProfilePage() {
           // Subcategory rows (walk full tree for nested subcategories)
           let subHtml = '';
           if (hasSubs) {
+            // Siblings sorted by how much of them is mastered, at each level,
+            // so a child still sits under its own parent — sorting the flat
+            // list would tear the tree apart. Counting a node's whole branch,
+            // not just itself: a parent whose own count is 0 but whose
+            // children hold 40 belongs at the top, not the bottom.
+            function branchTotal(node) {
+              let total = _mastery[`${cat}|${node.key}`] || 0;
+              for (const child of node.children || []) total += branchTotal(child);
+              return total;
+            }
             function collectSubRows(nodes, depth) {
               let html = '';
-              for (const s of nodes) {
+              const ordered = [...nodes].sort((a, b) => branchTotal(b) - branchTotal(a));
+              for (const s of ordered) {
                 const subKey = `${cat}|${s.key}`;
                 const subMastered = _mastery[subKey] || 0;
                 if (subMastered > 0) {
                   const subTotal = subTotals[subKey] || 0;
                   const indent = depth > 0 ? ' style="padding-left:' + (MASTERY_TREE_BASE_INDENT + depth * MASTERY_TREE_DEPTH_INDENT) + 'px"' : '';
+                  // emoji first, like the category row above — this read the
+                  // hieroglyph, so the two halves of one list disagreed about
+                  // what an icon is.
                   html += `<div class="mastery-row mastery-row--sub"${indent}>
-                    <span class="mastery-row__icon">${s.icon}</span>
+                    <span class="mastery-row__icon">${s.emoji || s.icon}</span>
                     <span class="mastery-row__name">${s.label}</span>
                     <span class="mastery-row__fraction">${subMastered}${subTotal ? '/' + subTotal : ''}</span>
                   </div>`;
@@ -711,7 +731,7 @@ export async function initProfilePage() {
   // Rollups only — see categoryRollupRows. This also fixes "Strongest" and
   // "Weakest", which could otherwise name a category while reporting the
   // accuracy of one narrow subcategory inside it.
-  for (const s of categoryRollupRows(stats)) {
+  for (const s of mergedCategoryRows(stats)) {
     totalGames += s.games_played || 0;
     totalWins += s.wins || 0;
     const prof = rowProficiency(s);
@@ -739,8 +759,22 @@ export async function initProfilePage() {
 
   // Per-category breakdown
   if (categoriesEl) {
-    // Separate category-level stats (subcategory=null) from subcategory stats
-    const catStats = stats.filter(s => !s.subcategory);
+    // ONE row per category, sorted strongest first.
+    //
+    // mergedCategoryRows rather than a plain filter: the profile was showing
+    // WILD CARD THREE TIMES. player_stats_computed is meant to emit a single
+    // rollup per category, and it emitted three the app could not tell apart —
+    // null, '' and undefined all read as "no subcategory", so each became
+    // another identical line under the same name. Merging their counters is
+    // self-healing and cannot under-report.
+    //
+    // Sorted by proficiency, because that is what the section is called and
+    // what every row shows. Ties go to the bigger sample: 100% from two
+    // questions should not sit above 92% from sixty.
+    const catStats = mergedCategoryRows(stats).sort((a, b) => {
+      const pa = rowProficiency(a), pb = rowProficiency(b);
+      return (pb?.accuracy ?? -1) - (pa?.accuracy ?? -1) || (pb?.met ?? 0) - (pa?.met ?? 0);
+    });
     const subStats = stats.filter(s => s.subcategory);
 
     if (catStats.length > 0) {
@@ -753,11 +787,26 @@ export async function initProfilePage() {
         // Build subcategory rows if any exist
         let subHtml = '';
         if (hasSubs) {
-          const subs = subStats.filter(sub => sub.category === s.category);
+          const subs = subStats
+            .filter(sub => sub.category === s.category)
+            .sort((a, b) => {
+              const pa = rowProficiency(a), pb = rowProficiency(b);
+              return (pb?.accuracy ?? -1) - (pa?.accuracy ?? -1) || (pb?.met ?? 0) - (pa?.met ?? 0);
+            });
           subHtml = `<div class="profile-subcategory-rows" style="display:none;">
             ${subs.map(sub => {
               const subNode = findSubcategoryNode(meta, sub.subcategory);
-              const subIcon = subNode?.icon || '';
+              // resolveSubcategoryIcon, not subNode.icon.
+              //
+              // Two faults in one line before. It read the HIEROGLYPH while the
+              // category row above it reads the emoji, so the two halves of the
+              // same list disagreed about what an icon is. And when the node
+              // was not found it rendered NOTHING — which is every wild-card
+              // subcategory, because those live under `wildCardOptions` rather
+              // than `subcategories`, and every value the tree does not know.
+              // resolveSubcategoryIcon handles both and falls back to the
+              // category's own icon, so a row can never come out blank.
+              const subIcon = resolveSubcategoryIcon(s.category, sub.subcategory);
               const subLabel = subNode?.label || sub.subcategory;
               const subProf = rowProficiency(sub);
               const subAcc = subProf ? Math.round(subProf.accuracy * 100) : 0;
@@ -770,10 +819,36 @@ export async function initProfilePage() {
           </div>`;
         }
 
+        // Where they stand and what would move them, UNDER the name rather
+        // than beside it. A rank is accuracy x log2(questions), which nobody
+        // can guess — the owner asked where their ranks were and how to
+        // improve them and the app answered neither. A second line is also the
+        // shape that survived the lobby row overflow: anything added alongside
+        // the name competes for width that is not there at 375px.
+        const prog = tierProgress(s);
+        let rankLine = '';
+        if (prog) {
+          const parts = [];
+          if (prog.tier) parts.push(prog.tier);
+          if (prog.met < prog.required) {
+            // Volume gate first. Below it there is no rank at any accuracy, so
+            // saying anything about accuracy here would be a promise the
+            // player cannot cash in.
+            parts.push(`${prog.required - prog.met} more questions for a rank`);
+          } else if (prog.next && prog.needed != null) {
+            parts.push(`${prog.needed} more correct \u2192 ${prog.next}`);
+          } else if (prog.next) {
+            parts.push(`working towards ${prog.next}`);
+          } else {
+            parts.push('highest rank');
+          }
+          rankLine = `<div class="profile-category-row__rank">${escapeHtml(parts.join(' \u00b7 '))}</div>`;
+        }
+
         return `<div class="profile-category-group" data-category="${s.category}">
           <div class="profile-category-row${hasSubs ? ' profile-category-row--expandable' : ''}">
             <span>${meta.emoji || meta.icon}</span>
-            <span class="profile-category-row__name">${meta.label}</span>
+            <span class="profile-category-row__name">${meta.label}${rankLine}</span>
             <span class="profile-category-row__accuracy">${acc}%</span>
             ${hasSubs ? '<span class="profile-category-row__chevron">›</span>' : ''}
           </div>

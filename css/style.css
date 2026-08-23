@@ -5131,8 +5131,24 @@ body::after {
 }
 .profile-category-row__name {
   flex: 1;
+  min-width: 0;
   font-family: var(--font-heading);
   color: var(--color-text);
+}
+
+/* Rank and what would move it, under the category name. Second line rather
+   than a badge beside it: this row already carries a name, a percentage and a
+   chevron, and the lobby taught expensively that anything added alongside a
+   name takes width the phone does not have. Truncates instead of pushing. */
+.profile-category-row__rank {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-dim);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .profile-category-row__accuracy {
   font-family: var(--font-heading);

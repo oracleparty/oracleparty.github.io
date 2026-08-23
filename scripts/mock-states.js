@@ -1187,20 +1187,34 @@ export const STATES = {
 
       const catsEl = document.getElementById('profile-categories');
       if (catsEl) {
-        const rows = [['⏳', 'History', 81], ['⚗️', 'Science', 64], ['🎬', 'Pop Culture', 43]];
-        catsEl.innerHTML = rows.map(([icon, label, acc], i) => `
+        // Sorted strongest first, each carrying the rank line — mirrors the
+        // real render. All four states of that line are represented, because
+        // the longest of them is what decides whether the row still fits: a
+        // rank plus a target, the volume gate, the top rank, and none at all.
+        const rows = [
+          ['⏳', 'History', 81, 'Scholar · 12 more correct → Master'],
+          ['🌍', 'World Geography', 74, 'Oracle · highest rank'],
+          ['⚗️', 'Science', 64, 'Apprentice · 17 more correct → Scholar'],
+          ['🎬', 'Pop Culture', 43, '14 more questions for a rank'],
+        ];
+        catsEl.innerHTML = rows.map(([icon, label, acc, rank], i) => `
           <div class="profile-category-group" data-category="c${i}">
             <div class="profile-category-row${i === 0 ? ' profile-category-row--expandable' : ''}">
               <span>${icon}</span>
-              <span class="profile-category-row__name">${label}</span>
+              <span class="profile-category-row__name">${label}<div class="profile-category-row__rank">${rank}</div></span>
               <span class="profile-category-row__accuracy">${acc}%</span>
               ${i === 0 ? '<span class="profile-category-row__chevron">›</span>' : ''}
             </div>
             ${i === 0 ? `<div class="profile-subcategory-rows">
               <div class="profile-category-row profile-category-row--sub">
-                <span>🏛️</span>
-                <span class="profile-category-row__name">Ancient World</span>
+                <span>🏺</span>
+                <span class="profile-category-row__name">Ancient</span>
                 <span class="profile-category-row__accuracy">77%</span>
+              </div>
+              <div class="profile-category-row profile-category-row--sub">
+                <span>⚔️</span>
+                <span class="profile-category-row__name">Medieval</span>
+                <span class="profile-category-row__accuracy">61%</span>
               </div>
             </div>` : ''}
           </div>

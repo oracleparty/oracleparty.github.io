@@ -6,7 +6,11 @@ import {
   evaluateUnlocks,
   hasReachedApprentice,
   buildDisplayTitle,
-  categoryRollupRows, rowProficiency, sumProficiency } from '../js/titles.js';
+  categoryRollupRows, rowProficiency, sumProficiency,
+  mergedCategoryRows,
+  tierProgress,
+  TIER_ORDER,
+} from '../js/titles.js';
 
 // ============================================
 // computeCategoryTiers
@@ -489,5 +493,152 @@ describe('the auto-title maths agrees with rowProficiency', () => {
     // Same attempts and same correct_answers in both; only the question-level
     // verdicts differ, so a rule that ignored them would return the same tier.
     expect(a.tier).not.toBe(b.tier);
+  });
+});
+
+// ============================================
+// mergedCategoryRows — one row per category, whatever the view emits
+//
+// The profile showed WILD CARD THREE TIMES. player_stats_computed is meant to
+// emit one rollup per category — the row where subcategory is null — and it
+// emitted three the app could not tell apart, because null, '' and undefined
+// all read as "no subcategory" while remaining separate rows.
+//
+// Merging cannot under-report and is the identity when there is only one
+// rollup, which is why it is the right answer rather than picking one of the
+// three.
+// ============================================
+describe('mergedCategoryRows', () => {
+  const row = (category, subcategory, met, mastered, games = 0) =>
+    ({ category, subcategory, questions_met: met, questions_mastered: mastered, games_played: games });
+
+  it('collapses several falsy-subcategory rows for one category into one', () => {
+    const merged = mergedCategoryRows([
+      row('wild-card', null, 10, 5, 1),
+      row('wild-card', '', 6, 3, 2),
+      row('wild-card', undefined, 4, 1, 1),
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].category).toBe('wild-card');
+    expect(merged[0].questions_met).toBe(20);
+    expect(merged[0].questions_mastered).toBe(9);
+    expect(merged[0].games_played).toBe(4);
+  });
+
+  it('leaves a single rollup per category untouched', () => {
+    const stats = [row('history', null, 12, 9), row('science', null, 4, 1)];
+    const merged = mergedCategoryRows(stats);
+    expect(merged).toHaveLength(2);
+    expect(merged.map(m => m.questions_met).sort((a, b) => a - b)).toEqual([4, 12]);
+  });
+
+  it('ignores subcategory rows entirely, which are counted elsewhere', () => {
+    const merged = mergedCategoryRows([
+      row('history', null, 10, 5),
+      row('history', 'ancient', 6, 3),
+      row('history', 'medieval', 4, 2),
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].questions_met).toBe(10);
+  });
+
+  it('copes with nothing', () => {
+    expect(mergedCategoryRows([])).toEqual([]);
+    expect(mergedCategoryRows(null)).toEqual([]);
+  });
+
+  // The totals on the profile card run over these rows. Three wild-card rows
+  // meant games, wins and questions were all inflated, not just the list.
+  it('does not multiply a category into the totals', () => {
+    const merged = mergedCategoryRows([
+      row('wild-card', null, 10, 5, 3),
+      row('wild-card', '', 0, 0, 0),
+      row('wild-card', null, 0, 0, 0),
+    ]);
+    const totalGames = merged.reduce((s, r) => s + (r.games_played || 0), 0);
+    expect(totalGames).toBe(3);
+  });
+});
+
+// ============================================
+// tierProgress — where you stand, and what it takes to move up
+//
+// A rank is accuracy x log2(questions met) against fixed thresholds. That is
+// a defensible rule and completely unguessable from outside: the owner asked
+// where their ranks were and how to improve them, and nothing in the app
+// answered either. A progression nobody can see is not a progression.
+// ============================================
+describe('tierProgress', () => {
+  const row = (met, mastered) => ({ questions_met: met, questions_mastered: mastered });
+
+  it('says nothing when there is nothing to say', () => {
+    expect(tierProgress(null)).toBe(null);
+    expect(tierProgress({})).toBe(null);
+    expect(tierProgress(row(0, 0))).toBe(null);
+  });
+
+  // Below the volume gate there is NO rank at any accuracy. Three perfect
+  // answers is not a rank, and telling somebody they are close on accuracy
+  // alone would be a lie they then fail to cash in.
+  it('gives no rank below the question minimum, however perfect', () => {
+    const p = tierProgress(row(3, 3));
+    expect(p.tier).toBe(null);
+    expect(p.next).toBe('Apprentice');
+    expect(p.met).toBe(3);
+    expect(p.required).toBe(20);
+    // 17 more gets them to 20 questions AND over the threshold.
+    expect(p.needed).toBe(17);
+  });
+
+  it('counts the volume gate alone when accuracy is already enough', () => {
+    expect(tierProgress(row(19, 19)).needed).toBe(1);
+  });
+
+  it('reports the rank held and the one above it', () => {
+    const p = tierProgress(row(20, 20));
+    expect(p.tier).toBe('Apprentice');
+    expect(p.next).toBe('Scholar');
+    expect(p.needed).toBe(3);
+  });
+
+  it('asks for more when accuracy is lower', () => {
+    const strong = tierProgress(row(20, 20));
+    const weaker = tierProgress(row(20, 15));
+    expect(weaker.tier).toBe('Apprentice');
+    expect(weaker.needed).toBeGreaterThan(strong.needed);
+  });
+
+  it('gives no rank when the score is under the first threshold', () => {
+    const p = tierProgress(row(20, 8));
+    expect(p.tier).toBe(null);
+    expect(p.next).toBe('Apprentice');
+    expect(p.needed).toBeGreaterThan(0);
+  });
+
+  it('stops at the top', () => {
+    const p = tierProgress(row(100, 100));
+    expect(p.tier).toBe('Oracle');
+    expect(p.next).toBe(null);
+    expect(p.needed).toBe(0);
+  });
+
+  // The number has to be one a player can actually act on. If it were an
+  // approximation they would answer that many and not move, which is worse
+  // than saying nothing.
+  it('the count it gives actually reaches the next rank', () => {
+    for (const [met, mastered] of [[20, 20], [20, 15], [20, 8], [30, 22], [50, 31]]) {
+      const p = tierProgress(row(met, mastered));
+      if (!p.next || p.needed == null) continue;
+      const after = tierProgress(row(met + p.needed, mastered + p.needed));
+      const reached = after.tier;
+      expect(reached, `${met}/${mastered} +${p.needed} reached ${reached}, wanted ${p.next}`).toBeTruthy();
+      expect(TIER_ORDER.indexOf(reached)).toBeGreaterThanOrEqual(TIER_ORDER.indexOf(p.next));
+    }
+  });
+
+  it('one fewer than it asks for is not enough', () => {
+    const p = tierProgress(row(20, 20));
+    const justShort = tierProgress(row(20 + p.needed - 1, 20 + p.needed - 1));
+    expect(justShort.tier).toBe('Apprentice');
   });
 });
