@@ -95,6 +95,38 @@ try {
     { user_id: bob.userId, questions_answered: 60, correct_answers: 33, games_played: 7, wins: 1 },
     { user_id: carol.userId, questions_answered: 20, correct_answers: 8, games_played: 3, wins: 0 },
   ]);
+  // The mastery tree and the Map are built from question_history joined to
+  // questions, which is a different source from player_stats_computed above —
+  // seeding one says nothing about the other. Filed across two categories and
+  // three subcategories so that drilling into History has something to show
+  // and Science is a category with mastery but no subcategory breakdown.
+  table.store.seed('questions', [
+    { id: 'qm1', question: 'Mastered ancient?', correct_answer: 'A', acceptable_answers: [],
+      categories: ['history'], subcategory: 'ancient', difficulty: 'easy', format: 'open',
+      fun_fact: null, discarded: false },
+    { id: 'qm2', question: 'Mastered ancient two?', correct_answer: 'B', acceptable_answers: [],
+      categories: ['history'], subcategory: 'ancient', difficulty: 'easy', format: 'open',
+      fun_fact: null, discarded: false },
+    { id: 'qm3', question: 'Mastered medieval?', correct_answer: 'C', acceptable_answers: [],
+      categories: ['history'], subcategory: 'medieval', difficulty: 'easy', format: 'open',
+      fun_fact: null, discarded: false },
+    { id: 'qm4', question: 'Mastered space?', correct_answer: 'D', acceptable_answers: [],
+      categories: ['science'], subcategory: 'space', difficulty: 'easy', format: 'open',
+      fun_fact: null, discarded: false },
+    // Met and currently WRONG. Mastery counts last_correct only, so this one
+    // must not appear anywhere — a map that counts it is counting attempts.
+    { id: 'qm5', question: 'Met but missed?', correct_answer: 'E', acceptable_answers: [],
+      categories: ['science'], subcategory: 'space', difficulty: 'easy', format: 'open',
+      fun_fact: null, discarded: false },
+  ]);
+  table.store.seed('question_history', [
+    { user_id: alice.userId, question_id: 'qm1', times_seen: 1, times_correct: 1, last_correct: true },
+    { user_id: alice.userId, question_id: 'qm2', times_seen: 2, times_correct: 1, last_correct: true },
+    { user_id: alice.userId, question_id: 'qm3', times_seen: 1, times_correct: 1, last_correct: true },
+    { user_id: alice.userId, question_id: 'qm4', times_seen: 1, times_correct: 1, last_correct: true },
+    { user_id: alice.userId, question_id: 'qm5', times_seen: 3, times_correct: 2, last_correct: false },
+  ]);
+
   table.store.seed('game_history', [
     { id: 'gh1', user_id: alice.userId, room_id: 'r1', category: 'history', subcategory: null,
       score: 62, placement: 1, total_players: 4, played_at: new Date().toISOString() },
@@ -160,10 +192,55 @@ try {
     problems.push('the per-category breakdown is empty for a player with stats in two categories');
   }
 
-  // The mastery tree is driven by an RPC that is NOT installed on the live
-  // database (get_mastery_counts), so it must survive the fallback path.
+  // The mastery tree is driven by get_mastery_counts, which the probe now
+  // reports as installed. Until the fake store implemented it, an unknown RPC
+  // came back null-with-no-error — indistinguishable from a function that
+  // exists and found nothing — so this block was empty in every run and the
+  // line below only ever printed "(empty)".
   const masteryText = await alice.page.textContent('#profile-mastery').catch(() => '');
-  note(`mastery block: ${(masteryText || '').trim().slice(0, 40) || '(empty)'}`);
+  note(`mastery block: ${(masteryText || '').replace(/\s+/g, ' ').trim().slice(0, 60) || '(empty)'}`);
+  if (!(masteryText || '').includes('History')) {
+    problems.push('the mastery tree is empty for a player with mastered questions in History');
+  }
+
+  // ---- THE MAP ------------------------------------------------------------
+  //
+  // Its whole reason for existing alongside the list below it is that it shows
+  // categories NOBODY has touched. The list cannot: it only renders what
+  // somebody has started. So the thing to check is not that it draws — it is
+  // that it draws twelve cells when Alice has played two categories.
+  const cellCount = await alice.page.locator('#profile-map .hexcell').count().catch(() => 0);
+  if (cellCount !== 12) {
+    problems.push(`the Map draws ${cellCount} cells, expected all 12 categories including the untouched ones`);
+  }
+  const emptyCount = await alice.page.locator('#profile-map .hexcell--empty').count().catch(() => 0);
+  if (emptyCount === 0) {
+    problems.push('every Map cell reads as filled, so a category Alice has never played looks the same as one she has');
+  }
+  note(`map: ${cellCount} cells, ${emptyCount} untouched`);
+
+  // Drill in and back out. This is the only interaction on the page, and it
+  // fetches per-subcategory counts it does not already have — so it has to
+  // render before they arrive as well as after.
+  await alice.page.locator('#profile-map .hexcell--open[data-key="history"]').click().catch(() => {});
+  await alice.page.waitForTimeout(900);
+  const backVisible = await alice.page.locator('#profile-map-back').isVisible().catch(() => false);
+  const drilledCells = await alice.page.locator('#profile-map .hexcell').count().catch(() => 0);
+  if (!backVisible) {
+    problems.push('tapping a Map cell did not open it — no way back means it never drilled in');
+  }
+  if (drilledCells !== 4) {
+    problems.push(`opening History shows ${drilledCells} cells, expected its 4 subcategories`);
+  }
+  const drilledCaption = await alice.page.textContent('#profile-map-caption').catch(() => '');
+  note(`map drilled: ${drilledCells} cells — ${(drilledCaption || '').trim()}`);
+
+  await alice.page.locator('#profile-map-back').click().catch(() => {});
+  await alice.page.waitForTimeout(400);
+  const backAgain = await alice.page.locator('#profile-map .hexcell').count().catch(() => 0);
+  if (backAgain !== 12) {
+    problems.push(`going back from a Map category shows ${backAgain} cells, expected all 12 again`);
+  }
 
   // ============================================================
   // 3. LEADERBOARD

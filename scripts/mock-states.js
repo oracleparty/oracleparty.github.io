@@ -1250,6 +1250,57 @@ export const STATES = {
     screen: null,
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+
+      // The honeycomb, inlined because inject() is serialised into the browser
+      // and cannot import js/honeycomb.js. Kept in step with it by hand — if
+      // the real geometry changes, this has to change in the same commit or
+      // the sweep is reviewing a shape that never ships.
+      function hexmap(items, cols, label, showEmptyState) {
+        const SQ = Math.sqrt(3), S = 40, W = SQ * S, VSTEP = 1.5 * S;
+        const n = items.length, rows = Math.ceil(n / cols);
+        const usable = cols * W + (rows > 1 ? W / 2 : 0);
+        const vh = (rows - 1) * VSTEP + 2 * S;
+        // Whole-cell shifts only: a short row centred exactly lands off the
+        // half-step and its hexes overlap instead of tessellating.
+        const leftOf = (row, inRow) => {
+          const stagger = (rows > 1 && row % 2) ? W / 2 : 0;
+          if (inRow >= cols || rows < 2) return stagger;
+          return stagger + Math.max(0, Math.round(((usable - inRow * W) / 2 - stagger) / W)) * W;
+        };
+        let vw = 0;
+        for (let r = 0; r < rows; r++) {
+          const inRow = Math.min(cols, n - r * cols);
+          vw = Math.max(vw, leftOf(r, inRow) + inRow * W);
+        }
+        const pts = (cx, cy) => {
+          const out = [];
+          for (let k = 0; k < 6; k++) {
+            const a = (Math.PI / 180) * (60 * k - 90);
+            out.push((cx + S * Math.cos(a)).toFixed(2) + ',' + (cy + S * Math.sin(a)).toFixed(2));
+          }
+          return out.join(' ');
+        };
+        let clips = '', gs = '';
+        for (let i = 0; i < n; i++) {
+          const row = Math.floor(i / cols), col = i % cols;
+          const inRow = Math.min(cols, n - row * cols);
+          const cx = leftOf(row, inRow) + col * W + W / 2, cy = row * VSTEP + S;
+          const [emoji, name, done, total] = items[i];
+          const f = (total > 0 && done > 0) ? Math.max(0.06, Math.min(1, done / total)) : 0;
+          const h = 2 * S * f;
+          clips += '<clipPath id="hexclip-' + i + '"><polygon points="' + pts(cx, cy) + '"/></clipPath>';
+          gs += '<g class="hexcell' + (f > 0 ? '' : ' hexcell--empty') + (showEmptyState ? ' hexcell--open' : '') + '" data-key="k' + i + '">'
+            + '<polygon class="hexcell__bg" points="' + pts(cx, cy) + '"/>'
+            + (h > 0 ? '<rect class="hexcell__fill" clip-path="url(#hexclip-' + i + ')" x="' + (cx - W / 2).toFixed(2) + '" y="' + (cy + S - h).toFixed(2) + '" width="' + W.toFixed(2) + '" height="' + h.toFixed(2) + '"/>' : '')
+            + '<polygon class="hexcell__edge" points="' + pts(cx, cy) + '"/>'
+            + '<text class="hexcell__emoji" x="' + cx.toFixed(2) + '" y="' + (cy - S * 0.16).toFixed(2) + '" text-anchor="middle" dominant-baseline="central">' + emoji + '</text>'
+            + (done > 0 ? '<text class="hexcell__count" x="' + cx.toFixed(2) + '" y="' + (cy + S * 0.42).toFixed(2) + '" text-anchor="middle" dominant-baseline="central">' + done + '</text>' : '')
+            + '<title>' + name + '</title></g>';
+        }
+        return '<svg viewBox="0 0 ' + vw.toFixed(2) + ' ' + vh.toFixed(2) + '" role="img" aria-label="' + label + '"><defs>' + clips + '</defs>' + gs + '</svg>';
+      }
+
+
       const name = document.getElementById('profile-name');
       if (name) name.textContent = 'ArchaeologistAnna';
       const title = document.getElementById('profile-title');
@@ -1295,6 +1346,27 @@ export const STATES = {
             </div>` : ''}
           </div>
         `).join('');
+      }
+
+      // The Map, at the top level. Mirrors renderMasteryMap / js/honeycomb.js.
+      // The numbers are deliberately realistic against a 4,859-question bank,
+      // which means most cells are a sliver and four are empty — that is what
+      // this actually looks like and it is the thing worth reviewing.
+      const mapSection = document.getElementById('profile-map-section');
+      const mapEl = document.getElementById('profile-map');
+      if (mapSection && mapEl) {
+        mapSection.style.display = '';
+        const HEX = [
+          ['⏳', 'History', 84, 412], ['⚗️', 'Science', 31, 388],
+          ['🌿', 'Nature', 0, 301], ['📜', 'Arts & Literature', 9, 366],
+          ['🏛️', 'Culture & Society', 22, 344], ['🎬', 'Pop Culture', 12, 355],
+          ['🌍', 'World Geography', 0, 402], ['💻', 'Technology', 41, 288],
+          ['⚽', 'Sports', 3, 331], ['🍕', 'Food & Drink', 0, 276],
+          ['🧩', 'Logic', 7, 219], ['🃏', 'Wild Card', 0, 397],
+        ];
+        mapEl.innerHTML = hexmap(HEX, 4, 'Mastery by category', true);
+        const cap = document.getElementById('profile-map-caption');
+        if (cap) cap.textContent = '209 of 4,859 mastered · tap a cell to look inside';
       }
 
       // The radar, with a realistic mix: some strong, some weak, several never
@@ -1367,6 +1439,90 @@ export const STATES = {
           </div>
         `).join('');
       }
+
+      const tabContent = document.getElementById('profile-tab-content');
+      if (tabContent) tabContent.style.display = '';
+    },
+  },
+
+  // The Map opened into one category. A state of its own because the back
+  // button and the category name only exist here — the top-level map in
+  // profile-stats renders neither, so nothing was checking that the row fits
+  // its own contents at 375px. That is exactly how the lobby overflowed.
+  'mastery-map-drilled': {
+    page: 'profile',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const name = document.getElementById('profile-name');
+      if (name) name.textContent = 'ArchaeologistAnna';
+
+      const mapSection = document.getElementById('profile-map-section');
+      const mapEl = document.getElementById('profile-map');
+      if (!mapSection || !mapEl) return;
+      mapSection.style.display = '';
+
+      // Same geometry as profile-stats; see the note there.
+      function hexmap(items, cols, label) {
+        const SQ = Math.sqrt(3), S = 40, W = SQ * S, VSTEP = 1.5 * S;
+        const n = items.length, rows = Math.ceil(n / cols);
+        const usable = cols * W + (rows > 1 ? W / 2 : 0);
+        const vh = (rows - 1) * VSTEP + 2 * S;
+        // Whole-cell shifts only: a short row centred exactly lands off the
+        // half-step and its hexes overlap instead of tessellating.
+        const leftOf = (row, inRow) => {
+          const stagger = (rows > 1 && row % 2) ? W / 2 : 0;
+          if (inRow >= cols || rows < 2) return stagger;
+          return stagger + Math.max(0, Math.round(((usable - inRow * W) / 2 - stagger) / W)) * W;
+        };
+        let vw = 0;
+        for (let r = 0; r < rows; r++) {
+          const inRow = Math.min(cols, n - r * cols);
+          vw = Math.max(vw, leftOf(r, inRow) + inRow * W);
+        }
+        const pts = (cx, cy) => {
+          const out = [];
+          for (let k = 0; k < 6; k++) {
+            const a = (Math.PI / 180) * (60 * k - 90);
+            out.push((cx + S * Math.cos(a)).toFixed(2) + ',' + (cy + S * Math.sin(a)).toFixed(2));
+          }
+          return out.join(' ');
+        };
+        let clips = '', gs = '';
+        for (let i = 0; i < n; i++) {
+          const row = Math.floor(i / cols), col = i % cols;
+          const inRow = Math.min(cols, n - row * cols);
+          const cx = leftOf(row, inRow) + col * W + W / 2, cy = row * VSTEP + S;
+          const [emoji, nm, done, total] = items[i];
+          const f = (total > 0 && done > 0) ? Math.max(0.06, Math.min(1, done / total)) : 0;
+          const h = 2 * S * f;
+          clips += '<clipPath id="hexclip-' + i + '"><polygon points="' + pts(cx, cy) + '"/></clipPath>';
+          gs += '<g class="hexcell' + (f > 0 ? '' : ' hexcell--empty') + '" data-key="k' + i + '">'
+            + '<polygon class="hexcell__bg" points="' + pts(cx, cy) + '"/>'
+            + (h > 0 ? '<rect class="hexcell__fill" clip-path="url(#hexclip-' + i + ')" x="' + (cx - W / 2).toFixed(2) + '" y="' + (cy + S - h).toFixed(2) + '" width="' + W.toFixed(2) + '" height="' + h.toFixed(2) + '"/>' : '')
+            + '<polygon class="hexcell__edge" points="' + pts(cx, cy) + '"/>'
+            + '<text class="hexcell__emoji" x="' + cx.toFixed(2) + '" y="' + (cy - S * 0.16).toFixed(2) + '" text-anchor="middle" dominant-baseline="central">' + emoji + '</text>'
+            + (done > 0 ? '<text class="hexcell__count" x="' + cx.toFixed(2) + '" y="' + (cy + S * 0.42).toFixed(2) + '" text-anchor="middle" dominant-baseline="central">' + done + '</text>' : '')
+            + '<title>' + nm + '</title></g>';
+        }
+        return '<svg viewBox="0 0 ' + vw.toFixed(2) + ' ' + vh.toFixed(2) + '" role="img" aria-label="' + label + '"><defs>' + clips + '</defs>' + gs + '</svg>';
+      }
+
+      // Culture & Society — the longest category name in the game, and five
+      // subcategories, so this is the widest the head row ever gets.
+      const SUBS = [
+        ['🗣️', 'Language', 14, 96], ['⚖️', 'Politics & Law', 0, 88],
+        ['🕌', 'Religion & Belief', 5, 74], ['💰', 'Economics', 3, 51],
+        ['👥', 'Society', 0, 35],
+      ];
+      mapEl.innerHTML =
+        '<div class="hexmap__head">'
+        + '<button type="button" class="hexmap__back" id="profile-map-back">‹ All categories</button>'
+        + '<span class="hexmap__title">\u{1F3DB}️ Culture &amp; Society</span>'
+        + '</div>'
+        + hexmap(SUBS, 3, 'Mastery in Culture & Society');
+      const cap = document.getElementById('profile-map-caption');
+      if (cap) cap.textContent = '22 of 344 mastered in Culture & Society';
 
       const tabContent = document.getElementById('profile-tab-content');
       if (tabContent) tabContent.style.display = '';

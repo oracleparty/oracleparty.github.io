@@ -9,6 +9,7 @@
 //   node scripts/screenshot.js --all                 # Screenshot all mock states
 //   node scripts/screenshot.js --a11y                # Run accessibility scan
 //   node scripts/screenshot.js --theme=dark|oled     # Override theme
+//   node scripts/screenshot.js --scroll=<css-selector>  # Scroll it into view first
 //   node scripts/screenshot.js --exclude-rules=none  # Show ALL a11y violations
 //
 // Output: /tmp/screenshot-<name>.png
@@ -46,6 +47,7 @@ const height = parseInt(flags.height) || 812;
 const fullPage = flags.full === true;
 const runA11y = flags.a11y === true;
 const theme = flags.theme || null; // 'dark' or 'oled'
+const scrollTo = typeof flags.scroll === 'string' ? flags.scroll : null;
 const excludeRules = flags['exclude-rules'] === 'none' ? [] : (flags['exclude-rules'] || 'meta-viewport,region').split(',');
 const ROOT = join(import.meta.dirname, '..');
 
@@ -133,6 +135,18 @@ async function screenshotPage(browser, port, { page, screen, inject, injectArgs,
   if (inject) {
     const injectData = injectArgs ? injectArgs() : undefined;
     await p.evaluate(inject, injectData);
+  }
+
+  // Scroll something into view before shooting. The screens are fixed-height
+  // flex containers that scroll internally, so `--full` cannot reach anything
+  // below the fold — on a long page like profile.html that is most of it, and
+  // a section nobody can photograph is a section nobody is reviewing.
+  if (scrollTo) {
+    await p.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) el.scrollIntoView({ block: 'center' });
+    }, scrollTo);
+    await p.waitForTimeout(200);
   }
 
   await p.waitForTimeout(800);

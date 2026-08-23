@@ -562,6 +562,35 @@ export class FakeStore {
       return recorded;
     }
 
+    // Mirrors migration 032, which the probe confirms is installed. Until this
+    // existed the fake store answered every unknown RPC with null-and-no-error
+    // — which is what an INSTALLED function returning nothing looks like, so
+    // fetchMasteryCounts never took its fallback and the mastery tree and the
+    // Map were empty in every scenario. Not a bug in either; a hole in here.
+    //
+    // One row per (category, subcategory), no rollups: profile.js adds each
+    // row to BOTH its category total and its subcategory, so a rollup row
+    // would count every question twice at category level.
+    if (name === 'get_mastery_counts') {
+      const uid = String(args?.p_user_id ?? '');
+      if (!uid) return [];
+      const questions = this.table('questions');
+      const counts = new Map();
+      for (const h of this.table('question_history')) {
+        if (String(h.user_id) !== uid || !h.last_correct) continue;
+        const q = questions.find(x => String(x.id) === String(h.question_id));
+        if (!q) continue;
+        for (const category of (q.categories || [])) {
+          const key = `${category}|${q.subcategory || ''}`;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+      }
+      return [...counts].map(([key, mastered]) => {
+        const [category, subcategory] = key.split('|');
+        return { category, subcategory: subcategory || null, mastered };
+      });
+    }
+
     // Mirrors migration 025: one row per question, counting how it performed.
     // Recorded here so a scenario can assert what is NOT counted — a bot's
     // answers must never reach this table, because they come from a chosen

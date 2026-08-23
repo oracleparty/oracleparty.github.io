@@ -1285,12 +1285,104 @@ there is no polygon at all, just dots.
 `radarExtremes` needs at least 5 questions met before it will call a category
 your strongest or weakest, and never names the same one as both.
 
-**The sweep is the authority on this layout, not an ad-hoc screenshot.** A
-throwaway Playwright script rendered profile.html with sections 571px wide and
-text clipped, which looked like a serious overflow and was not: the sweep sets
-the active `.screen` to `display: flex` before measuring, and without that
-nothing inside it is width-constrained. If a hand-rolled render disagrees with
-the sweep, suspect the render.
+**This paragraph used to say the opposite and it was wrong.** A throwaway
+Playwright script rendered profile.html 571px wide with text clipped; the sweep
+said clean; I concluded the script was broken, told the owner so, and wrote it
+down here. The owner then sent a photograph of their phone with the page cut
+off. **The overflow was real, and the sweep could not see it** — two faults, and
+both had been silencing it across nearly the whole app:
+
+- it treated an ancestor with `overflow: auto` or `scroll` as excusing an
+  overflow, and **`overflow-y: auto` computes `overflow-x: auto`**, so almost
+  every scrollable pane in the app was a blanket exemption;
+- `.screen` sets `overflow-x: hidden`, and the sweep read "clipped" as "fine".
+  Clipped is not fine. It is text nobody can reach.
+
+Anything wider than the viewport is now reported whether it is clipped or not.
+Verified by reintroducing the cause — a `white-space: nowrap` rank line inside
+`grid-template-columns: repeat(2, 1fr)`, which cannot shrink below its
+min-content — and the sweep names 40 elements. All eight fixed-count grids in
+the stylesheet are `repeat(N, minmax(0, 1fr))` now.
+
+**When a measurement and a person disagree about what is on the screen, the
+person is looking at the screen.**
+
+## The Map
+
+A honeycomb of the question bank, above the Mastery list on the profile. The
+owner asked for it: "to have knowledge displayed in this manner… it'll make
+people want to complete it".
+
+**Twelve hexes, one per category, and every category is on it** whether or not
+the player has ever touched one. That is the entire reason it exists alongside
+the Mastery list, which is kept: the list only names what somebody has already
+started, so it can never show them what is left. **The empty cells are the
+invitation.** Tap one to open its subcategories; Wild Card has none, so it is
+not tappable and is not styled as though it were.
+
+`js/honeycomb.js` holds the geometry, has **no imports**, and is unit tested —
+same rule as `radar.js` and `bot-logic.js`, because everything around it pulls
+the Supabase client from `esm.sh` and the test runner cannot load that.
+
+- **Pointy-top hexes in offset rows**, which stack vertically with a half-width
+  stagger. Flat-top wants to grow sideways, and sideways is the one direction a
+  portrait phone has none to grow in.
+- **A short last row is centred** on the rows above it. Hard against the left
+  edge reads as a mistake.
+- **`hexFill` gives anything above zero a visible floor of 6%.** A real category
+  fraction against 4,859 questions is often 0.4%, which draws as nothing — and
+  then "I have started this" and "I have never touched this" look identical on
+  the one screen whose whole job is that difference. The printed count stays
+  exact; only the bar is floored, and only once there is something real.
+- **The fill rises from the bottom.** Filling downward from the top reads as
+  draining.
+- `hexLayout` reports a box, and `tests/honeycomb.test.js` asserts every cell
+  fits inside it. A cell outside the viewBox is silently clipped on the phone
+  and nothing in the code would say so.
+
+**A subcategory's mastered count sums its whole branch**, because
+`fetchQuestionCount` counts a whole branch (`LIKE 'human%'` picks up
+`human-countries`). Counting only the node itself would put a real numerator
+over a branch-sized denominator and report somebody as further behind than they
+are.
+
+Per-subcategory totals are in nothing already fetched, so they are counted on
+demand and cached. **The drilled view renders before they arrive as well as
+after** — the emoji, the label and what you have mastered are all meaningful
+without a denominator, and a blank pane while six head requests finish reads as
+a broken tap. A failed count leaves the cell with no denominator rather than a
+zero, which would claim the branch is empty.
+
+**`fetchCategories()` moved out of the "has mastered something" branch** in
+`js/profile.js`. The map needs bank totals for a player with no mastery at all,
+who is precisely the person the empty cells are addressed to.
+
+Two mock states, not one: `profile-stats` carries the top-level map and
+`mastery-map-drilled` carries the opened view — the back button and the
+category name exist only in the second, so without it nothing was checking that
+that row fits itself at 375px. The mock inlines the geometry because `inject()`
+is serialised into the browser and cannot import; **if `honeycomb.js` changes,
+the mock changes in the same commit** or the sweep is reviewing a shape that
+never ships.
+
+**The first render found a bug no test could have.** A short row was centred
+exactly, which put it a quarter of a cell off the half-step, and the hexes
+overlapped instead of tessellating — the comb rendered as a pile of blobs. Every
+number was correct. `tests/honeycomb.test.js` now pins the lattice (verified by
+putting the exact centring back), and the outline, which had been the same
+colour as the cell it outlined, is a contrasting stroke — without it a low fill
+read as a stray arrow floating under the cell rather than as that cell filling.
+
+`scenario-account` checks the property that distinguishes the map from the
+list: **twelve cells for a player who has played two categories**, some of them
+marked untouched. It then drills into History, checks the four subcategories and
+the way back. Verified by filtering the map to categories with mastery — it
+reports three failures by name.
+
+**`scripts/screenshot.js` takes `--scroll=<selector>`.** The screens are
+fixed-height flex containers that scroll internally, so `--full` cannot reach
+anything below the fold — on profile.html that is most of the page, and a
+section nobody can photograph is a section nobody is reviewing.
 
 ## The forty titles nobody could see
 
@@ -1611,6 +1703,16 @@ now testable rather than only describable. `scenario-admin.mjs` uses it to prove
 the admin page says "Not saved — permission denied" instead of "Saved!";
 removing the zero-row check makes that test report the silent-failure bug by
 name. Use it on any new write path whose failure the player must notice.
+
+**An RPC the fake store does not implement answers `null` with no error**,
+which is exactly what an installed function returning nothing looks like. So
+`fetchMasteryCounts` never took its fallback, the mastery tree and the Map were
+empty in every scenario, and nothing was wrong with either. `get_mastery_counts`
+is implemented in `store.js` now — one row per (category, subcategory), no
+rollups, because `profile.js` adds each row to BOTH its category total and its
+subcategory and a rollup row would double every category. **Before concluding a
+profile feature is broken in the harness, check whether the RPC behind it is in
+`_rpc`.**
 
 **Writing that scenario produced four "bugs", and three were mine.** Worth
 reading, because each looked completely convincing:

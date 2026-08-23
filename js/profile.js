@@ -36,6 +36,7 @@ import { logger, reportWriteFailure } from './logger.js';
 import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress } from './titles.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
+import { hexLayout, hexPoints, hexFill, hexFillRect } from './honeycomb.js';
 
 // ============================================
 // CONSTANTS
@@ -559,6 +560,20 @@ export async function initProfilePage() {
     if (subKey) _mastery[subKey] = (_mastery[subKey] || 0) + m.mastered;
   }
 
+  // How big the bank is, per category. This used to be fetched inside the
+  // "has mastered something" branch below, and cannot stay there: the Map
+  // shows every category whether or not the player has touched one, so it
+  // needs these totals for somebody with no mastery at all — which is exactly
+  // the person the empty cells are addressed to.
+  const allCats = await fetchCategories().catch(() => []);
+  const catTotals = {};
+  for (const c of allCats) catTotals[c.name] = c.count;
+  const totalQuestions = allCats.reduce((s, c) => s + c.count, 0);
+
+  _mapData = { mastery: _mastery, catTotals, totalQuestions };
+  _mapCat = null;
+  renderMasteryMap();
+
   // Render mastery section
   if (masteryEl) {
     const totalMastered = Object.entries(_mastery)
@@ -566,11 +581,6 @@ export async function initProfilePage() {
       .reduce((sum, [, v]) => sum + v, 0);
 
     if (totalMastered > 0) {
-      // Fetch total question counts per category for the progress bars
-      const allCats = await fetchCategories().catch(() => []);
-      const catTotals = {};
-      for (const c of allCats) catTotals[c.name] = c.count;
-
       // Fetch subcategory counts for categories that have them
       const subTotals = {}; // "category|subcategory" → count
       const subFetches = [];
@@ -582,7 +592,6 @@ export async function initProfilePage() {
       }
       await Promise.all(subFetches);
 
-      const totalQuestions = allCats.reduce((s, c) => s + c.count, 0);
       const overallPct = totalQuestions > 0 ? Math.round((totalMastered / totalQuestions) * 100) : 0;
 
       let masteryHtml = `
@@ -1581,6 +1590,202 @@ function renderRadarSvg(axes) {
   return `<svg viewBox="0 0 ${V} ${V}" role="img" aria-label="Proficiency by category">
     ${rings}${spokes}${shape}${dots}${labels}
   </svg>`;
+}
+
+// ============================================
+// THE MAP
+//
+// A honeycomb of every category, filling as questions are mastered. It sits
+// ABOVE the Mastery list rather than replacing it, at the owner's instruction:
+// the list is exact and the map is legible, and they answer different
+// questions. The map's job is the one the list cannot do — showing what is
+// still out there. The list only ever names what somebody has already started.
+//
+// Geometry lives in js/honeycomb.js, with no imports, so it is unit tested.
+// ============================================
+
+const HEX_COLS_CATEGORIES = 4;      // 12 categories → three tidy rows
+const HEX_COLS_SUBCATEGORIES = 3;   // 2–6 subcategories → one or two rows
+const HEX_SIZE = 40;                // viewBox units; the SVG scales to fit
+
+// Module state so a drill-down can re-render without re-fetching the profile.
+let _mapData = null;        // { mastery, catTotals, totalQuestions }
+let _mapCat = null;         // null = all categories, else a category key
+const _subTotalCache = {};  // "category|subcategory" → question count
+
+/**
+ * Everything mastered at or below a subcategory node.
+ *
+ * The tree nests — world-geography has `human` with `human-countries` under it
+ * — and `fetchQuestionCount` counts a whole branch (`LIKE 'human%'`), so the
+ * mastered half has to as well. Counting only the node itself would put a real
+ * numerator over a branch-sized denominator and report somebody as further
+ * behind than they are.
+ */
+function masteredInBranch(mastery, cat, node) {
+  let total = mastery[`${cat}|${node.key}`] || 0;
+  for (const child of node.children || []) total += masteredInBranch(mastery, cat, child);
+  return total;
+}
+
+function categoryCells() {
+  const { mastery, catTotals } = _mapData;
+  return Object.entries(CATEGORY_META).map(([key, meta]) => ({
+    key,
+    label: meta.label,
+    emoji: meta.emoji || meta.icon,
+    mastered: mastery[key] || 0,
+    total: catTotals[key] || 0,
+    // Wild Card has no subcategories, so it has nothing to open into. A cell
+    // that looks tappable and does nothing is worse than one that does not.
+    drillable: (meta.subcategories || []).length > 0,
+  }));
+}
+
+function subcategoryCells(cat) {
+  const { mastery } = _mapData;
+  const meta = CATEGORY_META[cat];
+  return (meta?.subcategories || []).map(node => ({
+    key: node.key,
+    label: node.label,
+    emoji: resolveSubcategoryIcon(cat, node.key),
+    mastered: masteredInBranch(mastery, cat, node),
+    total: _subTotalCache[`${cat}|${node.key}`] ?? 0,
+    drillable: false,
+  }));
+}
+
+/**
+ * The honeycomb, as inline SVG. Same reasoning as the radar: this project has
+ * one runtime dependency and it is not a charting library.
+ */
+function hexmapSvg(items, cols, ariaLabel) {
+  const { cells, width, height, size } = hexLayout(items.length, cols, HEX_SIZE);
+  if (cells.length === 0) return '';
+
+  // Clip ids are unique per render and the whole map is replaced wholesale, so
+  // two maps can never be on the page sharing one id.
+  const clips = cells.map((c, i) =>
+    `<clipPath id="hexclip-${i}"><polygon points="${hexPoints(c.cx, c.cy, size)}"/></clipPath>`
+  ).join('');
+
+  const groups = cells.map((c, i) => {
+    const it = items[i];
+    const fill = hexFill(it.mastered, it.total);
+    const r = hexFillRect(c, fill, size);
+    const pts = hexPoints(c.cx, c.cy, size);
+    const title = it.total
+      ? `${it.label}: ${it.mastered} of ${it.total} mastered`
+      : `${it.label}: ${it.mastered} mastered`;
+
+    // The fill is drawn between the background and the edge, so the outline
+    // stays crisp at every level and an almost-full cell does not lose its
+    // border to its own fill.
+    const fillRect = r.height > 0
+      ? `<rect class="hexcell__fill" clip-path="url(#hexclip-${i})" x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/>`
+      : '';
+
+    // Only a non-zero count is printed. A grid of zeroes is noise, and the
+    // empty cell already says what it needs to.
+    const count = it.mastered > 0
+      ? `<text class="hexcell__count" x="${c.cx}" y="${c.cy + size * 0.42}" text-anchor="middle" dominant-baseline="central">${it.mastered}</text>`
+      : '';
+
+    return `<g class="hexcell${fill > 0 ? '' : ' hexcell--empty'}${it.drillable ? ' hexcell--open' : ''}" data-key="${escapeHtml(it.key)}">
+      <polygon class="hexcell__bg" points="${pts}"/>
+      ${fillRect}
+      <polygon class="hexcell__edge" points="${pts}"/>
+      <text class="hexcell__emoji" x="${c.cx}" y="${c.cy - size * 0.16}" text-anchor="middle" dominant-baseline="central">${escapeHtml(it.emoji || '')}</text>
+      ${count}
+      <title>${escapeHtml(title)}</title>
+    </g>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${width.toFixed(2)} ${height.toFixed(2)}" role="img" aria-label="${escapeHtml(ariaLabel)}">
+    <defs>${clips}</defs>${groups}
+  </svg>`;
+}
+
+function renderMasteryMap() {
+  const section = $('#profile-map-section');
+  const mapEl = $('#profile-map');
+  const captionEl = $('#profile-map-caption');
+  if (!section || !mapEl || !_mapData) return;
+
+  const { mastery, catTotals, totalQuestions } = _mapData;
+  // With no bank totals every cell would be empty whatever the player has
+  // done, which is a lie rather than an invitation. Hide it instead.
+  if (!totalQuestions) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  const drilled = _mapCat && CATEGORY_META[_mapCat];
+  const items = drilled ? subcategoryCells(_mapCat) : categoryCells();
+  const cols = drilled ? HEX_COLS_SUBCATEGORIES : HEX_COLS_CATEGORIES;
+  const meta = drilled ? CATEGORY_META[_mapCat] : null;
+
+  const head = drilled
+    ? `<div class="hexmap__head">
+         <button type="button" class="hexmap__back" id="profile-map-back">‹ All categories</button>
+         <span class="hexmap__title">${escapeHtml(meta.emoji || meta.icon)} ${escapeHtml(meta.label)}</span>
+       </div>`
+    : '';
+
+  mapEl.innerHTML = head + hexmapSvg(
+    items, cols,
+    drilled ? `Mastery in ${meta.label}` : 'Mastery by category',
+  );
+
+  if (captionEl) {
+    if (drilled) {
+      const total = catTotals[_mapCat] || 0;
+      const done = mastery[_mapCat] || 0;
+      captionEl.textContent = total
+        ? `${done} of ${total} mastered in ${meta.label}`
+        : `${done} mastered in ${meta.label}`;
+    } else {
+      const done = Object.entries(mastery)
+        .filter(([k]) => !k.includes('|'))
+        .reduce((s, [, v]) => s + v, 0);
+      captionEl.textContent = `${done} of ${totalQuestions} mastered · tap a cell to look inside`;
+    }
+  }
+
+  const back = $('#profile-map-back');
+  if (back) back.onclick = () => { _mapCat = null; renderMasteryMap(); };
+
+  mapEl.querySelectorAll('.hexcell--open').forEach(g => {
+    g.onclick = () => openMapCategory(g.dataset.key);
+  });
+}
+
+/**
+ * Open a category's subcategories.
+ *
+ * The per-subcategory totals are not in anything already fetched, so they are
+ * counted on demand and cached. Rendered BEFORE they arrive as well as after:
+ * the cells are meaningful without them (the emoji, the label, what you have
+ * mastered) and a blank pane while six head requests complete would read as a
+ * broken tap.
+ */
+async function openMapCategory(cat) {
+  if (!CATEGORY_META[cat]) return;
+  _mapCat = cat;
+  renderMasteryMap();
+
+  const nodes = CATEGORY_META[cat].subcategories || [];
+  const missing = nodes.filter(n => _subTotalCache[`${cat}|${n.key}`] === undefined);
+  if (missing.length === 0) return;
+
+  await Promise.all(missing.map(n =>
+    fetchQuestionCount(cat, n.key)
+      .then(count => { _subTotalCache[`${cat}|${n.key}`] = count; })
+      // A failed count leaves the cell showing what was mastered with no
+      // denominator, which is honest. Zero would claim the branch is empty.
+      .catch(() => { _subTotalCache[`${cat}|${n.key}`] = 0; })
+  ));
+
+  // Only redraw if the player is still looking at this one.
+  if (_mapCat === cat) renderMasteryMap();
 }
 
 // ============================================
