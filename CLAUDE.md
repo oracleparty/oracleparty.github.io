@@ -1246,6 +1246,36 @@ that is not there at 375px. Below the volume gate it says how many more
 QUESTIONS are needed rather than anything about accuracy, because accuracy
 cannot buy a rank there and saying so would be a promise that cannot be cashed.
 
+## The forty titles nobody could see
+
+The Title Builder was a padlock reading "Reach Apprentice to unlock", and that
+was the entire surface of a 40-word collection. It named a rank the player had
+no way to locate and no way to price, and said nothing about what was behind
+it. The owner asked for something browsable that "conveys and piques interest".
+
+**Every word already carried a `hint`**, written long ago and rendered nowhere
+except a three-second toast inside the builder — which only opens once you are
+already in. Three words have `hint: null` deliberately; those are secrets, and
+the gallery says "secret" rather than leaving a blank that reads as a bug.
+
+The collection opens from the padlock itself, so the moment somebody wonders
+what is behind it they find out, and stays reachable from the builder
+afterwards. **Locked cards show the hint and the rarity, not the word** — the
+owner's call, and what the hints were plainly written for.
+
+Cards are two across at 375px: one column reads as homework, three squeezes a
+hint to two words a line. Rarity is a coloured LEFT EDGE, never a fill — a
+tinted card would put every label on a background the three themes disagree
+about, which is how the tier badges broke.
+
+**The padlock also says which category is closest and by how much**, from
+`tierProgress`. "Reach Apprentice" alone is true and useless.
+
+**Known and deliberate:** in Slot 2, twelve of the twenty words are the
+category names, so hiding those behind a riddle is thin — the player can see
+their own categories on the same page. The eight era words (Antiquity, Dynasty,
+Atomic…) are worth hiding. Raised with the owner; not changed without them.
+
 ## Accuracy: `question_history` holds counters, not a verdict
 
 Every accuracy in the app — profile, leaderboard, tier, title thresholds —

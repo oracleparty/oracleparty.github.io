@@ -32,7 +32,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260823g">
+  <link rel="stylesheet" href="css/style.css?v=20260823h">
 </head>
 <body style="opacity:0">
 
@@ -54,10 +54,14 @@
 
     <!-- Title Builder -->
     <div id="title-builder-section" class="title-builder-section" style="display:none;">
-      <div id="title-builder-locked" class="title-builder-locked">
+      <!-- The padlock is the door. It used to be a dead end: "Reach Apprentice"
+           and nothing about what was behind it, how many titles exist, or how
+           to get there. Tapping it opens the collection. -->
+      <button id="title-builder-locked" class="title-builder-locked" aria-haspopup="dialog">
         <span class="title-builder-locked__icon">&#x1F512;</span>
         <p class="title-builder-locked__text">Reach Apprentice to unlock the Title Builder</p>
-      </div>
+        <span id="title-builder-locked__peek" class="title-builder-locked__peek">See what there is to earn &rsaquo;</span>
+      </button>
       <div id="title-builder-wheel" class="title-builder-wheel" style="display:none;">
         <div id="title-preview" class="title-builder__preview">Novice</div>
         <div class="title-builder__columns">
@@ -68,7 +72,21 @@
         <p id="title-hint-toast" class="title-builder__hint"></p>
         <p id="title-uniqueness" class="title-builder__uniqueness"></p>
         <button id="btn-save-title" class="btn btn-primary">Save Title</button>
+        <button id="btn-open-gallery" class="btn btn-secondary btn-block" style="margin-top:var(--space-sm);">See all titles</button>
       </div>
+    </div>
+
+    <!-- ===== TITLE COLLECTION =====
+         Forty words nobody could see. Earned ones read plainly; locked ones
+         show the hint that was written for them years ago and never displayed
+         anywhere; the three with no hint are secrets and say so. -->
+    <div id="title-gallery" class="title-gallery" role="dialog" aria-modal="true" aria-labelledby="title-gallery-heading" hidden>
+      <div class="title-gallery__head">
+        <h2 id="title-gallery-heading" class="title-gallery__heading">Titles</h2>
+        <button id="btn-close-gallery" class="icon-btn" aria-label="Close">&#x2715;</button>
+      </div>
+      <p id="title-gallery-summary" class="title-gallery__summary"></p>
+      <div id="title-gallery-body" class="title-gallery__body"></div>
     </div>
 
     <!-- Tabs -->

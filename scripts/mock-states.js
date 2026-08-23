@@ -1096,6 +1096,65 @@ export const STATES = {
     },
   },
 
+  // The title collection, which nobody could see at all before: the builder was
+  // a padlock and the 40 words behind it were unreachable until you had already
+  // got in. All three card states are rendered — earned, locked with its hint,
+  // and secret — because the hint is the longest text on the screen and two
+  // columns at 375px is where it has to fit.
+  'title-gallery': {
+    page: 'profile',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const gallery = document.getElementById('title-gallery');
+      if (!gallery) return;
+      gallery.hidden = false;
+
+      const summary = document.getElementById('title-gallery-summary');
+      if (summary) summary.textContent = '6 of 40 earned. Locked ones show a clue, not the word.';
+
+      const slots = [
+        ['The Adjective', 'How you play — persistence, loyalty, luck.', 2, 10, [
+          ['earned', 'Seasoned', 'common', ''],
+          ['earned', 'Relentless', 'rare', ''],
+          ['locked', '———', 'rare', 'Those who never stop, never lose'],
+          ['locked', '———', 'common', 'The crowd knows your name'],
+          ['locked', '———', 'rare', 'A leader of many expeditions'],
+          ['secret', '?', 'legendary', ''],
+        ]],
+        ['The Calling', 'What you know. Earned by mastering a category.', 3, 20, [
+          ['earned', 'History', 'common', ''],
+          ['locked', '———', 'common', 'Truth found through careful observation'],
+          ['locked', '———', 'epic', 'Before written memory, there was you'],
+          ['locked', '———', 'legendary', 'All of time bends to your knowledge'],
+        ]],
+        ['The Rank', 'How far you have come.', 1, 8, [
+          ['earned', 'Apprentice', 'common', ''],
+          ['locked', '———', 'rare', 'Knowledge earned through dedication'],
+          ['locked', '———', 'legendary', 'The rarest of minds'],
+          ['secret', '?', 'legendary', ''],
+        ]],
+      ];
+
+      const body = document.getElementById('title-gallery-body');
+      if (!body) return;
+      body.innerHTML = slots.map(([name, blurb, got, total, cards]) => `
+        <section class="title-gallery__slot">
+          <div class="title-gallery__slot-head">
+            <span class="title-gallery__slot-name">${name}</span>
+            <span class="title-gallery__slot-count">${got} / ${total}</span>
+          </div>
+          <p class="title-gallery__slot-blurb">${blurb}</p>
+          <div class="title-cards">${cards.map(([state, word, rarity, hint]) => `
+            <div class="title-card title-card--${state}" data-rarity="${rarity}">
+              <div class="title-card__word">${word}</div>
+              ${hint ? `<div class="title-card__hint">${hint}</div>` : ''}
+              <div class="title-card__meta">${rarity}${state === 'secret' ? ' · secret' : ''}</div>
+            </div>`).join('')}</div>
+        </section>`).join('');
+    },
+  },
+
   // ==========================================
   // PRIVACY.HTML
   //

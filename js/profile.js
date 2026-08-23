@@ -694,7 +694,37 @@ export async function initProfilePage() {
     } else {
       $('#title-builder-locked').style.display = '';
       $('#title-builder-wheel').style.display = 'none';
+
+      // Say WHICH category is closest and by how much. "Reach Apprentice" is
+      // true and useless: it names a rank the player has no way to locate and
+      // no way to price. tierProgress already knows both.
+      const peek = $('#title-builder-locked__peek');
+      if (peek) {
+        let best = null;
+        for (const row of mergedCategoryRows(stats)) {
+          const prog = tierProgress(row);
+          if (!prog || prog.tier) continue;
+          const cost = prog.met < prog.required
+            ? (prog.required - prog.met)
+            : (prog.needed ?? Infinity);
+          if (!best || cost < best.cost) best = { cost, category: row.category, prog };
+        }
+        if (best && Number.isFinite(best.cost)) {
+          const label = CATEGORY_META[best.category]?.label || best.category;
+          peek.textContent = best.prog.met < best.prog.required
+            ? `Closest: ${label}, ${best.cost} more questions · See what there is to earn ›`
+            : `Closest: ${label}, ${best.cost} more correct · See what there is to earn ›`;
+        }
+      }
     }
+
+    // The padlock opens the collection whether or not the builder is unlocked.
+    const lockedBtn = $('#title-builder-locked');
+    if (lockedBtn) lockedBtn.onclick = () => openTitleGallery(userId);
+    const galleryBtn = $('#btn-open-gallery');
+    if (galleryBtn) galleryBtn.onclick = () => openTitleGallery(userId);
+    const closeBtn = $('#btn-close-gallery');
+    if (closeBtn) closeBtn.onclick = closeTitleGallery;
   }
 
   // Bio
@@ -1452,6 +1482,111 @@ async function _batchFetchProfiles(userIds) {
   const map = {};
   for (const p of (data || [])) map[p.user_id] = p;
   return map;
+}
+
+// ============================================
+// TITLE COLLECTION
+//
+// Forty title words exist. Until now a player could see NONE of them before
+// reaching Apprentice — the Title Builder was a padlock reading "Reach
+// Apprentice to unlock", which says nothing about what is behind it, how many
+// there are, or how to get there. A progression nobody can see is not a
+// progression, and this is the second half of that same complaint.
+//
+// Every word already carries a `hint`, written long ago and never rendered
+// anywhere except a three-second toast inside the builder — which only opens
+// once you have already got in. Three words have `hint: null` on purpose;
+// those are secrets and the gallery says so rather than showing an empty
+// space that reads like a bug.
+//
+// Locked words show the hint and the rarity, NOT the word. That was the
+// owner's call, and it is what the hints were plainly written for.
+// ============================================
+
+const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
+const SLOT_NAMES = {
+  1: { name: 'The Adjective', blurb: 'How you play — persistence, loyalty, luck.' },
+  2: { name: 'The Calling', blurb: 'What you know. Earned by mastering a category.' },
+  3: { name: 'The Rank', blurb: 'How far you have come.' },
+};
+
+function galleryCard(word, level) {
+  const earned = level > 0;
+  const secret = !word.hint;
+  const rarity = word.rarity || 'common';
+
+  if (earned) {
+    return `<div class="title-card title-card--earned" data-rarity="${rarity}">
+      <div class="title-card__word">${escapeHtml(word.word)}</div>
+      <div class="title-card__meta">${escapeHtml(rarity)}${level > 1 ? ` \u00b7 level ${level}` : ''}</div>
+    </div>`;
+  }
+  if (secret) {
+    return `<div class="title-card title-card--secret" data-rarity="${rarity}">
+      <div class="title-card__word">&#x2753;</div>
+      <div class="title-card__meta">${escapeHtml(rarity)} \u00b7 secret</div>
+    </div>`;
+  }
+  return `<div class="title-card title-card--locked" data-rarity="${rarity}">
+    <div class="title-card__word">&#x2013;&#x2013;&#x2013;</div>
+    <div class="title-card__hint">${escapeHtml(word.hint)}</div>
+    <div class="title-card__meta">${escapeHtml(rarity)}</div>
+  </div>`;
+}
+
+async function renderTitleGallery(userId) {
+  const body = $('#title-gallery-body');
+  const summary = $('#title-gallery-summary');
+  if (!body) return;
+
+  // A guest has no account and therefore no unlocks, but can still browse —
+  // seeing what an account is for is the whole point of letting them look.
+  let unlockMap = {};
+  if (userId) {
+    const unlocks = await fetchTitleUnlocks(userId).catch(() => []);
+    for (const u of unlocks) unlockMap[u.word_id] = u.level;
+  }
+
+  const all = Object.entries(TITLE_WORDS).map(([id, w]) => ({ id, ...w, level: unlockMap[id] || 0 }));
+  const earned = all.filter(w => w.level > 0).length;
+
+  if (summary) {
+    summary.textContent = userId
+      ? `${earned} of ${all.length} earned. Locked ones show a clue, not the word.`
+      : `${all.length} titles to earn. Sign up to start collecting — locked ones show a clue, not the word.`;
+  }
+
+  body.innerHTML = [1, 2, 3].map(slot => {
+    const words = all
+      .filter(w => w.slot === slot)
+      // Earned first so progress reads at a glance, then by how rare it is:
+      // the interesting locked ones should not be buried under twelve commons.
+      .sort((a, b) => (b.level > 0) - (a.level > 0)
+        || (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0)
+        || a.word.localeCompare(b.word));
+    const got = words.filter(w => w.level > 0).length;
+    const meta = SLOT_NAMES[slot];
+    return `<section class="title-gallery__slot">
+      <div class="title-gallery__slot-head">
+        <span class="title-gallery__slot-name">${escapeHtml(meta.name)}</span>
+        <span class="title-gallery__slot-count">${got} / ${words.length}</span>
+      </div>
+      <p class="title-gallery__slot-blurb">${escapeHtml(meta.blurb)}</p>
+      <div class="title-cards">${words.map(w => galleryCard(w, w.level)).join('')}</div>
+    </section>`;
+  }).join('');
+}
+
+function openTitleGallery(userId) {
+  const el = $('#title-gallery');
+  if (!el) return;
+  el.hidden = false;
+  renderTitleGallery(userId);
+}
+
+function closeTitleGallery() {
+  const el = $('#title-gallery');
+  if (el) el.hidden = true;
 }
 
 // ============================================
