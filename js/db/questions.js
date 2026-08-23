@@ -452,6 +452,44 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
  * the one being flipped, so it is enough to know which way to move
  * times_correct. No row means nothing was recorded to amend.
  */
+/**
+ * Record one round's history for EVERY signed-in player in the room, once.
+ *
+ * Called by the host only. Replaces the old arrangement where each browser
+ * wrote its own row at the reveal — under which a phone asleep at that moment
+ * recorded nothing and a phone awake recorded a miss. The same event produced
+ * two different permanent records depending on the hardware, so somebody with
+ * a worse connection had a better accuracy.
+ *
+ * The owner settled the question that decides this: A MISS IS A MISS. It
+ * already scores 0 and burns a wager exactly as being present and wrong does,
+ * so it counts in accuracy the same way. Proficiency reads the most recent
+ * verdict (migration 040), so it is undoable by getting the question right.
+ *
+ * Safe to call more than once for the same round — the function marks the
+ * answer rows it has counted and skips them next time. It has to be: this
+ * fires from a phase transition, and Realtime does not promise those arrive
+ * exactly once.
+ *
+ * Falls back to nothing if migration 043 is unapplied; `recordOwnHistory`
+ * below is what runs until then.
+ */
+export async function recordRoundHistory(roomId, questionId) {
+  if (!roomId || !questionId) {
+    logger.warn('Supabase', 'recordRoundHistory called without room or question', { roomId, questionId });
+    return { ok: false, recorded: 0 };
+  }
+  const { data, error } = await supabase.rpc('record_round_history', {
+    p_room_id: roomId,
+    p_question_id: questionId
+  });
+  if (error) {
+    logger.error('Supabase', 'recordRoundHistory failed', error);
+    return { ok: false, recorded: 0, error };
+  }
+  return { ok: true, recorded: Number(data) || 0 };
+}
+
 export async function amendQuestionHistory(userId, questionId, isCorrect, roomId) {
   // Through the database, NOT a direct UPDATE. question_history is scoped to
   // its owner (migration 011: UPDATE USING user_id = auth.uid()), so a host

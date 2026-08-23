@@ -235,6 +235,71 @@ try {
   }
 
   // ------------------------------------------------------------
+  // 1a. THE ROUND IS RECORDED ONCE, NOT ONCE PER PHONE.
+  //
+  // Both facts here are the reason migration 043 exists.
+  //
+  // BOB IS RECORDED FROM SOMEBODY ELSE'S CALL. Every device fires
+  // record_round_history, and the first one to arrive records the whole room —
+  // so a player whose phone was asleep at the reveal is recorded anyway.
+  // Before this, each browser wrote only its own row, and a sleeping phone
+  // recorded nothing while a waking one recorded a miss: the same event
+  // produced two different permanent records depending on the hardware.
+  //
+  // AND IT COUNTS ONCE. question_history holds COUNTERS, so a second call is a
+  // second attempt — the exact damage migration 041's amend function exists to
+  // undo. This fires from a phase transition, which Realtime does not promise
+  // to deliver exactly once, so idempotency is not a nicety.
+  // ------------------------------------------------------------
+  heading('recording the round twice must not count it twice');
+  const recordedTwice = await host.page.evaluate(async ([roomId, questionId]) => {
+    const mod = await import('./js/supabase.js');
+    const a = await mod.recordRoundHistory(roomId, questionId);
+    const b = await mod.recordRoundHistory(roomId, questionId);
+    return [a, b];
+  }, [table.store.table('rooms')[0]?.id, qId]).catch(err => ({ threw: err.message }));
+  note(`two extra calls returned: ${JSON.stringify(recordedTwice)}`);
+
+  const aliceAfterRepeat = historyFor(table.store, host.userId, qId);
+  const bobAfterRepeat = historyFor(table.store, bob.userId, qId);
+  note(`Alice after two more calls: ${describeRow(aliceAfterRepeat)}`);
+  note(`Bob after two more calls:   ${describeRow(bobAfterRepeat)}`);
+  if (aliceAfterRepeat?.times_seen !== 1 || bobAfterRepeat?.times_seen !== 1) {
+    problems.push(`re-recording the same round counted it again — Alice ${aliceAfterRepeat?.times_seen}, Bob ${bobAfterRepeat?.times_seen}, both should still be 1. Every extra call is an attempt the player never made.`);
+  }
+
+  // Every answer row for the round must carry the marker, including any
+  // belonging to guests. An unmarked row is one the next call rescans.
+  const unmarked = table.store.table('answers')
+    .filter(a => String(a.question_id) === String(qId) && !a.history_recorded).length;
+  note(`answer rows for this round still unmarked: ${unmarked}`);
+  if (unmarked > 0) {
+    problems.push(`${unmarked} answer row(s) were left unmarked after recording, so the next call would count the round again`);
+  }
+
+  // ONE call records the WHOLE ROOM. This is the property that makes a
+  // sleeping phone survivable: whoever gets there first writes everybody's
+  // row, so nobody's record depends on their own device being awake. Both
+  // browsers here are alive, so the markers are cleared to put the round back
+  // in the state it was in before anyone recorded it, and then it is called
+  // exactly once, from one device.
+  for (const a of table.store.table('answers')) {
+    if (String(a.question_id) === String(qId)) a.history_recorded = false;
+  }
+  for (const uid of [host.userId, bob.userId]) {
+    const r = historyFor(table.store, uid, qId);
+    if (r) { r.times_seen = 0; r.times_correct = 0; }
+  }
+  const oneCall = await host.page.evaluate(async ([roomId, questionId]) => {
+    const mod = await import('./js/supabase.js');
+    return mod.recordRoundHistory(roomId, questionId);
+  }, [table.store.table('rooms')[0]?.id, qId]).catch(err => ({ threw: err.message }));
+  note(`a single call from one device recorded: ${JSON.stringify(oneCall)}`);
+  if (oneCall?.recorded !== 2) {
+    problems.push(`one call recorded ${oneCall?.recorded} player(s), expected 2 — the round is still being recorded per-device, so a phone asleep at the reveal records nothing`);
+  }
+
+  // ------------------------------------------------------------
   // 1. HOST OVERRIDE — a correction, not a second attempt.
   // ------------------------------------------------------------
   heading('the host changes their mind about Bob');

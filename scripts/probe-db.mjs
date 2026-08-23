@@ -435,6 +435,10 @@ const RPC_PROBES = [
   // for anybody.
   ['amend_question_history', { p_user_id: NOT_A_UUID, p_question_id: NOT_A_UUID, p_room_id: NOT_A_UUID, p_is_correct: true }],
   ['revoke_question_history', { p_user_id: NOT_A_UUID, p_question_id: NOT_A_UUID, p_room_id: NOT_A_UUID }],
+  // Migration 043. Without it every browser falls back to writing only its own
+  // row at the reveal, so whether a round is recorded depends on whether that
+  // phone happened to be awake.
+  ['record_round_history', { p_room_id: NOT_A_UUID, p_question_id: NOT_A_UUID }],
   // Migration 042. Admin-gated, so an anonymous probe cannot get past the
   // guard — but a MISSING function still answers 404 and a present one still
   // answers 22P02 on the uuid cast, which is all this needs to distinguish.
@@ -527,6 +531,9 @@ const CONSEQUENCES = [
   { object: 'answer_tally', kind: 'table',
     fix: 'run migrations/029_answer_tally.sql',
     breaks: ['the admin page cannot show what people actually typed'] },
+  { object: 'record_round_history', kind: 'rpc',
+    fix: 'run migrations/043_record_round_history.sql',
+    breaks: ['a round is recorded only by the phones that were awake for the reveal, so two players who both missed the same question can end up with different permanent records'] },
   { object: 'record_answer_text', kind: 'rpc',
     fix: 'run migrations/029_answer_tally.sql',
     breaks: ['nothing anybody types is ever counted'] },
@@ -588,7 +595,10 @@ const REQUIRED = {
             // it the section simply never appears.
             'room_scores'],
   answers: ['id', 'room_id', 'player_id', 'question_number', 'question_id',
-            'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned'],
+            'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned',
+            // Migration 043 — the marker that makes recording a round
+            // idempotent. Nothing in js/ writes it directly; the function does.
+            'history_recorded'],
   game_plays: ['id', 'room_id', 'player_id', 'category', 'subcategory', 'completed_at',
                'total_questions', 'questions_answered', 'final_score', 'completed'],
   question_feedback: ['id', 'question_id', 'voter_id', 'room_id', 'player_name',

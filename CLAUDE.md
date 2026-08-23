@@ -135,8 +135,8 @@ logs the failure. So one missing column silently kills a whole feature.
 **Every column in that table now exists** — migrations 024–027 were run, and
 the probe confirms all 18 tables have every column `js/` writes. Treat the
 table above as a catalogue of how this failure *presents*, not as an open bug
-list. The one thing still missing is the `get_mastery_counts` RPC, which has a
-client-side fallback and so has never been noticed (#6).
+list, and as of 2026-08-23 the probe reports **nothing on the watch list
+missing** — every RPC and view the app reads is installed.
 
 **`migrations/030_bot_players.sql` adds `players.is_bot` and is the newest
 hand-applied one.** Until it is run, pressing "+ Practice Bot" in the lobby
@@ -250,9 +250,11 @@ real argument names also test the **signature** — a function that exists under
 a different one answers 404 too, and is just as dead to the app.
 
 Truth as of 2026-08-18: `get_category_play_counts`, `record_question_outcome`
-and `increment_questions_answered` are installed. `get_mastery_counts` is not,
+and `increment_questions_answered` are installed. `get_mastery_counts` was not,
 and `fetchMasteryCounts` has always fallen back to a client-side query, so the
-mastery tree works — slowly — and nobody noticed.
+mastery tree worked — slowly — and nobody noticed. **It is installed as of
+2026-08-23** (migration 032 was run at some point without being recorded here,
+which is #7 in miniature: the file was stale in the reassuring direction).
 
 **Row counts in the probe are rows a *visitor* can see.** A restrictive SELECT
 policy filters rows out rather than refusing the request, so `error_logs` reads
@@ -365,10 +367,8 @@ makes `games_played` stay at 1 and reports both faults by name.
 
 **RESOLVED 2026-08-19** — migration 031 was run, and the probe now reads the
 view as present. Kept here because of how long it hid and what hid it.
-**Migration 032 is the follow-up and is still hand-applied by the owner**: it
-adds `player_totals_computed` (honest global totals) and `get_mastery_counts`
-(the RPC `fetchMasteryCounts` has always fallen back for). Both have working
-fallbacks, so nothing breaks before it is run.
+Migration 032 — `player_totals_computed` (honest global totals) and
+`get_mastery_counts` — **is applied**, confirmed by the probe on 2026-08-23.
 
 Measured earlier that day: the live database answered **`PGRST205`** for
 `player_stats_computed` — "could not find the table in the schema cache". Not
@@ -408,7 +408,7 @@ healthy one.
 The probe now ends with a **WHAT THIS MEANS FOR A PLAYER** section that maps
 each missing object to the features it takes down, so the next one of these is
 one line of output rather than a chain of inference. As of 2026-08-19 that
-section lists only `get_mastery_counts`, which is harmless and says so.
+section is empty: as of 2026-08-23 nothing it watches is missing.
 
 **Restoring the view exposed a second bug underneath it, in the same hour.**
 `player_stats_computed` returns every number **twice**: for one player in one
@@ -1027,7 +1027,8 @@ consequences, none of which error:
 So a host's correction lands on their own row and quietly does nothing for
 everyone else. The scenario passes because the fake store has no RLS.
 
-**FIXED for the corrections, by migration 041.** `amend_question_history` and
+**FIXED for the corrections, by migration 041, which the probe confirms is
+applied as of 2026-08-23.** `amend_question_history` and
 `revoke_question_history` are SECURITY DEFINER, so the table stays shut to
 clients and a host's correction reaches the player it is about. The guard could
 not be "the caller must be the host" — a host is very often a guest, and a
@@ -1038,13 +1039,48 @@ room could misuse it, but they can already edit the scoreboard, so it opens
 nothing that was closed. **Both calls now require a `roomId`** and do nothing
 without one; `scenario-accuracy` fails by name if a call site drops it.
 
-**Still per-device: the RECORDING of a round.** `doReveal` writes the player's
-own row from the player's own browser, so a phone asleep at the reveal records
-nothing and a phone awake records a miss — the same event, two outcomes,
-decided by hardware. Making that consistent needs one more DEFINER function
-that records the whole round for everybody, called once by the host. **Not
-built — it needs the owner's decision on whether an absent player's blank
-should count.**
+**FIXED for the RECORDING of a round too, by migration 043.** `doReveal` used
+to write the player's own row from the player's own browser, so a phone asleep
+at the reveal recorded nothing and a phone awake recorded a miss — the same
+event, two outcomes, decided by hardware, which meant a worse connection could
+buy a better accuracy.
+
+**The owner settled the question this waited on: A MISS IS A MISS.** It already
+scores 0 and burns a wager exactly as being present and wrong does, so it
+counts in accuracy the same way. It is not permanent: Proficiency reads the
+most recent verdict (migration 040), so getting the question right next time
+erases it.
+
+`record_round_history(p_room_id, p_question_id)` records every signed-in
+player in one statement. Three things about it are load-bearing:
+
+- **Every device calls it, not just the host** — `recordRoundHistory` in
+  `doReveal`. The first call does the work and the rest are no-ops. Host-gating
+  it would have reintroduced the exact failure it fixes: a host whose phone
+  died would take the whole room's record with them. **Contrast `room_scores`,
+  which IS host-gated** — that write is not idempotent, so a per-device call
+  there multiplies the tally by the room size. Whether a write may be repeated
+  is the thing to establish before choosing.
+- **The marker is `answers.history_recorded`, not anything on
+  `question_history`.** `revoke_question_history` DELETES that row when it was
+  the player's only sighting, which would take a marker with it and let a
+  re-render re-add the attempt the host had just thrown out. `answers` is
+  untouched by the corrections and dies with the room, which is exactly how
+  long the marker is needed.
+- **The UPDATE that claims the marker comes FIRST in the statement**, so it
+  takes the row locks and a second caller blocks, wakes, re-tests
+  `history_recorded = false`, matches nothing and inserts nothing. With the
+  marker last, two callers would read the same unmarked rows and both count
+  the round.
+
+It is update-then-insert rather than `ON CONFLICT`, deliberately:
+`upsertQuestionHistory` in `js/` is a read-then-write, so nothing guarantees a
+unique index on `(user_id, question_id)` — and `ON CONFLICT` without one raises
+42P10 and kills the whole statement every time, for everyone.
+
+`scenario-accuracy` proves exactly-once and whole-room-in-one-call. Verified by
+removing the marker: it reports four failures by name, including "Alice 4,
+Bob 4, both should still be 1".
 
 ## Proficiency counts questions; volume counts attempts
 

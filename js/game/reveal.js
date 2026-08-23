@@ -11,7 +11,7 @@ import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
-         upsertQuestionHistory, amendQuestionHistory, revokeQuestionHistory,
+         upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
          upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
   recordQuestionOutcome, recordAnswerText,
 } from '../supabase.js';
@@ -358,15 +358,39 @@ export function doReveal() {
   // Now mark revealed — subsequent renders will apply colors immediately
   state.resultsRevealed = true;
 
-  // Write per-question mastery in real-time (fire-and-forget).
-  const authUser = getCurrentUser();
-  if (authUser) {
-    const uid = authUser.user.id;
+  // Record the round's history (fire-and-forget).
+  //
+  // This used to be "write MY row from MY browser", which made the record
+  // depend on hardware: a phone asleep at the reveal recorded nothing and a
+  // phone awake recorded a miss, so two people who both missed the same
+  // question could end up with different permanent records. The owner settled
+  // the question underneath it — a miss is a miss, exactly as it already is
+  // for scoring — so the round is now recorded for everybody at once, through
+  // record_round_history (migration 043).
+  //
+  // EVERY device calls it, not just the host. The function marks the answer
+  // rows it counts and claims that marker under a row lock, so the first call
+  // does the work and the rest are no-ops. That idempotency is the whole
+  // design, and it is what lets this survive the case the change exists to
+  // fix: if only the host called it, a host whose phone died would take the
+  // whole room's record with them.
+  //
+  // (Contrast room_scores, which is host-gated — that write is NOT idempotent,
+  // so a per-device call there multiplies the tally by the room size.)
+  const revealedQuestionId = state.questions[state.currentQuestion]?.id;
+  if (revealedQuestionId) recordRoundHistory(state.room.id, revealedQuestionId).then(res => {
+    if (res.ok) return;
+    // Migration 043 unapplied, or the call failed. Fall back to the old
+    // per-device write so nothing is lost before the SQL is run — worse,
+    // because it is back to depending on this phone being awake, but not
+    // nothing.
+    const authUser = getCurrentUser();
+    if (!authUser) return;
     const myAnswer = state.currentAnswers.find(a => String(a.player_id) === String(state.room.playerId));
     if (myAnswer?.question_id) {
-      upsertQuestionHistory(uid, myAnswer.question_id, !!myAnswer.is_correct);
+      upsertQuestionHistory(authUser.user.id, myAnswer.question_id, !!myAnswer.is_correct);
     }
-  }
+  });
 
   // Animate: add color classes on next frame so CSS transition fires
   requestAnimationFrame(() => {

@@ -33,7 +33,8 @@ export {
   fetchAllOpenQuestions, fetchExclusiveWildCardQuestions,
   fetchAllOpenQuestionCount, fetchExclusiveWildCardCount,
   fetchQuestionHistoryForUsers, fetchQuestionByDifficulty, fetchQuestionsByIds,
-  upsertQuestionHistory, amendQuestionHistory, revokeQuestionHistory, fetchMasteryCounts,
+  upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
+  fetchMasteryCounts,
   upsertQuestionFeedback, deleteQuestionFeedbackByVoter, fetchQuestionFeedback,
   fetchCategoryPlayCounts, recordQuestionOutcome, recordAnswerText, fetchAnswerTally,
 } from './db/questions.js';

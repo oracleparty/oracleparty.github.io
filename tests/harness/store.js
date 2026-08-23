@@ -466,6 +466,58 @@ export class FakeStore {
       return null;
     }
 
+    // Mirrors migration 043: record one round's history for everybody, once.
+    //
+    // The real one is SECURITY DEFINER because question_history is scoped to
+    // its owner, so no browser can write another player's row. What a scenario
+    // can prove here is the two things that are the app's business rather than
+    // the migration's: that a player who never touched their phone is recorded
+    // at all, and that calling it repeatedly — which Realtime makes likely —
+    // counts the round exactly once.
+    if (name === 'record_round_history') {
+      if (!args?.p_room_id || !args?.p_question_id) return 0;
+      const answers = this.table('answers').filter(a =>
+        String(a.room_id) === String(args.p_room_id) &&
+        String(a.question_id) === String(args.p_question_id) &&
+        !a.history_recorded);
+
+      // The marker is claimed FIRST, exactly as the SQL does it, so a second
+      // call finds nothing left even if the first is still in flight.
+      for (const a of answers) a.history_recorded = true;
+
+      const players = this.table('players');
+      const seen = new Set();
+      let recorded = 0;
+      // Newest answer row wins, matching the SQL's DISTINCT ON ... ORDER BY id
+      // DESC — one person can hold two rows through a rejoin.
+      for (const a of [...answers].reverse()) {
+        const player = players.find(p => String(p.id) === String(a.player_id));
+        if (!player || !player.user_id || player.is_bot) continue;
+        if (seen.has(String(player.user_id))) continue;
+        seen.add(String(player.user_id));
+
+        const rows = this.table('question_history');
+        const isCorrect = !!a.is_correct;
+        const row = rows.find(r =>
+          String(r.user_id) === String(player.user_id) &&
+          String(r.question_id) === String(args.p_question_id));
+        if (row) {
+          row.times_seen = (row.times_seen || 0) + 1;
+          row.times_correct = (row.times_correct || 0) + (isCorrect ? 1 : 0);
+          row.last_correct = isCorrect;
+          row.last_seen_at = new Date().toISOString();
+        } else {
+          rows.push({
+            user_id: player.user_id, question_id: args.p_question_id,
+            times_seen: 1, times_correct: isCorrect ? 1 : 0,
+            last_correct: isCorrect, last_seen_at: new Date().toISOString(),
+          });
+        }
+        recorded++;
+      }
+      return recorded;
+    }
+
     // Mirrors migration 025: one row per question, counting how it performed.
     // Recorded here so a scenario can assert what is NOT counted — a bot's
     // answers must never reach this table, because they come from a chosen
