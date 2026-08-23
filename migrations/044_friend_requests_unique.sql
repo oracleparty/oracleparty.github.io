@@ -41,8 +41,14 @@
 -- exactly that value. So EVERY accept has died on a 23514 for as long as that
 -- constraint has existed, the error surfaced as the word "Error" on the button,
 -- and nobody could accept a friend request at all. That is the reported bug.
--- js/db/social.js now retries without the column, so the app works whatever the
--- constraint turns out to allow.
+-- The constraint turned out to be:
+--
+--   CHECK (source = ANY (ARRAY['lobby', 'search']))
+--
+-- and `source` is NOT NULL with no usable default, so omitting it fails too.
+-- Step 4 below widens it to include 'request'. js/db/social.js also falls back
+-- to 'search' when a CHECK refuses the row, so the app works before this is
+-- run as well as after.
 --
 -- The client no longer depends on the unique constraint either — it takes the
 -- newest row rather than assuming one exists — so the app is correct with or
@@ -122,14 +128,39 @@ END $$;
 -- friendships stores the pair in sorted order (least, greatest), which is what
 -- createFriendship in js/ does, so the two agree.
 -- --------------------------------------------
--- `source` is deliberately NOT set. The live table carries a CHECK constraint
--- named friendships_source_check which appears in no migration here and which
--- REJECTS 'request' — the only value any caller in js/ passes. Letting the
--- column's own default apply avoids depending on a rule this repo cannot see.
-INSERT INTO friendships (user_a, user_b)
+-- FIRST, widen the constraint that has been blocking this all along.
+--
+-- Measured on the live database, and it is in no migration in this repo:
+--
+--   friendships_source_check  CHECK (source = ANY (ARRAY['lobby', 'search']))
+--
+-- acceptFriendRequest passes 'request', so every accept died on it. `source`
+-- is also NOT NULL with no usable default, so simply omitting the column fails
+-- with 23502 instead — both halves measured, the second because omitting it
+-- was tried here and the database said no.
+--
+-- 'request' is a real third source and worth recording: it says these two
+-- people asked each other, rather than one adding the other from a lobby or a
+-- search. So the constraint widens rather than the code lying about it.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'friendships_source_check'
+       AND conrelid = 'friendships'::regclass
+  ) THEN
+    ALTER TABLE friendships DROP CONSTRAINT friendships_source_check;
+  END IF;
+  ALTER TABLE friendships
+    ADD CONSTRAINT friendships_source_check
+    CHECK (source = ANY (ARRAY['lobby'::text, 'search'::text, 'request'::text]));
+END $$;
+
+INSERT INTO friendships (user_a, user_b, source)
 SELECT DISTINCT
        LEAST(a.sender_id, a.receiver_id),
-       GREATEST(a.sender_id, a.receiver_id)
+       GREATEST(a.sender_id, a.receiver_id),
+       'request'
   FROM friend_requests a
   JOIN friend_requests b
     ON b.sender_id = a.receiver_id AND b.receiver_id = a.sender_id
@@ -165,5 +196,10 @@ SELECT 'duplicates remaining' AS check, count(*) AS should_be_zero
 SELECT conname AS constraint_name, contype
   FROM pg_constraint
  WHERE conrelid = 'friend_requests'::regclass AND contype = 'u';
+
+-- Should now list 'request' alongside 'lobby' and 'search'.
+SELECT conname, pg_get_constraintdef(oid)
+  FROM pg_constraint
+ WHERE conrelid = 'friendships'::regclass AND conname = 'friendships_source_check';
 
 SELECT status, count(*) FROM friend_requests GROUP BY status ORDER BY status;

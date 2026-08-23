@@ -424,8 +424,15 @@ try {
     rows.push({ id: 920, sender_id: carol.userId, receiver_id: alice.userId,
                 status: 'pending', created_at: new Date().toISOString() });
     table.store.table('friendships').length = 0;
-    // Exactly the live constraint: anything but 'request'.
-    table.store.addCheck('friendships', row => row.source !== 'request', 'friendships_source_check');
+    // Exactly the live constraint, measured:
+    //   CHECK (source = ANY (ARRAY['lobby', 'search']))
+    // plus NOT NULL on the column, which is what made "just omit it" fail too.
+    table.store.addCheck('friendships',
+      row => row.source === 'lobby' || row.source === 'search',
+      'friendships_source_check');
+    table.store.addCheck('friendships',
+      row => row.source != null,
+      'friendships_source_not_null');
 
     const accepted = await alice.page.evaluate(async (id) => {
       const mod = await import('./js/supabase.js');
@@ -438,8 +445,15 @@ try {
     if (accepted.error) {
       problems.push(`accepting failed outright against a CHECK constraint: "${accepted.error}" — this is the live bug, nobody can become anybody's friend`);
     }
-    if (table.store.table('friendships').length !== 1) {
+    const made = table.store.table('friendships');
+    if (made.length !== 1) {
       problems.push('accepting produced no friendship, so the two people are still not friends');
+    }
+    // And it must have written a value the constraint allows, not null — the
+    // first attempt at this fix omitted the column and the live database
+    // refused it with 23502.
+    if (made[0] && !['lobby', 'search', 'request'].includes(made[0].source)) {
+      problems.push(`the friendship was written with source=${JSON.stringify(made[0].source)}, which no allowed value covers`);
     }
     table.store.clearChecks('friendships');
     table.store.table('friendships').length = 0;

@@ -297,6 +297,55 @@ records which ones were actually run, so **the live schema is not known with
 certainty from this repo alone.** Run `scripts/inspect-db.sql` in the SQL Editor
 to get the real picture before relying on any table or policy.
 
+### 10. The live database enforces rules this repo has never heard of
+
+Every earlier instance of schema drift here was the live database MISSING
+something `migrations/` declared. On 2026-08-23 it went the other way, and that
+direction is worse, because reading every migration in the repo cannot reveal
+it.
+
+`friendships` carries a constraint in no migration file:
+
+```
+friendships_source_check  CHECK (source = ANY (ARRAY['lobby', 'search']))
+```
+
+`acceptFriendRequest` is the only caller of `createFriendship` anywhere in
+`js/`, and it passes `'request'`. **So every accept of a friend request died on
+a 23514, for everybody, for as long as that constraint has existed.** The error
+reached `logger` and the button said "Error". Nobody could become anybody's
+friend.
+
+The column is also **NOT NULL with no usable default**, which matters because
+the obvious workaround — omit `source` and let the default apply — fails with
+`23502` instead. That was tried, in a migration the owner ran, and the database
+refused it. **Both halves are measured, and the second only because the first
+fix was wrong and said so out loud.**
+
+`migrations/044` widens the constraint to allow `'request'`, which is a real
+third source worth recording. `createFriendship` also falls back to `'search'`
+on any 23514, so the app is correct before that is run as well as after.
+
+`friendships.id` is a **uuid** on the live table; migration 003 declares
+`BIGINT GENERATED ALWAYS AS IDENTITY`. Nothing depends on it today. Do not
+assume any column's type from `migrations/`.
+
+**`friend_requests` has no unique constraint either**, though migration 003
+declares `UNIQUE(sender_id, receiver_id)` — proven by three rows for one pair
+in the live table. Both `sendFriendRequest` guards used `.maybeSingle()`, which
+ERRORS on more than one row, and both discarded the error — so once two rows
+existed for a pair every guard on it failed open, including the auto-accept.
+Two people who each sent the other a request in March were never made friends
+and were never told anything. The client no longer depends on the constraint;
+044 adds it.
+
+**When something works in the harness and fails live, ask what the real
+database REFUSES that the fake one allows.** Two faithfulness gaps were found
+in one evening this way — `maybeSingle` returning a row where PostgREST errors,
+and the store accepting any row at all — and each had been hiding a live bug
+for months. `store.addCheck()` now simulates a CHECK constraint, and
+`maybeSingle` errors on multiple rows.
+
 ### 9. Play counts were deleted the instant they were earned
 
 **Needs `migrations/033_play_counts_survive_the_room.sql` run by the owner.**

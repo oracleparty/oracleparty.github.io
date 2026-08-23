@@ -637,6 +637,12 @@ export async function cancelFriendRequest(requestId) {
  * Create a friendship between two users (instant add from lobby/game).
  * Enforces canonical ordering: user_a < user_b.
  */
+// The value the live CHECK constraint accepts today, used when the intended
+// one is refused. 'search' rather than 'lobby' because a friend request is
+// sent after finding somebody, which is what search means here — 'lobby' would
+// claim they were added from a game they played together.
+const FRIENDSHIP_SOURCE_FALLBACK = 'search';
+
 export async function createFriendship(userIdA, userIdB, source = 'lobby') {
   // Defensive: prevent self-friendship even if upstream callers pass the same id.
   // sendFriendRequest already checks, but createFriendship is also called directly
@@ -659,25 +665,31 @@ export async function createFriendship(userIdA, userIdB, source = 'lobby') {
 
   // 23514 = a CHECK constraint refused the row.
   //
-  // THIS IS WHY ACCEPTING A FRIEND REQUEST HAS NEVER WORKED. The live
-  // `friendships` table carries a constraint named friendships_source_check
-  // that appears in NO migration in this repo, and it rejects source =
-  // 'request' — which is the only value any caller passes, from
-  // acceptFriendRequest. So every accept died here, createFriendship returned
-  // the error, and the button showed "Error". Schema drift again (CLAUDE.md
-  // #7), and the reverse of the usual direction: the live table has a
-  // constraint the repo has never heard of.
+  // THIS IS WHY ACCEPTING A FRIEND REQUEST HAD NEVER WORKED. The live
+  // `friendships` table carries a constraint that appears in NO migration in
+  // this repo:
   //
-  // Retrying without the column lets the table's own DEFAULT decide, which is
-  // by definition a value the constraint accepts. `source` is descriptive —
-  // nothing reads it to make a decision — so losing it costs nothing next to
-  // two people not becoming friends. Logged loudly, because a schema this file
-  // cannot predict is worth knowing about even when it has been worked around.
-  if (error.code === '23514') {
-    logger.error('Supabase', 'createFriendship refused by a CHECK constraint — retrying without `source`', { source, error });
+  //   friendships_source_check  CHECK (source = ANY (ARRAY['lobby', 'search']))
+  //
+  // acceptFriendRequest is the only caller of this function and it passes
+  // 'request'. So every accept died here, createFriendship returned the error,
+  // and the button showed "Error". Schema drift (CLAUDE.md #7) in the
+  // direction this project had not seen: the live database ENFORCING a rule
+  // the repo has never heard of, which reading migrations could never reveal.
+  //
+  // Migration 044 widens the constraint to accept 'request', which is a real
+  // third source and deserves recording. This retry is what makes the app work
+  // BEFORE that is run, and it costs one wrong label rather than a friendship.
+  //
+  // It falls back to a real value, NEVER to omitting the column: `source` is
+  // also NOT NULL on the live table with no usable default, so leaving it out
+  // fails with 23502 instead. Both halves were measured, the second because
+  // omitting it was tried and the database refused that too.
+  if (error.code === '23514' && source !== FRIENDSHIP_SOURCE_FALLBACK) {
+    logger.error('Supabase', `createFriendship refused source="${source}" by a CHECK constraint — retrying as "${FRIENDSHIP_SOURCE_FALLBACK}" (run migration 044)`, error);
     const retry = await supabase
       .from('friendships')
-      .insert({ user_a, user_b })
+      .insert({ user_a, user_b, source: FRIENDSHIP_SOURCE_FALLBACK })
       .select()
       .single();
     if (!retry.error) return { data: retry.data, error: null };
