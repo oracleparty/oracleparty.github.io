@@ -171,7 +171,14 @@ export function showQuestionScreen() {
       // clock, by construction. Falls back to the estimate when the function is
       // not installed, which is exactly the old behaviour.
       if (state.room.isHost) {
-        const served = await startClockOnServer(state.room.id, 'question', state.currentQuestion);
+        // THE FINAL ROUND'S PHASE IS 'final_question', NOT 'question'. This
+        // screen renders both, and op_start_clock checks the phase it is given
+        // against the room's — so passing 'question' here made the final round
+        // look like a stale caller, the stamp was refused, and the client took
+        // the PREVIOUS round's timestamp as this one's start. The last question
+        // of every game would have opened with its timer nearly gone.
+        const phase = state.isFinalWagerRound ? 'final_question' : 'question';
+        const served = await startClockOnServer(state.room.id, phase, state.currentQuestion);
         const startedAt = served || new Date(Date.now() + state.serverTimeOffset).toISOString();
         state.questionStartedAt = startedAt;
         if (!served) await updateGameState(state.room.id, { question_started_at: startedAt });

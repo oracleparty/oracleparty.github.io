@@ -190,6 +190,22 @@ BEGIN
     SELECT question_started_at INTO after FROM rooms WHERE id = rid;
     INSERT INTO result (check_name, got, want) VALUES
       ('nor one that has the phase wrong', (after = ancient)::text, 'true');
+
+    -- THE FINAL ROUND'S PHASE IS 'final_question'. The caller that asks for
+    -- 'question' on it is a stale caller and is refused — correctly — so the
+    -- client has to ask for the right one. It did not, and the last question of
+    -- every game would have opened with the previous round's clock already
+    -- most of the way through it.
+    UPDATE rooms SET game_phase = 'final_question', current_question = 3,
+                     question_started_at = ancient WHERE id = rid;
+    stamped := op_start_clock(rid, 'question', 3);
+    SELECT question_started_at INTO after FROM rooms WHERE id = rid;
+    INSERT INTO result (check_name, got, want) VALUES
+      ('asking for the wrong phase on the final round is refused', (after = ancient)::text, 'true');
+    stamped := op_start_clock(rid, 'final_question', 3);
+    INSERT INTO result (check_name, got, want) VALUES
+      ('asking for the right one starts its clock',
+       (abs(extract(epoch FROM (now() - stamped))) < 5)::text, 'true');
   END;
 
   -- ---- __WAGER_LOCKED__ is not an answer ------------------------------------

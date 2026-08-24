@@ -253,6 +253,16 @@ try {
   let round = 0;
   let lastQuestionSeen = -1;
   let reachedResults = false;
+  // Sampled on its own timer, not between turns: the stamp for a round lands a
+  // second into it, which is inside a turn, and a between-turns sample misses
+  // the window entirely.
+  const lastStampByPhase = new Map();
+  const clockSampler = setInterval(() => {
+    const rm = table.store.table('rooms')[0];
+    if (rm?.question_started_at && rm.game_phase) {
+      lastStampByPhase.set(rm.game_phase, rm.question_started_at);
+    }
+  }, 100);
   let waitedOutWagerClock = false;
 
   for (let step = 0; step < 160 && !reachedResults; step++) {
@@ -280,6 +290,30 @@ try {
       note(`round ${round} (phase ${room.game_phase})`);
     }
     await host.page.waitForTimeout(450);
+  }
+
+  // EVERY ROUND MUST GET ITS OWN CLOCK.
+  //
+  // The stamp is asked for BY PHASE, and the final round's phase is
+  // 'final_question', not 'question'. Ask for the wrong one and the database
+  // correctly refuses, the client falls back to whatever stamp is already on
+  // the room, and the last question of the game opens with the previous
+  // round's timer most of the way through. Nothing else here could see it: the
+  // robots answer fast enough to finish inside the leftover time.
+  //
+  // Compared as VALUES, not as ages. A first version measured how old the stamp
+  // was each time round the loop and never caught it, because the re-stamp
+  // lands one second into the round — inside a turn — and by the next sample
+  // the phase had already moved on. Two stamps being equal is true whenever you
+  // look at them.
+  clearInterval(clockSampler);
+  const wagerStamp = lastStampByPhase.get('final_wager');
+  const finalStamp = lastStampByPhase.get('final_question');
+  note(`final-wager clock ${wagerStamp || '(none)'} / final-question clock ${finalStamp || '(none)'}`);
+  if (!finalStamp) {
+    problems.push('the final question never got a clock at all');
+  } else if (wagerStamp && finalStamp === wagerStamp) {
+    problems.push('the final question reused the wager screen\'s clock instead of starting its own — its timer opens already most of the way through');
   }
 
   if (!reachedResults) {

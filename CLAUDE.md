@@ -1490,7 +1490,23 @@ two cannot disagree by construction. It replaces a write the client already
 made, so it costs no round trip, and it stays host-gated exactly as before: who
 may start a round is a different question from whose clock is used.
 
-Three things went wrong writing this, and all three are about measurement.
+**The final round's phase is `final_question`, not `question`, and the first
+version of the client passed `'question'` for both.** `op_start_clock` checks
+the phase it is given against the room's, so it correctly refused, and the
+client then took the PREVIOUS round's stamp as this one's start — **the last
+question of every game would have opened with the final-wager screen's
+20-second clock already run down.** It shipped, and was caught reading the code
+after the owner applied the SQL, not by any test.
+
+`scenario-fullgame` now compares the two stamps as VALUES. A first attempt
+measured how OLD the stamp was on each pass of the round loop and never caught
+it: the re-stamp lands a second into the round, which is inside a turn, and by
+the next sample the phase had moved on. Sampling now runs on its own 100ms
+timer, and **two stamps being equal is true whenever you look at them** —
+unlike an age, which is only wrong during a window you have to be lucky to hit.
+Verified by putting the bug back.
+
+Four things went wrong writing this, and all of them are about measurement.
 
 - **`now()` IS TRANSACTION TIME in Postgres**, frozen for a whole `DO` block.
   Two versions of the stale-caller check compared stamps taken before and after
