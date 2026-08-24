@@ -49,6 +49,7 @@ const MIGRATIONS = [
   '047_server_owns_the_clock.sql',
   '048_only_the_rules_delete_a_room.sql',
   '049_only_a_host_changes_a_verdict.sql',
+  '050_blank_fill_keeps_the_locked_wager.sql',
 ];
 
 // 046 touches rooms, players and answers, none of which any migration in this

@@ -1680,6 +1680,68 @@ Disqualifying is now ONE call rather than a loop of per-answer writes: a loop
 can half-succeed and leave a round that was thrown out still paying points to
 whoever's write landed.
 
+## The screen must show the question the room is asking
+
+**Reported from a live game: a player received a completely different final
+question from everybody else.**
+
+The host swaps the final question for one matching the difficulty vote and
+broadcasts the new `question_ids` in a single room update. Lose that one event
+— a real connection does, occasionally — and the player kept their own
+pre-fetched question. **Nothing ever re-checked the list.** `syncToCurrentState`
+is the safety net for a missed Realtime event and it caught up the phase and the
+question NUMBER, never the question LIST.
+
+It became far worse with migration 046, because the verdict now comes from the
+ROOM's question, not the one on the screen. So the player answered a question
+nobody else was asked and was marked wrong on one they never saw.
+
+The poll compares `question_ids` against `state.questions` now, refetches, and
+forces a re-render even when the round number has not moved — the question on
+screen is the thing that is wrong.
+
+**No scenario could see it, for two separate reasons.** Every seeded question
+was `difficulty: 'medium'`, so `fetchQuestionByDifficulty` never found a
+different one and the swap silently never happened. And nothing had ever
+dropped a Realtime event, so the safety net had never been asked to catch
+anything. `store.dropEvents(table, n)` swallows events the way a connection
+does; `scenario-fullgame` seeds mixed difficulties, drops the update carrying
+the swap, and fails if the players' answers name more than one question id.
+Verified by removing the fix: **"players were asked 2 DIFFERENT final
+questions".**
+
+## "I bet 20 and it wagered 0"
+
+Two independent causes, both fixed.
+
+**The blank fill ate the locked wager.** `op_fill_blank_answers` converts a
+`__WAGER_LOCKED__` placeholder into a blank answer, and it was also setting the
+wager to 0. That is right for the SCORE — going quiet on the final round must
+cost nothing — but it destroyed the number the player chose, and an answer
+landing a moment later then inherited it, because a locked final wager cannot
+be revised. Migration 050 keeps the wager and expresses the cost where it
+belongs, in `score_earned`. Verified by putting `EXCLUDED.wager` back: three
+rules fail, `got "0", want "20"`.
+
+**And a re-render cleared the selection.** `showFinalWagerScreen` reset
+`finalWagerSelected` every time it ran, and Realtime re-calls it for the same
+screen — so a player who tapped 20 and had not yet pressed Lock In was
+committed to 0 when the clock ran out. The question screen was guarded against
+exactly this for its wager grid months ago, with a comment saying why; this
+screen never was. `state._renderedFinalWager` guards it, and a re-render now
+also puts the highlight back on what they chose. **Honest limit: the scenario
+check for this passes with the guard removed** — forcing a room update also
+resets the wager clock, so the timeout path never fires there. The fix is
+right; only the SQL half of this pair is covered by a test that fails.
+
+**An empty answer before the reveal now reads as WAITING**, not "No answer".
+The fill can beat a submission that is already in flight, so the row appears
+empty for a moment before the real answer overwrites it — reported as an answer
+"appearing as no answer for a split second". Before the reveal the two cases
+are indistinguishable, and guessing WAITING is the one that never shows
+somebody a verdict on an answer they did send. Same rule the
+`__WAGER_LOCKED__` placeholder already followed.
+
 ## The Map
 
 A honeycomb of the question bank, above the Mastery list on the profile. The

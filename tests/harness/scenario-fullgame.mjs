@@ -24,7 +24,13 @@ function seedQuestions(store, n = 40) {
       acceptable_answers: [],
       categories: [CATEGORY],
       subcategory: null,
-      difficulty: 'medium',
+      // MIXED DIFFICULTIES, not all 'medium'. The host swaps the final question
+      // for one matching the difficulty vote, and with a bank of a single
+      // difficulty that swap silently never happens — so the code path that
+      // has to get the new question to everybody else was never once exercised
+      // here. A player reported receiving a completely different final
+      // question from the host.
+      difficulty: ['easy', 'medium', 'hard'][i % 3],
       format: 'open',
       fun_fact: null,
       discarded: false,
@@ -228,6 +234,27 @@ try {
       if (r.name === 'Carol') return screen;
 
       // A wager amount must be chosen before the lock button does anything.
+      // BOB CHOOSES BUT DOES NOT LOCK, then a re-render lands on him.
+      //
+      // Realtime re-calls the wager screen for the same round, and that used to
+      // clear the selection — so when the clock ran out the player was
+      // committed to 0 despite having tapped 20. Reported from a live game.
+      // Carol still tests the other half: never touching it at all costs 0.
+      if (r.name === 'Bob') {
+        const key = `${r.name}:final`;
+        if (!answered.has(key)) {
+          const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
+          if (await opt.isVisible().catch(() => false)) {
+            await opt.click().catch(() => {});
+            answered.add(key);
+            // A room update, exactly as any write to the row produces live.
+            const rm = table.store.table('rooms')[0];
+            if (rm) table.store._broadcast('UPDATE', 'rooms', { ...rm }, { ...rm });
+          }
+        }
+        return screen;
+      }
+
       const key = `${r.name}:final`;
       if (!answered.has(key)) {
         // A REAL number, not .first() — the first button is 0, so the robots
@@ -294,6 +321,16 @@ try {
     if (room && room.game_phase === 'final_wager' && !waitedOutWagerClock
         && answered.has('Alice:final') && answered.has('Bob:final')) {
       waitedOutWagerClock = true;
+      // DROP THE UPDATE THAT CARRIES THE NEW FINAL QUESTION.
+      //
+      // The host swaps the final question for one matching the difficulty vote
+      // and broadcasts the new list in a single room update. A real connection
+      // loses one occasionally, and when it did, the player kept their own
+      // pre-fetched question — a completely different final question from
+      // everybody else, judged by the server against the room's one. Nothing
+      // re-checked the list afterwards. syncToCurrentState is the safety net
+      // and had never once been made to catch anything.
+      table.store.dropEvents('rooms', 2);
       note(`waiting out the ${FINAL_WAGER_SECONDS}s final-wager clock with Carol away`);
       await host.page.waitForTimeout((FINAL_WAGER_SECONDS + 3) * 1000);
     }
@@ -362,6 +399,23 @@ try {
     .find(a => String(a.player_id) === String(carolId) && a.question_number === finalQ);
   note(`Carol never touched the wager screen; her locked wager: ${carolFinal ? carolFinal.wager : '(none)'}`);
 
+  // EVERYBODY MUST HAVE BEEN ASKED THE SAME FINAL QUESTION.
+  //
+  // The host replaces the final question with one matching the difficulty vote
+  // and broadcasts the new list. If a client does not pick that up it asks its
+  // own pre-fetched question instead — different question, same round, and the
+  // answers are judged against whatever each phone happened to be showing.
+  const finalIds = new Set(table.store.table('answers')
+    .filter(a => a.question_number === finalQ && a.question_id)
+    .map(a => String(a.question_id)));
+  const roomFinalId = String((table.store.table('rooms')[0]?.question_ids || []).slice(-1)[0]);
+  note(`final question ids recorded on answers: ${[...finalIds].join(', ') || '(none)'} (room says ${roomFinalId})`);
+  if (finalIds.size > 1) {
+    problems.push(`players were asked ${finalIds.size} DIFFERENT final questions — the host's difficulty swap did not reach everybody`);
+  } else if (finalIds.size === 1 && roomFinalId !== 'undefined' && ![...finalIds][0].startsWith(roomFinalId)) {
+    problems.push(`the final question answered (${[...finalIds][0]}) is not the one the room settled on (${roomFinalId})`);
+  }
+
   // ...and somebody who DID touch it must have got the wager they picked. If
   // the screen's clock is already expired everybody is locked at 0, which looks
   // exactly like a room full of cautious players.
@@ -370,6 +424,16 @@ try {
   note(`players who got to choose a final wager: ${chosen.length}`);
   if (chosen.length === 0) {
     problems.push('every final wager is 0 — nobody was able to choose one, which is what an already-expired wager clock looks like');
+  }
+
+  // Bob tapped 20 and never pressed Lock In, and a re-render landed on him
+  // before the clock ran out. What he tapped must be what he wagered.
+  const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
+  const bobFinal = table.store.table('answers')
+    .find(a => String(a.player_id) === String(bobId) && a.question_number === finalQ);
+  note(`Bob chose 20 without locking; he wagered: ${bobFinal ? bobFinal.wager : '(none)'}`);
+  if (bobFinal && bobFinal.wager !== 20) {
+    problems.push(`Bob tapped 20 on the final wager and was committed to ${bobFinal.wager} — a re-render cleared his choice and the clock then wagered for him`);
   }
   if (!carolFinal) {
     problems.push('a player who ignored the final wager screen locked nothing at all — the 20s clock never committed for her, so the room would still be waiting');

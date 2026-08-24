@@ -220,7 +220,20 @@ export function renderRevealAnswers(answers) {
     // I thought they were ready". Before the reveal a placeholder means WAITING;
     // only once the answers are revealed does it mean they never answered.
     const isPlaceholder = answer && (answer.submitted_answer || '').trim() === '__WAGER_LOCKED__';
-    const stillWaiting = !answer || (isPlaceholder && !state.resultsRevealed);
+
+    // AN EMPTY ANSWER BEFORE THE REVEAL ALSO MEANS WAITING, for the same reason
+    // as a placeholder. The blank fill writes an empty row for anybody who has
+    // not answered, and it can beat a submission that is already in flight — so
+    // the row appears empty, the screen says "No answer", and a moment later
+    // their real answer overwrites it. Reported from a live game: an answer
+    // "appears as no answer for a split second before the correct one shows".
+    //
+    // Before the reveal the two cases are genuinely indistinguishable, and
+    // guessing WAITING is the one that never shows somebody a verdict on an
+    // answer they did send. Once the answers are revealed, empty means empty.
+    const isEmptyRow = answer && !(answer.submitted_answer || '').trim();
+    const stillWaiting = !answer
+      || ((isPlaceholder || isEmptyRow) && !state.resultsRevealed);
     const isDisqualified = state.disqualifiedQuestions?.has(state.currentQuestion);
 
     if (!stillWaiting) {

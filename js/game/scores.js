@@ -385,7 +385,19 @@ export function showFinalWagerScreen() {
   // final_wager case leaves it alone when it came from 'loading'. So a player
   // returning mid-wager resumes the countdown already running rather than
   // getting a fresh 20 seconds nobody else has.
-  if (!state.finalWagerLocked) state.finalWagerSelected = false;
+  // ONLY ON A GENUINELY NEW WAGER SCREEN, never on a re-render of the one
+  // already up.
+  //
+  // Realtime re-calls this function for the same screen, and clearing the
+  // selection there is silently destructive: the player has tapped 20, the
+  // buttons below are then redrawn with nothing selected, and when the clock
+  // runs out `if (!state.finalWagerSelected) state.finalWager = 0` commits a
+  // wager of ZERO on their behalf. Reported from a live game — bet 20, scored
+  // as 0. The question screen was hardened against exactly this for its wager
+  // grid months ago, with a comment saying why; this screen never was.
+  const sameWagerScreen = state._renderedFinalWager === true;
+  state._renderedFinalWager = true;
+  if (!state.finalWagerLocked && !sameWagerScreen) state.finalWagerSelected = false;
 
   $('#fw-category').textContent = getCategoryLabel();
   $('#fw-current-score').textContent = state.scores[state.room.playerId] || 0;
@@ -410,6 +422,12 @@ export function showFinalWagerScreen() {
   lockBtn.style.display = 'none';
   options.forEach(btn => {
     btn.classList.remove('fw-option--selected', 'fw-option--locked');
+    // Put the highlight back on what they already chose. Without this a
+    // re-render leaves the screen showing no selection while state still holds
+    // one, so the player cannot tell whether their tap registered.
+    if (state.finalWagerSelected && parseInt(btn.dataset.wager, 10) === state.finalWager) {
+      btn.classList.add('fw-option--selected');
+    }
     btn.onclick = () => {
       if (state.finalWagerLocked) return;
       options.forEach(b => b.classList.remove('fw-option--selected'));

@@ -781,12 +781,49 @@ async function syncToCurrentState() {
     const questionChanged = roomData.current_question !== undefined &&
                             roomData.current_question !== state.currentQuestion;
 
+    // IS THIS PHONE EVEN LOOKING AT THE RIGHT QUESTIONS?
+    //
+    // This poll is the safety net for a Realtime event that never arrived, and
+    // it caught up the phase and the question NUMBER but never the question
+    // LIST. The host swaps the final question for one matching the difficulty
+    // vote and broadcasts a new list; miss that single update and there was
+    // nothing to correct it — the player sat on their own pre-fetched question
+    // for the rest of the round.
+    //
+    // It became far worse when the server started judging (migration 046),
+    // because the verdict comes from the room's question, not the one on the
+    // screen. So a player answered a question nobody else was asked and was
+    // marked wrong on one they never saw. Reported from a live game as
+    // receiving "a different final question entirely".
+    const serverIds = Array.isArray(roomData.question_ids) ? roomData.question_ids : null;
+    const listChanged = serverIds && serverIds.length > 0 && state.questions.length > 0
+      && (serverIds.length !== state.questions.length
+          || serverIds.some((id, i) => String(state.questions[i]?.id) !== String(id)));
+    if (listChanged) {
+      logger.warn('Game', 'the room is asking different questions from this screen — refetching');
+      const fresh = await fetchQuestionsByIds(serverIds).catch(() => []);
+      if (fresh.length > 0) {
+        state.questions = fresh;
+        // Force a re-render even if the round number did not move: the question
+        // on screen is the thing that is wrong.
+        state._renderedQuestion = null;
+      }
+    }
+
     const wasHidden = state._wasHidden;
     state._wasHidden = false;
 
     // Phase-only sync when returning from hidden tab.
     // Realtime may have missed messages while the tab was hidden, so we need
     // to catch up on phase transitions even if the question hasn't changed.
+    if (!questionChanged && listChanged &&
+        ['question', 'final_question'].includes(roomData.game_phase)) {
+      // The round number is the same but the QUESTION is not, so the screen has
+      // to be redrawn even though nothing else moved.
+      handlePhaseTransition(roomData.game_phase);
+      return;
+    }
+
     if (!questionChanged) {
       // Only sync phase if we were actually hidden (missed Realtime messages)
       if (wasHidden && roomData.game_phase && roomData.game_phase !== state.gamePhase) {

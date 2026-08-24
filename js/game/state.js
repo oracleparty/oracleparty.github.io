@@ -33,6 +33,9 @@ export const state = {
   awayTimestamps: new Map(), // player ID → Date.now() when first seen as away
   feedbackFadeTimer: null,
   isFinalWagerRound: false,
+  // Has the final-wager screen already been drawn this game? Guards the
+  // player's chosen wager against being cleared by a re-render.
+  _renderedFinalWager: false,
   finalWager: 20, // Default to highest — punishes indecision on final round
   finalWagerLocked: false,
   // Did the player actually TAP a wager, as opposed to inheriting the default

@@ -54,6 +54,7 @@ export class FakeStore {
     this.tables = new Map();       // name -> array of row objects
     this._denied = new Set();      // tables whose writes are refused, RLS-style
     this._slowReads = new Map();   // table -> extra ms, for forcing a race to lose
+    this._dropEvents = new Map();  // table -> how many realtime events to swallow
     this._missing = new Set();     // tables that answer as if they do not exist
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     this.subscribers = [];         // { id, table, filter, events, deliver }
@@ -100,6 +101,19 @@ export class FakeStore {
   slowReads(table, ms) { this._slowReads.set(table, ms); }
   /** Undo slowReads. */
   normalReads(table) { this._slowReads.delete(table); }
+
+  /**
+   * Silently drop the next N Realtime events for a table, the way a real
+   * connection does when it hiccups.
+   *
+   * The app's whole design assumes this happens — syncToCurrentState exists as
+   * the safety net for it — but no scenario had ever made it happen, so the net
+   * was never tested and turned out to have a hole. A player received a
+   * completely different final question from everybody else because the one
+   * update carrying the new question list went missing and nothing re-checked
+   * the list afterwards.
+   */
+  dropEvents(table, count) { this._dropEvents.set(table, count); }
 
   /** Refuse every write to `table`, the way an RLS policy does: zero rows, no error. */
   denyWrites(table) { this._denied.add(table); }
@@ -154,6 +168,11 @@ export class FakeStore {
   _broadcast(eventType, table, newRow, oldRow) {
     // Postgres sends only the primary key for DELETE (default REPLICA IDENTITY).
     const payloadOld = eventType === 'DELETE' && oldRow ? { id: oldRow.id } : oldRow;
+    const toDrop = this._dropEvents.get(table) || 0;
+    if (toDrop > 0) {
+      this._dropEvents.set(table, toDrop - 1);
+      return;   // the connection hiccuped; nobody hears about this one
+    }
     const targets = this.subscribers.filter(s =>
       s.active &&
       s.table === table &&

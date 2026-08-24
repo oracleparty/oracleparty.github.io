@@ -213,6 +213,31 @@ BEGIN
        (abs(extract(epoch FROM (now() - stamped))) < 5)::text, 'true');
   END;
 
+  -- ---- a blank final answer keeps the wager it locked -----------------------
+  --
+  -- "I bet 20 on the final question and it wagered 0." The blank fill converted
+  -- the locked placeholder AND zeroed the wager, so an answer arriving a moment
+  -- later inherited that 0 — the rule that a locked final wager cannot be
+  -- revised read the number the fill had just written. What a blank COSTS is
+  -- the score; the wager the player chose is theirs.
+  DELETE FROM answers WHERE room_id = rid AND question_number = 3;
+  INSERT INTO answers (room_id, player_id, question_number, submitted_answer, wager)
+  VALUES (rid, alice, 3, '__WAGER_LOCKED__', 20);
+  n := op_fill_blank_answers(rid, 3);
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a blank final answer keeps the wager the player locked', wager::text, '20'
+  FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 3;
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and still costs them nothing', score_earned::text, '0'
+  FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 3;
+
+  -- ...and an answer that lands just after the fill is judged on 20, not 0.
+  UPDATE rooms SET current_question = 3, question_started_at = now() WHERE id = rid;
+  SELECT * INTO res FROM op_submit_answer(rid, alice, 3, 'Marie Antoinette', 20);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('an answer arriving after the fill still wagers what was locked', res.wager::text, '20'),
+    ('and is paid on it', res.score_earned::text, '20');
+
   -- ---- __WAGER_LOCKED__ is not an answer ------------------------------------
   -- Locking a final wager writes a placeholder row. If the blank fill treated
   -- it as an answer, somebody who locked a wager and then said nothing would
