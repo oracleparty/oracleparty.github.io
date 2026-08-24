@@ -136,6 +136,17 @@ export async function fetchPublicRooms() {
  * Never deletes rooms that still have active players.
  */
 export async function cleanupOrphanedRooms() {
+  // THE SERVER SWEEPS, and everything below it is the pre-048 fallback.
+  //
+  // Migration 048 revoked DELETE on `rooms`, so every delete in this function
+  // became a silent no-op — no error, zero rows. The Join page calls this and
+  // nothing else, so its sweep stopped working entirely and dead rooms went
+  // back to being offered to real players: exactly the "two active games
+  // nobody was in" this was written to end. op_sweep_rooms applies the same
+  // three rules, decided in one statement rather than read-then-delete.
+  const served = await sweepRoomsOnServer();
+  if (served.ok) return;
+
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
   // Delete rooms with 0 players (any age — these are zombie rooms)
@@ -207,6 +218,13 @@ export async function cleanupOrphanedRooms() {
  *     abandoned by definition: nobody is there to play.
  */
 export async function cleanupAbandonedRooms() {
+  // As in cleanupOrphanedRooms: 048 revoked DELETE on `rooms`, so everything
+  // below is refused in silence once it is applied. The admin dashboard calls
+  // this one directly before it counts, so without the server sweep the number
+  // an admin reads and the list a player sees would drift apart again.
+  const served = await sweepRoomsOnServer();
+  if (served.ok) return;
+
   const { data: rooms } = await supabase
     .from('rooms')
     .select('id')
@@ -306,6 +324,30 @@ export async function sweepRoomsOnServer() {
     return { ok: false, deleted: 0 };
   }
   return { ok: true, deleted: Number(data) || 0 };
+}
+
+/**
+ * End a room from the admin dashboard (migration 051).
+ *
+ * Migration 048 revoked DELETE on `rooms`, and the admin's "End" button was a
+ * plain delete — so it reported success, redrew the dashboard, and the room was
+ * still running. op_leave_room cannot stand in for it: that deletes a room only
+ * when nobody is left, and this button exists for rooms that still have people
+ * in them.
+ *
+ * → { ok, refused }. `refused` means the server did not accept us as an admin,
+ * which must never look the same as "the room was already gone".
+ */
+export async function endRoomAsAdmin(roomId) {
+  const { data, error } = await supabase.rpc('op_admin_end_room', { p_room_id: roomId });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      return { ok: false, refused: false, unavailable: true };
+    }
+    logger.error('Supabase', 'op_admin_end_room failed', error);
+    return { ok: false, refused: false, unavailable: false };
+  }
+  return { ok: data === true, refused: data === false, unavailable: false };
 }
 
 /**

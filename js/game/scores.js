@@ -1339,7 +1339,7 @@ export async function handlePlayAgain() {
   if (state.room?.isHost) {
     try {
       await Promise.all([
-        deleteAnswersByRoom(state.room.id),
+        deleteAnswersByRoom(state.room.id, state.room.playerId),
         updateGameState(state.room.id, {
           game_phase: 'lobby',
           current_question: 0,

@@ -1680,6 +1680,138 @@ Disqualifying is now ONE call rather than a loop of per-answer writes: a loop
 can half-succeed and leave a round that was thrown out still paying points to
 whoever's write landed.
 
+### Shutting a door shut three things nobody was watching (migration 051)
+
+**Slice 6 broke Play Again, rejoining, and practice bots, and every check in
+this repo went on passing.** Found 2026-08-24 by reading every write to
+`answers`, which is a thing that should have been done before 049 was written.
+
+`answers` carried three writes that were neither a judgement nor an attack, and
+all three went through UPDATE or DELETE:
+
+| Call | What a player saw |
+|---|---|
+| `deleteAnswersByRoom` | Play Again keeps the LAST game's answers — the next game's scoreboard is computed over a finished one |
+| `reassignPlayerAnswers` | rejoining loses your score and your used wagers |
+| `upsertAnswers` (bots) | a bot never answers the final question |
+
+Migration 051 restores each as a SECURITY DEFINER function with the rule that
+made it legitimate stated where a request cannot edit it out: `op_reset_answers`
+(host only), `op_reassign_answers` (**the old seat must be GONE** — you can
+never take answers off somebody still in the room), and `op_bot_answer` (the
+target must be `is_bot`, which is far tighter than "the caller is the host":
+nothing a person plays can be written through it at all).
+
+**The lesson is not "be careful with RLS".** It is that closing a door is a
+change like any other, and the thing to enumerate is not what the door stops —
+it is everything that was walking through it. `js/` had eight writes to
+`answers`; 049 was written about the two that were dangerous.
+
+**Three refusal shapes, and they are NOT the same. Measured against a real
+Postgres with the UPDATE policy removed, not assumed:**
+
+| Statement | Result |
+|---|---|
+| `UPDATE` / `DELETE` | 0 rows, **no error** — silent |
+| `INSERT … ON CONFLICT DO UPDATE` | **hard error 42501** — loud |
+| `INSERT … ON CONFLICT DO NOTHING` | fine, 0 rows inserted |
+
+So `insertBlankAnswers` (DO NOTHING) survived 049 untouched, `upsertAnswers`
+started throwing where anyone could see it, and the two plain statements died
+in silence — which is why those were the two that stayed broken.
+
+**The fake store now shuts the same doors** (`_shutDoors` in
+`tests/harness/store.js`), with all three shapes reproduced. It is seeded from
+the migrations and is not a scenario knob: it is the schema. Before this the
+harness allowed everything the live database had just forbidden, which is
+exactly the faithfulness gap CLAUDE.md #10 was written about — and it had
+`scenario-playagain` asserting "no answers survive into the next game", passing,
+while that was false on the live site.
+
+Verified by putting each old path back:
+
+| Reverted | What the harness now says |
+|---|---|
+| Play Again's direct DELETE | `12 answers from the previous game were not cleared — they will be counted again` |
+| the bot's direct upsert | `answerFinalQuestionForBots failed … code: 42501` |
+| the host guard on `op_reset_answers` | 3 SQL rules, incl. `a player who is not the host cannot wipe a game` |
+| the theft guard on `op_reassign_answers` | `answers cannot be taken off a player who is still in the room` |
+| the `is_bot` guard on `op_bot_answer` | `nobody can write an answer for a real player` |
+
+**`scenario-admin` now presses the End button**, which nothing had ever done —
+which is how it shipped broken and stayed that way. A control with no test is a
+control nobody is checking, the same lesson as a page with no mock.
+
+**One thing here is NOT measured, and it decides whether rejoin ever worked.**
+Does `answers.player_id` carry `ON DELETE CASCADE` live? If it does, a released
+seat takes its answers with it, there is nothing left to reassign, and the
+rejoin promise in this file was never kept — long before 049 revoked anything.
+`tests/sql/scratch-schema.sql` guesses that it does, and the guess is inferred,
+not probed (the project's OpenAPI output carries no foreign-key annotations,
+see #9). Run this in the SQL Editor to settle it:
+
+```sql
+SELECT conname, confdeltype   -- 'c' = cascade, 'a' = no action, 'n' = set null
+FROM pg_constraint
+WHERE conrelid = 'answers'::regclass AND contype = 'f';
+```
+
+`op_reassign_answers` is correct either way — in the cascade world it is a
+harmless no-op — so nothing is blocked on the answer. But **do not write down
+that rejoin restores a score until that query has been run.**
+
+**Slice 5 had done the same thing to `rooms`, and that was found only by going
+looking for it.** 048 revoked DELETE on `rooms`, and two more things went with
+it:
+
+- **The admin's "End" button on a stuck room.** A plain delete, silently
+  refused, and the dashboard redrew as though the room had ended.
+  `op_admin_end_room` (051) replaces it. `op_leave_room` could not: that
+  deletes a room only when nobody is left, and this button is for rooms that
+  still have people in them. It is the **one function in the rebuild that
+  checks who is calling** — an admin is signed in by definition, where a host
+  very often is a guest with no `auth.uid()` at all.
+- **The Join page's sweep.** `cleanupOrphanedRooms` is called from there and
+  nowhere else, and every delete inside it was refused, so abandoned rooms
+  went back to being offered to real players — the "two active games nobody
+  was in" this project has already fixed once. It calls `sweepRoomsOnServer()`
+  first now. `sweepRoomsOnServer` was already imported into `js/lobby.js` and
+  **never called**, which is its own small lesson: an import is not a wiring.
+
+The two Realtime "the room is empty now" handlers (`js/lobby.js`,
+`js/game/phases.js`) go through the sweep too. Those were backstops rather than
+the main path — the leaver's own `op_leave_room` already takes an emptied room
+— so nothing visibly broke, which is exactly why they would have stayed dead.
+
+**`handleBackButton` in the lobby was still firing `deleteRoomBeacon`.** Slice 5
+converted the game page's unload path to `leaveRoomBeacon` and left the lobby's
+back button on the revoked delete, so backing out as the last player left the
+room behind until a sweep found it. It reads `serverFunctionsMissing()` now,
+with the same rule: **unknown counts as PRESENT**, because guessing wrong that
+way leaves a row for the sweep while guessing wrong the other way puts a phone
+back to deleting rooms on its own local count.
+
+**Four of these five were found by grepping every write to the two tables the
+migrations had touched, and none by a failing test.** After revoking a
+permission, that grep is the work — not an afterthought.
+
+### The seat ratchet had a third copy
+
+`js/game/init.js` still held the `sameName.length === 1` logic that "One person,
+one seat" (below) describes fixing. join.html and the lobby were routed through
+`claimSeat`; the GAME page was missed, so refreshing there still ratcheted —
+two duplicates made a third, three made a fourth, for the life of the room.
+
+It also passed `state.room.isHost` straight from sessionStorage into a fresh
+row, so a host whose seat had been swept — after somebody else was promoted —
+came back and added a SECOND row flagged host. That is the other half of the
+photographed "two hosts in the lobby": `promoteToHost` adding one, and this
+adding another. It now returns as an ordinary player if a live host is already
+there, and cannot-tell still counts as HERE.
+
+**When a fix is described as "the single path now", check that it is.** Three
+call sites, two converted, and the sentence in this file said the job was done.
+
 ## The screen must show the question the room is asking
 
 **Reported from a live game: a player received a completely different final

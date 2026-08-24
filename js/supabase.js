@@ -9,7 +9,7 @@ export { supabase } from './db/client.js';
 // --- Rooms ---
 export {
   generateRoomCode, createRoom, findRoomByCode, fetchPublicRooms,
-  cleanupOrphanedRooms, cleanupAbandonedRooms, deleteRoom, deleteRoomBeacon, fetchRoom,
+  cleanupOrphanedRooms, cleanupAbandonedRooms, deleteRoom, deleteRoomBeacon, endRoomAsAdmin, fetchRoom,
   leaveRoomOnServer, leaveRoomBeacon, sweepRoomsOnServer,
   updateRoomStatus, updateGameState, startClockOnServer, saveQuestionIds, appendUsedQuestionIds,
   addRoomScores, fetchRoomScores,
@@ -25,7 +25,7 @@ export {
   fetchPlayers, toggleReady,
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
-  fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers,
+  fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers, botAnswerOnServer,
   submitAnswerViaServer, fillBlankAnswersViaServer,
   setJudgementOnServer, disqualifyRoundOnServer,
   deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,

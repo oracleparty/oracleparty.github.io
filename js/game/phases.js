@@ -18,6 +18,7 @@ import {
   sendMessage,
   removePlayer,
   deleteRoom,
+  sweepRoomsOnServer,
   promoteToHost,
   insertGamePlay,
   demoteCohost,
@@ -65,9 +66,12 @@ export async function handlePlayerChange(payload) {
     state.players = state.players.filter(p => String(p.id) !== deletedId);
     delete state.scores[deletedId];
 
-    // If room is now empty, delete it (cleanup zombie rooms)
+    // If room is now empty, delete it (cleanup zombie rooms).
+    // Through the server since 048 revoked DELETE on `rooms`; the direct call
+    // is the pre-048 fallback and is silently refused once 048 is applied.
     if (state.players.length === 0) {
-      await deleteRoom(state.room.id);
+      const served = await sweepRoomsOnServer();
+      if (!served.ok) await deleteRoom(state.room.id);
       return;
     }
 

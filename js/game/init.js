@@ -6,9 +6,9 @@
 import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 import { logger } from '../logger.js';
 import { presenceNeedsRebuild } from '../presence-health.js';
-import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS } from '../constants.js';
+import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS } from '../constants.js';
 import {
-  addPlayer,
+  claimSeat,
   fetchPlayers,
   fetchQuestionsByCategory,
   fetchQuestionsByIds,
@@ -182,39 +182,67 @@ async function init() {
     // Fall back to re-join logic.
     const displayName = getDisplayName();
 
-    // Check if a player with the same display name exists (beacon race edge case).
-    // Only adopt the existing row when there's EXACTLY ONE match — otherwise
-    // two players sharing a display name would silently collide on the same id.
-    const sameName = state.players.filter(p => p.display_name === displayName);
-    if (sameName.length === 1) {
-      state.room.playerId = sameName[0].id;
+    // ONE PERSON, ONE SEAT — and this was the last copy of the ratchet.
+    //
+    // The old code here adopted an existing row only when there was EXACTLY ONE
+    // name match and otherwise added another. At two duplicates it made a
+    // third, at three a fourth, and it could never get back to the one case it
+    // knew how to handle — every return added another copy for the life of the
+    // room. That is the bug reported from a live game as three copies of one
+    // player, all flagged host.
+    //
+    // join.html and the lobby were fixed by routing both through claimSeat.
+    // This third call site was missed, so refreshing on the GAME screen still
+    // ratcheted. claimSeat is the single path now: a user id is exact and its
+    // duplicates are cleared; a guest's same-name row is only adopted once it
+    // has gone quiet, because a live one might genuinely be somebody else.
+    //
+    // AND IT MUST NOT RE-CROWN ITSELF. state.room.isHost comes from
+    // sessionStorage, so a host whose row was swept — after somebody else was
+    // promoted — used to come back and add a SECOND row flagged host. That is
+    // the other half of the photographed "two hosts in the lobby". If a host is
+    // already here and it is not us, we return as an ordinary player.
+    const prevPlayerId = state.room.playerId || recallSeat(state.room.id);
+    const authUser = getCurrentUser();
+    const rejoinUserId = authUser?.user?.id || null;
+    const extras = {};
+    if (authUser?.profile) {
+      extras.avatarColor = authUser.profile.avatar_color;
+      extras.avatarEmoji = authUser.profile.avatar_emoji;
+      extras.title = authUser.profile._cachedTitle || null;
+    }
+
+    const stale = Date.now() - STALE_TIMEOUT_MS;
+    const seenAt = p => new Date(p.last_seen_at || p.joined_at || 0).getTime();
+    // A missing timestamp means CANNOT TELL, and cannot-tell counts as HERE —
+    // the same rule as everywhere else in this project. Treating absence of
+    // evidence as evidence of absence once had hosts kicking every player.
+    const someoneElseIsHost = state.players.some(p =>
+      p.is_host && !p.is_bot
+      && String(p.id) !== String(prevPlayerId)
+      && (!(p.last_seen_at || p.joined_at) || seenAt(p) > stale));
+
+    const { data: rejoinedPlayer } = await claimSeat({
+      roomId: state.room.id,
+      displayName,
+      userId: rejoinUserId,
+      isHost: state.room.isHost && !someoneElseIsHost,
+      extras,
+    });
+
+    if (rejoinedPlayer) {
+      const changedSeat = String(rejoinedPlayer.id) !== String(prevPlayerId);
+      state.room.playerId = rejoinedPlayer.id;
+      if (someoneElseIsHost) state.room.isHost = false;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-    } else {
-      // Create a fresh player row and migrate orphaned answers
-      // Fall back to the durable record: sessionStorage is gone if the
-      // browser was closed rather than refreshed.
-      const prevPlayerId = state.room.playerId || recallSeat(state.room.id);
-      const authUser = getCurrentUser();
-      const rejoinUserId = authUser?.user?.id || null;
-      const extras = {};
-      if (authUser?.profile) {
-        extras.avatarColor = authUser.profile.avatar_color;
-        extras.avatarEmoji = authUser.profile.avatar_emoji;
-        extras.title = authUser.profile._cachedTitle || null;
-      }
-      const { data: rejoinedPlayer } = await addPlayer(state.room.id, displayName, state.room.isHost, rejoinUserId, extras);
-      if (rejoinedPlayer) {
-        state.room.playerId = rejoinedPlayer.id;
-        sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-        state.players = await fetchPlayers(state.room.id);
+      state.players = await fetchPlayers(state.room.id);
 
-        await reassignPlayerAnswers(state.room.id, prevPlayerId, rejoinedPlayer.id);
+      if (changedSeat) await reassignPlayerAnswers(state.room.id, prevPlayerId, rejoinedPlayer.id);
 
-        const allAnswers = await fetchAllAnswers(state.room.id);
-        const myAnswers = allAnswers.filter(a => String(a.player_id) === String(rejoinedPlayer.id));
-        state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
-        state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
-      }
+      const allAnswers = await fetchAllAnswers(state.room.id);
+      const myAnswers = allAnswers.filter(a => String(a.player_id) === String(rejoinedPlayer.id));
+      state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
+      state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
     }
   }
 

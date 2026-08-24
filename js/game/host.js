@@ -151,7 +151,7 @@ async function executeReturnToLobby() {
   try { if (_cleanup) _cleanup(); } catch (_) {}
 
   try {
-    await deleteAnswersByRoom(state.room.id);
+    await deleteAnswersByRoom(state.room.id, state.room.playerId);
     await updateGameState(state.room.id, {
       game_phase: 'lobby',
       current_question: 0,

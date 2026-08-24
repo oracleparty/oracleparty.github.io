@@ -30,7 +30,7 @@
 import { state, getCorrectAnswer } from './state.js';
 import { logger } from '../logger.js';
 import { BOT_ACCURACY, BOT_FINAL_WAGER } from '../constants.js';
-import { fetchAllAnswers, insertAnswersIfAbsent, upsertAnswers } from '../supabase.js';
+import { fetchAllAnswers, insertAnswersIfAbsent, upsertAnswers, botAnswerOnServer } from '../supabase.js';
 import { computeScoreEarned } from './scoring-helpers.js';
 import { pickBotWager, lowestUnusedWager, chooseBotAnswer } from './bot-logic.js';
 
@@ -201,6 +201,20 @@ export async function answerFinalQuestionForBots() {
   }
 
   if (rows.length === 0) return;
-  const { error } = await upsertAnswers(rows, 'answerFinalQuestionForBots');
-  if (error) logger.warn('Bots', 'Could not answer the final question for bots', error);
+
+  // Through the server (051) rather than a direct upsert. The upsert merges over
+  // the bot's __WAGER_LOCKED__ placeholder, which is an UPDATE, and 049 shut
+  // UPDATE on `answers` — so this had stopped working silently and a bot simply
+  // never answered the last question of any game.
+  let unavailable = false;
+  for (const row of rows) {
+    const { ok, unavailable: missing } = await botAnswerOnServer(row);
+    if (missing) { unavailable = true; break; }
+    if (!ok) logger.warn('Bots', 'the server would not take that bot answer', row.playerId);
+  }
+
+  if (unavailable) {
+    const { error } = await upsertAnswers(rows, 'answerFinalQuestionForBots');
+    if (error) logger.warn('Bots', 'Could not answer the final question for bots', error);
+  }
 }

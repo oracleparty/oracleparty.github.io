@@ -12,7 +12,7 @@ import { findAnswersNeedingReview } from './answer-health.js';
 // the host screen shows, so the two agree.
 const CATEGORY_KEYS = Object.keys(CATEGORY_META);
 import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
-  fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts } from './supabase.js';
+  fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts, endRoomAsAdmin } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS, ABANDONED_ROOM_MS } from './constants.js';
 
@@ -640,12 +640,21 @@ async function handleDrillClick(e) {
     if (_armed !== endBtn) return arm(endBtn, 'Really end?');
     disarm();
     endBtn.disabled = true;
-    const { error } = await supabase.from('rooms').delete().eq('id', endBtn.dataset.endRoom);
-    if (error) {
-      endBtn.disabled = false;
-      endBtn.textContent = 'Failed';
-      logger.error('Admin', 'end room failed', error);
-      return;
+    // Through the server (051). This was a plain DELETE on `rooms`, which
+    // migration 048 revoked — so it returned no error, affected nothing, and
+    // the dashboard redrew as though the room had ended. The #5 pattern
+    // exactly: the screen has to tell the truth, not just avoid an error.
+    const { ok, refused, unavailable } = await endRoomAsAdmin(endBtn.dataset.endRoom);
+    if (!ok) {
+      const legacy = unavailable
+        ? await supabase.from('rooms').delete().eq('id', endBtn.dataset.endRoom).select()
+        : null;
+      if (!legacy || legacy.error || !legacy.data?.length) {
+        endBtn.disabled = false;
+        endBtn.textContent = refused ? 'Not allowed' : 'Failed';
+        logger.error('Admin', 'end room failed', { refused, unavailable, error: legacy?.error });
+        return;
+      }
     }
     await loadDashboardStats();
     openDrill('games');

@@ -403,6 +403,34 @@ try {
   note(`tapping the open card again closes it: ${closed}`);
   if (!closed) problems.push('tapping an open stat card again does not close its list');
 
+  // ---- ending a stuck room actually ends it ------------------------------
+  //
+  // This button was a plain DELETE on `rooms`, which migration 048 revoked, so
+  // it returned no error, deleted nothing, and redrew the dashboard as though
+  // the room had ended. Nothing here had ever pressed it. It is tap-to-arm,
+  // like every destructive control on this page.
+  heading('ending a stuck room');
+  await admin.page.locator('[data-drill="games"]').click().catch(() => {});
+  await admin.page.waitForTimeout(1200);
+  const endBtn = admin.page.locator('#stat-drill-body [data-end-room]').first();
+  if (!await endBtn.isVisible().catch(() => false)) {
+    problems.push('no way to end a room from the games list');
+  } else {
+    const roomId = await endBtn.getAttribute('data-end-room');
+    const before = table.store.table('rooms').length;
+    await endBtn.click().catch(() => {});          // arms
+    await admin.page.waitForTimeout(300);
+    await endBtn.click().catch(() => {});          // confirms
+    await admin.page.waitForTimeout(1500);
+    const stillThere = table.store.table('rooms').some(r => String(r.id) === String(roomId));
+    const label = (await endBtn.textContent().catch(() => '') || '').trim();
+    note(`rooms ${before} -> ${table.store.table('rooms').length}; button now "${label}"`);
+    if (stillThere) {
+      problems.push('the admin ended a room and the room is still running');
+    }
+  }
+
+
   // The guards on Delete.
   await admin.page.locator('[data-drill="accounts"]').click().catch(() => {});
   await admin.page.waitForTimeout(1200);

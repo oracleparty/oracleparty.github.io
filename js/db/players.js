@@ -596,6 +596,42 @@ export async function upsertAnswers(rows, where = 'upsertAnswers') {
   return { error };
 }
 
+/**
+ * Write one answer on a BOT's behalf (migration 051).
+ *
+ * A bot is the only player that cannot write its own answer — the host's
+ * browser does it. On the final round the bot already holds a __WAGER_LOCKED__
+ * placeholder, so this has to merge over an existing row, which is an UPDATE,
+ * which 049 closed. Without it a bot simply never answers the last question.
+ *
+ * The server's guard is that the target must be `is_bot`, which is far tighter
+ * than "the caller is the host": nothing a person plays can be written through
+ * here at all. The SCORE is computed server-side; only the coin flip is ours,
+ * and a bot's accuracy is a setting rather than a fact about the answer.
+ */
+export async function botAnswerOnServer(row) {
+  const { data, error } = await supabase.rpc('op_bot_answer', {
+    p_room_id: row.roomId,
+    p_player_id: row.playerId,
+    p_question_number: row.questionNumber,
+    p_question_id: row.questionId,
+    p_wager: row.wager,
+    p_answer: row.submittedAnswer || '',
+    p_is_correct: !!row.isCorrect,
+  });
+  if (error) {
+    if (!functionMissing(error)) {
+      logger.warn('Supabase', 'op_bot_answer failed', error);
+      return { ok: false, unavailable: false };
+    }
+    noteServerFunctions(false);
+    return { ok: false, unavailable: true };
+  }
+  noteServerFunctions(true);
+  if (data === false) logger.warn('Supabase', 'the server refused a bot answer', row.playerId);
+  return { ok: data === true, unavailable: false };
+}
+
 export async function insertAnswersIfAbsent(rows, where = 'insertAnswersIfAbsent') {
   if (!rows || rows.length === 0) return { error: null };
   const { error } = await supabase
@@ -716,7 +752,36 @@ export async function fetchAllAnswers(roomId) {
 /**
  * Delete all answers for a room (used when starting a new game via Play Again).
  */
-export async function deleteAnswersByRoom(roomId) {
+export async function deleteAnswersByRoom(roomId, callerPlayerId = null) {
+  // Migration 049/050 shut UPDATE and DELETE on `answers` so a stranger could
+  // not edit a live game's scores. This write is neither — it is Play Again
+  // clearing the game that just ended — and it went down with them, in total
+  // silence, because an RLS refusal returns no error and zero rows. The next
+  // game's scoreboard was then computed over the last game's answers.
+  //
+  // op_reset_answers (051) is the same rule stated where it cannot be edited
+  // out of a request: only the room's host may do it.
+  if (callerPlayerId) {
+    const { data, error } = await supabase.rpc('op_reset_answers', {
+      p_room_id: roomId,
+      p_caller_id: callerPlayerId,
+    });
+    if (!error) {
+      noteServerFunctions(true);
+      if (Number(data) === -1) {
+        logger.warn('Supabase', 'the server refused to clear the answers — not the host');
+      }
+      return { error: null };
+    }
+    if (!functionMissing(error)) {
+      logger.error('Supabase', 'op_reset_answers failed', error);
+      return { error };
+    }
+    noteServerFunctions(false);
+  }
+
+  // Before 051 is applied. Kept so the JavaScript is safe to deploy ahead of
+  // the SQL, which is the order this project has repeatedly got wrong.
   const { error } = await supabase
     .from('answers')
     .delete()
@@ -731,14 +796,40 @@ export async function deleteAnswersByRoom(roomId) {
  * removePlayerBeacon deleted the old player row but left answers behind).
  */
 export async function reassignPlayerAnswers(roomId, oldPlayerId, newPlayerId) {
-  const { error } = await supabase
+  if (!oldPlayerId || !newPlayerId || String(oldPlayerId) === String(newPlayerId)) {
+    return { error: null };
+  }
+
+  // Same story as deleteAnswersByRoom: an ordinary UPDATE, shut off by 049/050
+  // without a sound, and what it costs is a returning player's score and their
+  // used wagers. op_reassign_answers (051) allows it only for a seat that IS
+  // GONE — you can never take answers off somebody still in the room.
+  const { data, error } = await supabase.rpc('op_reassign_answers', {
+    p_room_id: roomId,
+    p_old_player_id: oldPlayerId,
+    p_new_player_id: newPlayerId,
+  });
+  if (!error) {
+    noteServerFunctions(true);
+    if (Number(data) === -1) {
+      logger.warn('Supabase', 'the server refused to move those answers', { oldPlayerId, newPlayerId });
+    }
+    return { error: null };
+  }
+  if (!functionMissing(error)) {
+    logger.error('Supabase', 'op_reassign_answers failed', error);
+    return { error };
+  }
+  noteServerFunctions(false);
+
+  const { error: legacyError } = await supabase
     .from('answers')
     .update({ player_id: newPlayerId })
     .eq('room_id', roomId)
     .eq('player_id', oldPlayerId);
 
-  if (error) logger.error('Supabase', 'reassignPlayerAnswers failed', error);
-  return { error };
+  if (legacyError) logger.error('Supabase', 'reassignPlayerAnswers failed', legacyError);
+  return { error: legacyError };
 }
 
 /**

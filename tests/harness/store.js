@@ -57,6 +57,12 @@ export class FakeStore {
     this._dropEvents = new Map();  // table -> how many realtime events to swallow
     this._missing = new Set();     // tables that answer as if they do not exist
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
+    // Doors the LIVE database has shut, so the fake refuses what it refuses.
+    // See _shutDoor below — this is not a scenario knob, it is the schema.
+    this._shutDoors = new Map([
+      ['answers', new Set(['update', 'delete'])],   // migrations 049 + 050
+      ['rooms',   new Set(['delete'])],             // migration 048
+    ]);
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
     this.presence = new Map();     // topic -> Map(robotId -> state)
@@ -294,6 +300,47 @@ export class FakeStore {
       return modifiers.single
         ? { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } }
         : { data: [], error: null, count: 0 };
+    }
+
+    // ---- doors the live database has shut ----------------------------------
+    //
+    // Migrations 048–050 revoked UPDATE and DELETE on `answers` and DELETE on
+    // `rooms`, so nobody with the publishable key can edit a live game's scores
+    // or delete a room out from under it. The fake store had none of that, and
+    // the gap hid a REAL regression: Play Again's answer-clearing, a rejoining
+    // player's answers and a bot's final answer all went through those doors,
+    // all three stopped working live, and every scenario went on passing.
+    //
+    // The three behaviours below are MEASURED against a real Postgres with the
+    // policies removed, not assumed, because they are not the same:
+    //
+    //   UPDATE / DELETE              -> 0 rows, NO ERROR. Silent.
+    //   INSERT .. ON CONFLICT DO UPDATE -> hard error 42501. Loud.
+    //   INSERT .. ON CONFLICT DO NOTHING -> fine, 0 rows inserted.
+    //
+    // The middle one matters most: an upsert that lands on an existing row does
+    // not fail quietly, it throws, so code relying on it breaks visibly rather
+    // than drifting.
+    const shut = this._shutDoors.get(table);
+    if (shut && (action === 'update' || action === 'delete') && shut.has(action)) {
+      return modifiers.single
+        ? { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } }
+        : { data: [], error: null, count: 0 };
+    }
+    if (shut && shut.has('update') && action === 'upsert' && !modifiers.ignoreDuplicates) {
+      const incoming = Array.isArray(payload) ? payload : [payload];
+      const keys = (modifiers.onConflict || 'id').split(',').map(s => s.trim());
+      const hitsExisting = incoming.some(item =>
+        rows.some(r => keys.every(k => String(r[k]) === String(item[k]))));
+      if (hitsExisting) {
+        return {
+          data: null,
+          error: {
+            message: `new row violates row-level security policy (USING expression) for table "${table}"`,
+            code: '42501',
+          },
+        };
+      }
     }
 
     // A relation PostgREST cannot find. Applies to reads and writes alike, and
@@ -665,6 +712,115 @@ export class FakeStore {
       return 'changed';
     }
 
+    // ---- migration 051: the three writes slice 6 took away ------------------
+    //
+    // 049/050 shut UPDATE and DELETE on `answers`, which silently killed three
+    // legitimate writes. These are their replacements, and each is implemented
+    // here with its REFUSAL as well as its success — a fake that only does the
+    // happy path would let a scenario pass on a write the live server rejects,
+    // which is the shape of every "worked in the harness" bug in CLAUDE.md.
+    if (name === 'op_reset_answers') {
+      const players = this.table('players');
+      const caller = players.find(p => String(p.id) === String(args?.p_caller_id)
+        && String(p.room_id) === String(args?.p_room_id));
+      if (!caller || !(caller.is_host || caller.is_cohost)) return -1;
+      const answers = this.table('answers');
+      const doomed = answers.filter(a => String(a.room_id) === String(args.p_room_id));
+      for (const a of doomed) {
+        const i = answers.indexOf(a);
+        if (i >= 0) answers.splice(i, 1);
+        this._broadcast('DELETE', 'answers', null, { ...a });
+      }
+      return doomed.length;
+    }
+
+    if (name === 'op_reassign_answers') {
+      const { p_room_id: roomId, p_old_player_id: oldId, p_new_player_id: newId } = args || {};
+      if (!oldId || !newId || String(oldId) === String(newId)) return 0;
+      const players = this.table('players');
+      // The old seat still exists — this is not a rejoin, it is a theft.
+      if (players.some(p => String(p.id) === String(oldId))) return -1;
+      if (!players.some(p => String(p.id) === String(newId)
+        && String(p.room_id) === String(roomId))) return -1;
+
+      const answers = this.table('answers');
+      const mine = answers.filter(a => String(a.room_id) === String(roomId)
+        && String(a.player_id) === String(newId));
+      const taken = new Set(mine.map(a => a.question_number));
+      let moved = 0;
+      for (const a of [...answers]) {
+        if (String(a.room_id) !== String(roomId)) continue;
+        if (String(a.player_id) !== String(oldId)) continue;
+        // The row they wrote as themselves is newer and wins; moving the stale
+        // one onto it would collide on (room, player, question).
+        if (taken.has(a.question_number)) {
+          const i = answers.indexOf(a);
+          if (i >= 0) answers.splice(i, 1);
+          this._broadcast('DELETE', 'answers', null, { ...a });
+          continue;
+        }
+        const before = { ...a };
+        a.player_id = newId;
+        this._broadcast('UPDATE', 'answers', { ...a }, before);
+        moved++;
+      }
+      return moved;
+    }
+
+    if (name === 'op_bot_answer') {
+      const players = this.table('players');
+      const target = players.find(p => String(p.id) === String(args?.p_player_id)
+        && String(p.room_id) === String(args?.p_room_id));
+      // The guard is is_bot, not "the caller is the host": nothing a PERSON
+      // plays can be written through here at all.
+      if (!target || !target.is_bot) return false;
+      const room = this.table('rooms').find(r => String(r.id) === String(args.p_room_id));
+      if (!room) return false;
+
+      const ids = room.question_ids || [];
+      const total = Math.max(1, (ids.length ? ids.length - 1 : room.questions_per_game) || 10);
+      const isFinal = args.p_question_number >= total;
+      const wager = args.p_wager || 0;
+      const points = args.p_is_correct ? wager : (isFinal ? -wager : 0);
+
+      const answers = this.table('answers');
+      const existing = answers.find(a => String(a.room_id) === String(args.p_room_id)
+        && String(a.player_id) === String(args.p_player_id)
+        && a.question_number === args.p_question_number);
+
+      if (existing) {
+        const held = String(existing.submitted_answer || '').trim();
+        // Never overwrite an answer the bot already gave for real.
+        if (held !== '' && held !== '__WAGER_LOCKED__') return true;
+        const before = { ...existing };
+        existing.submitted_answer = args.p_answer || '';
+        existing.question_id = args.p_question_id;
+        existing.is_correct = !!args.p_is_correct;
+        existing.auto_correct = !!args.p_is_correct;
+        existing.score_earned = points;
+        this._broadcast('UPDATE', 'answers', { ...existing }, before);
+        return true;
+      }
+
+      const row = {
+        id: newId('answers'),
+        room_id: args.p_room_id,
+        player_id: args.p_player_id,
+        question_number: args.p_question_number,
+        question_id: args.p_question_id,
+        wager,
+        submitted_answer: args.p_answer || '',
+        is_correct: !!args.p_is_correct,
+        auto_correct: !!args.p_is_correct,
+        score_earned: points,
+        history_recorded: false,
+        created_at: new Date().toISOString(),
+      };
+      answers.push(row);
+      this._broadcast('INSERT', 'answers', { ...row }, null);
+      return true;
+    }
+
     // ---- migration 048: only the rules delete a room -----------------------
     //
     // Removes the player and takes the room only if no HUMAN is left. A bot
@@ -718,6 +874,28 @@ export class FakeStore {
         }
       }
       return gone;
+    }
+
+    // ---- migration 051: an admin ends a stuck room -------------------------
+    //
+    // Unlike op_sweep_rooms this deletes a room that still has people in it,
+    // so it is the one function in the rebuild that checks WHO is calling —
+    // an admin is signed in by definition, where a host very often is not.
+    // The refusal is modelled too: "you are not an admin" must never reach the
+    // screen looking like "the room was already gone".
+    if (name === 'op_admin_end_room') {
+      // __callerUserId is what client-shim.js puts on every RPC payload — the
+      // harness's stand-in for auth.uid(). A guest has none, and gets nowhere.
+      const me = args?.__callerUserId || null;
+      const admin = me && this.table('profiles').some(p =>
+        String(p.user_id) === String(me) && p.is_admin);
+      if (!admin) return false;
+      const rooms = this.table('rooms');
+      const idx = rooms.findIndex(r => String(r.id) === String(args?.p_room_id));
+      if (idx === -1) return false;
+      const [gone] = rooms.splice(idx, 1);
+      this._broadcast('DELETE', 'rooms', null, gone);
+      return true;
     }
 
     // ---- migration 047: the server owns the clock --------------------------

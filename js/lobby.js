@@ -22,6 +22,8 @@ import {
   playerHeartbeat,
   deleteRoom,
   deleteRoomBeacon,
+  leaveRoomBeacon,
+  serverFunctionsMissing,
   leaveRoomOnServer,
   sweepRoomsOnServer,
   promoteToHost,
@@ -727,8 +729,14 @@ async function handlePlayerChange(payload) {
 
       // If room is now empty, delete it (cleanup zombie rooms).
       // A bot left behind does not count as somebody being here.
+      //
+      // Through the server since migration 048 revoked DELETE on `rooms` —
+      // the direct call below it had become a silent no-op. op_sweep_rooms
+      // applies the same rule (no HUMAN left) and decides it in one statement,
+      // so two clients reacting to the same departure cannot race.
       if (humanPlayers().length === 0) {
-        await deleteRoom(room.id);
+        const served = await sweepRoomsOnServer();
+        if (!served.ok) await deleteRoom(room.id);
         return;
       }
 
@@ -1695,7 +1703,16 @@ async function handleLeave() {
 function handleBackButton() {
   isLeaving = true;
   cleanup();
-  if (humanPlayers().length <= 1) {
+  // Same shape as the game page's unload path. An unload cannot await, so it
+  // reads what the ordinary awaited calls have already learned about the server
+  // (serverFunctionsMissing), and UNKNOWN COUNTS AS PRESENT: guessing wrong that
+  // way leaves a player row for the stale sweep, guessing wrong the other way
+  // puts this phone back to deleting rooms on its own local count — the race
+  // migration 048 removed. This branch was missed when 048 shipped, so backing
+  // out of a lobby as the last player left the room behind.
+  if (!serverFunctionsMissing()) {
+    leaveRoomBeacon(room.id, room.playerId);
+  } else if (humanPlayers().length <= 1) {
     deleteRoomBeacon(room.id);
   } else {
     removePlayerBeacon(room.playerId);

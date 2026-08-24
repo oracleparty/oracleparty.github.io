@@ -398,4 +398,183 @@ BEGIN
     ('a round that merely went badly is not mistaken for a thrown-out one', res, 'changed');
 END $$;
 
+
+
+-- ============================================
+-- Migration 051 — the three writes slice 6 took away
+--
+-- 049/050 shut the `answers` door on UPDATE and DELETE, which was right, and
+-- took three legitimate writes with it. An RLS refusal returns no error, so all
+-- three failed in total silence. These rules pin the replacements, and — just
+-- as important — pin that each one REFUSES the thing the door was shut against.
+-- ============================================
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  other uuid := gen_random_uuid();
+  host uuid := gen_random_uuid();
+  guest uuid := gen_random_uuid();
+  bot uuid := gen_random_uuid();
+  ghost uuid := gen_random_uuid();
+  returner uuid := gen_random_uuid();
+  q uuid[] := ARRAY[]::uuid[];
+  qid uuid;
+  n int;
+  ok boolean;
+BEGIN
+  FOR i IN 1..3 LOOP
+    qid := gen_random_uuid();
+    INSERT INTO questions (id, question, correct_answer, format)
+    VALUES (qid, 'R' || i, 'Answer' || i, 'open');
+    q := q || qid;
+  END LOOP;
+
+  INSERT INTO rooms (id, code, question_ids, current_question, questions_per_game,
+                     question_timer, question_started_at, game_phase)
+  VALUES (rid, lpad((random()*999999)::int::text, 6, '0'), q, 0, 2, 30, now(), 'question');
+  INSERT INTO rooms (id, code, question_ids, questions_per_game, question_timer)
+  VALUES (other, lpad((random()*999999)::int::text, 6, '0'), q, 2, 30);
+
+  INSERT INTO players (id, room_id, display_name, is_host, is_bot, joined_at)
+  VALUES (host,  rid, 'Host',  true,  false, now()),
+         (guest, rid, 'Guest', false, false, now()),
+         (bot,   rid, 'Bot',   false, true,  now());
+
+  -- ---- 1. Play Again clears the room ---------------------------------------
+  PERFORM op_submit_answer(rid, host,  0, 'Answer1', 1);
+  PERFORM op_submit_answer(rid, guest, 0, 'nope',    1);
+
+  n := op_reset_answers(rid, guest);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a player who is not the host cannot wipe a game', n::text, '-1');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the answers are all still there', count(*)::text, '2' FROM answers WHERE room_id = rid;
+
+  n := op_reset_answers(rid, host);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host clears the last game on Play Again', (n = 2)::text, 'true');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and nothing from it survives into the next one', count(*)::text, '0'
+  FROM answers WHERE room_id = rid;
+
+  -- ---- 2. A returning player gets their own answers back -------------------
+  --
+  -- WRITING THIS FOUND SOMETHING THIS REPO CANNOT ANSWER. The scratch schema
+  -- gives answers.player_id an ON DELETE CASCADE, and under it the first
+  -- version of this block could not be made to pass: deleting the abandoned
+  -- seat took its answers with it, so there was never anything to reassign.
+  --
+  -- That FK is INFERRED, not measured (see the header of scratch-schema.sql).
+  -- Which way it really goes decides whether reassignPlayerAnswers has EVER
+  -- done anything on the live site — if answers cascade, a released seat takes
+  -- the score with it and the rejoin promise in CLAUDE.md was never kept, long
+  -- before migration 049 revoked the UPDATE. It has to be measured live; the
+  -- SQL to do it is in migration 051's header.
+  --
+  -- So this proves the LOGIC in the world where the function has work to do,
+  -- and the constraint is dropped for exactly that reason and restored after.
+  -- In the cascade world every rule below is trivially satisfied by there being
+  -- no orphans at all, and the function is a harmless no-op.
+  INSERT INTO players (id, room_id, display_name, joined_at)
+  VALUES (ghost, rid, 'Ghost', now());
+  -- op_submit_answer refuses any round that is not the room's current one — the
+  -- whole point of migration 046 — so the room has to be walked forward rather
+  -- than answered out of order. Getting this wrong is what made the first run
+  -- of this block report the reassignment as broken when it was the FIXTURE
+  -- that never wrote the second answer.
+  PERFORM op_submit_answer(rid, ghost, 0, 'ghost typed this', 2);
+  UPDATE rooms SET current_question = 1, question_started_at = now() WHERE id = rid;
+  PERFORM op_submit_answer(rid, ghost, 1, 'Answer2', 1);
+
+  INSERT INTO players (id, room_id, display_name, joined_at)
+  VALUES (returner, rid, 'Ghost', now());
+
+  ALTER TABLE answers DROP CONSTRAINT IF EXISTS answers_player_id_fkey;
+  DELETE FROM players WHERE id = ghost;
+
+  -- The returner already wrote an answer for round 0 as themselves — they came
+  -- back mid-round and typed something. Both rows now exist on the same
+  -- (room, question) key, which is what would raise 23505 and lose the whole
+  -- reassignment if the function moved them blindly.
+  INSERT INTO answers (room_id, player_id, question_number, question_id, wager,
+                       submitted_answer, is_correct, score_earned)
+  VALUES (rid, returner, 0, q[1], 2, 'Answer1', true, 2);
+
+  n := op_reassign_answers(rid, ghost, returner);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a returning player gets their orphaned answers back', n::text, '1');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and their score comes with them', coalesce(sum(score_earned),0)::text, '3'
+  FROM answers WHERE room_id = rid AND player_id = returner;
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a clash on one round does not lose the whole rejoin', count(*)::text, '2'
+  FROM answers WHERE room_id = rid AND player_id = returner;
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the answer they gave as themselves is the one kept',
+         submitted_answer, 'Answer1'
+  FROM answers WHERE room_id = rid AND player_id = returner AND question_number = 0;
+  INSERT INTO result (check_name, got, want)
+  SELECT 'nothing is left behind on the old seat', count(*)::text, '0'
+  FROM answers WHERE room_id = rid AND player_id = ghost;
+
+  -- Answers can never be moved into a room they were not played in.
+  n := op_reassign_answers(other, gen_random_uuid(), returner);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('answers cannot be moved into another room', n::text, '-1');
+
+  -- A LIVE player's answers are not up for grabs. Deliberately on its own
+  -- victim, at a round number nothing else uses: the first version attempted
+  -- this on the fixture's own rows, so removing the guard did not report a
+  -- broken RULE, it collided on the unique key and killed the whole script with
+  -- a duplicate-key error. A guard whose failure is a crash is a guard nobody
+  -- can read the failure of.
+  INSERT INTO answers (room_id, player_id, question_number, question_id, wager,
+                       submitted_answer, is_correct, score_earned)
+  VALUES (rid, guest, 99, q[1], 1, 'guest keeps this', true, 1);
+  n := op_reassign_answers(rid, guest, returner);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('answers cannot be taken off a player who is still in the room', n::text, '-1');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the live player still has them', count(*)::text, '1'
+  FROM answers WHERE room_id = rid AND player_id = guest AND question_number = 99;
+  DELETE FROM answers WHERE room_id = rid AND question_number = 99;
+
+  ALTER TABLE answers ADD CONSTRAINT answers_player_id_fkey
+    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE;
+
+  -- ---- 3. Only a bot can be answered for ----------------------------------
+  PERFORM op_reset_answers(rid, host);
+
+  ok := op_bot_answer(rid, guest, 0, q[1], 3, 'Answer1', true);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('nobody can write an answer for a real player', ok::text, 'false');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and no row was written for them', count(*)::text, '0'
+  FROM answers WHERE room_id = rid AND player_id = guest;
+
+  ok := op_bot_answer(rid, bot, 0, q[1], 3, 'Answer1', true);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host answers for a bot', ok::text, 'true');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the score is computed here, not sent', score_earned::text, '3'
+  FROM answers WHERE room_id = rid AND player_id = bot AND question_number = 0;
+
+  -- The final round is number 2 here (3 questions: 0, 1, final at 2), and it is
+  -- the only one that subtracts. A bot holding a locked wager gets merged over.
+  INSERT INTO answers (room_id, player_id, question_number, question_id, wager, submitted_answer)
+  VALUES (rid, bot, 2, q[3], 20, '__WAGER_LOCKED__');
+  ok := op_bot_answer(rid, bot, 2, q[3], 20, 'wrong', false);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a locked wager placeholder is merged over, not skipped', ok::text, 'true');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a wrong FINAL answer subtracts the wager', score_earned::text, '-20'
+  FROM answers WHERE room_id = rid AND player_id = bot AND question_number = 2;
+
+  -- A real answer the bot already gave is never overwritten.
+  PERFORM op_bot_answer(rid, bot, 0, q[1], 3, 'something else', false);
+  INSERT INTO result (check_name, got, want)
+  SELECT 'an answer already given is not overwritten', submitted_answer, 'Answer1'
+  FROM answers WHERE room_id = rid AND player_id = bot AND question_number = 0;
+END $$;
+
 SELECT check_name, got, want FROM result ORDER BY ord;

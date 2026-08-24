@@ -467,6 +467,19 @@ const RPC_PROBES = [
                          p_question_number: 0, p_answer: 'probe', p_wager: 1 }],
   ['op_fill_blank_answers', { p_room_id: NOT_A_UUID, p_question_number: 0 }],
   ['op_start_clock', { p_room_id: NOT_A_UUID, p_phase: 'question', p_question_number: 0 }],
+
+  // Migration 051 — the three writes 049 took away.
+  //
+  // These are the OPPOSITE of a fallback: 049/050 shut the door these replace,
+  // so when they are missing the old path is not slower, it is REFUSED, and an
+  // RLS refusal returns no error. Play Again silently keeps the last game's
+  // answers and a rejoining player silently loses their score.
+  ['op_reset_answers', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID }],
+  ['op_reassign_answers', { p_room_id: NOT_A_UUID, p_old_player_id: NOT_A_UUID,
+                            p_new_player_id: NOT_A_UUID }],
+  ['op_bot_answer', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID,
+                      p_question_number: 0, p_question_id: NOT_A_UUID,
+                      p_wager: 0, p_answer: 'probe', p_is_correct: false }],
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
@@ -578,6 +591,18 @@ const CONSEQUENCES = [
   { object: 'op_start_clock', kind: 'rpc',
     fix: 'run migrations/047_server_owns_the_clock.sql',
     breaks: ["the round clock goes back to the host phone's ESTIMATE of server time, which the answer deadline is then measured against — a slow estimate refuses every answer in the room as late"] },
+
+  // 051 is not a fallback. 049/050 already shut the door these replace, so
+  // missing here means the write is REFUSED, silently, and has been since.
+  { object: 'op_reset_answers', kind: 'rpc',
+    fix: 'run migrations/051_the_three_writes_049_took_away.sql',
+    breaks: ["Play Again does not clear the last game's answers, so the next game's scoreboard is computed over a game that already finished"] },
+  { object: 'op_reassign_answers', kind: 'rpc',
+    fix: 'run migrations/051_the_three_writes_049_took_away.sql',
+    breaks: ['a player who rejoins loses their score and their used wagers, and can spend a wager twice'] },
+  { object: 'op_bot_answer', kind: 'rpc',
+    fix: 'run migrations/051_the_three_writes_049_took_away.sql',
+    breaks: ['a practice bot never answers the final question of any game'] },
 ];
 
 console.log('\n--- WHAT THIS MEANS FOR A PLAYER ---');
