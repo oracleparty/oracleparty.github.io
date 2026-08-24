@@ -1,5 +1,6 @@
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions } from './client.js';
 import { logger, reportWriteFailure } from '../logger.js';
+import { STALE_TIMEOUT_MS } from '../constants.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
 // ============================================
@@ -31,6 +32,73 @@ export async function addPlayer(roomId, displayName, isHost = false, userId = nu
     return { data: null, error };
   }
   return { data, error: null };
+}
+
+/**
+ * Take a seat in a room, reusing the one you already have rather than adding
+ * another.
+ *
+ * THE BUG THIS EXISTS FOR. A person who left and came back appeared in the
+ * lobby two, three, four times over — reported from a live game as three copies
+ * of one player. Two faults stacked into a ratchet that could only get worse:
+ *
+ *   * join.html called addPlayer unconditionally, with no check at all. Leave
+ *     with a phone that never fired its unload beacon — locked screen, dead
+ *     battery, lost signal — and rejoining made a SECOND row.
+ *   * ensureCurrentPlayer in the lobby then adopted an existing row only when
+ *     there was EXACTLY ONE match, and otherwise created another. So at two
+ *     duplicates it made a third, at three a fourth, and it could never get
+ *     back to the one case it knew how to handle. Every rejoin from then on
+ *     added another copy, for the life of the room.
+ *
+ * WHO YOU ARE is a user id when signed in, which is exact, and a display name
+ * when not, which is not. That difference is the whole design here:
+ *
+ *   * Signed in — any row with your user id is yours. Take the newest, delete
+ *     the rest. One account, one seat.
+ *   * A guest — a same-name row that is STILL ALIVE might genuinely be somebody
+ *     else who picked your name, so it is left alone and you get a new seat.
+ *     Only rows that have gone quiet are treated as your abandoned ones, and
+ *     those are cleaned up. Being wrong here costs somebody their seat
+ *     mid-game, which is worse than an extra row.
+ *
+ * Liveness falls back to joined_at, because addPlayer does not write
+ * last_seen_at and a row that never heartbeated would otherwise look ancient.
+ */
+export async function claimSeat({ roomId, displayName, userId = null, isHost = false, extras = {} }) {
+  const { data: rows, error: readErr } = await supabase
+    .from('players').select('*').eq('room_id', roomId);
+  if (readErr) {
+    logger.warn('Supabase', 'claimSeat could not read the room, adding a seat', readErr);
+    return addPlayer(roomId, displayName, isHost, userId, extras);
+  }
+
+  const all = rows || [];
+  const now = Date.now();
+  const seenAt = p => new Date(p.last_seen_at || p.joined_at || 0).getTime();
+  const alive = p => now - seenAt(p) < STALE_TIMEOUT_MS;
+
+  const mine = userId
+    ? all.filter(p => p.user_id && String(p.user_id) === String(userId))
+    : all.filter(p => !p.user_id && p.display_name === displayName && !alive(p));
+
+  if (mine.length === 0) {
+    return addPlayer(roomId, displayName, isHost, userId, extras);
+  }
+
+  // Newest first — the freshest row is the one carrying the most recent state.
+  mine.sort((a, b) => seenAt(b) - seenAt(a));
+  const [keep, ...duplicates] = mine;
+
+  for (const dup of duplicates) {
+    const { error } = await supabase.from('players').delete().eq('id', dup.id);
+    if (error) logger.warn('Supabase', 'claimSeat could not clear a duplicate seat', error);
+  }
+  if (duplicates.length) {
+    logger.info('Supabase', `claimSeat reclaimed a seat and cleared ${duplicates.length} duplicate(s)`);
+  }
+
+  return { data: keep, error: null };
 }
 
 /**

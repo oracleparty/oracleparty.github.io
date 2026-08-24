@@ -10,6 +10,7 @@ import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, HEARTBEAT_
          BOT_DISPLAY_NAME, BOT_AVATAR_COLOR, BOT_AVATAR_EMOJI, MAX_BOTS_PER_ROOM } from './constants.js';
 import {
   addPlayer,
+  claimSeat,
   addBot,
   fetchRoomScores,
   fetchPlayers,
@@ -989,18 +990,6 @@ async function ensureCurrentPlayer() {
 
   const displayName = getDisplayName();
 
-  // Before creating a new entry, check if a player with the same display name already
-  // exists — this handles edge cases where the old player row was legitimately removed
-  // (stale timeout, explicit kick) but sessionStorage still references it.
-  // Only adopt when there's EXACTLY ONE match: with two "Alice" players, name-based
-  // rejoin would silently collide them onto the same id and merge their scores.
-  const sameName = players.filter(p => p.display_name === displayName);
-  if (sameName.length === 1) {
-    room.playerId = sameName[0].id;
-    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-    return;
-  }
-
   const authUser = getCurrentUser();
   const rejoinUserId = authUser?.user?.id || null;
   const extras = {};
@@ -1009,7 +998,14 @@ async function ensureCurrentPlayer() {
     extras.avatarEmoji = authUser.profile.avatar_emoji;
     extras.title = authUser.profile._cachedTitle || null;
   }
-  const { data: rejoinedPlayer } = await addPlayer(room.id, displayName, room.isHost, rejoinUserId, extras);
+  // This used to adopt an existing row only when there was EXACTLY ONE match
+  // and otherwise add another — so at two duplicates it made a third, at three
+  // a fourth, and it could never get back to the single case it handled. One
+  // person appeared in a live lobby three times over. claimSeat takes the seat
+  // that is already yours and clears the copies.
+  const { data: rejoinedPlayer } = await claimSeat({
+    roomId: room.id, displayName, userId: rejoinUserId, isHost: room.isHost, extras,
+  });
   if (rejoinedPlayer) {
     room.playerId = rejoinedPlayer.id;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));

@@ -201,6 +201,66 @@ async function hostDisappearsMidQuestion() {
 // 2. PLAYER DROPS AND REJOINS
 // ============================================================
 async function playerDropsAndRejoins() {
+  // ============================================================
+  // ONE PERSON, ONE SEAT — however many times they come back
+  //
+  // Reported from a live game as THREE copies of one player in the lobby, all
+  // flagged host. It needs a leave whose unload beacon never fires — a locked
+  // phone, a dead battery, lost signal — which leaves the row behind. Then:
+  //
+  //   * join.html added a row unconditionally, so coming back made a SECOND;
+  //   * the lobby's rejoin path adopted an existing row only when there was
+  //     EXACTLY ONE and otherwise added another, so at two it made a third and
+  //     could never get back to the one case it handled.
+  //
+  // A ratchet: every return from then on added another copy. Two rounds here,
+  // because one is not enough to see it — the first duplicate is where the old
+  // code still behaved, and the second is where it ran away.
+  // ============================================================
+  heading('leaving without a clean goodbye, twice');
+  {
+    const table = await PlaytestTable.open();
+    try {
+      seedQuestions(table.store);
+      const { host, code } = await openRoom(table);
+      const bob = await joinRoom(table, 'Bob', code);
+      await host.page.waitForTimeout(1200);
+
+      for (const round of [1, 2]) {
+        // The row survives, and goes quiet — a phone that vanished without
+        // telling anyone. Backdated past the stale timeout so it is plainly
+        // abandoned rather than merely idle.
+        const long_ago = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        for (const p of table.store.table('players')) {
+          if (p.display_name === 'Bob') { p.last_seen_at = long_ago; p.joined_at = long_ago; }
+        }
+
+        await bob.page.goto(bob.page.url().replace(/lobby\.html.*$/, 'join.html'),
+          { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await bob.page.waitForSelector('#code-input', { timeout: 15000 }).catch(() => {});
+        await bob.page.fill('#code-input', code).catch(() => {});
+        await bob.page.click('#btn-join').catch(() => {});
+        await bob.page.waitForURL('**/lobby.html*', { timeout: 20000 }).catch(() => {});
+        await bob.page.waitForTimeout(2500);
+
+        const bobRows = table.store.table('players').filter(p => p.display_name === 'Bob');
+        note(`after return ${round}: ${bobRows.length} row(s) for Bob`);
+        if (bobRows.length !== 1) {
+          problems.push(`coming back after a leave that never cleaned up left ${bobRows.length} copies of the same player in the lobby (return ${round})`);
+        }
+      }
+
+      // ...and the room still has exactly one host through all of it. Every
+      // copy in the live report carried the host flag.
+      const hosts = table.store.table('players').filter(p => p.is_host);
+      if (hosts.length !== 1) {
+        problems.push(`the room has ${hosts.length} hosts after the rejoins`);
+      }
+    } finally {
+      await table.close();
+    }
+  }
+
   heading('player drops and rejoins');
   const table = await PlaytestTable.open();
   try {

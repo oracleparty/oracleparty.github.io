@@ -994,6 +994,45 @@ break it and `question_stats` reads `asked=2` where a solo human is `asked=1`.
 
 ---
 
+## One person, one seat
+
+**Reported from a live game: three copies of one player in the lobby, all
+flagged host.** It needs a leave whose unload beacon never fires — a locked
+phone, a dead battery, lost signal — which leaves the row behind. Two faults
+then stacked into a **ratchet**:
+
+- `join.html` called `addPlayer` unconditionally, with no check at all, so
+  coming back made a SECOND row.
+- `ensureCurrentPlayer` in the lobby adopted an existing row only when there was
+  **exactly one** match, and otherwise added another. So at two duplicates it
+  made a third, at three a fourth, **and it could never get back to the one case
+  it knew how to handle.** Every return from then on added another copy, for the
+  life of the room.
+
+The guard was written for a real reason — two guests both called "Alice" would
+be silently merged onto one id — but its failure mode was unbounded growth,
+which is worse than the thing it avoided.
+
+`claimSeat` in `js/db/players.js` is the single path now, used by both
+join.html and the lobby. **Who you are is a user id when signed in, which is
+exact, and a display name when not, which is not**, and that difference is the
+whole design:
+
+- **Signed in** — any row with your user id is yours. Take the newest, delete
+  the rest. One account, one seat.
+- **A guest** — a same-name row that is STILL ALIVE might genuinely be somebody
+  else who picked your name, so it is left alone and you get a new seat. Only
+  rows that have gone quiet are treated as yours, and those are cleaned up.
+  Being wrong here costs a stranger their seat mid-game, which is worse than an
+  extra row.
+
+Liveness falls back to `joined_at`, because `addPlayer` does not write
+`last_seen_at` and a row that never heartbeated would otherwise look ancient.
+
+`scenario-nasty` returns **twice**, because once is not enough to see it: the
+first duplicate is where the old code still behaved and the second is where it
+ran away. Verified by restoring both call sites.
+
 ## A room is only ever cleaned up from inside it
 
 A player row goes either by a beacon on unload or by another client in the room

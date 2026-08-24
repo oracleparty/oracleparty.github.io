@@ -3,7 +3,7 @@
 // ============================================
 
 import { $, $$, escapeHtml, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
-import { findRoomByCode, fetchPublicRooms, addPlayer, cleanupOrphanedRooms } from './supabase.js';
+import { findRoomByCode, fetchPublicRooms, addPlayer, claimSeat, cleanupOrphanedRooms } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
@@ -130,7 +130,13 @@ async function joinRoom(code) {
       extras.avatarEmoji = authUser.profile.avatar_emoji;
       extras.title = authUser.profile._cachedTitle || null;
     }
-    const { data: player, error: playerErr } = await addPlayer(room.id, displayName, false, userId, extras);
+    // claimSeat, not addPlayer: joining used to add a row unconditionally, so
+    // anybody whose unload beacon never fired — locked phone, lost signal —
+    // came back as a SECOND copy of themselves, and from there the lobby's
+    // rejoin path made a third and a fourth. See claimSeat.
+    const { data: player, error: playerErr } = await claimSeat({
+      roomId: room.id, displayName, userId, isHost: false, extras,
+    });
 
     if (playerErr || !player) {
       joinError.textContent = 'Failed to join room. Try again.';
