@@ -56,6 +56,19 @@ export const CATEGORY_CACHE_TTL = 1800000;
 export const CATEGORY_PAGE_SIZE = 1000;
 export const PUBLIC_ROOMS_LIMIT = 20;
 export const CHAT_MESSAGES_LIMIT = 100;
+// How far BEFORE a player joined their chat history still starts.
+//
+// The join stamp is written by the phone (addPlayer sets joined_at from the
+// local clock) and chat_messages.created_at is written by the DATABASE, so the
+// two are only as aligned as that phone's clock. This project already keeps a
+// getServerTimeOffset() because that skew is real.
+//
+// The two ways to be wrong are not equal. A cut-off that lands too LATE hides
+// messages the player was meant to see and reads as chat being broken; too
+// EARLY shows them a couple of minutes of what came before, which costs
+// nothing — this is a courtesy, not a lock (see rememberChatCutoff). So it is
+// deliberately biased early.
+export const CHAT_HISTORY_GRACE_MS = 120000;   // 2 minutes
 export const QUESTION_POOL_SIZE = 500;
 export const WILDCARD_LIMIT = 200;
 export const DIFFICULTY_QUESTION_LIMIT = 20;

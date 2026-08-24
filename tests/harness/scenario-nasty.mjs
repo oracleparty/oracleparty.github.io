@@ -262,6 +262,66 @@ async function playerDropsAndRejoins() {
   }
 
   // ============================================================
+  // CLOSING THE TAB AND COMING STRAIGHT BACK
+  //
+  // The block above backdates Bob's row so it is plainly abandoned, and that is
+  // the ONLY shape claimSeat's guest rule handles: it will not touch a same-name
+  // row that is still alive, because that row might genuinely be somebody else
+  // who picked the same name.
+  //
+  // Which left this wide open. A guest who CLOSES THE TAB loses sessionStorage
+  // but keeps localStorage, comes back through the join screen within the stale
+  // window, and finds their own row still warm — so the guest rule skips it and
+  // hands them a brand new seat beside it. Two Bobs, immediately, with nothing
+  // abandoned anywhere. "Three profiles of my friend after he left and rejoined"
+  // is this, repeated.
+  //
+  // The fix is that a remembered seat id is not a guess about who somebody is,
+  // it is the seat they were sitting in — so it is checked first, and it beats
+  // every heuristic. rememberSeat had to start running in the LOBBY for that to
+  // help, because before this it only ever ran on the game page.
+  // ============================================================
+  heading('closing the tab and coming straight back');
+  {
+    const table = await PlaytestTable.open();
+    try {
+      seedQuestions(table.store);
+      const { host, code } = await openRoom(table);
+      const bob = await joinRoom(table, 'Bob', code);
+      await host.page.waitForTimeout(1500);
+
+      const before = table.store.table('players').filter(p => p.display_name === 'Bob');
+      note(`Bob is seated once to start with: ${before.length === 1}`);
+
+      // Deliberately NOT backdated. His row is fresh — he shut the tab seconds
+      // ago and nothing has gone quiet. sessionStorage dies with the tab;
+      // localStorage does not, which is the whole point.
+      await bob.page.evaluate(() => sessionStorage.clear()).catch(() => {});
+
+      await bob.page.goto(bob.page.url().replace(/lobby\.html.*$/, 'join.html'),
+        { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await bob.page.waitForSelector('#code-input', { timeout: 15000 }).catch(() => {});
+      await bob.page.fill('#code-input', code).catch(() => {});
+      await bob.page.click('#btn-join').catch(() => {});
+      await bob.page.waitForURL('**/lobby.html*', { timeout: 20000 }).catch(() => {});
+      await bob.page.waitForTimeout(2500);
+
+      const bobRows = table.store.table('players').filter(p => p.display_name === 'Bob');
+      note(`after closing the tab and rejoining: ${bobRows.length} row(s) for Bob`);
+      if (bobRows.length !== 1) {
+        problems.push(`closing the tab and rejoining left ${bobRows.length} copies of the same player while their own row was still alive`);
+      }
+
+      const hostRows = table.store.table('players').filter(p => p.is_host);
+      if (hostRows.length !== 1) {
+        problems.push(`the room has ${hostRows.length} hosts after a tab-close rejoin`);
+      }
+    } finally {
+      await table.close();
+    }
+  }
+
+  // ============================================================
   // A GHOST CANNOT BE THE HOST
   //
   // Reported from a live game, with a photograph: two abandoned copies of one

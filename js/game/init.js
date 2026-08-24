@@ -228,6 +228,10 @@ async function init() {
       userId: rejoinUserId,
       isHost: state.room.isHost && !someoneElseIsHost,
       extras,
+      // Exact when it is there. This branch runs because our own row went
+      // missing from the list we fetched, but a row carrying the remembered id
+      // may have arrived since — and adopting it beats adding another seat.
+      priorPlayerId: prevPlayerId,
     });
 
     if (rejoinedPlayer) {

@@ -45,7 +45,7 @@ import {
   fetchAllOpenQuestionCount,
   fetchExclusiveWildCardCount
 } from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
@@ -141,6 +141,14 @@ async function init() {
 
   // Ensure current player exists (may have been removed by a stale beacon on refresh)
   await ensureCurrentPlayer();
+
+  // Write the seat down durably. This only ever happened on the game page, so
+  // somebody who sat in a lobby and closed the tab left no record of which row
+  // was theirs — and claimSeat, which will not touch a still-alive same-name
+  // row in case it belongs to a stranger, had no way to recognise them. They
+  // came back as a second copy of themselves. localStorage, so it survives the
+  // browser closing rather than just a refresh.
+  rememberSeat(room.id, room.playerId);
 
   // Validate room still exists (may have been deleted while player was away)
   const { data: currentRoom } = await fetchRoom(room.id);
@@ -1068,6 +1076,8 @@ async function ensureCurrentPlayer() {
   // that is already yours and clears the copies.
   const { data: rejoinedPlayer } = await claimSeat({
     roomId: room.id, displayName, userId: rejoinUserId, isHost: room.isHost, extras,
+    // Exact when it is there, and it beats every guess claimSeat would make.
+    priorPlayerId: room.playerId || recallSeat(room.id),
   });
   if (rejoinedPlayer) {
     room.playerId = rejoinedPlayer.id;
@@ -1082,8 +1092,22 @@ function repositionChatBar() { /* no-op — chat is inline */ }
 function updateChatBarPreview() { /* no-op — no bar in lobby */ }
 function flashChatBar() { /* no-op — no bar in lobby */ }
 
+/**
+ * Chat sent before this person walked in is not theirs to read.
+ *
+ * Anchored on their OWN player row's joined_at rather than the clock, so a
+ * message that lands between joining and the chat pane loading is not lost.
+ * rememberChatCutoff keeps the first value it is given for a room, so coming
+ * back — a refresh, or returning from a game — still shows everything from a
+ * room you were already in. See auth.js for what this does and does not do.
+ */
+function chatCutoff() {
+  const me = players.find(p => String(p.id) === String(room.playerId));
+  return rememberChatCutoff(room.id, me?.joined_at || null);
+}
+
 async function loadMessages() {
-  const messages = await fetchMessages(room.id);
+  const messages = await fetchMessages(room.id, chatCutoff());
   chatMessagesEl.innerHTML = '';
   for (const msg of messages) {
     if (msg.player_name === 'System') {

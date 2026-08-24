@@ -482,6 +482,55 @@ try {
   }
 
   // ============================================================
+  // 5b-ii-b. THE SAME FAULT, ONE TABLE ALONG
+  //
+  // `friendships` has no unique constraint either until migration 044 is run,
+  // and isFriend used maybeSingle() — which ERRORS on more than one row. Two
+  // people who each accepted the other produce two rows for one pair, and from
+  // that moment isFriend returned FALSE for people who really are friends:
+  //
+  //   * sendFriendRequest's "Already friends" guard fell straight through;
+  //   * the profile offered "Add Friend" to an existing friend;
+  //   * the friends list showed that person twice, with two Remove buttons,
+  //     one of which would look like it did nothing.
+  //
+  // Fixing the request table without checking the friendship table would have
+  // left the same shape one join away. When a lookup breaks on duplicates, look
+  // for every OTHER lookup keyed on the same pair.
+  // ============================================================
+  heading('duplicate rows in the friendships table');
+  {
+    const ships = table.store.table('friendships');
+    ships.length = 0;
+    const [a, b] = [alice.userId, carol.userId].sort();
+    ships.push({ id: 'fs-1', user_a: a, user_b: b, source: 'lobby', created_at: new Date().toISOString() });
+    ships.push({ id: 'fs-2', user_a: a, user_b: b, source: 'request', created_at: new Date().toISOString() });
+
+    const answers = await alice.page.evaluate(async ([me, them]) => {
+      const mod = await import('./js/supabase.js');
+      const friends = await mod.fetchFriends(me);
+      return {
+        isFriend: await mod.isFriend(me, them),
+        listed: friends.map(f => f.user_id),
+        created: await mod.createFriendship(me, them, 'lobby').then(r => r.error?.message || null),
+      };
+    }, [alice.userId, carol.userId]).catch(err => ({ threw: err.message }));
+    note(`with two rows for one pair: ${JSON.stringify(answers)}`);
+    note(`friendships rows after: ${table.store.table('friendships').length}`);
+
+    if (!answers.isFriend) {
+      problems.push('two rows for one pair made isFriend say they are NOT friends — every guard keyed on it fails open');
+    }
+    if (!Array.isArray(answers.listed) || answers.listed.length !== 1) {
+      problems.push(`the friends list shows that person ${Array.isArray(answers.listed) ? answers.listed.length : '?'} times`);
+    }
+    if (table.store.table('friendships').length !== 2) {
+      problems.push(`befriending somebody already befriended changed the row count to ${table.store.table('friendships').length}`);
+    }
+    ships.length = 0;
+  }
+
+  // ============================================================
   // 5b-iii. A CHECK CONSTRAINT NOBODY KNEW ABOUT
   //
   // THIS IS THE ROOT CAUSE OF THE REPORTED BUG. The live `friendships` table

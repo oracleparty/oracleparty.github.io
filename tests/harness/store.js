@@ -122,6 +122,30 @@ export class FakeStore {
   dropEvents(table, count) { this._dropEvents.set(table, count); }
 
   /** Refuse every write to `table`, the way an RLS policy does: zero rows, no error. */
+  /**
+   * Everything an account leaves behind, in ONE place.
+   *
+   * delete_my_account and admin_delete_account share this list deliberately,
+   * exactly as migrations 035 and 037 do: if one grows a table the other does
+   * not, "I deleted my account" and "an admin deleted my account" stop meaning
+   * the same thing, and nothing would say so.
+   */
+  _purgeAccount(uid) {
+    const purge = (tbl, pred) => {
+      const rows = this.table(tbl);
+      for (let i = rows.length - 1; i >= 0; i--) if (pred(rows[i])) rows.splice(i, 1);
+    };
+    purge('question_feedback', r => r.voter_id === `user:${uid}`);
+    purge('title_unlocks', r => String(r.user_id) === String(uid));
+    purge('question_history', r => String(r.user_id) === String(uid));
+    purge('game_history', r => String(r.user_id) === String(uid));
+    purge('player_stats', r => String(r.user_id) === String(uid));
+    purge('player_stats_computed', r => String(r.user_id) === String(uid));
+    purge('friend_requests', r => String(r.sender_id) === String(uid) || String(r.receiver_id) === String(uid));
+    purge('friendships', r => String(r.user_a) === String(uid) || String(r.user_b) === String(uid));
+    purge('profiles', r => String(r.user_id) === String(uid));
+  }
+
   denyWrites(table) { this._denied.add(table); }
   /** Undo denyWrites. */
   allowWrites(table) { this._denied.delete(table); }
@@ -501,19 +525,33 @@ export class FakeStore {
     if (name === 'delete_my_account') {
       const uid = args?.__callerUserId ?? null;
       if (!uid) return null;
-      const purge = (tbl, pred) => {
-        const rows = this.table(tbl);
-        for (let i = rows.length - 1; i >= 0; i--) if (pred(rows[i])) rows.splice(i, 1);
-      };
-      purge('question_feedback', r => r.voter_id === `user:${uid}`);
-      purge('title_unlocks', r => String(r.user_id) === String(uid));
-      purge('question_history', r => String(r.user_id) === String(uid));
-      purge('game_history', r => String(r.user_id) === String(uid));
-      purge('player_stats', r => String(r.user_id) === String(uid));
-      purge('player_stats_computed', r => String(r.user_id) === String(uid));
-      purge('friend_requests', r => String(r.sender_id) === String(uid) || String(r.receiver_id) === String(uid));
-      purge('friendships', r => String(r.user_a) === String(uid) || String(r.user_b) === String(uid));
-      purge('profiles', r => String(r.user_id) === String(uid));
+      this._purgeAccount(uid);
+      return null;
+    }
+
+    // Migration 037. Deliberately shares delete_my_account's purge list: if one
+    // grows a table the other does not, "I deleted my account" and "an admin
+    // deleted my account" stop meaning the same thing.
+    //
+    // Its three guards RAISE rather than return, so they arrive at the client
+    // as an error — which is the difference between "nothing happened" and
+    // "the page told you why". The fake has to raise too, or a scenario would
+    // pass on a refusal the live function turns into a visible failure.
+    if (name === 'admin_delete_account') {
+      const caller = args?.__callerUserId ?? null;
+      const target = args?.p_user_id ?? null;
+      const isAdmin = id => this.table('profiles')
+        .some(p => String(p.user_id) === String(id) && p.is_admin);
+      if (!caller) throw new Error('admin_delete_account: not signed in');
+      if (!isAdmin(caller)) throw new Error('admin_delete_account: not an admin');
+      if (!target) throw new Error('admin_delete_account: no account given');
+      if (String(target) === String(caller)) {
+        throw new Error('admin_delete_account: use Delete Account on your own profile');
+      }
+      if (isAdmin(target)) {
+        throw new Error('admin_delete_account: remove their admin rights first');
+      }
+      this._purgeAccount(target);
       return null;
     }
 

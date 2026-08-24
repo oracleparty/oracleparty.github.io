@@ -115,6 +115,40 @@ between players and the database. That is #1, and chat privacy arrives with it.
 `privacy.html` tells players to treat chat as public, which is the honest
 position and better than a lock that only looks like one.
 
+**The owner's idea, and it is a good one: you arrive to an empty room.** A
+player now reads chat from the moment they first entered a room, not everything
+said before it (`rememberChatCutoff` in `auth.js`, `fetchMessages(roomId,
+since)`).
+
+**Be precise about what this is.** It is NOT a permission and does not close
+the paragraph above — anyone crafting requests by hand still reads everything.
+What it closes is the realistic leak: room codes are six digits and public
+games are listed, so anybody can walk in, and until now they arrived to the
+whole transcript. That is how a private conversation actually escaped.
+
+Two decisions inside it, both of which the obvious implementation gets wrong:
+
+- **SET ONCE, never moved forward.** The literal reading of "fresh on entry" is
+  per page load, which is worse than the problem — refresh your phone mid-lobby
+  and the conversation you were part of vanishes. A rejoin also deletes the
+  player row and writes a new one stamped later, so anything recomputing the
+  cut-off from `joined_at` would hide what was said while the player was
+  sitting there. `scenario-join` proves this by restamping the seat forward,
+  which is the only way to make the two behaviours differ inside a test that
+  runs in seconds while the rule is written in minutes.
+- **Biased EARLY by `CHAT_HISTORY_GRACE_MS` (2 min).** `joined_at` is written
+  by the phone; `chat_messages.created_at` is written by the database. The two
+  are only as aligned as that phone's clock, which is why this project already
+  keeps a `getServerTimeOffset()`. A cut-off landing too late hides messages
+  meant for the player and reads as chat being broken; too early shows a couple
+  of minutes of what came before, which costs nothing because this was never a
+  lock. The scenario seeds one old message AND one recent one — without the
+  recent one it would pass just as happily with the feature reverted to "hide
+  everything".
+
+`archiveChatMessages` deliberately passes no cut-off: the archive is the room's
+record, not one player's view of it.
+
 ### 3. Schema drift is the single biggest source of "impossible" bugs
 
 Migrations are hand-applied, and several were never run. Every bug of this
@@ -338,6 +372,27 @@ existed for a pair every guard on it failed open, including the auto-accept.
 Two people who each sent the other a request in March were never made friends
 and were never told anything. The client no longer depends on the constraint;
 044 adds it.
+
+**THE SAME FAULT WAS ONE TABLE ALONG, and fixing only `friend_requests` left
+it (found 2026-08-24).** `friendships` has no unique constraint either until
+044, and `isFriend` used `.maybeSingle()`. Two people who each accepted the
+other produce two rows for one pair, and from that moment `isFriend` returned
+**false for people who really are friends**:
+
+| Consequence | |
+|---|---|
+| `sendFriendRequest`'s "Already friends" guard | falls straight through |
+| the profile | offers "Add Friend" to an existing friend |
+| the friends list | shows that person twice, with two Remove buttons |
+
+`isFriend` uses `.limit(1)` now, so the answer is the same for one row or five;
+`fetchFriends` de-duplicates on the friend's user id; and `createFriendship`
+returns success when the pair is already friends rather than relying on the
+23505 that only exists once 044 has run.
+
+**When a lookup breaks on duplicates, go and find every OTHER lookup keyed on
+the same pair.** One table was fixed and the identical shape sat one join away
+for weeks.
 
 **When something works in the harness and fails live, ask what the real
 database REFUSES that the fake one allows.** Two faithfulness gaps were found
@@ -1032,6 +1087,34 @@ Liveness falls back to `joined_at`, because `addPlayer` does not write
 `scenario-nasty` returns **twice**, because once is not enough to see it: the
 first duplicate is where the old code still behaved and the second is where it
 ran away. Verified by restoring both call sites.
+
+**A REMEMBERED SEAT ID BEATS EVERY GUESS ABOVE, and adding it closed the last
+duplicate path (2026-08-24).** The guest rule will not touch a same-name row
+that is STILL ALIVE, because it might be a stranger who picked the same name —
+which left the commonest rejoin of all wide open. A guest who **closes the tab**
+loses sessionStorage but keeps localStorage, comes back through the join screen
+inside the stale window, and finds their own row still warm: skipped as
+possibly-somebody-else, and handed a new seat beside it. Two of them, instantly,
+with nothing abandoned anywhere.
+
+`claimSeat` now takes `priorPlayerId` and adopts that row outright when it is
+still in the room. That is not a heuristic about who somebody is — it is the
+seat they were sitting in.
+
+**`rememberSeat` had to start running in the LOBBY for that to help.** It only
+ever ran on the game page, so anybody who sat in a lobby and closed the tab had
+no record at all. The lobby is where people wait.
+
+**And it must NOT run in `join.js`, which is where the obvious version of this
+went.** Writing the new seat id at the moment of joining overwrites the OLD one
+— and the old one is exactly what `game.html` needs a moment later to move a
+returning player's answers onto their new row. It cost a passing test to find:
+`scenario-nasty` reported "rejoin lost history: 1 answers before, 0 after". The
+lobby and the game page both write it **after** any reclaim has run, which is
+the only safe moment.
+
+`scenario-nasty` covers this as its own case, deliberately NOT backdating the
+row: the point is that nothing has gone quiet.
 
 ## A ghost cannot be the host
 
@@ -1795,6 +1878,27 @@ back to deleting rooms on its own local count.
 migrations had touched, and none by a failing test.** After revoking a
 permission, that grep is the work — not an afterthought.
 
+**048's own verification could not have caught 049's bug happening to it.** It
+closed the door with `DROP POLICY IF EXISTS "Rooms: anyone can delete"` — by
+name — and checked `cmd = 'DELETE'`. Both are exactly the weaknesses that made
+049 fail silently live:
+
+- the live policy names are **not** the ones migration 022 declares, which is
+  why 049's drops did nothing, and `IF EXISTS` makes that a NOTICE rather than
+  an error;
+- a policy written `FOR ALL` has `cmd = 'ALL'` and grants DELETE as a side
+  effect, so the check reads **ok** with the door wide open.
+
+049 was caught only because its verification block happened to be run and
+reported FAIL. 048's would have said ok either way. Migration 051 redoes it by
+LOOKING, the way 036 and 050 do, and verifies `cmd IN ('DELETE','ALL')`.
+**Never drop a policy by name in this project, and never verify one by a single
+`cmd` value.**
+
+`rooms` UPDATE deliberately stays open — the phase machine still runs in the
+browser — and 051 asserts that too, because a lockdown that stops a game
+advancing is worse than the hole it closes.
+
 ### The seat ratchet had a third copy
 
 `js/game/init.js` still held the `sameName.length === 1` logic that "One person,
@@ -1896,6 +2000,11 @@ the Mastery list, which is kept: the list only names what somebody has already
 started, so it can never show them what is left. **The empty cells are the
 invitation.** Tap one to open its subcategories; Wild Card has none, so it is
 not tappable and is not styled as though it were.
+
+**SETTLED 2026-08-24: the Mastery list stays.** Whether it was still earning
+its place beside the Map was an open question put to the owner, and the answer
+was "just leave mastery for now". Do not remove or merge it on a tidiness
+argument.
 
 `js/honeycomb.js` holds the geometry, has **no imports**, and is unit tested —
 same rule as `radar.js` and `bot-logic.js`, because everything around it pulls

@@ -65,7 +65,7 @@ export async function addPlayer(roomId, displayName, isHost = false, userId = nu
  * Liveness falls back to joined_at, because addPlayer does not write
  * last_seen_at and a row that never heartbeated would otherwise look ancient.
  */
-export async function claimSeat({ roomId, displayName, userId = null, isHost = false, extras = {} }) {
+export async function claimSeat({ roomId, displayName, userId = null, isHost = false, extras = {}, priorPlayerId = null }) {
   const { data: rows, error: readErr } = await supabase
     .from('players').select('*').eq('room_id', roomId);
   if (readErr) {
@@ -77,6 +77,23 @@ export async function claimSeat({ roomId, displayName, userId = null, isHost = f
   const now = Date.now();
   const seenAt = p => new Date(p.last_seen_at || p.joined_at || 0).getTime();
   const alive = p => now - seenAt(p) < STALE_TIMEOUT_MS;
+
+  // A REMEMBERED SEAT ID IS PROOF, AND IT BEATS EVERY GUESS BELOW.
+  //
+  // The guest rule further down skips rows that are still alive, because a
+  // same-name row might genuinely be somebody else. That left one duplicate
+  // path wide open: a guest who CLOSES THE TAB loses sessionStorage, comes back
+  // through the join screen within the stale window, finds their own row still
+  // alive — and is handed a brand new one beside it. Two Bobs, and the reported
+  // "3 profiles of my friend... after he left and rejoined" is this repeated.
+  //
+  // recallSeat keeps the previous player id in localStorage, which survives the
+  // browser closing. If a row in this room still carries that id, it is not a
+  // guess about who somebody is; it is the seat they were sitting in.
+  if (priorPlayerId) {
+    const exact = all.find(p => String(p.id) === String(priorPlayerId));
+    if (exact) return { data: exact, error: null };
+  }
 
   const mine = userId
     ? all.filter(p => p.user_id && String(p.user_id) === String(userId))

@@ -3,7 +3,7 @@
 // ============================================
 
 import { $, calculateTitle, escapeHtml } from './utils.js';
-import { FRIEND_REQUEST_TOAST_MS } from './constants.js';
+import { FRIEND_REQUEST_TOAST_MS, CHAT_HISTORY_GRACE_MS } from './constants.js';
 import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest, unsubscribe } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle, planCelebration } from './titles.js';
@@ -827,4 +827,56 @@ export function recallSeat(roomId) {
 export function forgetSeat(roomId) {
   if (!roomId) return;
   try { localStorage.removeItem(`oracle_party_seat_${roomId}`); } catch (_) {}
+}
+
+/**
+ * The moment this person first entered a given room. Chat before it is not
+ * theirs to read.
+ *
+ * WHAT THIS IS AND IS NOT. Room codes are six digits and public games are
+ * listed, so anybody can walk into a room — and until now they arrived to the
+ * entire transcript of everything said before they got there. That is the
+ * realistic way a private conversation leaked, and this closes it.
+ *
+ * It is NOT a permission. Chat rows are still readable by anyone holding the
+ * publishable key, which every browser must carry because guests play without
+ * signing in (CLAUDE.md #2). Somebody crafting requests by hand still sees
+ * everything. Closing THAT needs either mandatory sign-in, which ends guest
+ * play, or a server between players and the database. privacy.html continues
+ * to say plainly that chat is not private, because it still is not.
+ *
+ * SET ONCE, NEVER MOVED FORWARD. The obvious reading of "fresh on entry" is
+ * per page load, and that would be worse than the problem: refresh your phone
+ * mid-lobby, or come back from a game, and the whole conversation you were
+ * part of would vanish. The cut-off is when you FIRST arrived, so returning
+ * shows you everything that happened in a room you were already in.
+ *
+ * localStorage, like rememberSeat, so it survives the browser closing.
+ */
+export function rememberChatCutoff(roomId, iso) {
+  if (!roomId) return null;
+  const key = `oracle_party_chat_from_${roomId}`;
+  // Biased early by CHAT_HISTORY_GRACE_MS — see the constant for why. Losing a
+  // message meant for you is a bug; seeing two minutes of what came before is
+  // not, because this was never a lock.
+  const base = iso ? new Date(iso).getTime() : Date.now();
+  const stamp = new Date((Number.isFinite(base) ? base : Date.now()) - CHAT_HISTORY_GRACE_MS).toISOString();
+  try {
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+    localStorage.setItem(key, stamp);
+    return stamp;
+  } catch (_) {
+    return stamp;
+  }
+}
+
+export function recallChatCutoff(roomId) {
+  if (!roomId) return null;
+  try { return localStorage.getItem(`oracle_party_chat_from_${roomId}`); } catch (_) { return null; }
+}
+
+export function forgetChatCutoff(roomId) {
+  if (!roomId) return;
+  try { localStorage.removeItem(`oracle_party_chat_from_${roomId}`); } catch (_) {}
 }

@@ -97,6 +97,22 @@ try {
     problems.push('an invite-only room was stored as public');
   }
 
+  // A room code is six digits and public games are listed, so anybody can walk
+  // into this room — and until now they arrived to the whole transcript of what
+  // was said before they got there. One old message and one recent one, because
+  // the cut-off is deliberately biased early (CHAT_HISTORY_GRACE_MS): a message
+  // from a minute ago is MEANT to survive, and a test that only seeds old ones
+  // would pass just as happily with the whole feature reverted to "hide
+  // everything".
+  const BACKLOG = 'said this long before Erin turned up';
+  const RECENT = 'said this just now';
+  table.store.seed('chat_messages', [
+    { id: 'chat-old', room_id: publicRoom.id, player_name: 'Alice', message: BACKLOG,
+      hearts: [], created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
+    { id: 'chat-new', room_id: publicRoom.id, player_name: 'Alice', message: RECENT,
+      hearts: [], created_at: new Date().toISOString() },
+  ]);
+
   // ============================================================
   // 1 + 2. PUBLIC LISTING, AND PRIVACY
   // ============================================================
@@ -137,6 +153,58 @@ try {
         document.body.innerText.includes('Erin')).catch(() => false);
       note(`host sees the new player: ${hostSees}`);
       if (!hostSees) problems.push('a player who joined from the public list is invisible to the host');
+
+      // ---- what a newcomer may read -------------------------------------
+      heading('chat said before you arrived');
+      const readChat = r => r.page.evaluate(() =>
+        document.querySelector('#chat-drawer-messages')?.textContent || '').catch(() => '');
+
+      let erinChat = await readChat(stranger);
+      note(`Erin's chat mentions the backlog: ${erinChat.includes(BACKLOG)}`);
+      note(`Erin's chat mentions the recent one: ${erinChat.includes(RECENT)}`);
+      if (erinChat.includes(BACKLOG)) {
+        problems.push('somebody who walked in off the public list can read chat from before they arrived');
+      }
+      if (!erinChat.includes(RECENT)) {
+        problems.push('the cut-off swallowed a message from moments before joining — it is meant to be biased early');
+      }
+
+      // A refresh must not wipe what she is entitled to. The obvious reading of
+      // "fresh on entry" is per page load, and that would lose the whole
+      // conversation every time somebody's phone reloaded.
+      await stranger.page.reload();
+      await stranger.page.waitForTimeout(3500);
+      erinChat = await readChat(stranger);
+      note(`after a refresh, recent still there: ${erinChat.includes(RECENT)}, backlog still hidden: ${!erinChat.includes(BACKLOG)}`);
+      if (!erinChat.includes(RECENT)) {
+        problems.push('refreshing wiped the chat this player had already been shown');
+      }
+      if (erinChat.includes(BACKLOG)) {
+        problems.push('refreshing handed this player the backlog they were not shown on arrival');
+      }
+
+      // The cut-off is set ONCE and never moved forward, and this is the case
+      // that proves it rather than assuming it. A rejoin deletes the player row
+      // and writes a new one, stamped later — so anything that recomputed the
+      // cut-off from joined_at would silently hide the conversation she had
+      // just been part of. Moving the stamp forward is exactly what a rejoin
+      // does, and it is the only way to make the two behaviours differ inside
+      // a test that runs in seconds while the rule is written in minutes.
+      const DURING = 'said this while Erin was sitting right there';
+      table.store.seed('chat_messages', [
+        { id: 'chat-during', room_id: publicRoom.id, player_name: 'Alice',
+          message: DURING, hearts: [], created_at: new Date().toISOString() },
+      ]);
+      const erinRow = table.store.table('players').find(p => p.display_name === 'Erin');
+      if (erinRow) erinRow.joined_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      await stranger.page.reload();
+      await stranger.page.waitForTimeout(3500);
+      erinChat = await readChat(stranger);
+      note(`after a rejoin restamped her seat, she still sees what was said while she was here: ${erinChat.includes(DURING)}`);
+      if (!erinChat.includes(DURING)) {
+        problems.push('rejoining moved the chat cut-off forward and hid the conversation this player was part of');
+      }
     }
   }
 

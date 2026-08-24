@@ -94,12 +94,24 @@ export async function archiveChatMessages(roomId) {
 
 /**
  * Fetch chat messages for a room.
+ *
+ * `since` is an ISO timestamp: nothing sent before it is returned. That is how
+ * somebody walking into a room stops arriving to the whole transcript of what
+ * was said before they got there — see rememberChatCutoff in auth.js for what
+ * this does and does not protect.
+ *
+ * Omitting it reads everything, which is what archiveChatMessages needs: the
+ * archive is the room's record, not one player's view of it.
  */
-export async function fetchMessages(roomId) {
-  const { data, error } = await supabase
+export async function fetchMessages(roomId, since = null) {
+  let query = supabase
     .from('chat_messages')
     .select('*')
-    .eq('room_id', roomId)
+    .eq('room_id', roomId);
+
+  if (since) query = query.gte('created_at', since);
+
+  const { data, error } = await query
     .order('created_at', { ascending: true })
     .limit(CHAT_MESSAGES_LIMIT);
 

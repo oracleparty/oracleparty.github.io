@@ -257,6 +257,55 @@ GRANT EXECUTE ON FUNCTION op_admin_end_room(uuid) TO authenticated;
 
 
 -- --------------------------------------------
+-- 5. Make sure the ROOMS door is actually shut
+--
+-- Migration 048 closed it with `DROP POLICY IF EXISTS "Rooms: anyone can
+-- delete"` — BY NAME — and verified with `cmd = 'DELETE'`. Both are the exact
+-- weaknesses that made 049 fail silently on the live database:
+--
+--   * the live policy names are not the ones migration 022 declares, so a
+--     by-name drop can match nothing and say nothing (IF EXISTS makes it a
+--     NOTICE, not an error);
+--   * a policy written FOR ALL has cmd = 'ALL' and grants DELETE as a side
+--     effect, so the check reads "ok" with the door wide open.
+--
+-- 049 was caught because its verification happened to be run and reported FAIL.
+-- 048's could not catch either case. This redoes it the way 036 and 050 do it:
+-- by looking at what is there.
+--
+-- rooms UPDATE deliberately STAYS OPEN. The phase machine still runs in the
+-- browser (CLAUDE.md #1), so every client must be able to write game_phase.
+-- That closes with a later slice, not this one.
+-- --------------------------------------------
+DO $$
+DECLARE
+  pol record;
+BEGIN
+  -- Recreate what the app legitimately needs BEFORE removing anything, so
+  -- dropping a FOR ALL policy cannot lock players out of their own rooms.
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                  WHERE schemaname = 'public' AND tablename = 'rooms' AND cmd = 'SELECT') THEN
+    EXECUTE 'CREATE POLICY "Rooms: anyone can read" ON rooms FOR SELECT USING (true)';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                  WHERE schemaname = 'public' AND tablename = 'rooms' AND cmd = 'INSERT') THEN
+    EXECUTE 'CREATE POLICY "Rooms: anyone can insert" ON rooms FOR INSERT WITH CHECK (true)';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                  WHERE schemaname = 'public' AND tablename = 'rooms' AND cmd = 'UPDATE') THEN
+    EXECUTE 'CREATE POLICY "Rooms: anyone can update" ON rooms FOR UPDATE USING (true) WITH CHECK (true)';
+  END IF;
+
+  FOR pol IN SELECT policyname FROM pg_policies
+              WHERE schemaname = 'public' AND tablename = 'rooms'
+                AND cmd IN ('DELETE', 'ALL')
+  LOOP
+    EXECUTE format('DROP POLICY %I ON rooms', pol.policyname);
+  END LOOP;
+END $$;
+
+
+-- --------------------------------------------
 -- VERIFY — every cell must read "ok"
 -- --------------------------------------------
 SELECT
@@ -270,4 +319,10 @@ SELECT
        THEN 'ok' ELSE 'FAIL the admin cannot end a stuck room' END AS end_room,
   CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
                          WHERE tablename = 'answers' AND cmd IN ('UPDATE','DELETE','ALL'))
-       THEN 'ok' ELSE 'FAIL a stranger can still edit a score' END AS door_still_shut;
+       THEN 'ok' ELSE 'FAIL a stranger can still edit a score' END AS door_still_shut,
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
+                         WHERE tablename = 'rooms' AND cmd IN ('DELETE','ALL'))
+       THEN 'ok' ELSE 'FAIL a stranger can still delete a live room' END AS rooms_door,
+  CASE WHEN EXISTS (SELECT 1 FROM pg_policies
+                     WHERE tablename = 'rooms' AND cmd IN ('UPDATE','ALL'))
+       THEN 'ok' ELSE 'FAIL nobody can advance a game' END AS rooms_still_playable;

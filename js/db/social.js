@@ -651,6 +651,14 @@ export async function createFriendship(userIdA, userIdB, source = 'lobby') {
     return { data: null, error: { message: 'Cannot create a friendship with yourself' } };
   }
   const [user_a, user_b] = [userIdA, userIdB].sort();
+
+  // Idempotent WITHOUT depending on the unique constraint. The 23505 branch
+  // below is the proper mechanism, but `friendships` has no such constraint on
+  // the live table until migration 044 is run — so until then two people who
+  // each accepted the other simply got two rows, which broke isFriend and
+  // listed each of them twice. The state the caller wants already exists.
+  if (await isFriend(userIdA, userIdB)) return { data: null, error: null };
+
   const { data, error } = await supabase
     .from('friendships')
     .insert({ user_a, user_b, source })
@@ -752,10 +760,21 @@ export async function fetchFriends(userId) {
   const profileMap = {};
   for (const p of (profiles || [])) profileMap[p.user_id] = p;
 
+  // ONE ROW PER PERSON, whatever the table holds. `friendships` has no unique
+  // constraint until migration 044 is run, and two people who each accepted the
+  // other's request produce two rows for the same pair — which listed that
+  // person twice, with two different Remove buttons, one of which would appear
+  // to do nothing. Keyed on the friend's id rather than the row's.
+  const seen = new Set();
   return ships.map(s => {
     const friendId = s.user_a === userId ? s.user_b : s.user_a;
     return { ...profileMap[friendId], friendshipId: s.id, friendshipSource: s.source };
-  }).filter(f => f.user_id); // Filter out any missing profiles
+  }).filter(f => {
+    if (!f.user_id) return false;            // profile missing
+    if (seen.has(String(f.user_id))) return false;
+    seen.add(String(f.user_id));
+    return true;
+  });
 }
 
 /**
@@ -763,18 +782,28 @@ export async function fetchFriends(userId) {
  */
 export async function isFriend(userId, otherUserId) {
   const [user_a, user_b] = [userId, otherUserId].sort();
+  // NOT maybeSingle(), for the same reason sendFriendRequest stopped using it
+  // (see the note above it): maybeSingle ERRORS on more than one row, and
+  // `friendships` has no unique constraint on the live table until migration
+  // 044 is run. Two people who each accepted the other produce two rows for one
+  // pair, and from then on this returned FALSE for people who really are
+  // friends — so the "Already friends" guard in sendFriendRequest fell straight
+  // through, the profile offered "Add Friend" to an existing friend, and every
+  // press made the duplication worse.
+  //
+  // limit(1) means the answer is the same whether there is one row or five.
   const { data, error } = await supabase
     .from('friendships')
     .select('id')
     .eq('user_a', user_a)
     .eq('user_b', user_b)
-    .maybeSingle();
+    .limit(1);
 
   if (error) {
     logger.error('Supabase', 'isFriend failed', error);
     return false;
   }
-  return !!data;
+  return (data?.length || 0) > 0;
 }
 
 /**

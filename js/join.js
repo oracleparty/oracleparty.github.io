@@ -4,7 +4,7 @@
 
 import { $, $$, escapeHtml, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer, claimSeat, cleanupOrphanedRooms } from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, recallSeat } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
 import { logger } from './logger.js';
@@ -136,6 +136,10 @@ async function joinRoom(code) {
     // rejoin path made a third and a fourth. See claimSeat.
     const { data: player, error: playerErr } = await claimSeat({
       roomId: room.id, displayName, userId, isHost: false, extras,
+      // Survives the browser closing, unlike sessionStorage. Without it a guest
+      // who shut the tab and came straight back got a second row beside their
+      // own still-alive one.
+      priorPlayerId: recallSeat(room.id),
     });
 
     if (playerErr || !player) {
@@ -145,6 +149,15 @@ async function joinRoom(code) {
       resetJoinButton();
       return;
     }
+
+    // DELIBERATELY NOT rememberSeat() HERE, and this cost a green test to
+    // learn. Writing the new seat id at this point overwrites the OLD one —
+    // and the old one is exactly what game.html needs a moment later to move a
+    // returning player's answers onto their new row. With it, rejoining a game
+    // in progress silently came back with the score wiped.
+    //
+    // The lobby and the game page both write it, and both do so AFTER any
+    // reclaim has run, which is the only safe moment.
 
     // Store room + player data for lobby
     sessionStorage.setItem('oracle_party_room', JSON.stringify({

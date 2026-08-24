@@ -704,6 +704,44 @@ try {
   note(`panels open after tapping the open one again: ${anyOpen}`);
   if (anyOpen !== 0) problems.push('tapping an open panel again does not close it');
 
+  // ============================================================
+  // DELETING SOMEBODY'S ACCOUNT
+  //
+  // The most dangerous button on the page, and nothing had ever pressed it —
+  // the existing check only confirmed which rows OFFER it. That is the shape
+  // that let the End Room button ship dead for months.
+  //
+  // admin_delete_account takes a user id, so it carries three guards: the
+  // caller must be an admin, it refuses to delete the caller, and it refuses to
+  // delete another admin. They RAISE rather than return quietly, which is what
+  // turns a refusal into something the page can show.
+  // ============================================================
+  heading('deleting an account');
+  {
+    await admin.page.locator('[data-drill="accounts"]').click().catch(() => {});
+    await admin.page.waitForTimeout(1200);
+
+    const victim = table.store.table('profiles').find(p => !p.is_admin);
+    const delBtn = admin.page.locator(`#stat-drill-body [data-del-account="${victim?.user_id}"]`).first();
+    if (!victim || !await delBtn.isVisible().catch(() => false)) {
+      problems.push('no non-admin account offered a Delete button to press');
+    } else {
+      // Tap-to-arm, like every destructive control here.
+      await delBtn.click().catch(() => {});
+      await admin.page.waitForTimeout(300);
+      await delBtn.click().catch(() => {});
+      await admin.page.waitForTimeout(1800);
+
+      const stillThere = table.store.table('profiles')
+        .some(p => String(p.user_id) === String(victim.user_id));
+      note(`the account is gone: ${!stillThere}`);
+      if (stillThere) problems.push('the admin deleted an account and the account is still there');
+
+      const adminStillThere = table.store.table('profiles').some(p => p.is_admin);
+      if (!adminStillThere) problems.push('deleting an account took the admin with it');
+    }
+  }
+
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);
 } finally {

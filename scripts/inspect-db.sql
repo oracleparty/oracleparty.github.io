@@ -56,12 +56,49 @@ select line from (
        group by table_name
     ) t
 
+  -- FOREIGN KEYS, and specifically what each one does on DELETE.
+  --
+  -- This is here because it has had to be measured by hand twice, both times
+  -- after a bug that made no sense without it. game_plays cascaded from BOTH
+  -- rooms and players, so every play record was destroyed seconds after it was
+  -- written and the table read 0 rows while everything in the counting path was
+  -- correct (CLAUDE.md #9). And whether answers.player_id cascades decides
+  -- whether a rejoining player's score can be recovered at all — if it does,
+  -- there is nothing left to reassign and that promise was never kept.
+  --
+  -- The automated probe cannot answer this: PostgREST's OpenAPI output for this
+  -- project carries no foreign-key annotations, so it honestly reports that it
+  -- cannot tell. This is the only place the answer is available.
   union all
   select 12, '', ''
   union all
-  select 13, '', '===== REALTIME PUBLICATION (which tables broadcast live) ====='
+  select 13, '', '===== FOREIGN KEYS (c=CASCADE  n=SET NULL  a=NO ACTION  r=RESTRICT) ====='
   union all
-  select 14, tablename, tablename
+  select 14, con.conname,
+         src.relname || '.' || att.attname
+         || ' -> ' || tgt.relname
+         || '   ON DELETE ' ||
+         case con.confdeltype
+           when 'c' then 'CASCADE  *** rows die with the parent ***'
+           when 'n' then 'SET NULL'
+           when 'd' then 'SET DEFAULT'
+           when 'r' then 'RESTRICT'
+           else 'NO ACTION'
+         end
+    from pg_constraint con
+    join pg_class src on src.oid = con.conrelid
+    join pg_class tgt on tgt.oid = con.confrelid
+    join pg_namespace n2 on n2.oid = src.relnamespace
+    join unnest(con.conkey) with ordinality as k(attnum, ord) on true
+    join pg_attribute att on att.attrelid = con.conrelid and att.attnum = k.attnum
+   where con.contype = 'f' and n2.nspname = 'public'
+
+  union all
+  select 15, '', ''
+  union all
+  select 16, '', '===== REALTIME PUBLICATION (which tables broadcast live) ====='
+  union all
+  select 17, tablename, tablename
     from pg_publication_tables
    where pubname = 'supabase_realtime'
 

@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { $, escapeHtml, renderAvatar } from '../utils.js';
 import { fetchMessages, sendMessage, toggleMessageHeart } from '../supabase.js';
-import { getDisplayName } from '../auth.js';
+import { getDisplayName, rememberChatCutoff } from '../auth.js';
 import { notifyTyping } from '../typing.js';
 import { setHonkMuted } from '../honk.js';
 
@@ -125,7 +125,12 @@ export function closeChatDrawer() {
 }
 
 export async function loadChatMessages() {
-  const messages = await fetchMessages(state.room.id);
+  // Same cut-off the lobby uses — see chatCutoff there and rememberChatCutoff
+  // in auth.js. By the time a game starts this player has almost always been
+  // in the lobby, so their cut-off is already set and this is a no-op; it
+  // matters for somebody who joined the room mid-game.
+  const me = state.players.find(p => String(p.id) === String(state.room.playerId));
+  const messages = await fetchMessages(state.room.id, rememberChatCutoff(state.room.id, me?.joined_at || null));
   const container = $('#chat-drawer-messages');
   container.innerHTML = '';
   for (const msg of messages) {
