@@ -52,7 +52,7 @@ import {
   _syncInFlight, setSyncInFlight,
   _qbFeedback,
 } from './state.js';
-import { buildDisqualifiedSet, buildUsedWagersMap } from './scoring-helpers.js';
+import { buildDisqualifiedSet, buildUsedWagersMap, answersForCurrentGame } from './scoring-helpers.js';
 import {
   attachChatListeners, loadChatMessages, handleNewMessage,
   updateTypingUI,
@@ -243,7 +243,7 @@ async function init() {
 
       if (changedSeat) await reassignPlayerAnswers(state.room.id, prevPlayerId, rejoinedPlayer.id);
 
-      const allAnswers = await fetchAllAnswers(state.room.id);
+      const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
       const myAnswers = allAnswers.filter(a => String(a.player_id) === String(rejoinedPlayer.id));
       state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
       state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
@@ -371,7 +371,7 @@ async function initHostGame() {
     }
 
     // Rebuild used wagers from existing answers (clear first to prevent stale data)
-    const allAnswers = await fetchAllAnswers(state.room.id);
+    const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
     const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
     state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
     state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
@@ -556,7 +556,7 @@ async function applyGameState(roomData) {
 
   // Rebuild disqualified questions and used wagers from existing answers.
   // Disq must come first so usedWagers can correctly skip wagers from disqualified Qs.
-  const allAnswers = await fetchAllAnswers(state.room.id);
+  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
   state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
   state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
@@ -905,7 +905,7 @@ async function syncToCurrentState() {
 
       // Rebuild disqualified questions and usedWagers from DB
       // (host may have auto-submitted wagers for questions we missed)
-      const allAnswers = await fetchAllAnswers(state.room.id);
+      const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
       const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
       state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
       state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);

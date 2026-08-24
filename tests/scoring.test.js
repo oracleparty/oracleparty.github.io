@@ -9,6 +9,7 @@ import {
   modalDifficulty,
   pickWeightedDifficulty,
   allowedDifficulties,
+  answersForCurrentGame,
 } from '../js/game/scoring-helpers.js';
 
 // ============================================
@@ -373,5 +374,71 @@ describe('pickWeightedDifficulty', () => {
     // Probability ~ 0.1/5.1 ≈ 1.96% — over 5000 trials, expect ~98 hard wins
     expect(hardCount).toBeGreaterThan(20);
     expect(hardCount).toBeLessThan(300);
+  });
+});
+
+
+// ============================================
+// answersForCurrentGame
+//
+// A room outlives a game. Play Again keeps the room and draws new questions, so
+// the last game's answers have to go — and there are ways that does not happen
+// (a revoked DELETE policy before migration 051; a room returning to the lobby
+// without its host, since the clear-out is host-gated). The symptom is silent
+// and identical either way: everybody starts the next game already holding the
+// points they won in the last one.
+// ============================================
+describe('answersForCurrentGame', () => {
+  const questions = [{ id: 'qA' }, { id: 'qB' }, { id: 'qC' }];
+
+  it("drops a previous game's answers, which sit on the same round numbers", () => {
+    const rows = [
+      { question_number: 0, question_id: 'qA', score_earned: 3 },   // this game
+      { question_number: 0, question_id: 'old-1', score_earned: 9 }, // last game
+      { question_number: 1, question_id: 'old-2', score_earned: 7 },
+    ];
+    expect(answersForCurrentGame(rows, questions)).toEqual([rows[0]]);
+  });
+
+  it('keeps every answer that belongs to the game being played', () => {
+    const rows = [
+      { question_number: 0, question_id: 'qA' },
+      { question_number: 1, question_id: 'qB' },
+      { question_number: 2, question_id: 'qC' },
+    ];
+    expect(answersForCurrentGame(rows, questions)).toHaveLength(3);
+  });
+
+  // Dropping a real answer costs somebody their score, so every "cannot tell"
+  // case keeps the row. Same rule as a missing last_seen_at meaning "here".
+  it('keeps everything when no question list has loaded yet', () => {
+    const rows = [{ question_number: 0, question_id: 'anything' }];
+    expect(answersForCurrentGame(rows, [])).toEqual(rows);
+    expect(answersForCurrentGame(rows, null)).toEqual(rows);
+    expect(answersForCurrentGame(rows, undefined)).toEqual(rows);
+  });
+
+  it('keeps a round the loaded list does not reach', () => {
+    const rows = [{ question_number: 9, question_id: 'qZ' }];
+    expect(answersForCurrentGame(rows, questions)).toEqual(rows);
+  });
+
+  it('keeps a row that names no question at all', () => {
+    const rows = [
+      { question_number: 0, question_id: null },
+      { question_number: 1, question_id: '' },
+      { question_number: 2 },
+    ];
+    expect(answersForCurrentGame(rows, questions)).toHaveLength(3);
+  });
+
+  it('compares as strings, so a numeric id is not dropped by its type', () => {
+    const rows = [{ question_number: 0, question_id: 7 }];
+    expect(answersForCurrentGame(rows, [{ id: '7' }])).toEqual(rows);
+  });
+
+  it('survives an empty answer list', () => {
+    expect(answersForCurrentGame([], questions)).toEqual([]);
+    expect(answersForCurrentGame(null, questions)).toEqual([]);
   });
 });

@@ -42,7 +42,7 @@ import { evaluateUnlocks, hasReachedApprentice, planCelebration } from '../title
 import { showCelebration } from '../celebration.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
-import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties } from './scoring-helpers.js';
+import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import {
   state, canControlGame, getCategoryLabel,
@@ -1058,7 +1058,7 @@ export async function showResultsScreen() {
     if (authUser) {
       const uid = authUser.user.id;
       const cat = state.room.category;
-      const allAnswers = await fetchAllAnswers(state.room.id);
+      const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
       const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
       // Exclude disqualified questions from stats
       const validAnswers = myAnswers.filter(a => !state.disqualifiedQuestions.has(a.question_number));
@@ -1133,7 +1133,7 @@ export async function showResultsScreen() {
   );
 
   // Get final wager deltas
-  const allAnswers = await fetchAllAnswers(state.room.id);
+  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   const fwAnswers = allAnswers.filter(a => a.question_number === state.totalQuestions);
 
   // Winner celebration
@@ -1403,7 +1403,7 @@ async function handleReviewQuestions() {
   const list = $('#review-list');
 
   // Fetch player answers for the game
-  const allAnswers = await fetchAllAnswers(state.room.id);
+  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
 
   // Build lookup: question_number → answer record
@@ -1612,6 +1612,6 @@ async function handleReviewQuestions() {
 // ============================================
 
 export async function updateScores() {
-  const allAnswers = await fetchAllAnswers(state.room.id);
+  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   state.scores = computeScoresFromAnswers(allAnswers, state.players);
 }

@@ -35,6 +35,54 @@ export function tallyDifficultyVotes(votes) {
 }
 
 /**
+ * Answers that belong to the game currently being played.
+ *
+ * A ROOM OUTLIVES A GAME. Play Again keeps the room and draws a new set of
+ * questions, so the previous game's answers have to be deleted — and there are
+ * several ways that does not happen:
+ *
+ *   * migration 049 revoked DELETE on `answers`, so until 051 is applied the
+ *     clear-out is refused silently (no error, zero rows);
+ *   * the clear-out is host-gated, so a room that returns to the lobby without
+ *     its host never runs it at all.
+ *
+ * Whatever the reason, the symptom is the same and it is invisible: everybody
+ * starts the next game already holding the points they won in the last one.
+ *
+ * `answers.question_id` records which question a row was actually about, so a
+ * stale row can be recognised structurally rather than trusted to have been
+ * deleted. A row is kept when the room's question at that round number is the
+ * one it names.
+ *
+ * KEPT, not dropped, when we cannot tell: no question list loaded yet (a
+ * hot-join, mid-fetch), a round number the list does not reach, or a row with
+ * no question_id. Dropping a real answer costs somebody their score; keeping a
+ * stale one is the bug this guards against, and every other layer is also
+ * trying to prevent it.
+ *
+ * COVERED BY UNIT TESTS ONLY, and that is a deliberate admission rather than an
+ * oversight. A scenario check was written for it — seed a previous game's
+ * answer, play a second game, require it not to score — and it passed just as
+ * happily with this function stubbed out to return everything. The seeded row
+ * did not survive to the moment the scoreboard is computed, and no RPC removed
+ * it, so the check was measuring nothing. A check that cannot fail looks like
+ * coverage and is worse than none, so it was deleted (the same call as the
+ * final-wager guards in CLAUDE.md). tests/scoring.test.js pins the behaviour
+ * directly, including every "cannot tell" case.
+ */
+export function answersForCurrentGame(answers, questions) {
+  const rows = answers || [];
+  if (!Array.isArray(questions) || questions.length === 0) return rows;
+  const idAt = questions.map(q => (q && q.id != null ? String(q.id) : null));
+  return rows.filter(a => {
+    const expected = idAt[a.question_number];
+    if (!expected) return true;
+    if (a.question_id == null || a.question_id === '') return true;
+    return String(a.question_id) === expected;
+  });
+}
+
+/**
  * Compute scores from an array of answer records.
  * Each answer has { player_id, score_earned }.
  */

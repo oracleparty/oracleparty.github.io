@@ -1878,6 +1878,26 @@ back to deleting rooms on its own local count.
 migrations had touched, and none by a failing test.** After revoking a
 permission, that grep is the work — not an afterthought.
 
+**A ROOM OUTLIVES A GAME, so the clear-out is now belt AND braces.**
+`answersForCurrentGame` in `scoring-helpers.js` filters every answer fetch
+against the room's current `question_ids`, using the `question_id` each row
+already carries. A stale row is then recognised structurally rather than
+trusted to have been deleted — which matters beyond migration 051, because the
+clear-out is **host-gated**, so a room that returns to the lobby without its
+host never runs it at all. Everybody would start the next game holding the
+points they won in the last one, silently.
+
+It keeps a row whenever it cannot tell — no question list loaded yet, a round
+number the list does not reach, a row with no `question_id` — on the same rule
+as a missing `last_seen_at` meaning "here": dropping a real answer costs
+somebody their score.
+
+**Unit tests only, and that is an admission.** A scenario check was written and
+deleted: it passed just as happily with the filter stubbed out, because the
+seeded stale row did not survive to the moment the scoreboard is computed and
+no RPC removed it. It was measuring nothing. Same call as the final-wager
+guards — a check that cannot fail looks like coverage and is worse than none.
+
 **048's own verification could not have caught 049's bug happening to it.** It
 closed the door with `DROP POLICY IF EXISTS "Rooms: anyone can delete"` — by
 name — and checked `cmd = 'DELETE'`. Both are exactly the weaknesses that made

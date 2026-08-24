@@ -480,6 +480,10 @@ const RPC_PROBES = [
   ['op_bot_answer', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID,
                       p_question_number: 0, p_question_id: NOT_A_UUID,
                       p_wager: 0, p_answer: 'probe', p_is_correct: false }],
+  // Granted to `authenticated` only, so this probe (an anonymous visitor) can
+  // establish that it EXISTS but not that an admin may call it. That is the
+  // right split: a visitor being able to end rooms is the thing it prevents.
+  ['op_admin_end_room', { p_room_id: NOT_A_UUID }],
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
@@ -603,6 +607,9 @@ const CONSEQUENCES = [
   { object: 'op_bot_answer', kind: 'rpc',
     fix: 'run migrations/051_the_three_writes_049_took_away.sql',
     breaks: ['a practice bot never answers the final question of any game'] },
+  { object: 'op_admin_end_room', kind: 'rpc',
+    fix: 'run migrations/051_the_three_writes_049_took_away.sql',
+    breaks: ["the admin dashboard's End button on a stuck room does nothing and says it worked"] },
 ];
 
 console.log('\n--- WHAT THIS MEANS FOR A PLAYER ---');

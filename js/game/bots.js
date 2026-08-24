@@ -31,7 +31,7 @@ import { state, getCorrectAnswer } from './state.js';
 import { logger } from '../logger.js';
 import { BOT_ACCURACY, BOT_FINAL_WAGER } from '../constants.js';
 import { fetchAllAnswers, insertAnswersIfAbsent, upsertAnswers, botAnswerOnServer } from '../supabase.js';
-import { computeScoreEarned } from './scoring-helpers.js';
+import { computeScoreEarned, answersForCurrentGame } from './scoring-helpers.js';
 import { pickBotWager, lowestUnusedWager, chooseBotAnswer } from './bot-logic.js';
 
 /** What the bot needs to know about a question, in the shape bot-logic wants. */
@@ -88,7 +88,7 @@ export async function answerQuestionForBots() {
   const question = state.questions[state.currentQuestion];
   if (!question) return;
 
-  const allAnswers = await fetchAllAnswers(state.room.id);
+  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   const spent = usedWagersByPlayer(allAnswers);
   const alreadyAnswered = new Set(
     allAnswers
@@ -174,7 +174,7 @@ export async function answerFinalQuestionForBots() {
   const question = state.questions[state.totalQuestions];
   if (!question) return;
 
-  const allAnswers = await fetchAllAnswers(state.room.id);
+  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   const finalRows = new Map(
     allAnswers
       .filter(a => a.question_number === state.totalQuestions)

@@ -9,7 +9,7 @@ import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
 import { updateGameState, startClockOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, incrementQuestionsAnswered } from '../supabase.js';
-import { computeScoreEarned, findNextAvailableWager } from './scoring-helpers.js';
+import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
 import { showHostSettingsGear } from './host.js';
@@ -420,7 +420,7 @@ async function handleTimerExpired() {
       // 1. Writing 1 for everyone gave a player two answers at wager 1 whenever
       // they had already spent it, breaking the rule that values 1..N are each
       // used exactly once.
-      const allAnswers = await fetchAllAnswers(state.room.id);
+      const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
       const wagersByPlayer = new Map();
       for (const a of allAnswers) {
         const key = String(a.player_id);
