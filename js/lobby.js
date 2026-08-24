@@ -120,11 +120,17 @@ async function init() {
     btnReady.classList.remove('hidden');
   }
 
-  // Load existing data
-  await Promise.all([
-    loadPlayers(),
-    loadMessages()
-  ]);
+  // Load existing data.
+  //
+  // PLAYERS FIRST, NOT CONCURRENTLY. Chat avatars are looked up in the player
+  // list, so running these together is a race: whichever resolves first wins,
+  // and when the messages won every bubble fell back to a plain letter and
+  // people's chosen faces vanished from their own messages. Reported after a
+  // real game, on returning to the lobby via Play Again. refreshChatAvatars()
+  // still covers player data that arrives later than this — a tier load, or
+  // somebody joining — but the common case no longer depends on who is quicker.
+  await loadPlayers();
+  await loadMessages();
 
   // loadMessages scrolls chat to bottom — reset page to top so user sees room card first
   const scrollArea = document.querySelector('.lobby-scroll');
@@ -519,6 +525,33 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   `;
 }
 
+/**
+ * Put people's faces back on chat messages that were drawn before the player
+ * list existed. Runs after every render of that list, which is the moment the
+ * information arrives.
+ *
+ * Only touches bubbles that are currently showing the letter fallback, so it
+ * costs nothing on the common path and cannot undo a correct avatar.
+ */
+function refreshChatAvatars() {
+  if (!chatMessagesEl || players.length === 0) return;
+  for (const bubble of chatMessagesEl.querySelectorAll('.chat-bubble[data-author]')) {
+    const holder = bubble.querySelector('.chat-bubble__header');
+    if (!holder) continue;
+    const player = players.find(p => p.display_name === bubble.dataset.author);
+    if (!player || (!player.avatar_emoji && !player.avatar_color)) continue;
+    const current = holder.querySelector('.avatar');
+    if (current && current.textContent.trim() === (player.avatar_emoji || '').trim()) continue;
+    const nameEl = holder.querySelector('.chat-bubble__name');
+    holder.innerHTML = renderAvatar({
+      displayName: bubble.dataset.author,
+      avatarColor: player.avatar_color || null,
+      avatarEmoji: player.avatar_emoji || null,
+      extraClass: 'avatar--chat',
+    }) + (nameEl ? nameEl.outerHTML : '');
+  }
+}
+
 function renderPlayers() {
   const hosts = players.filter(p => p.is_host || p.is_cohost);
   const others = players.filter(p => !p.is_host && !p.is_cohost);
@@ -540,6 +573,9 @@ function renderPlayers() {
   }
 
   renderAddBotButton();
+  // The player list is the source of chat avatars, so this is the moment any
+  // message drawn before it arrived can get its face back.
+  refreshChatAvatars();
 }
 
 /**
@@ -1037,7 +1073,14 @@ function appendChatMessage(name, text, msgId = null, hearts = []) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   if (msgId) bubble.dataset.msgId = msgId;
-  // Look up player for real avatar data (authenticated users get color+emoji)
+  // Remember WHOSE bubble this is, so the avatar can be filled in later.
+  //
+  // The lookup below needs the player list, and the chat history is loaded
+  // before that list has arrived when the lobby is re-entered after Play
+  // Again — so every bubble fell back to a plain letter and somebody's chosen
+  // face vanished from their own messages. Rejoining looked fine because the
+  // order happens to be the other way round on a fresh arrival.
+  bubble.dataset.author = name;
   const player = players.find(p => p.display_name === name);
   const chatAvatar = renderAvatar({ displayName: name, avatarColor: player?.avatar_color || null, avatarEmoji: player?.avatar_emoji || null, extraClass: 'avatar--chat' });
   const heartCount = Array.isArray(hearts) ? hearts.length : 0;

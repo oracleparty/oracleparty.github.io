@@ -57,13 +57,18 @@ BEGIN
      AND (p_question_number IS NULL OR current_question = p_question_number)
   RETURNING question_started_at INTO ts;
 
-  IF ts IS NULL THEN
-    -- The room had moved on, so nothing was stamped. Hand back whatever is
-    -- actually in force; the caller's screen is behind and reading the room is
-    -- the only way it gets back in step.
-    SELECT r.question_started_at INTO ts FROM rooms r WHERE r.id = p_room_id;
-  END IF;
-
+  -- NOTHING STAMPED MEANS NULL, and the first version returned the stamp that
+  -- was already on the room instead. That reads well and is badly wrong: the
+  -- caller cannot tell "here is your round's clock" from "here is the LAST
+  -- round's clock", so it adopted a timestamp thirty seconds old as the start
+  -- of a round just beginning. The final wager is twenty seconds long, so the
+  -- host's clock was expired before the screen appeared and locked them at a
+  -- wager of 0 with no chance to choose. Found in a live game.
+  --
+  -- NULL sends the caller to its own estimate, which is what it did for months
+  -- before this function existed and is self-consistent. Losing the guard on a
+  -- refused call is a far smaller price than handing back a clock that has
+  -- already run out.
   RETURN ts;
 END;
 $$;

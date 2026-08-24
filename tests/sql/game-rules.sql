@@ -182,8 +182,12 @@ BEGIN
     INSERT INTO result (check_name, got, want) VALUES
       ('a stale caller cannot restart the round everyone is in',
        (after = ancient)::text, 'true'),
-      ('and is handed the stamp actually in force',
-       (stamped = ancient)::text, 'true');
+      -- AND IS TOLD NOTHING HAPPENED. Handing back the stamp already on the
+      -- room let the caller mistake the LAST round's clock for this round's —
+      -- a twenty-second final wager opened already expired and locked the host
+      -- at 0 before they could choose. Found in a live game.
+      ('and is told nothing was stamped, not handed a stale clock',
+       (stamped IS NULL)::text, 'true');
 
     -- Same for a caller that has the question right but the phase wrong.
     stamped := op_start_clock(rid, 'reveal', 1);
@@ -201,7 +205,8 @@ BEGIN
     stamped := op_start_clock(rid, 'question', 3);
     SELECT question_started_at INTO after FROM rooms WHERE id = rid;
     INSERT INTO result (check_name, got, want) VALUES
-      ('asking for the wrong phase on the final round is refused', (after = ancient)::text, 'true');
+      ('asking for the wrong phase on the final round is refused', (after = ancient)::text, 'true'),
+      ('and that refusal is NULL too', (stamped IS NULL)::text, 'true');
     stamped := op_start_clock(rid, 'final_question', 3);
     INSERT INTO result (check_name, got, want) VALUES
       ('asking for the right one starts its clock',

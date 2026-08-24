@@ -230,11 +230,20 @@ try {
       // A wager amount must be chosen before the lock button does anything.
       const key = `${r.name}:final`;
       if (!answered.has(key)) {
-        const opt = r.page.locator('#final-wager-screen [data-wager]').first();
+        // A REAL number, not .first() — the first button is 0, so the robots
+        // were "choosing" the same value somebody who never touched the screen
+        // gets, and a wager screen that had already expired would have looked
+        // identical to one working perfectly.
+        const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
         if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
         if (await clickIfReady(r, '#btn-fw-lock')) answered.add(key);
       }
-      if (r === host) await clickIfReady(r, '#btn-fw-reveal');
+      // The host must NOT move on until the clock has actually run out, or
+      // Carol never gets the twenty seconds this is measuring — she reaches the
+      // final question still holding the interface's default of 20 and the
+      // "going quiet costs 0" rule is never tested. Locking and revealing in
+      // the same turn is what made her wager 20.
+      if (r === host && waitedOutWagerClock) await clickIfReady(r, '#btn-fw-reveal');
       return screen;
     }
 
@@ -277,7 +286,13 @@ try {
     // Sit through the 20-second wager clock once, so the timeout actually
     // fires. Without this the loop races past the screen and the assertion
     // below would pass on a wager Carol simply never got the chance to make.
-    if (room && room.game_phase === 'final_wager' && !waitedOutWagerClock) {
+    // ...but only once the two who ARE going to choose have chosen. Waiting the
+    // moment the phase appears meant the clock expired before anybody's screen
+    // had rendered, so all three were auto-locked at 0 — and "everybody wagered
+    // 0" is indistinguishable from "the wager screen was already expired",
+    // which is the bug that reached a live game.
+    if (room && room.game_phase === 'final_wager' && !waitedOutWagerClock
+        && answered.has('Alice:final') && answered.has('Bob:final')) {
       waitedOutWagerClock = true;
       note(`waiting out the ${FINAL_WAGER_SECONDS}s final-wager clock with Carol away`);
       await host.page.waitForTimeout((FINAL_WAGER_SECONDS + 3) * 1000);
@@ -316,6 +331,16 @@ try {
     problems.push('the final question reused the wager screen\'s clock instead of starting its own — its timer opens already most of the way through');
   }
 
+  // THE WAGER SCREEN NEEDS ITS OWN CLOCK TOO, and this is the one that bit in a
+  // live game. When the database refused to stamp, it handed back the timestamp
+  // already on the room — the previous QUESTION's — and the client took that as
+  // the start of a 20-second wager screen that was therefore already over. The
+  // host was locked at a wager of 0 before the buttons appeared.
+  const lastQuestionStamp = lastStampByPhase.get('question');
+  if (wagerStamp && lastQuestionStamp && wagerStamp === lastQuestionStamp) {
+    problems.push('the final wager screen inherited the last question\'s clock, so its 20 seconds were already gone before anybody could choose');
+  }
+
   if (!reachedResults) {
     const room = table.store.table('rooms')[0];
     problems.push(`game never reached results (stuck on phase ${room?.game_phase}, question ${room?.current_question})`);
@@ -336,6 +361,16 @@ try {
   const carolFinal = table.store.table('answers')
     .find(a => String(a.player_id) === String(carolId) && a.question_number === finalQ);
   note(`Carol never touched the wager screen; her locked wager: ${carolFinal ? carolFinal.wager : '(none)'}`);
+
+  // ...and somebody who DID touch it must have got the wager they picked. If
+  // the screen's clock is already expired everybody is locked at 0, which looks
+  // exactly like a room full of cautious players.
+  const chosen = table.store.table('answers')
+    .filter(a => a.question_number === finalQ && (a.wager || 0) > 0);
+  note(`players who got to choose a final wager: ${chosen.length}`);
+  if (chosen.length === 0) {
+    problems.push('every final wager is 0 — nobody was able to choose one, which is what an already-expired wager clock looks like');
+  }
   if (!carolFinal) {
     problems.push('a player who ignored the final wager screen locked nothing at all — the 20s clock never committed for her, so the room would still be waiting');
   } else if (carolFinal.wager !== 0) {

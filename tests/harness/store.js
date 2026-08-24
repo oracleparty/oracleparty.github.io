@@ -53,6 +53,7 @@ export class FakeStore {
   constructor() {
     this.tables = new Map();       // name -> array of row objects
     this._denied = new Set();      // tables whose writes are refused, RLS-style
+    this._slowReads = new Map();   // table -> extra ms, for forcing a race to lose
     this._missing = new Set();     // tables that answer as if they do not exist
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     this.subscribers = [];         // { id, table, filter, events, deliver }
@@ -85,6 +86,20 @@ export class FakeStore {
   }
   /** Remove every simulated CHECK on a table. */
   clearChecks(table) { this._checks.delete(table); }
+
+  /**
+   * Make reads of one table slow, so a race can be forced to lose.
+   *
+   * `latencyMs` is global and therefore useless for this: delaying everything
+   * equally preserves whatever order the code already had. A race is only
+   * testable once the LOSING order is forced explicitly — the lobby loaded its
+   * player list and its chat history concurrently, and every scenario happened
+   * to schedule the players first, so the bug that reached a live game was
+   * invisible here by luck rather than by design.
+   */
+  slowReads(table, ms) { this._slowReads.set(table, ms); }
+  /** Undo slowReads. */
+  normalReads(table) { this._slowReads.delete(table); }
 
   /** Refuse every write to `table`, the way an RLS policy does: zero rows, no error. */
   denyWrites(table) { this._denied.add(table); }
@@ -243,6 +258,10 @@ export class FakeStore {
 
     const { table, action, payload, filters = [], modifiers = {} } = op;
     const rows = this.table(table);
+
+    // Per-table delay, for forcing a race to lose. See slowReads().
+    const slow = this._slowReads.get(table);
+    if (slow && action === 'select') await new Promise(r => setTimeout(r, slow));
 
     // Simulate an RLS refusal, which is the single most misleading thing this
     // database does: a policy that denies a write does NOT return an error. The
@@ -693,7 +712,11 @@ export class FakeStore {
       const onPhase = room.game_phase === args.p_phase;
       const onQuestion = args.p_question_number == null
         || room.current_question === args.p_question_number;
-      if (onPhase && onQuestion) {
+      // Nothing stamped means NULL, never the stamp already on the room — the
+      // caller cannot tell that from its own round's clock, and adopting the
+      // last round's start made a 20-second final wager open already expired.
+      if (!(onPhase && onQuestion)) return null;
+      {
         const before = { ...room };
         room.question_started_at = new Date().toISOString();
         // AND TELL EVERYBODY. An UPDATE inside a Postgres function reaches

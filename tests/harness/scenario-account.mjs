@@ -594,6 +594,38 @@ try {
   }
   await alice.page.waitForTimeout(2000);
 
+  // ---- CHAT KEEPS PEOPLE'S FACES ON RELOAD -------------------------------
+  //
+  // The chat history is drawn from the messages table; the AVATARS come from
+  // the player list. Re-entering a lobby loads the history first, so every
+  // bubble fell back to a plain letter and somebody's chosen face vanished
+  // from their own messages. Reported after a real game, on Play Again — a
+  // reload is the same ordering and is what this reproduces.
+  await alice.page.fill('#chat-drawer-input', 'hello from Alice').catch(() => {});
+  await alice.page.click('#btn-chat-send').catch(() => {});
+  await alice.page.waitForTimeout(1200);
+
+  // FORCE THE LOSING ORDER. The lobby used to load its players and its chat
+  // history concurrently, and every run here happened to schedule the players
+  // first — so the bug was invisible by luck. Slowing the player read makes the
+  // messages win every time, which is what a real phone did.
+  table.store.slowReads('players', 1500);
+  await alice.page.reload();
+  await alice.page.waitForTimeout(4000);
+  table.store.normalReads('players');
+
+  const aliceAvatar = table.store.table('players')
+    .find(p => p.display_name === 'Alice')?.avatar_emoji;
+  const bubbleFace = await alice.page.evaluate(() => {
+    const b = [...document.querySelectorAll('.chat-bubble')]
+      .find(x => (x.dataset.author || '') === 'Alice');
+    return b ? (b.querySelector('.avatar')?.textContent || '').trim() : '(no bubble)';
+  }).catch(() => '(unreadable)');
+  note(`Alice's avatar is ${JSON.stringify(aliceAvatar || '(none)')}; her chat bubble shows ${JSON.stringify(bubbleFace)}`);
+  if (aliceAvatar && bubbleFace !== aliceAvatar) {
+    problems.push(`after reloading the lobby Alice's chat bubble shows ${JSON.stringify(bubbleFace)} instead of her avatar ${JSON.stringify(aliceAvatar)} — the history is drawn before the player list arrives`);
+  }
+
   // Promote one, which is the exact combination that overflowed in a live game.
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
   await alice.page.locator(`.cohost-btn[data-cohost-id="${bobId}"]`).first().click().catch(() => {});
