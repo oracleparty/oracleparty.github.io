@@ -1364,10 +1364,33 @@ Two things that cost real time and will again:
 
 **No extensions.** `unaccent` and `fuzzystrmatch` would both be tidier and both
 are a bet on what is installed on the live project — the commonest source of
-"worked in the harness, dead in production" in this repo (#3, #7, #10). The
-accent fold is a `translate()` over a generous list; anything missing from it
-is stripped rather than folded, which is why accented answers are in the
-generated set.
+"worked in the harness, dead in production" in this repo (#3, #7, #10).
+
+**The accent fold cost two more rounds of this same lesson.** It is a
+`translate()`, which maps by POSITION, and the first version was typed by hand
+with a corrupted byte two thirds along — after which `ž` and `ź` folded to `s`,
+`đ` and `ď` to `z`, `ģ` and `ğ` to `d`, and so on for the whole tail. **Every
+case in the parity check still passed**, because none used a letter past the
+shift. It is generated from Unicode data now, and the two strings are asserted
+equal in length with every pair matching NFD.
+
+Then the generated version was *too good*: it folded `ł`, `æ`, `ß`, `ø`, `þ`,
+`đ` — letters NFD does not decompose, which JavaScript therefore STRIPS. So
+"Łódź" was `odz` on the screen and `lodz` on the server, and 34 answers were
+judged differently. **Parity with what the player sees is the requirement, not
+linguistic correctness**; if those should fold, change both.
+
+The map now contains exactly what NFD decomposes, across Latin-1 Supplement
+through Latin Extended Additional (Vietnamese included — `ẵ` was the last
+holdout). And the check no longer relies on somebody thinking to add an
+accented answer: **`verify-sql.mjs` normalises every lowercase letter in those
+blocks through both implementations**, so a missing pair fails by name.
+Verified by deleting one pair from the middle.
+
+That check passes its case list through a **file, never `-c`** — argv has a
+kernel limit and the list blew past it the moment the accented answers went in,
+dying with `E2BIG`, which reads like a database failure rather than a command
+that was too long.
 
 **There is a local Postgres in the dev container** (`/usr/lib/postgresql/16`).
 SQL in this project no longer has to be written blind and pasted hopefully —

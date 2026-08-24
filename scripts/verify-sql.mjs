@@ -95,14 +95,25 @@ function startScratchPostgres() {
   return { host: data, port };
 }
 
+// The query goes through a FILE, never -c. The case list is tens of thousands
+// of characters and argv has a hard kernel limit — passing it inline died with
+// E2BIG the moment the accented answers were added, which would have looked
+// like a database failure rather than a command that was too long.
 function psql(conn, sql, opts = {}) {
   const args = conn.url
     ? [conn.url]
     : ['-h', conn.host, '-p', String(conn.port), '-U', 'postgres', '-d', 'postgres'];
-  return execFileSync('psql', [...args, '-v', 'ON_ERROR_STOP=1', '-tAF', '|', '-c', sql], {
-    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', opts.quiet ? 'pipe' : 'inherit'],
-  });
+  const tmp = join(tmpdir(), `op-q-${process.pid}-${queryCount++}.sql`);
+  writeFileSync(tmp, sql, 'utf8');
+  try {
+    return execFileSync('psql', [...args, '-v', 'ON_ERROR_STOP=1', '-q', '-tAF', '|', '-f', tmp], {
+      encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', opts.quiet ? 'pipe' : 'inherit'],
+    });
+  } finally {
+    try { rmSync(tmp, { force: true }); } catch { /* temp file */ }
+  }
 }
+let queryCount = 0;
 
 function psqlFile(conn, file) {
   const args = conn.url
@@ -144,6 +155,14 @@ const ANSWERS = [
   'The Rolling Stones', 'Pride and Prejudice', 'hydrogen', 'Australia',
   '3.14', '42', '1 million', '2 bil', 'Jose Mourinho', 'Beyoncé', 'crème brûlée',
   'Federico Fellini', 'an apple', 'the Nile', 'DNA', 'CO2', 'H2O', 'JFK',
+  // PAST THE FIRST HANDFUL OF ACCENTS, deliberately. The SQL folds accents with
+  // translate(), which maps by POSITION, and the hand-written first version had
+  // a stray character two thirds along — after which every pair was shifted and
+  // ž, đ, ģ and the rest of the tail folded to the wrong letter. Every case
+  // above still passed, because none of them used a letter past the shift.
+  'Dvořák', 'Erdős', 'Łódź', 'Björn Borg', 'Ångström', 'Gdańsk', 'Nuñez',
+  'Ægir', 'Þingvellir', 'Zürich', 'Malmö', 'Reykjavík', 'İstanbul', 'Kraków',
+  'Antonín Dvořák', 'Lech Wałęsa', 'Đà Nẵng', 'Hưng Yên', 'Çanakkale',
 ];
 
 const KEYBOARD = 'abcdefghijklmnopqrstuvwxyz';
@@ -310,7 +329,22 @@ function main() {
     // Normalisation and distance are checked in their own right too. A judge
     // can agree on every verdict while normalising differently, and the next
     // rule added on top of it would then diverge for reasons nobody could see.
-    const normCases = [...new Set(cases.flatMap(c => [c[0], c[1]]))];
+    // EVERY letter, not just the ones somebody thought to test. The accent fold
+    // is a fixed list in SQL against NFD in JavaScript, so any character the
+    // list misses diverges — silently, and only for players who type it. Two
+    // rounds of this bug were found by adding a handful of accented answers by
+    // hand; this stops the next one existing. Latin-1 Supplement through Latin
+    // Extended Additional, which is every Latin letter a person is likely to
+    // reach for.
+    const everyLetter = [];
+    for (const [lo, hi] of [[0x00C0, 0x024F], [0x1E00, 0x1EFF]]) {
+      for (let cp = lo; cp <= hi; cp++) {
+        const ch = String.fromCodePoint(cp);
+        if (ch.toLowerCase() !== ch) continue;
+        everyLetter.push(`x${ch}y`);
+      }
+    }
+    const normCases = [...new Set([...cases.flatMap(c => [c[0], c[1]]), ...everyLetter])];
     const normOut = psql(conn, `
       SELECT i, op_normalize(s)
       FROM (VALUES ${normCases.map((s, i) => `(${i}, ${lit(s)})`).join(',')}) AS t(i, s)

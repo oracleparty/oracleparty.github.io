@@ -36,8 +36,19 @@
 -- js/utils.js does this with NFD decomposition, which handles every accent
 -- there is. translate() handles the ones listed. Any Latin letter missing from
 -- this map is STRIPPED by the punctuation pass below rather than folded, which
--- is a real difference in behaviour — so the list is deliberately generous and
--- verify-sql.mjs feeds accented answers through both implementations.
+-- is a real difference in behaviour.
+--
+-- THE TWO STRINGS ARE GENERATED FROM UNICODE DATA, NOT TYPED. translate() maps
+-- by POSITION, so one stray character shifts every pair after it — and the
+-- hand-written first version had exactly that: a corrupted byte two thirds of
+-- the way along, after which ž and ź folded to "s", đ and ď to "z", ģ and ğ to
+-- "d", and so on for the whole tail of the alphabet.
+--
+-- Every case in the parity check still passed, because none of them used a
+-- letter past the shift. That is the same lesson as the accent fold itself: a
+-- rule can be broken in a way every case written to describe it survives. The
+-- generated set now covers Latin-1 Supplement through Latin Extended-B, and
+-- verify-sql.mjs answers questions written in them.
 -- --------------------------------------------
 CREATE OR REPLACE FUNCTION op_unaccent(s text)
 RETURNS text
@@ -46,8 +57,8 @@ SET search_path = public
 AS $$
   SELECT translate(
     s,
-    'àáâãäåāăąèéêëēĕėęěìíîïĩīĭįıòóôõöøōŏőùúûüũūŭůűųýÿŷñńņňçćĉċčšśŝşžźż�żđďģğĥħĵķĺļľłŕřßţťŧŵÿ',
-    'aaaaaaaaaeeeeeeeeeiiiiiiiiiooooooooouuuuuuuuuuyyynnnncccccsssssszzzzzddggghhjklllrrstttwy'
+    'àáâãäåçèéêëìíîïñòóôõöùúûüýÿāăąćĉċčďēĕėęěĝğġģĥĩīĭįĵķĺļľńņňōŏőŕŗřśŝşšţťũūŭůűųŵŷźżžơưǎǐǒǔǖǘǚǜǟǡǧǩǫǭǰǵǹǻȁȃȅȇȉȋȍȏȑȓȕȗșțȟȧȩȫȭȯȱȳḁḃḅḇḉḋḍḏḑḓḕḗḙḛḝḟḡḣḥḧḩḫḭḯḱḳḵḷḹḻḽḿṁṃṅṇṉṋṍṏṑṓṕṗṙṛṝṟṡṣṥṧṩṫṭṯṱṳṵṷṹṻṽṿẁẃẅẇẉẋẍẏẑẓẕẖẗẘẙạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ',
+    'aaaaaaceeeeiiiinooooouuuuyyaaaccccdeeeeegggghiiiijklllnnnooorrrssssttuuuuuuwyzzzouaiouuuuuaagkoojgnaaaeeiioorruusthaeooooyabbbcdddddeeeeefghhhhhiikkkllllmmmnnnnoooopprrrrsssssttttuuuuuvvwwwwwxxyzzzhtwyaaaaaaaaaaaaeeeeeeeeiioooooooooooouuuuuuuyyyy'
   );
 $$;
 
