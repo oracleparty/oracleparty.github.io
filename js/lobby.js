@@ -365,7 +365,11 @@ async function loadPlayers() {
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
   // IDENTITY only sends the primary key). The 5-second poll catches this.
-  if (humanPlayers().length > 0 && !players.some(p => p.is_host)) {
+  // liveHosts(), not "does any row carry the flag": an abandoned row satisfies
+  // the second perfectly, and a room whose only host is a ghost never promotes
+  // anybody, so nobody present can start the game. That is exactly what a live
+  // game reported.
+  if (humanPlayers().length > 0 && liveHosts().length === 0) {
     await handleHostPromotion();
   }
 }
@@ -380,6 +384,44 @@ async function loadPlayers() {
  */
 function humanPlayers() {
   return players.filter(p => !p.is_bot);
+}
+
+/**
+ * Has this player been heard from recently enough to count as here?
+ *
+ * A missing timestamp means "cannot tell", and cannot-tell counts as HERE —
+ * the same rule the stale sweep uses. Treating absence of evidence as evidence
+ * of absence once had hosts kicking every player seconds after they joined.
+ */
+function isPresentInLobby(p) {
+  const raw = p.last_seen_at || p.joined_at;
+  if (!raw) return true;
+  return (Date.now() - new Date(raw).getTime()) < STALE_TIMEOUT_MS;
+}
+
+/**
+ * A host who is ACTUALLY HERE.
+ *
+ * The room used to ask `players.some(p => p.is_host)`, which a dead row
+ * satisfies perfectly. Reported from a live game: two abandoned copies of one
+ * player held the crown, so the room believed it had a host, promotion never
+ * ran, and the only real person in the lobby was shown "Ready Up" with no way
+ * to start the game. A host nobody can reach is not a host.
+ */
+function liveHosts() {
+  return players.filter(p => p.is_host && !p.is_bot && isPresentInLobby(p));
+}
+
+/**
+ * Am I the one who should act on behalf of a room with no reachable host?
+ *
+ * Earliest joiner among those present, so every client picks the same person
+ * without needing to agree with each other first.
+ */
+function iAmTheCaretaker() {
+  const present = humanPlayers().filter(isPresentInLobby)
+    .sort((a, b) => new Date(a.joined_at || 0) - new Date(b.joined_at || 0));
+  return present.length > 0 && String(present[0].id) === String(room.playerId);
 }
 
 function sortPlayers() {
@@ -721,7 +763,12 @@ async function handleHostPromotion() {
   // Bots are never candidates: host and co-host are for humans, and a room
   // hosted by a bot is a room nobody can start, advance or judge. If only bots
   // are left there is nobody to promote.
-  const eligible = humanPlayers();
+  // Present humans only. Promoting somebody who is not there hands the crown
+  // straight back to a ghost, which is how it ended up on one in the first
+  // place. Falls back to every human if nobody looks present, because a room
+  // with no host at all is worse than a host who may be about to return.
+  const here = humanPlayers().filter(isPresentInLobby);
+  const eligible = here.length > 0 ? here : humanPlayers();
   if (eligible.length === 0) return;
 
   // Prefer co-host, otherwise earliest player
@@ -744,7 +791,15 @@ async function handleHostPromotion() {
     // Without this, two clients can race-promote themselves, ending up with
     // two hosts simultaneously.
     const fresh = await fetchPlayers(room.id);
-    if (fresh.some(p => p.is_host)) {
+    const freshLiveHost = fresh.some(p => {
+      if (!p.is_host || p.is_bot) return false;
+      const raw = p.last_seen_at || p.joined_at;
+      if (!raw) return true;
+      return (Date.now() - new Date(raw).getTime()) < STALE_TIMEOUT_MS;
+    });
+    // Same correction as the poll: a ghost holding the flag is not a host, and
+    // bailing out for one is what left the room with nobody able to start.
+    if (freshLiveHost) {
       players = fresh;
       sortPlayers();
       renderPlayers();
@@ -1588,8 +1643,12 @@ function checkStalePresence() {
       if (connected[0] && String(connected[0].id) === String(room.playerId)) {
         removePlayer(id);
       }
-    } else if (room.isHost) {
-      // Stale non-host: host kicks them
+    } else if (room.isHost || (liveHosts().length === 0 && iAmTheCaretaker())) {
+      // Stale non-host: the host clears them — or, when no host is reachable,
+      // the earliest person who IS here. Without that second clause the sweep
+      // depended on a host to run and the host was the thing that had gone, so
+      // a room full of abandoned rows had nobody left with the authority to
+      // tidy them and simply stayed broken.
       removePlayer(id);
     }
   }

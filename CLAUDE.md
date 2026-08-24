@@ -1033,6 +1033,41 @@ Liveness falls back to `joined_at`, because `addPlayer` does not write
 first duplicate is where the old code still behaved and the second is where it
 ran away. Verified by restoring both call sites.
 
+## A ghost cannot be the host
+
+**Reported from a live game, with a photograph: two abandoned copies of one
+player both flagged HOST, while the only person actually in the lobby was shown
+"Ready Up" and could not start the game.** Four faults compounding, and the
+combination is a room that can never recover on its own.
+
+- **`promoteToHost` set the flag on the new host and never cleared it on the
+  old one.** Every promotion ADDED a host. It clears the room first now, then
+  sets — that order, because a failure between the two leaves no host, which
+  promotion fixes on its next pass, while the other order leaves two, which
+  nothing was looking for.
+- **"Is there a host?" was `players.some(p => p.is_host)`, which a dead row
+  satisfies perfectly.** So the room believed it had one and promotion never
+  ran. `liveHosts()` requires the row to have been heard from.
+- The promotion **race guard** used the same test, so it bailed for a ghost too.
+- **The stale sweep for non-hosts only ran on the HOST's client** — and the host
+  was the thing that had gone, so nobody left had the authority to tidy up.
+  `iAmTheCaretaker()` — earliest joiner still present — does it when no host is
+  reachable, chosen that way so every client picks the same person without
+  having to agree first.
+
+**A missing timestamp still means "cannot tell", and cannot-tell counts as
+HERE.** Same rule as everywhere else: treating absence of evidence as evidence
+of absence once had hosts kicking every player seconds after they joined.
+
+Promotion also prefers candidates who are PRESENT, falling back to any human if
+nobody looks it — a room with no host at all is worse than one whose host may
+be about to come back.
+
+`scenario-nasty` builds the photographed state — an abandoned host row plus a
+duplicate of it — and requires exactly one host, that it is the person actually
+there, and that they can start the game. Verified by reverting all four: the
+room reports **four hosts, three of them ghosts.**
+
 ## A room is only ever cleaned up from inside it
 
 A player row goes either by a beacon on unload or by another client in the room

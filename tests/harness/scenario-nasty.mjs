@@ -261,6 +261,69 @@ async function playerDropsAndRejoins() {
     }
   }
 
+  // ============================================================
+  // A GHOST CANNOT BE THE HOST
+  //
+  // Reported from a live game, with a photograph: two abandoned copies of one
+  // player both flagged HOST, while the only person actually in the lobby was
+  // shown "Ready Up" and had no way to start the game. Four faults compounding:
+  //
+  //   * promoteToHost set the flag on the new host and never cleared it on the
+  //     old one, so every promotion ADDED a host;
+  //   * "is there a host" was answered by `players.some(p => p.is_host)`, which
+  //     a dead row satisfies perfectly, so promotion never ran;
+  //   * the same test guarded the promotion race, so it bailed for a ghost too;
+  //   * and the stale sweep for non-hosts only ran on the HOST's client — which
+  //     was the thing that had gone. Nobody left could tidy up.
+  //
+  // Together: a room that can never recover on its own.
+  // ============================================================
+  heading('a ghost cannot be the host');
+  {
+    const table = await PlaytestTable.open();
+    try {
+      seedQuestions(table.store);
+      const { host, code } = await openRoom(table);
+      const bob = await joinRoom(table, 'Bob', code);
+      await host.page.waitForTimeout(1500);
+
+      // The host's phone vanishes and its row is left behind holding the crown
+      // — and a second abandoned copy of it too, exactly as photographed.
+      const longAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const rows = table.store.table('players');
+      const hostRow = rows.find(p => p.is_host);
+      hostRow.last_seen_at = longAgo;
+      hostRow.joined_at = longAgo;
+      rows.push({ ...hostRow, id: 'ghost-copy', last_seen_at: longAgo, joined_at: longAgo });
+
+      // Bob is the only person here. He must end up able to run the room.
+      await bob.page.waitForTimeout(12000);
+
+      const after = table.store.table('players');
+      const bobRow = after.find(p => p.display_name === 'Bob');
+      const hostsNow = after.filter(p => p.is_host);
+      note(`hosts now: ${hostsNow.map(p => p.display_name).join(', ') || '(none)'}`);
+
+      if (hostsNow.length !== 1) {
+        problems.push(`the room has ${hostsNow.length} hosts — promotion never removes the old one, so every handover adds another`);
+      }
+      if (!bobRow?.is_host) {
+        problems.push('the only person in the lobby was never made host, because abandoned rows still held the crown and the room believed it had one');
+      }
+
+      const canStart = await bob.page.evaluate(() => {
+        const b = document.getElementById('btn-start-game');
+        return !!b && !b.classList.contains('hidden');
+      }).catch(() => false);
+      note(`the person actually in the lobby can start the game: ${canStart}`);
+      if (!canStart) {
+        problems.push('the only person in the lobby cannot start the game — the room is stuck behind a host who is not there');
+      }
+    } finally {
+      await table.close();
+    }
+  }
+
   heading('player drops and rejoins');
   const table = await PlaytestTable.open();
   try {

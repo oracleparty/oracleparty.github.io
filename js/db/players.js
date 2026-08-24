@@ -142,6 +142,22 @@ export async function addBot(roomId, displayName, { avatarColor, avatarEmoji } =
  * Promote a player to host. Sets is_host on the player and updates room's host_name.
  */
 export async function promoteToHost(roomId, playerId, displayName) {
+  // TAKE THE CROWN OFF EVERYONE ELSE FIRST.
+  //
+  // This used to only set the flag on the new host and never clear it on the
+  // old one, so every promotion ADDED a host. A live game ended up with two
+  // abandoned copies of one player both flagged host while the only person
+  // actually in the lobby was not — and since "is there a host" was answered by
+  // those rows, nothing ever corrected it.
+  //
+  // Clearing first, not last: if the second statement fails the room briefly
+  // has no host, which promotion is designed to fix on its next pass. The other
+  // order leaves two hosts, which nothing was looking for.
+  const { error: clearError } = await supabase
+    .from('players').update({ is_host: false })
+    .eq('room_id', roomId).neq('id', playerId);
+  if (clearError) logger.error('Supabase', 'promoteToHost could not clear the previous host', clearError);
+
   const [playerResult, roomResult] = await Promise.all([
     supabase.from('players').update({ is_host: true }).eq('id', playerId),
     supabase.from('rooms').update({ host_name: displayName }).eq('id', roomId)
