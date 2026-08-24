@@ -454,6 +454,19 @@ const RPC_PROBES = [
                          p_player_name: 'probe', p_category: 'history',
                          p_subcategory: null, p_total_questions: 5,
                          p_game_key: 'probe' }],
+
+  // Migrations 045-047 — the game moving off the host's phone.
+  //
+  // These matter differently from everything above. The app FALLS BACK when
+  // they are missing, so nothing looks broken to a player — it silently
+  // reverts to each browser judging for itself, which is the exact state the
+  // rebuild exists to end. A dead server here is invisible by design, so it
+  // has to be visible here.
+  ['op_answer_matches', { p_submitted: 'probe', p_correct: 'probe' }],
+  ['op_submit_answer', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID,
+                         p_question_number: 0, p_answer: 'probe', p_wager: 1 }],
+  ['op_fill_blank_answers', { p_room_id: NOT_A_UUID, p_question_number: 0 }],
+  ['op_start_clock', { p_room_id: NOT_A_UUID, p_phase: 'question', p_question_number: 0 }],
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
@@ -549,6 +562,22 @@ const CONSEQUENCES = [
   { object: 'get_mastery_counts', kind: 'rpc',
     fix: 'optional — migrations would add it; fetchMasteryCounts already falls back',
     breaks: ['the mastery tree falls back to a slower client-side query (works, just slower)'] },
+
+  // The rebuild. Every one of these fails SILENTLY — the app reverts to the
+  // old client-side path and a player sees a working game, so the only symptom
+  // is the thing the rebuild was meant to stop happening again.
+  { object: 'op_answer_matches', kind: 'rpc',
+    fix: 'run migrations/045_server_judges_answers.sql',
+    breaks: ['the server cannot judge an answer at all, so 046 cannot either'] },
+  { object: 'op_submit_answer', kind: 'rpc',
+    fix: 'run migrations/046_server_records_answers.sql',
+    breaks: ['every browser judges and scores its own answer again, so two phones can disagree about the same round and any client can write any score it likes'] },
+  { object: 'op_fill_blank_answers', kind: 'rpc',
+    fix: 'run migrations/046_server_records_answers.sql',
+    breaks: ['only the host can close a round, so a host whose phone is asleep leaves it hanging'] },
+  { object: 'op_start_clock', kind: 'rpc',
+    fix: 'run migrations/047_server_owns_the_clock.sql',
+    breaks: ["the round clock goes back to the host phone's ESTIMATE of server time, which the answer deadline is then measured against — a slow estimate refuses every answer in the room as late"] },
 ];
 
 console.log('\n--- WHAT THIS MEANS FOR A PLAYER ---');

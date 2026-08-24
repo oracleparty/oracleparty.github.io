@@ -1396,6 +1396,13 @@ that was too long.
 SQL in this project no longer has to be written blind and pasted hopefully —
 run it, prove it, then hand it over.
 
+**`scripts/probe-db.mjs` watches all four functions**, and they are the entries
+on that list that matter most, for a reason peculiar to them: **every one fails
+SILENTLY.** The app falls back to the old client-side path, a player sees a
+working game, and the only symptom is the thing the rebuild exists to stop —
+two phones disagreeing about a score. Everything else the probe watches
+announces itself by breaking a screen. These announce themselves by working.
+
 ### Slice 2 — the server records the answer (migration 046)
 
 `op_submit_answer` writes the row: verdict, wager and points, computed once.
