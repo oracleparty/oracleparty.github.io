@@ -465,11 +465,28 @@ export function showFinalWagerScreen() {
     revealBtn.classList.add('hidden');
   }
 
-  // Inline difficulty vote — set up vote buttons
-  state.difficultyVotes = {};
+  // Inline difficulty vote — set up vote buttons.
+  //
+  // ONLY CLEAR THE VOTES ON A GENUINELY NEW SCREEN. This ran on every render,
+  // and Realtime re-calls this function for the same screen — so a single room
+  // update wiped EVERY vote in the room, not just this player's. Votes are
+  // broadcast-only and never stored, so the others do not re-send them: they
+  // were gone. The final difficulty was then decided by whatever happened to
+  // arrive after the last re-render, which is often nothing at all, and
+  // pickWeightedDifficulty falls back to picking uniformly at random. People
+  // voted and the vote did not count.
+  //
+  // Same fault as the wager selection directly above, found by looking for it.
+  if (!sameWagerScreen) state.difficultyVotes = {};
   const dvOptions = document.querySelectorAll('#final-wager-screen .dv-option');
+  const myVote = state.difficultyVotes[state.room.playerId];
   dvOptions.forEach(btn => {
     btn.classList.remove('dv-option--selected');
+    // Put the highlight back on what they already voted for, or a re-render
+    // leaves the screen claiming they have not voted when they have.
+    if (myVote && btn.dataset.difficulty === myVote) {
+      btn.classList.add('dv-option--selected');
+    }
     btn.onclick = () => {
       dvOptions.forEach(b => b.classList.remove('dv-option--selected'));
       btn.classList.add('dv-option--selected');
@@ -490,29 +507,35 @@ export function showFinalWagerScreen() {
   // state.questionStartedAt rather than capturing it once.
   startFinalWagerTimer();
 
-  // Broadcast channel for difficulty votes
-  if (state.difficultyVoteChannel) supabase.removeChannel(state.difficultyVoteChannel);
-  state.difficultyVoteChannel = createDifficultyVoteChannel(state.room.id);
-  state.difficultyVoteChannel
-    .on('broadcast', { event: 'vote' }, ({ payload }) => {
-      if (payload?.playerId && payload?.difficulty) {
-        state.difficultyVotes[payload.playerId] = payload.difficulty;
-        _renderInlineDvTally();
-      }
-    })
-    .on('broadcast', { event: 'reveal' }, ({ payload }) => {
-      // Non-host: run the same slot-machine animation locally so all clients
-      // see the dramatic difficulty reveal in sync. Host already triggered
-      // its own animation directly in handleRevealFinalQuestion.
-      if (state.room.isHost) return;
-      // voted comes over the wire so every client spins through the same
-      // options. Deriving it locally would let a client whose vote state was
-      // incomplete animate a different wheel from everyone else's.
-      playDifficultyRevealAnimation(payload?.mostVoted || null, payload?.winner || 'medium', payload?.voted || null);
-    })
-    .subscribe();
+  // Broadcast channel for difficulty votes.
+  //
+  // Rebuilt only for a NEW screen. Tearing it down and recreating it on every
+  // render dropped any vote broadcast during the gap — and re-renders happen
+  // exactly while people are voting.
+  if (!sameWagerScreen || !state.difficultyVoteChannel) {
+    if (state.difficultyVoteChannel) supabase.removeChannel(state.difficultyVoteChannel);
+    state.difficultyVoteChannel = createDifficultyVoteChannel(state.room.id);
+    state.difficultyVoteChannel
+      .on('broadcast', { event: 'vote' }, ({ payload }) => {
+        if (payload?.playerId && payload?.difficulty) {
+          state.difficultyVotes[payload.playerId] = payload.difficulty;
+          _renderInlineDvTally();
+        }
+      })
+      .on('broadcast', { event: 'reveal' }, ({ payload }) => {
+        // Non-host: run the same slot-machine animation locally so all clients
+        // see the dramatic difficulty reveal in sync. Host already triggered
+        // its own animation directly in handleRevealFinalQuestion.
+        if (state.room.isHost) return;
+        // voted comes over the wire so every client spins through the same
+        // options. Deriving it locally would let a client whose vote state was
+        // incomplete animate a different wheel from everyone else's.
+        playDifficultyRevealAnimation(payload?.mostVoted || null, payload?.winner || 'medium', payload?.voted || null);
+      })
+      .subscribe();
+  }
 
-  // Show initial tally (empty rows with labels)
+  // The tally, which now survives a re-render along with the votes behind it.
   _renderInlineDvTally();
 
   // Close chat drawer before hiding the bar — prevents the drawer from

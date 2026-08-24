@@ -1723,16 +1723,26 @@ be revised. Migration 050 keeps the wager and expresses the cost where it
 belongs, in `score_earned`. Verified by putting `EXCLUDED.wager` back: three
 rules fail, `got "0", want "20"`.
 
-**And a re-render cleared the selection.** `showFinalWagerScreen` reset
-`finalWagerSelected` every time it ran, and Realtime re-calls it for the same
-screen — so a player who tapped 20 and had not yet pressed Lock In was
-committed to 0 when the clock ran out. The question screen was guarded against
-exactly this for its wager grid months ago, with a comment saying why; this
-screen never was. `state._renderedFinalWager` guards it, and a re-render now
-also puts the highlight back on what they chose. **Honest limit: the scenario
-check for this passes with the guard removed** — forcing a room update also
-resets the wager clock, so the timeout path never fires there. The fix is
-right; only the SQL half of this pair is covered by a test that fails.
+**A second, DEFENSIVE change, and it is not evidence-backed — say so.**
+`showFinalWagerScreen` reset `finalWagerSelected` and, worse, cleared
+`state.difficultyVotes` — every vote in the room, not just this player's, and
+votes are broadcast-only so nobody re-sends them. It also tore down and
+recreated the vote channel. All of that runs on every call, and the phase
+router calls it with no same-phase guard, so a re-render would wipe a player's
+choice and the room's votes. `state._renderedFinalWager` now guards all three.
+
+**But I could not make that re-render happen.** A hand-made room broadcast, a
+real room write through the store, and a synthetic backgrounding all failed to
+produce a second render — instrumented, the wager screen renders exactly ONCE
+per game in the harness, so any check written around it passes whatever is
+broken. Two such checks were written and then deleted: **a check that cannot
+fail is worse than none, because it looks like coverage.**
+
+So the guards stay as cheap insurance, and this paragraph is the honest record
+that they fix a fault seen by inspection rather than one reproduced. The
+REPORTED bug ("bet 20, wagered 0") has a different, proven cause — the blank
+fill above — and that one does have a test that fails when reverted. **Do not
+cite the guards as the explanation for it.**
 
 **An empty answer before the reveal now reads as WAITING**, not "No answer".
 The fill can beat a submission that is already in flight, so the row appears

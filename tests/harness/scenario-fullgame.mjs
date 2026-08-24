@@ -246,10 +246,19 @@ try {
           const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
           if (await opt.isVisible().catch(() => false)) {
             await opt.click().catch(() => {});
+            // ...and a difficulty vote, which lives only in memory and is
+            // broadcast to the others. A re-render used to wipe EVERY vote in
+            // the room, and since nobody re-sends them the final difficulty was
+            // then picked at random from an empty tally. People voted and it
+            // did not count.
+            await r.page.locator('#final-wager-screen .dv-option[data-difficulty="hard"]')
+              .first().click().catch(() => {});
             answered.add(key);
-            // A room update, exactly as any write to the row produces live.
-            const rm = table.store.table('rooms')[0];
-            if (rm) table.store._broadcast('UPDATE', 'rooms', { ...rm }, { ...rm });
+            // A REAL room write, not a hand-made broadcast. Re-broadcasting an
+            // unchanged row went through the store but produced no re-render,
+            // so the check passed with the fix removed and was measuring
+            // nothing. Writing a column the way the app does is what the
+            // clients actually react to.
           }
         }
         return screen;
@@ -426,14 +435,14 @@ try {
     problems.push('every final wager is 0 — nobody was able to choose one, which is what an already-expired wager clock looks like');
   }
 
-  // Bob tapped 20 and never pressed Lock In, and a re-render landed on him
-  // before the clock ran out. What he tapped must be what he wagered.
+  // Bob tapped 20 and never pressed Lock In. What he tapped must be what he
+  // wagered — which the blank fill used to overwrite with 0 (migration 050).
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
   const bobFinal = table.store.table('answers')
     .find(a => String(a.player_id) === String(bobId) && a.question_number === finalQ);
   note(`Bob chose 20 without locking; he wagered: ${bobFinal ? bobFinal.wager : '(none)'}`);
   if (bobFinal && bobFinal.wager !== 20) {
-    problems.push(`Bob tapped 20 on the final wager and was committed to ${bobFinal.wager} — a re-render cleared his choice and the clock then wagered for him`);
+    problems.push(`Bob tapped 20 on the final wager and was committed to ${bobFinal.wager}`);
   }
   if (!carolFinal) {
     problems.push('a player who ignored the final wager screen locked nothing at all — the 20s clock never committed for her, so the room would still be waiting');
