@@ -585,6 +585,48 @@ export class FakeStore {
       return recorded;
     }
 
+    // ---- migration 049: only a host changes a verdict ----------------------
+    //
+    // The POINTS are recomputed from the answer's own wager, never taken from
+    // the caller — that is the difference the migration exists to make.
+    if (name === 'op_set_judgement' || name === 'op_disqualify_round') {
+      const players = this.table('players');
+      const answers = this.table('answers');
+      const isHost = (roomId, playerId) => players.some(p =>
+        String(p.id) === String(playerId) && String(p.room_id) === String(roomId)
+        && (p.is_host || p.is_cohost));
+
+      if (name === 'op_disqualify_round') {
+        if (!isHost(args?.p_room_id, args?.p_caller_id)) return -1;
+        let n = 0;
+        for (const a of answers) {
+          if (String(a.room_id) !== String(args.p_room_id)) continue;
+          if (a.question_number !== args.p_question_number) continue;
+          const before = { ...a };
+          a.is_correct = false; a.score_earned = 0;
+          this._broadcast('UPDATE', 'answers', { ...a }, before);
+          n++;
+        }
+        return n;
+      }
+
+      const a = answers.find(x => String(x.id) === String(args?.p_answer_id));
+      if (!a) return 'no such answer';
+      if (!isHost(a.room_id, args?.p_caller_id)) return 'not the host';
+      const room = this.table('rooms').find(r => String(r.id) === String(a.room_id));
+      if (!room) return 'no such room';
+      const ids = room.question_ids || [];
+      const total = Math.max(1, (ids.length ? ids.length - 1 : room.questions_per_game) || 10);
+      const isFinal = a.question_number >= total;
+      const before = { ...a };
+      a.is_correct = !!args.p_is_correct;
+      a.score_earned = args.p_is_correct ? (a.wager || 0) : (isFinal ? -(a.wager || 0) : 0);
+      // auto_correct is deliberately untouched — it holds the machine's
+      // original verdict and is how a bad answer key gets spotted later.
+      this._broadcast('UPDATE', 'answers', { ...a }, before);
+      return 'changed';
+    }
+
     // ---- migration 048: only the rules delete a room -----------------------
     //
     // Removes the player and takes the room only if no HUMAN is left. A bot

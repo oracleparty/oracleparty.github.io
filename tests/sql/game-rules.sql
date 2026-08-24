@@ -289,4 +289,83 @@ BEGIN
   DELETE FROM rooms WHERE id = other;
 END $$;
 
+-- ============================================
+-- 049 — only a host changes a verdict
+-- ============================================
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  host uuid := gen_random_uuid();
+  guest uuid := gen_random_uuid();
+  stranger uuid := gen_random_uuid();
+  q uuid[] := ARRAY[]::uuid[];
+  qid uuid;
+  aid uuid;
+  res text;
+  n int;
+BEGIN
+  FOR i IN 1..3 LOOP
+    qid := gen_random_uuid();
+    INSERT INTO questions (id, question, correct_answer, format)
+    VALUES (qid, 'Q' || i, 'Napoleon', 'open');
+    q := q || qid;
+  END LOOP;
+
+  INSERT INTO rooms (id, code, question_ids, current_question, questions_per_game,
+                     question_timer, question_started_at, game_phase)
+  VALUES (rid, lpad((random()*999999)::int::text, 6, '0'), q, 0, 2, 30, now(), 'question');
+  INSERT INTO players (id, room_id, display_name, is_host, joined_at)
+  VALUES (host,  rid, 'Host',  true,  now()),
+         (guest, rid, 'Guest', false, now());
+
+  PERFORM op_submit_answer(rid, guest, 0, 'Wellington', 1);
+  SELECT id INTO aid FROM answers
+   WHERE room_id = rid AND player_id = guest AND question_number = 0;
+
+  -- A stranger with the room's ids but no seat in it cannot touch a verdict.
+  res := op_set_judgement(aid, true, stranger);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody who is not in the room cannot change a verdict', res, 'not the host');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the score is untouched', score_earned::text, '0' FROM answers WHERE id = aid;
+
+  -- Nor can an ordinary player in the room.
+  res := op_set_judgement(aid, true, guest);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('nor can a player who is not the host', res, 'not the host');
+
+  -- The host can, and the points come from the ANSWER'S OWN wager rather than
+  -- from anything the caller sends.
+  res := op_set_judgement(aid, true, host);
+  INSERT INTO result (check_name, got, want) VALUES ('the host can', res, 'changed');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the points come from the answer''s own wager', score_earned::text, '1'
+  FROM answers WHERE id = aid;
+  INSERT INTO result (check_name, got, want)
+  SELECT 'the machine''s original verdict is kept for spotting bad answer keys',
+         auto_correct::text, 'false' FROM answers WHERE id = aid;
+
+  -- ---- disqualifying ------------------------------------------------------
+  n := op_disqualify_round(rid, 0, stranger);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a stranger cannot disqualify a round', n::text, '-1');
+
+  n := op_disqualify_round(rid, 0, host);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host can disqualify a round', (n > 0)::text, 'true');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and it scores nothing for anybody', coalesce(sum(score_earned), 0)::text, '0'
+  FROM answers WHERE room_id = rid AND question_number = 0;
+
+  -- DELIBERATELY NOT GUARDED HERE. The first version refused to mark an answer
+  -- correct inside a round that "looked" disqualified — every answer scoring
+  -- nothing and nobody right — and that is also what a round everybody simply
+  -- got wrong looks like. In a two-player game it would have refused the
+  -- commonest override there is. The client keeps that guard, where it knows
+  -- the difference; this function does permission and arithmetic.
+  res := op_set_judgement(aid, true, host);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a round that merely went badly is not mistaken for a thrown-out one', res, 'changed');
+END $$;
+
 SELECT check_name, got, want FROM result ORDER BY ord;

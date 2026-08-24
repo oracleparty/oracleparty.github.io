@@ -27,6 +27,7 @@ export {
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
   fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers,
   submitAnswerViaServer, fillBlankAnswersViaServer,
+  setJudgementOnServer, disqualifyRoundOnServer,
   deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
 } from './db/players.js';
 

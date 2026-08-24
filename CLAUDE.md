@@ -1571,6 +1571,41 @@ that way leaves a player row for the stale sweep, guessing wrong the other way
 puts a phone back to deleting rooms on its own local count, which is the race
 this removes. One is untidy; the other loses a game.
 
+### Slice 6 — only a host changes a verdict (migration 049)
+
+**The hole:** `answers` had `FOR UPDATE USING (true)` and
+`FOR DELETE USING (true)`. Scores are computed from `answers.score_earned`, so
+anyone who could reach the site could mark any answer in any live game right or
+wrong, set any score, or delete the lot — and the scoreboard changed on every
+phone in the room. `op_set_judgement` and `op_disqualify_round` replace the two
+writes the app legitimately made; both UPDATE and DELETE policies are dropped.
+
+**`op_set_judgement` takes no score.** The old call passed a verdict AND a
+number, so anything could set anything. The points are recomputed from the
+answer's own wager, with the final round the only one that subtracts.
+`auto_correct` is deliberately untouched — it holds the machine's original
+verdict, and the gap between the two is `times_overridden`, the column this
+project trusts most for finding a bad answer key.
+
+**INSERT stays open, deliberately.** The client still falls back to writing an
+answer directly when `op_submit_answer` is unreachable, and an RLS refusal
+returns no error — revoking INSERT would turn a bad connection into a silently
+lost answer. It goes when the fallback does.
+
+**Porting the disqualification heuristic into the permission layer was wrong,
+and the rule check caught it.** The client spots a thrown-out round by asking
+whether every answer scored nothing and nobody was right — which is also what a
+round everybody simply got WRONG looks like (CLAUDE.md already records the
+flaw). In a two-player game that is the common case, so the guard refused the
+commonest override there is: the host saying "actually that was right". The
+client keeps that check, where the disqualification arrives as a message every
+phone has seen rather than as an inference from scores. **A rule that is only
+"good enough" for refunding a wager is not good enough to refuse a host.**
+
+Disqualifying is now ONE call rather than a loop of per-answer writes: a loop
+can half-succeed and leave a round that was thrown out still paying points to
+whoever's write landed.
+
 ## The Map
 
 A honeycomb of the question bank, above the Mastery list on the profile. The

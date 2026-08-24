@@ -14,6 +14,7 @@ import {
   submitAnswer,
   fetchAnswersForQuestion,
   updateAnswerJudgment,
+  setJudgementOnServer,
   fetchAllAnswers,
   sendMessage,
   updateRoomStatus,
@@ -958,7 +959,8 @@ async function openScoreEditQuestion(questionNumber) {
     answer.is_correct = newCorrect;
     answer.score_earned = newScore;
 
-    await updateAnswerJudgment(answerId, newCorrect, newScore);
+    const served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
+    if (!served.ok) await updateAnswerJudgment(answerId, newCorrect, newScore);
 
     // AMEND, not upsert — a retroactive correction is not a second attempt.
     const player = state.players.find(p => String(p.id) === String(answer.player_id));
@@ -1541,7 +1543,8 @@ async function handleReviewQuestions() {
         }
 
         // Persist to DB then re-render results behind the overlay
-        await updateAnswerJudgment(answerId, newCorrect, newScore);
+        const servedRow = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
+        if (!servedRow.ok) await updateAnswerJudgment(answerId, newCorrect, newScore);
 
         // AMEND, not upsert — a retroactive correction is not a second attempt.
         const player = state.players.find(p => String(p.id) === String(answer.player_id));

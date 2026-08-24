@@ -10,7 +10,8 @@ import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAns
 import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
-import { fetchAnswersForQuestion, updateAnswerJudgment, updateGameState, submitAnswer,
+import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
+         disqualifyRoundOnServer, updateGameState, submitAnswer,
          upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
          upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
   recordQuestionOutcome, recordAnswerText, fetchQuestionPlayStats,
@@ -566,7 +567,10 @@ export async function handleJudgmentOverride(e) {
   renderRevealAnswers(state.currentAnswers);
 
   // Persist to DB — Realtime event will update other clients
-  await updateAnswerJudgment(answerId, newCorrect, newScore);
+  // The DATABASE recomputes the points from the answer's own wager (049), so
+  // no score is sent. Falls back to the direct write when it is not installed.
+  const served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
+  if (!served.ok) await updateAnswerJudgment(answerId, newCorrect, newScore);
 
   // Correct the mastery record for the affected player. AMEND, not upsert:
   // the attempt was already counted by doReveal, and the host changing their
@@ -594,13 +598,21 @@ async function handleDisqualifyRound() {
     }
   }
 
-  // Set all answers for this question to score_earned = 0
+  // Set all answers for this question to score_earned = 0.
+  //
+  // ONE CALL (migration 049), because the whole round is one decision — a loop
+  // of per-answer writes can half-succeed and leave a round that was thrown out
+  // still paying points to whoever's write went through.
   const updates = [];
   for (const answer of state.currentAnswers) {
     answer.is_correct = false;
     answer.score_earned = 0;
-    if (answer.id) {
-      updates.push(updateAnswerJudgment(answer.id, false, 0));
+  }
+  const servedDq = await disqualifyRoundOnServer(
+    state.room.id, state.currentQuestion, state.room?.playerId);
+  if (!servedDq.ok) {
+    for (const answer of state.currentAnswers) {
+      if (answer.id) updates.push(updateAnswerJudgment(answer.id, false, 0));
     }
   }
   // Re-render immediately

@@ -552,6 +552,57 @@ export async function fetchAnswersForQuestion(roomId, questionNumber) {
 /**
  * Update an answer's judgment (host override).
  */
+/**
+ * The host disagrees with the machine (migration 049).
+ *
+ * The POINTS are no longer sent — the database recomputes them from the
+ * answer's own wager. That is the whole point of moving it: the old call passed
+ * a verdict AND a score, so anything on the internet could set any score on any
+ * answer in any live game.
+ *
+ * → { ok, outcome } — ok is false when the function is not installed, which is
+ *   the caller's cue to do it the old way.
+ */
+export async function setJudgementOnServer(answerId, isCorrect, callerPlayerId) {
+  const { data, error } = await supabase.rpc('op_set_judgement', {
+    p_answer_id: answerId,
+    p_is_correct: isCorrect,
+    p_caller_id: callerPlayerId,
+  });
+  if (error) {
+    if (functionMissing(error)) {
+      logger.debug('Supabase', 'op_set_judgement not installed, writing directly');
+      return { ok: false, outcome: null };
+    }
+    logger.error('Supabase', 'op_set_judgement failed', error);
+    return { ok: false, outcome: null };
+  }
+  noteServerFunctions(true);
+  if (data && data !== 'changed') {
+    // Refused for a reason worth seeing: the answer is gone, or this player is
+    // not running the room. Silence here would look like the tap did nothing.
+    logger.warn('Supabase', 'the server refused a judgement change', { outcome: data });
+  }
+  return { ok: true, outcome: data || null };
+}
+
+/**
+ * That round did not happen (migration 049). Returns rows changed, or -1 when
+ * the caller is not the host.
+ */
+export async function disqualifyRoundOnServer(roomId, questionNumber, callerPlayerId) {
+  const { data, error } = await supabase.rpc('op_disqualify_round', {
+    p_room_id: roomId,
+    p_question_number: questionNumber,
+    p_caller_id: callerPlayerId,
+  });
+  if (error) {
+    if (!functionMissing(error)) logger.error('Supabase', 'op_disqualify_round failed', error);
+    return { ok: false, changed: 0 };
+  }
+  return { ok: true, changed: Number(data) };
+}
+
 export async function updateAnswerJudgment(answerId, isCorrect, scoreEarned) {
   const { error } = await supabase
     .from('answers')
