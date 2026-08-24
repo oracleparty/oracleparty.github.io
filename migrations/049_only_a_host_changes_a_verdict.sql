@@ -169,9 +169,18 @@ SELECT
        THEN 'ok' ELSE 'FAIL op_set_judgement missing' END AS judge_fn,
   CASE WHEN to_regprocedure('op_disqualify_round(uuid,int,uuid)') IS NOT NULL
        THEN 'ok' ELSE 'FAIL op_disqualify_round missing' END AS dq_fn,
+  -- 'ALL' counts: a single FOR ALL policy grants update and delete just as
+  -- surely as two named ones, and reading only the named ones would report a
+  -- door shut that is standing open.
   CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
-                         WHERE tablename = 'answers' AND cmd IN ('UPDATE','DELETE'))
+                         WHERE tablename = 'answers' AND cmd IN ('UPDATE','DELETE','ALL'))
        THEN 'ok' ELSE 'FAIL a stranger can still edit a score' END AS door_shut,
-  CASE WHEN EXISTS (SELECT 1 FROM pg_policies
-                     WHERE tablename = 'answers' AND cmd = 'INSERT')
+  -- Asks whether a player can still ANSWER, not whether a particular policy
+  -- exists. On a database with RLS switched off there are no policies at all
+  -- and inserting is allowed — the first version read that as a catastrophe
+  -- and printed FAIL on a database where nothing was wrong. A check that cries
+  -- wolf is one people stop reading.
+  CASE WHEN NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'answers'::regclass)
+         OR EXISTS (SELECT 1 FROM pg_policies
+                     WHERE tablename = 'answers' AND cmd IN ('INSERT','ALL'))
        THEN 'ok' ELSE 'FAIL players can no longer submit an answer' END AS can_still_answer;
