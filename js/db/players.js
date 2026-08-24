@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './client.js';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions } from './client.js';
 import { logger, reportWriteFailure } from '../logger.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 
@@ -395,6 +395,7 @@ export async function submitAnswerViaServer({ roomId, playerId, questionNumber, 
   if (error) {
     if (functionMissing(error)) {
       logger.debug('Supabase', 'op_submit_answer not installed, judging locally');
+      noteServerFunctions(false);
       return { row: null, error: null, unavailable: true };
     }
     logger.error('Supabase', 'op_submit_answer failed', error);
@@ -408,6 +409,7 @@ export async function submitAnswerViaServer({ roomId, playerId, questionNumber, 
     logger.error('Supabase', 'op_submit_answer returned no row', { questionNumber });
     return { row: null, error: new Error('op_submit_answer returned no row'), unavailable: false };
   }
+  noteServerFunctions(true);
   return { row, error: null, unavailable: false };
 }
 

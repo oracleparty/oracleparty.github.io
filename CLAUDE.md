@@ -1531,6 +1531,46 @@ Four things went wrong writing this, and all of them are about measurement.
   called by every RPC that touches `rooms` or `answers`, and any new one must do
   the same or the app will look like it has stopped listening.
 
+### Slice 5 — only the rules delete a room (migration 048)
+
+**The hole:** `rooms` had `FOR DELETE USING (true)`, and every browser carries
+the publishable key by necessity, because guests play without signing in. So
+anyone who could reach the site could delete any room — including one with a
+game in progress. Everybody in it thrown out mid-round, scores gone. One
+request. `DROP POLICY "Rooms: anyone can delete"` closes it; `op_leave_room`
+and `op_sweep_rooms` are how the app still does the things it legitimately did.
+
+**Why this one could be closed while the rest of #2 cannot.** Every legitimate
+room deletion in `js/` reduces to a single rule — *nobody is left in the room*.
+`handleLeave`, `handleQuit`, `handleBackButton` and both Realtime DELETE
+handlers all ask "am I the last one" and then delete; the sweeps add "a lobby
+nobody started" and "everybody went silent". **Not one depends on who is
+asking**, which is exactly what a guest cannot prove.
+
+`players` is not like that: "remove me" and "remove them" are the same request
+from somebody with no identity. `rooms` UPDATE is not either — the phase
+machine still runs in the browser. Both wait for later slices. **Do not lock
+them on the strength of this one working.**
+
+**It also fixes a real race, not just a permission.** Every caller counted the
+players it could see, concluded it was the last, and deleted. Two people
+quitting at once both see two players, both conclude somebody else is staying,
+and the room survives with nobody in it — one of the ways "two active games
+nobody was in" happened. `op_leave_room` removes the row and decides in one
+statement.
+
+Three guards ported and each verified by breaking it: a bot never keeps a room
+alive, a player with no `last_seen_at` means *cannot tell* and PROTECTS the
+room, and the two-hour age sweep touches `lobby` only — a real game can easily
+run longer.
+
+**`serverFunctionsMissing()` in `js/db/client.js`** exists because the unload
+path cannot await. The ordinary awaited calls record what they learn; the
+beacon reads it. **Unknown counts as PRESENT**, deliberately: guessing wrong
+that way leaves a player row for the stale sweep, guessing wrong the other way
+puts a phone back to deleting rooms on its own local count, which is the race
+this removes. One is untidy; the other loses a game.
+
 ## The Map
 
 A honeycomb of the question bank, above the Mastery list on the profile. The

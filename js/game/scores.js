@@ -21,6 +21,7 @@ import {
   fetchQuestionByDifficulty,
   deleteAnswersByRoom,
   deleteRoom,
+  leaveRoomOnServer,
   removePlayer,
   insertGamePlay,
   completeGamePlay,
@@ -1338,7 +1339,11 @@ async function handleQuitGame() {
   setIsLeaving(true);
   try { if (_cleanup) _cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
   try {
-    if (state.players.length <= 1) {
+    // The server decides whether this empties the room — see leaveRoomOnServer.
+    const served = await leaveRoomOnServer(state.room?.id, state.room?.playerId);
+    if (served.ok) {
+      // done
+    } else if (state.players.length <= 1) {
       await deleteRoom(state.room?.id);
     } else {
       await removePlayer(state.room?.playerId);

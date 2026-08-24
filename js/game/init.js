@@ -28,6 +28,9 @@ import {
   playerHeartbeat,
   deleteRoom,
   deleteRoomBeacon,
+  leaveRoomBeacon,
+  leaveRoomOnServer,
+  serverFunctionsMissing,
   subscribeToPlayers,
   reassignPlayerAnswers,
   appendUsedQuestionIds,
@@ -573,7 +576,12 @@ function handleBackButton() {
   setIsLeaving(true);
   cleanup();
   if (state.room && state.room.playerId) {
-    if (state.players.length <= 1) {
+    // One keepalive request that removes the player and takes the room only if
+    // it is now empty. The old pair of beacons made that judgement on this
+    // phone, from a player list that may be seconds out of date.
+    if (!serverFunctionsMissing()) {
+      leaveRoomBeacon(state.room.id, state.room.playerId);
+    } else if (state.players.length <= 1) {
       deleteRoomBeacon(state.room.id);
     } else {
       removePlayerBeacon(state.room.playerId);

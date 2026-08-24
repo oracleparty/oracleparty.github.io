@@ -220,4 +220,73 @@ BEGIN
     ('a locked wager still needs a blank answer', n::text, '2');
 END $$;
 
+-- ============================================
+-- 048 — only the rules delete a room
+-- ============================================
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  other uuid := gen_random_uuid();
+  alice uuid := gen_random_uuid();
+  bob uuid := gen_random_uuid();
+  botid uuid := gen_random_uuid();
+  res text;
+  n int;
+BEGIN
+  INSERT INTO rooms (id, code, status, created_at)
+  VALUES (rid, lpad((random()*999999)::int::text, 6, '0'), 'playing', now());
+  INSERT INTO players (id, room_id, display_name, last_seen_at, is_bot)
+  VALUES (alice, rid, 'Alice', now(), false),
+         (bob,   rid, 'Bob',   now(), false),
+         (botid, rid, 'Bot',   NULL,  true);
+
+  -- One person leaving a room with somebody still in it must not take the room.
+  res := op_leave_room(rid, alice);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('leaving a room somebody else is in just removes you', res, 'left');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the room survives', count(*)::text, '1' FROM rooms WHERE id = rid;
+
+  -- A BOT DOES NOT KEEP A ROOM ALIVE. Bob is the last human; the bot is still
+  -- sitting there, and treating it as somebody would leave the room listed
+  -- forever with nobody in it.
+  res := op_leave_room(rid, bob);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the last human out takes the room, and a bot does not count', res, 'room deleted');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'the room is really gone', count(*)::text, '0' FROM rooms WHERE id = rid;
+
+  -- ---- the sweep --------------------------------------------------------
+  -- A live game: everybody present, seconds ago. It must survive every rule.
+  INSERT INTO rooms (id, code, status, created_at)
+  VALUES (other, lpad((random()*999999)::int::text, 6, '0'), 'playing', now() - interval '5 hours');
+  INSERT INTO players (id, room_id, display_name, last_seen_at, is_bot)
+  VALUES (gen_random_uuid(), other, 'Playing', now(), false);
+  n := op_sweep_rooms();
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a game in progress survives the sweep however old it is', count(*)::text, '1'
+  FROM rooms WHERE id = other;
+
+  -- ...but a room whose people have all gone quiet for twenty minutes goes.
+  UPDATE players SET last_seen_at = now() - interval '30 minutes' WHERE room_id = other;
+  n := op_sweep_rooms();
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a room everyone went silent in is swept', count(*)::text, '0'
+  FROM rooms WHERE id = other;
+
+  -- CANNOT TELL MEANS LEAVE IT ALONE. A player with no last_seen_at at all is
+  -- not evidence of absence, and treating it as such once had hosts kicking
+  -- every player seconds after they joined.
+  INSERT INTO rooms (id, code, status, created_at)
+  VALUES (other, lpad((random()*999999)::int::text, 6, '0'), 'playing', now() - interval '5 hours');
+  INSERT INTO players (id, room_id, display_name, last_seen_at, is_bot)
+  VALUES (gen_random_uuid(), other, 'Unknown', NULL, false);
+  n := op_sweep_rooms();
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a player we cannot place protects the room', count(*)::text, '1'
+  FROM rooms WHERE id = other;
+
+  DELETE FROM rooms WHERE id = other;
+END $$;
+
 SELECT check_name, got, want FROM result ORDER BY ord;

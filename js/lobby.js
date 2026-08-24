@@ -21,6 +21,8 @@ import {
   playerHeartbeat,
   deleteRoom,
   deleteRoomBeacon,
+  leaveRoomOnServer,
+  sweepRoomsOnServer,
   promoteToHost,
   demoteHost,
   promoteToCohost,
@@ -1574,7 +1576,15 @@ async function handleLeave() {
   cleanup();
   // Bots do not keep a room alive. The last person out takes the room with
   // them, exactly as if they had been alone in it.
-  if (humanPlayers().length <= 1) {
+  //
+  // The SERVER decides which of those it is (migration 048): counting locally
+  // and then deleting is a race when two people quit at once — both see two
+  // players, both conclude somebody else is staying, and the room survives
+  // with nobody in it.
+  const served = await leaveRoomOnServer(room.id, room.playerId);
+  if (served.ok) {
+    // done — the function removed the player and took the room if it emptied
+  } else if (humanPlayers().length <= 1) {
     await deleteRoom(room.id);
   } else {
     await removePlayer(room.playerId);

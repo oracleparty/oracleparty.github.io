@@ -3,12 +3,14 @@
 // All domain modules re-exported for backward compatibility.
 // ============================================
 
+export { serverFunctionsMissing } from './db/client.js';
 export { supabase } from './db/client.js';
 
 // --- Rooms ---
 export {
   generateRoomCode, createRoom, findRoomByCode, fetchPublicRooms,
   cleanupOrphanedRooms, cleanupAbandonedRooms, deleteRoom, deleteRoomBeacon, fetchRoom,
+  leaveRoomOnServer, leaveRoomBeacon, sweepRoomsOnServer,
   updateRoomStatus, updateGameState, startClockOnServer, saveQuestionIds, appendUsedQuestionIds,
   addRoomScores, fetchRoomScores,
   getServerTimeOffset, testConnection,

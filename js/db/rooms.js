@@ -2,7 +2,7 @@
 // Oracle Party — Room Database Operations
 // ============================================
 
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './client.js';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions } from './client.js';
 import { logger, reportWriteFailure } from '../logger.js';
 import { PUBLIC_ROOMS_LIMIT, ABANDONED_ROOM_MS } from '../constants.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
@@ -240,6 +240,75 @@ export async function cleanupAbandonedRooms() {
 }
 
 /**
+ * Leave a room, and take the room with you only if nobody is left in it.
+ *
+ * ONE CALL INSTEAD OF READ-THEN-DECIDE-THEN-DELETE. Every caller in js/ used to
+ * count the players it could see, conclude it was the last one, and delete —
+ * which is a race when two people quit at once: both see two players, both
+ * conclude somebody else is staying, and the room survives with nobody in it.
+ * That is one of the ways "two active games nobody was in" happened.
+ *
+ * It also closes the hole: with migration 048 applied, `rooms` has no DELETE
+ * policy at all, so this function is the only way a room can go — and it checks
+ * the rule before it does.
+ *
+ * → { ok, outcome } — ok is false when the function is not installed, which is
+ *   the caller's cue to do it the old way.
+ */
+export async function leaveRoomOnServer(roomId, playerId = null) {
+  const { data, error } = await supabase.rpc('op_leave_room', {
+    p_room_id: roomId,
+    p_player_id: playerId,
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      logger.debug('Supabase', 'op_leave_room not installed, leaving the old way');
+      noteServerFunctions(false);
+    } else {
+      logger.error('Supabase', 'op_leave_room failed', error);
+    }
+    return { ok: false, outcome: null };
+  }
+  noteServerFunctions(true);
+  return { ok: true, outcome: data || null };
+}
+
+/**
+ * The same thing during page unload, where only a keepalive fetch survives.
+ *
+ * Deliberately mirrors deleteRoomBeacon rather than going through the client:
+ * the Supabase library's request would be cancelled with the page.
+ */
+export function leaveRoomBeacon(roomId, playerId = null) {
+  fetch(`${SUPABASE_URL}/rest/v1/rpc/op_leave_room`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ p_room_id: roomId, p_player_id: playerId }),
+    keepalive: true,
+  }).catch(() => { /* the page is going away; nothing can be reported */ });
+}
+
+/**
+ * Run the room cleanup rules server-side (migration 048).
+ *
+ * → { ok, deleted }
+ */
+export async function sweepRoomsOnServer() {
+  const { data, error } = await supabase.rpc('op_sweep_rooms');
+  if (error) {
+    if (!(error.code === 'PGRST202' || /could not find the function/i.test(error.message || ''))) {
+      logger.error('Supabase', 'op_sweep_rooms failed', error);
+    }
+    return { ok: false, deleted: 0 };
+  }
+  return { ok: true, deleted: Number(data) || 0 };
+}
+
+/**
  * Delete a room (host leaving). Cascade-deletes players/answers via DB constraints.
  */
 export async function deleteRoom(roomId) {
@@ -330,6 +399,7 @@ export async function startClockOnServer(roomId, phase, questionNumber = null) {
   if (error) {
     if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
       logger.debug('Supabase', 'op_start_clock not installed, stamping from this device');
+      noteServerFunctions(false);
     } else {
       logger.error('Supabase', 'op_start_clock failed', error);
     }

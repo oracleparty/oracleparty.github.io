@@ -585,6 +585,61 @@ export class FakeStore {
       return recorded;
     }
 
+    // ---- migration 048: only the rules delete a room -----------------------
+    //
+    // Removes the player and takes the room only if no HUMAN is left. A bot
+    // never keeps a room alive. Both deletions broadcast, because a client
+    // listening for its room disappearing is how everybody else finds out.
+    if (name === 'op_leave_room') {
+      const rooms = this.table('rooms');
+      const players = this.table('players');
+      const roomIdx = rooms.findIndex(r => String(r.id) === String(args?.p_room_id));
+      if (roomIdx === -1) return 'room deleted';
+
+      if (args?.p_player_id != null) {
+        const i = players.findIndex(p => String(p.id) === String(args.p_player_id)
+          && String(p.room_id) === String(args.p_room_id));
+        if (i !== -1) {
+          const [gone] = players.splice(i, 1);
+          this._broadcast('DELETE', 'players', null, gone);
+        }
+      }
+
+      const humansLeft = players.some(p => String(p.room_id) === String(args.p_room_id)
+        && !p.is_bot && String(p.id) !== String(args?.p_player_id));
+      if (humansLeft) return 'left';
+
+      const [goneRoom] = rooms.splice(roomIdx, 1);
+      this._broadcast('DELETE', 'rooms', null, goneRoom);
+      return 'room deleted';
+    }
+
+    if (name === 'op_sweep_rooms') {
+      const rooms = this.table('rooms');
+      const players = this.table('players');
+      const cutoff = Date.now() - 20 * 60 * 1000;
+      const twoHours = Date.now() - 2 * 60 * 60 * 1000;
+      let gone = 0;
+      for (let i = rooms.length - 1; i >= 0; i--) {
+        const r = rooms[i];
+        const mine = players.filter(p => String(p.room_id) === String(r.id));
+        const humans = mine.filter(p => !p.is_bot);
+        // No player rows at all; a lobby nobody started; or every human silent
+        // for twenty minutes. A human with no last_seen_at means CANNOT TELL
+        // and protects the room.
+        const empty = mine.length === 0;
+        const staleLobby = r.status === 'lobby' && new Date(r.created_at || 0).getTime() < twoHours;
+        const abandoned = humans.length > 0 && humans.every(p =>
+          p.last_seen_at && new Date(p.last_seen_at).getTime() <= cutoff);
+        if (empty || staleLobby || abandoned) {
+          const [goneRoom] = rooms.splice(i, 1);
+          this._broadcast('DELETE', 'rooms', null, goneRoom);
+          gone++;
+        }
+      }
+      return gone;
+    }
+
     // ---- migration 047: the server owns the clock --------------------------
     //
     // Refuses a caller whose idea of the phase or question is behind the room's,
