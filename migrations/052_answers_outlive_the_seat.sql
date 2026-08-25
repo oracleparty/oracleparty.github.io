@@ -11,13 +11,25 @@
 -- foreign key exists between the two tables, so that is a fact about the live
 -- database rather than a guess from `migrations/` (CLAUDE.md #7, #10).
 --
--- WHAT IT MEANS, and this is the part that needed the app's own behaviour to
--- pin down. A key from `answers.player_id` to `players` means deleting a player
--- must DO something to their answers, and it cannot be NO ACTION or RESTRICT:
--- those raise 23503, and the stale sweep would fail every single time it
--- removed somebody who had already answered. It removes players in real games.
--- So the action is CASCADE or SET NULL — and under either one the answers stop
--- carrying the id they were written with.
+-- WHAT IT MEANS. Embedding proves the key EXISTS; it cannot see the ON DELETE
+-- action, and this migration does not need to guess, because **all three
+-- possibilities are broken and all three are fixed by dropping it**:
+--
+--   CASCADE   the answers are deleted with the seat. Nothing to reassign, so
+--             "rejoining restores your score" silently does nothing.
+--   SET NULL  the rows survive with player_id nulled. Same outcome — the id
+--             reassignPlayerAnswers looks them up by is gone.
+--   NO ACTION / RESTRICT
+--             deleting the player RAISES 23503 instead, so removePlayer fails
+--             for anybody who has answered a round. That failure is logged and
+--             never shown, and it would leave exactly the ghost rows this
+--             project has been chasing: a seat that cannot be swept, for every
+--             player who actually played.
+--
+-- **This block records which one it was.** It captures confdeltype before
+-- dropping, so the answer ends up in the migration's own output rather than
+-- being inferred from behaviour afterwards. Say where a number came from, or
+-- do not write it down.
 --
 -- THE PROMISE THIS BREAKS. CLAUDE.md has said for months:
 --
@@ -46,11 +58,13 @@
 -- by-name DROP POLICY did nothing and reported nothing (CLAUDE.md).
 -- ============================================
 
+CREATE TEMP TABLE op052_dropped (conname text, on_delete text);
+
 DO $$
 DECLARE con record;
 BEGIN
   FOR con IN
-    SELECT c.conname
+    SELECT c.conname, c.confdeltype
       FROM pg_constraint c
       JOIN pg_class     src ON src.oid = c.conrelid
       JOIN pg_class     tgt ON tgt.oid = c.confrelid
@@ -60,6 +74,15 @@ BEGIN
        AND src.relname = 'answers'
        AND tgt.relname = 'players'
   LOOP
+    -- Recorded BEFORE the drop. Once it is gone, nothing can say what it did,
+    -- and which of the three it was decides how the bug presented to players:
+    -- CASCADE and SET NULL lose the answers, NO ACTION loses the player row.
+    INSERT INTO op052_dropped VALUES (con.conname,
+      CASE con.confdeltype WHEN 'c' THEN 'CASCADE — answers were DELETED with the seat'
+                           WHEN 'n' THEN 'SET NULL — answers survived but forgot whose they were'
+                           WHEN 'd' THEN 'SET DEFAULT'
+                           WHEN 'r' THEN 'RESTRICT — removing a player who had answered FAILED (23503)'
+                           ELSE 'NO ACTION — removing a player who had answered FAILED (23503)' END);
     EXECUTE format('ALTER TABLE public.answers DROP CONSTRAINT %I', con.conname);
   END LOOP;
 END $$;
@@ -94,9 +117,16 @@ SELECT * FROM (
               THEN 'ok'
               ELSE 'FAIL answers would now outlive their room and never be cleaned up' END
   UNION ALL
+  -- What was actually removed, and what it had been doing. This is the only
+  -- moment the answer is knowable.
+  SELECT 3, 'was: ' || conname, on_delete FROM op052_dropped
+  UNION ALL
+  SELECT 3, 'was: (nothing)', 'no key from answers to players — already fixed'
+   WHERE NOT EXISTS (SELECT 1 FROM op052_dropped)
+  UNION ALL
   -- Every foreign key left on `answers`, with what it does on delete, so the
   -- verdicts above come with the thing they were read from.
-  SELECT 3, 'answers.' || (
+  SELECT 4, 'answers.' || (
            SELECT string_agg(a.attname, ',') FROM unnest(c.conkey) k(attnum)
              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum),
          tgt.relname || '  ON DELETE ' ||

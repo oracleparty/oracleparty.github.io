@@ -1231,18 +1231,32 @@ not see this before and honestly said so** — the OpenAPI description carries n
 foreign-key annotations, which is why #9 had to be measured by hand. Embedding
 sees the relationship; it just cannot see the ON DELETE action.
 
-The app's own behaviour supplies that half. A key from `answers.player_id`
-means deleting a player must DO something to their answers, and it cannot be
-NO ACTION or RESTRICT: those raise 23503, and the stale sweep would fail every
-single time it removed somebody who had answered. It removes players in real
-games. So the action is CASCADE or SET NULL — and under either one the rows
-stop carrying the id `reassignPlayerAnswers` looks them up by.
+**And 052 does not need to know which action it was, because all three are
+broken and all three are fixed by dropping the key.** An earlier draft of this
+section asserted it had to be CASCADE or SET NULL, reasoning that NO ACTION
+would make the stale sweep fail. That was an inference dressed as a
+measurement, and it is exactly what this file exists to stop:
+
+| ON DELETE | What it did |
+|---|---|
+| `CASCADE` | the answers were deleted with the seat |
+| `SET NULL` | the rows survived having forgotten whose they were |
+| `NO ACTION` / `RESTRICT` | removing the player RAISED 23503 instead, so `removePlayer` failed for anybody who had answered — logged, never shown, and leaving a seat that cannot be swept for **every player who actually played** |
+
+That last one is worth reading twice: it is an alternative explanation for the
+ghost rows this project has been chasing, and it would have been invisible for
+the same reason as everything else here — the failure only reaches a log.
+
+**So the migration records it.** 052 captures `confdeltype` before dropping and
+prints it, because once the key is gone nothing can say what it did. Verified
+against a real Postgres in all three shapes: each is dropped, each is named,
+and `rooms` keeps its cascade every time.
 
 **A player whose phone died for two minutes mid-game has always come back to
 nothing**, and nothing said so: the reassignment reported success having moved
 zero rows, which is indistinguishable from having had nothing to move. Every
-scenario passed, because the fake store has never cascaded — it was asserting
-the world we wanted rather than the one we had.
+scenario passed, because the fake store has never had this key at all — it was
+asserting the world we wanted rather than the one we had.
 
 Migration 052 drops the key, exactly as 033 did for `game_plays` and for the
 same reason: an answer records that a round was played, and the seat is how

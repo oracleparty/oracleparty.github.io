@@ -784,13 +784,15 @@ try {
 //   * NO relationship  -> deleting a player leaves its answers untouched, with
 //                         their player_id intact. Reassignment works and the
 //                         promise holds.
-//   * A relationship   -> deleting a player must DO something to them, and it
-//                         cannot be NO ACTION or RESTRICT: those raise 23503
-//                         and the stale sweep would fail every time it removed
-//                         somebody who had answered. It removes players in real
-//                         games, so the action is CASCADE or SET NULL — and
-//                         under either one the rows no longer carry the old
-//                         player_id. There is nothing left to reassign.
+//   * A relationship   -> deleting a player must DO something to them, and
+//                         every possibility is broken: CASCADE deletes the
+//                         answers, SET NULL strips the id off them, and
+//                         NO ACTION / RESTRICT raises 23503 so the player row
+//                         cannot be removed at all — leaving a seat nothing can
+//                         sweep for everybody who actually played. Embedding
+//                         cannot see WHICH; migration 052 records it while
+//                         dropping the key, which is the only moment it can be
+//                         known.
 //
 // So a relationship here means the rejoin promise has never been kept, long
 // before migration 049 revoked anything.
@@ -821,7 +823,8 @@ console.log('\n--- CAN A REJOINING PLAYER RECOVER THEIR ANSWERS? ---');
     console.log('  *** A RELEASED SEAT TAKES ITS ANSWERS WITH IT. ***');
     console.log('      reassignPlayerAnswers / op_reassign_answers have nothing to move, so');
     console.log('      "rejoining restores your score" is NOT true and never has been.');
-    console.log('      Fix: drop the key, the way migration 033 did for game_plays — an');
+    console.log('      Fix: run migrations/052_answers_outlive_the_seat.sql — it drops the');
+    console.log('      key the way 033 did for game_plays, and reports what it had been doing. An');
     console.log('      answer is a record of a round that was played, and once the seat is');
     console.log('      gone there is nothing left for it to point at.');
   } else if (toPlayers.linked === false) {
