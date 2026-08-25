@@ -459,22 +459,19 @@ BEGIN
 
   -- ---- 2. A returning player gets their own answers back -------------------
   --
-  -- WRITING THIS FOUND SOMETHING THIS REPO CANNOT ANSWER. The scratch schema
-  -- gives answers.player_id an ON DELETE CASCADE, and under it the first
-  -- version of this block could not be made to pass: deleting the abandoned
-  -- seat took its answers with it, so there was never anything to reassign.
+  -- WRITING THIS FOUND A REAL BUG, and it took a live measurement to settle.
+  -- The first version could not be made to pass: the scratch schema gave
+  -- answers.player_id an ON DELETE CASCADE, so deleting the abandoned seat took
+  -- its answers with it and there was never anything to reassign.
   --
-  -- That FK is INFERRED, not measured (see the header of scratch-schema.sql).
-  -- Which way it really goes decides whether reassignPlayerAnswers has EVER
-  -- done anything on the live site — if answers cascade, a released seat takes
-  -- the score with it and the rejoin promise in CLAUDE.md was never kept, long
-  -- before migration 049 revoked the UPDATE. It has to be measured live; the
-  -- SQL to do it is in migration 051's header.
+  -- That FK was inferred here, but the live database really had one — measured
+  -- 2026-08-25 by asking PostgREST to embed `answers?select=id,players(id)`,
+  -- which only resolves when a relationship exists. So a released seat took the
+  -- score with it, and "rejoining restores your score" had never been true on
+  -- the live site, long before migration 049 revoked anything.
   --
-  -- So this proves the LOGIC in the world where the function has work to do,
-  -- and the constraint is dropped for exactly that reason and restored after.
-  -- In the cascade world every rule below is trivially satisfied by there being
-  -- no orphans at all, and the function is a harmless no-op.
+  -- Migration 052 drops the key, and the scratch schema no longer declares it,
+  -- so the rules below now run in the world the app actually ships in.
   INSERT INTO players (id, room_id, display_name, joined_at)
   VALUES (ghost, rid, 'Ghost', now());
   -- op_submit_answer refuses any round that is not the room's current one — the
@@ -489,7 +486,6 @@ BEGIN
   INSERT INTO players (id, room_id, display_name, joined_at)
   VALUES (returner, rid, 'Ghost', now());
 
-  ALTER TABLE answers DROP CONSTRAINT IF EXISTS answers_player_id_fkey;
   DELETE FROM players WHERE id = ghost;
 
   -- The returner already wrote an answer for round 0 as themselves — they came
@@ -539,8 +535,6 @@ BEGIN
   FROM answers WHERE room_id = rid AND player_id = guest AND question_number = 99;
   DELETE FROM answers WHERE room_id = rid AND question_number = 99;
 
-  ALTER TABLE answers ADD CONSTRAINT answers_player_id_fkey
-    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE;
 
   -- ---- 3. Only a bot can be answered for ----------------------------------
   PERFORM op_reset_answers(rid, host);

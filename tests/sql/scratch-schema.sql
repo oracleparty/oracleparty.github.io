@@ -74,7 +74,19 @@ CREATE TABLE IF NOT EXISTS players (
 CREATE TABLE IF NOT EXISTS answers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid REFERENCES rooms(id) ON DELETE CASCADE,
-  player_id uuid REFERENCES players(id) ON DELETE CASCADE,
+  -- NO FOREIGN KEY TO players, and that is the point of migration 052.
+  --
+  -- The live table HAD one — measured 2026-08-25 by asking PostgREST to embed
+  -- `answers?select=id,players(id)`, which only resolves when a relationship
+  -- exists. It meant a released seat took its answers with it, so "rejoining
+  -- restores your score" had never been true. 052 drops it, exactly as 033
+  -- dropped game_plays' keys and for the same reason: an answer records that a
+  -- round was played, and the seat is how that person was reached at the time,
+  -- not what the record is about.
+  --
+  -- The key to `rooms` stays. Answers really are scratch data for one room, and
+  -- that cascade is now the only thing stopping orphans accumulating.
+  player_id uuid,
   question_number int NOT NULL,
   question_id uuid,
   wager int,

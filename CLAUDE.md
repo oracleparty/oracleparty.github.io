@@ -1194,7 +1194,9 @@ The agreed model — implemented except where marked:
   punished beyond the loss itself.
 - **`HOST_HANDOVER_MS` (30s)** — the game must not stall behind one phone.
 - **`STALE_TIMEOUT_MS`** — the seat is released. Rejoining reassigns previous
-  answers to the new player row, so score and history survive.
+  answers to the new player row, so score and history survive. **This needs
+  migration 052 run; before it, the answers died with the seat and this was
+  simply untrue.** See "Rejoin keeps your history" below.
 - **Succession order: co-host first** (designated heir, can already advance),
   then longest-present. Absent players can neither hold nor inherit the role,
   and **neither can a bot** — a room whose host is a bot is a room nobody can
@@ -1213,6 +1215,47 @@ route. sessionStorage was used before, which dies with the tab: history
 survived a refresh but not an actual return. Reclaiming also has to run
 outside the missing-row branch, because a player returning through the join
 screen arrives with a freshly created row and would skip it.
+
+**AND UNTIL MIGRATION 052 THAT WHOLE PARAGRAPH WAS FALSE.** Measured on
+2026-08-25, by the CI probe:
+
+```
+--- CAN A REJOINING PLAYER RECOVER THEIR ANSWERS? ---
+  answers -> players: RELATED
+```
+
+PostgREST resolves an embedded `answers?select=id,players(id)` only when a
+foreign key exists between the two tables, so that is a fact about the live
+database rather than another inference from `migrations/`. **The probe could
+not see this before and honestly said so** — the OpenAPI description carries no
+foreign-key annotations, which is why #9 had to be measured by hand. Embedding
+sees the relationship; it just cannot see the ON DELETE action.
+
+The app's own behaviour supplies that half. A key from `answers.player_id`
+means deleting a player must DO something to their answers, and it cannot be
+NO ACTION or RESTRICT: those raise 23503, and the stale sweep would fail every
+single time it removed somebody who had answered. It removes players in real
+games. So the action is CASCADE or SET NULL — and under either one the rows
+stop carrying the id `reassignPlayerAnswers` looks them up by.
+
+**A player whose phone died for two minutes mid-game has always come back to
+nothing**, and nothing said so: the reassignment reported success having moved
+zero rows, which is indistinguishable from having had nothing to move. Every
+scenario passed, because the fake store has never cascaded — it was asserting
+the world we wanted rather than the one we had.
+
+Migration 052 drops the key, exactly as 033 did for `game_plays` and for the
+same reason: an answer records that a round was played, and the seat is how
+that person was reached at the time, not what the record is ABOUT. **The key to
+`rooms` stays** — answers really are scratch data for one room, and that
+cascade is now the only thing stopping orphans accumulating.
+
+**The lesson is about the shape of the promise, not the key.** This one was
+written down, believed, quoted into three other sections, and load-bearing for
+`op_reassign_answers` in migration 051 — a function built to move rows that
+were never there. Nothing failed, because the failure mode of "recover what is
+gone" is silence. **When a feature's success and its total absence look
+identical, go and measure the thing it depends on.**
 
 `checkStalePresence` re-fetches players on **every** call. It used to do so
 every third call, leaving the local view of `last_seen_at` up to 90s stale, so
@@ -1825,23 +1868,12 @@ Verified by putting each old path back:
 which is how it shipped broken and stayed that way. A control with no test is a
 control nobody is checking, the same lesson as a page with no mock.
 
-**One thing here is NOT measured, and it decides whether rejoin ever worked.**
-Does `answers.player_id` carry `ON DELETE CASCADE` live? If it does, a released
-seat takes its answers with it, there is nothing left to reassign, and the
-rejoin promise in this file was never kept — long before 049 revoked anything.
-`tests/sql/scratch-schema.sql` guesses that it does, and the guess is inferred,
-not probed (the project's OpenAPI output carries no foreign-key annotations,
-see #9). Run this in the SQL Editor to settle it:
-
-```sql
-SELECT conname, confdeltype   -- 'c' = cascade, 'a' = no action, 'n' = set null
-FROM pg_constraint
-WHERE conrelid = 'answers'::regclass AND contype = 'f';
-```
-
-`op_reassign_answers` is correct either way — in the cascade world it is a
-harmless no-op — so nothing is blocked on the answer. But **do not write down
-that rejoin restores a score until that query has been run.**
+**SETTLED 2026-08-25, and the answer was the bad one.** `answers.player_id`
+DID carry a key to `players` on the live database, so a released seat took its
+answers with it and `op_reassign_answers` was moving rows that were not there.
+Migration 052 drops it. The measurement, the reasoning and what it means for a
+player are under "Rejoin keeps your history"; the probe now reports it on every
+run, so it can never go unmeasured again.
 
 **Slice 5 had done the same thing to `rooms`, and that was found only by going
 looking for it.** 048 revoked DELETE on `rooms`, and two more things went with

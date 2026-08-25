@@ -51,6 +51,7 @@ const MIGRATIONS = [
   '049_only_a_host_changes_a_verdict.sql',
   '050_blank_fill_keeps_the_locked_wager.sql',
   '051_the_three_writes_049_took_away.sql',
+  '052_answers_outlive_the_seat.sql',
 ];
 
 // 046 touches rooms, players and answers, none of which any migration in this
