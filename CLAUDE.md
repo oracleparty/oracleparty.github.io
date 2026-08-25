@@ -2663,6 +2663,15 @@ the wrapper above read as two more. **Verified by reintroducing the original
 bug** — dropping `state.room.id` from the `amendQuestionHistory` call in
 `reveal.js` — which it names by file, line and signature.
 
+`scripts/check-rpc-args.mjs` compares every `.rpc('name', { ... })` against the
+parameter names the migrations declare. **PostgREST resolves a function by its
+ARGUMENT NAMES**, so one typo answers HTTP 404 — indistinguishable from a
+function that was never created — and `functionMissing()` reads that as absent
+and silently takes the fallback. #6 records the probe learning this the hard
+way; this says it before a deploy rather than after. It skips anything it cannot
+read and prints the count. Verified both ways: misnaming `p_answer_id` and
+omitting a defaultless parameter are each reported by file, line and signature.
+
 `tests/migration-policies.test.js` fails on any migration comparing
 `auth.uid()` to `profiles.id` instead of `profiles.user_id` — the mistake that
 made migration 024's admin policy grant nothing while looking installed (#5).

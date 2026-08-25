@@ -23,6 +23,11 @@ jobs:
       # once already: amendQuestionHistory gained a required roomId and a call
       # site that forgot it silently stopped correcting anybody's history.
       - run: node scripts/check-arity.mjs
+      # An RPC argument name that does not match the function's parameter name.
+      # PostgREST resolves functions BY NAME, so a typo answers 404 — the same
+      # answer as a function that was never created — and the client reads that
+      # as "not installed" and silently takes its fallback.
+      - run: node scripts/check-rpc-args.mjs
 
   # The game is moving off the host's phone, which means the rule for judging an
   # answer now exists twice: once in js/utils.js, which decides what the player
