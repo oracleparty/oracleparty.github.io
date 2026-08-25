@@ -96,7 +96,17 @@ export async function fetchPublicRooms() {
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const { data: rooms, error } = await supabase
     .from('rooms')
-    .select('id, code, host_name, category, who_can_join, questions_per_game, question_timer, status, created_at')
+    // `subcategory` is NOT optional here even though nothing about the query
+    // needs it: join.js renders each row with
+    // resolveCategoryLabel(room.category, room.subcategory), so leaving it out
+    // made every public game advertise itself by CATEGORY only. A room hosting
+    // Ancient History appeared as plain "History", and somebody browsing the
+    // list could not see what they were about to join.
+    //
+    // It was invisible in the harness until the fake store started honouring
+    // the column list — before that it handed back whole rows and the label
+    // looked right here while being wrong live.
+    .select('id, code, host_name, category, subcategory, who_can_join, questions_per_game, question_timer, status, created_at')
     .in('status', ['lobby', 'playing'])
     .eq('who_can_join', 'anyone')
     .gt('created_at', twoHoursAgo)

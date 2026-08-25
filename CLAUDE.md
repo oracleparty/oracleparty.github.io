@@ -2547,6 +2547,21 @@ Only a plain comma list is honoured; `*`, embedded resources and aliases return
 whole rows rather than being guessed at, because a projection that is wrong in
 the other direction hides bugs just as well.
 
+**Then the same pattern was hunted everywhere else, and found once more.**
+`fetchPublicRooms` omitted `subcategory`, and `join.js` renders each row with
+`resolveCategoryLabel(room.category, room.subcategory)` — so every public game
+advertised itself by CATEGORY alone. A room hosting Ancient History appeared as
+plain "History", and somebody browsing the list could not see what they were
+about to join. `scenario-join` now hosts its public room on a real subcategory,
+which is the only way the label can be exercised at all; hosting on "All" could
+never have shown it. Verified by dropping the column again.
+
+The other narrow selects were traced to their consumers and are sound: the
+global board reads `correct_answers` on purpose (points are volume, not
+proficiency), the admin's online drill uses only the two columns it asks for,
+and every `rowProficiency` caller is fed by `select('*')`. **A query is only as
+right as what its one consumer reads** — check the consumer, not the query.
+
 **`store.denyWrites(table)` simulates an RLS refusal** — zero rows, no error,
 exactly as Postgres behaves when a policy denies a write. This is the most
 misleading thing the database does and the direct cause of #4 and #5, so it is

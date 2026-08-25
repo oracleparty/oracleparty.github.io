@@ -26,7 +26,9 @@ function seedQuestions(store, n = 40) {
       correct_answer: `Answer ${i}`,
       acceptable_answers: [],
       categories: [CATEGORY],
-      subcategory: null,
+      // Half filed under a real subcategory, so a room can be hosted on one and
+      // the public list has something specific to advertise.
+      subcategory: i % 2 === 0 ? 'ancient' : null,
       difficulty: 'medium',
       format: 'open',
       fun_fact: null,
@@ -61,12 +63,22 @@ try {
   }
 
   /** Host a room with a given visibility, returning its code. */
-  async function hostRoom(robot, whoCanJoin) {
+  async function hostRoom(robot, whoCanJoin, subcategory = null) {
     await robot.goto('host.html');
     await robot.page.waitForSelector('.category-card', { timeout: 20000 });
     await robot.page.click(`.category-card[data-category="${CATEGORY}"]`);
     await robot.page.waitForTimeout(800);
-    await robot.page.click('text=/^All /');
+    // A specific subcategory when asked for one — the public games list renders
+    // resolveCategoryLabel(category, subcategory), and until fetchPublicRooms
+    // started selecting that column every public game advertised itself by
+    // category alone. Hosting on "All" could never have shown it.
+    if (subcategory) {
+      const pick = robot.page.locator(`[data-subcategory="${subcategory}"]`).first();
+      if (await pick.isVisible().catch(() => false)) await pick.click().catch(() => {});
+      else await robot.page.click('text=/^All /');
+    } else {
+      await robot.page.click('text=/^All /');
+    }
     await robot.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
     await robot.page.click('[data-setting="questionsPerGame"] [data-value="5"]').catch(() => {});
     // Visibility is a labelled toggle group rather than an id.
@@ -81,7 +93,7 @@ try {
 
   // ---- one public room, one private room ----
   const publicHost = await seat('Alice');
-  const publicCode = await hostRoom(publicHost, 'anyone');
+  const publicCode = await hostRoom(publicHost, 'anyone', 'ancient');
   const privateHost = await seat('Dave');
   const privateCode = await hostRoom(privateHost, 'invite');
 
@@ -132,6 +144,22 @@ try {
   const showsPrivate = listed.some(t => t.includes(privateCode));
   if (!showsPublic) problems.push('a public game did not appear in the public games list');
   if (showsPrivate) problems.push('AN INVITE-ONLY GAME WAS LISTED PUBLICLY — private rooms are exposed');
+
+  // The room was hosted on a SUBCATEGORY, and the listing must say so. The row
+  // renders resolveCategoryLabel(category, subcategory), and fetchPublicRooms
+  // did not select that column — so every public game advertised itself by
+  // category alone and somebody browsing could not see what they were joining.
+  // Only checked when the room really was stored with one, so a change to the
+  // host UI shows up as a skip rather than as a false accusation.
+  const publicRow = listed.find(t => t.includes(publicCode)) || '';
+  if (publicRoom?.subcategory) {
+    note(`public room is filed under "${publicRoom.subcategory}"; row reads: ${publicRow.slice(0, 70)}`);
+    if (!/ancient/i.test(publicRow)) {
+      problems.push(`the public games list advertises the category only — "${publicRow.slice(0, 70)}" never mentions the subcategory the room is actually on`);
+    }
+  } else {
+    note('public room stored no subcategory — subcategory labelling not exercised');
+  }
 
   // ============================================================
   // 3. JOINING FROM THE LIST
