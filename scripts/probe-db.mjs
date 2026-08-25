@@ -766,6 +766,74 @@ try {
 }
 
 // ============================================
+// DOES A REJOINING PLAYER GET THEIR SCORE BACK?
+//
+// CLAUDE.md promises they do: the seat is released after STALE_TIMEOUT_MS and
+// "rejoining reassigns previous answers to the new player row, so score and
+// history survive". reassignPlayerAnswers finds those rows BY THE OLD
+// player_id — so the promise is only true if the rows still carry it after the
+// player row is gone. Nobody has ever checked, and the section above honestly
+// reports that the OpenAPI description cannot say.
+//
+// PostgREST's EMBEDDING can, without a password and without writing anything.
+// `answers?select=id,players(id)` only resolves when PostgREST knows a
+// relationship between the two tables; with none it answers 400 / PGRST200.
+//
+// That is half the fact, and the app's own behaviour supplies the other half:
+//
+//   * NO relationship  -> deleting a player leaves its answers untouched, with
+//                         their player_id intact. Reassignment works and the
+//                         promise holds.
+//   * A relationship   -> deleting a player must DO something to them, and it
+//                         cannot be NO ACTION or RESTRICT: those raise 23503
+//                         and the stale sweep would fail every time it removed
+//                         somebody who had answered. It removes players in real
+//                         games, so the action is CASCADE or SET NULL — and
+//                         under either one the rows no longer carry the old
+//                         player_id. There is nothing left to reassign.
+//
+// So a relationship here means the rejoin promise has never been kept, long
+// before migration 049 revoked anything.
+// ============================================
+
+console.log('\n--- CAN A REJOINING PLAYER RECOVER THEIR ANSWERS? ---');
+{
+  const probeEmbed = async (child) => {
+    const r = await req(`answers?select=id,${child}(id)&limit=1`);
+    const code = pgCode(r.body);
+    if (r.status >= 200 && r.status < 300) return { linked: true, code };
+    if (code === 'PGRST200' || /could not find a relationship/i.test(r.body || '')) {
+      return { linked: false, code };
+    }
+    return { linked: null, code, status: r.status };
+  };
+
+  const toPlayers = await probeEmbed('players');
+  const toRooms = await probeEmbed('rooms');
+
+  const say = (label, r) =>
+    console.log(`  answers -> ${label}: ${
+      r.linked === true ? 'RELATED' : r.linked === false ? 'no relationship' : `cannot tell (${r.status} ${r.code || ''})`}`);
+  say('players', toPlayers);
+  say('rooms', toRooms);
+
+  if (toPlayers.linked === true) {
+    console.log('  *** A RELEASED SEAT TAKES ITS ANSWERS WITH IT. ***');
+    console.log('      reassignPlayerAnswers / op_reassign_answers have nothing to move, so');
+    console.log('      "rejoining restores your score" is NOT true and never has been.');
+    console.log('      Fix: drop the key, the way migration 033 did for game_plays — an');
+    console.log('      answer is a record of a round that was played, and once the seat is');
+    console.log('      gone there is nothing left for it to point at.');
+  } else if (toPlayers.linked === false) {
+    console.log('  A released seat leaves its answers behind, carrying the old player_id.');
+    console.log('  Reassignment has something to work with, and the rejoin promise holds.');
+  } else {
+    console.log('  Could not establish it from here. Run the FOREIGN KEYS section of');
+    console.log('  scripts/inspect-db.sql in the SQL editor and read confdeltype.');
+  }
+}
+
+// ============================================
 // QUESTIONS FILED WHERE NOTHING CAN FIND THEM
 //
 // `questions.subcategory` is free text with no constraint and no foreign key.
