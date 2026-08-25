@@ -2599,6 +2599,28 @@ imports `phases.js`. Importing each module to catch this does **not** work:
 these files pull the Supabase client from `esm.sh`, and that resolution fails
 first, masking the syntax error behind an unrelated one.
 
+`scripts/check-arity.mjs` fails when a project function is CALLED with fewer
+arguments than it requires. JavaScript does not complain — the missing one is
+simply `undefined` — and that shipped once already: `amendQuestionHistory`
+gained a required `roomId` when migration 041 moved it behind a SECURITY
+DEFINER function, and a call site that forgot it silently stopped correcting
+anybody's history. Nothing else could see it: the unit tests never touch that
+module, and module-integrity only checks that a called name is IMPORTED.
+
+**It reads nothing it cannot read with certainty**, and prints how many calls it
+skipped for that reason (currently 144 of 571). Only exported `function`
+declarations with bracket-free parameter lists, only bare `name(` calls, only
+argument lists with no nested brackets, arrow functions or ternaries — and names
+a file declares locally are excluded, because `question.js` wraps
+`getServerTimeLeft` under an alias and every call to the wrapper otherwise reads
+as passing nothing.
+
+Two rounds of false positives were fixed before it was trusted: blanking string
+literals made `f('a')` read as `f()` (six findings), and local shadowing made
+the wrapper above read as two more. **Verified by reintroducing the original
+bug** — dropping `state.room.id` from the `amendQuestionHistory` call in
+`reveal.js` — which it names by file, line and signature.
+
 `tests/migration-policies.test.js` fails on any migration comparing
 `auth.uid()` to `profiles.id` instead of `profiles.user_id` — the mistake that
 made migration 024's admin policy grant nothing while looking installed (#5).

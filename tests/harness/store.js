@@ -59,6 +59,23 @@ export class FakeStore {
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     // Doors the LIVE database has shut, so the fake refuses what it refuses.
     // See _shutDoor below — this is not a scenario knob, it is the schema.
+    // UNIQUE indexes the live database actually has. Measured, not invented:
+    // CLAUDE.md #2 records that answers, question_feedback and game_plays each
+    // carry the index their onConflict needs (checked because a missing one
+    // raises 42P10 and kills every write through that path), and rooms.code is
+    // unique because the app has a 23505 retry loop built around it.
+    //
+    // DELIBERATELY ABSENT: friend_requests(sender_id, receiver_id) and any pair
+    // key on friendships. Migration 003 declares them and the live tables do
+    // NOT have them — three rows for one pair were found on the owner's own
+    // account. Adding them here would make the harness stricter than production
+    // and hide exactly the duplicate-row bugs that shipped (CLAUDE.md #10).
+    this._uniqueIndexes = new Map([
+      ['rooms',             [['code']]],
+      ['answers',           [['room_id', 'player_id', 'question_number']]],
+      ['question_feedback', [['question_id', 'voter_id']]],
+      ['game_plays',        [['room_id', 'player_id']]],
+    ]);
     this._shutDoors = new Map([
       ['answers', new Set(['update', 'delete'])],   // migrations 049 + 050
       ['rooms',   new Set(['delete'])],             // migration 048
@@ -461,9 +478,19 @@ export class FakeStore {
         const incoming = Array.isArray(payload) ? payload : [payload];
         const created = [];
         for (const item of incoming) {
-          // Unique room codes, so the app's 23505 retry path stays reachable.
-          if (table === 'rooms' && item.code && rows.some(r => r.code === item.code)) {
-            return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+          // UNIQUE indexes. A plain INSERT that collides raises 23505 and the
+          // whole statement writes nothing — which is how the app's room-code
+          // retry loop is reachable, and how a second rating on one question by
+          // one person is refused. The store used to enforce only rooms.code,
+          // so every other collision silently succeeded here and failed live.
+          const dup = (this._uniqueIndexes.get(table) || []).find(cols =>
+            cols.every(c => item[c] != null)
+            && rows.some(r => cols.every(c => String(r[c]) === String(item[c]))));
+          if (dup) {
+            return { data: null, error: {
+              code: '23505',
+              message: `duplicate key value violates unique constraint on ${table} (${dup.join(', ')})`,
+            } };
           }
           const row = { id: newId(table), created_at: new Date().toISOString(), ...item };
           // CHECK constraints, evaluated on the row as it would be stored.

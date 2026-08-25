@@ -18,6 +18,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # Called with fewer arguments than the function requires. JavaScript does
+      # not complain — the missing one is simply `undefined` — so this shipped
+      # once already: amendQuestionHistory gained a required roomId and a call
+      # site that forgot it silently stopped correcting anybody's history.
+      - run: node scripts/check-arity.mjs
 
   # The game is moving off the host's phone, which means the rule for judging an
   # answer now exists twice: once in js/utils.js, which decides what the player
