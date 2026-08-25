@@ -146,6 +146,45 @@ export class FakeStore {
     purge('profiles', r => String(r.user_id) === String(uid));
   }
 
+  /**
+   * Everything that dies with a room, because the live database says so.
+   *
+   * MEASURED, not assumed. Migration 052's output on the live project reported
+   * `answers.room_id -> rooms ON DELETE CASCADE`, and CLAUDE.md records that
+   * chat disappears with its room the same way. Players plainly do too — a
+   * deleted room leaves nobody behind in it.
+   *
+   * `game_plays` deliberately does NOT: migration 033 dropped its keys to both
+   * rooms and players precisely so a play record would stop being destroyed
+   * seconds after it was written.
+   *
+   * And `answers.player_id` no longer cascades at all as of 052, which is what
+   * lets a rejoining player recover their score. So a PLAYER deletion takes
+   * nothing with it, and only the room does.
+   *
+   * The fake store had none of this and simply left the rows behind. That is
+   * the CLAUDE.md #10 gap in its usual direction: the harness allowing what the
+   * real database would already have swept away.
+   */
+  _deleteRoomCascade(roomId) {
+    const rooms = this.table('rooms');
+    const idx = rooms.findIndex(r => String(r.id) === String(roomId));
+    if (idx === -1) return false;
+
+    for (const child of ['answers', 'players', 'chat_messages']) {
+      const rows = this.table(child);
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (String(rows[i].room_id) !== String(roomId)) continue;
+        const [gone] = rows.splice(i, 1);
+        this._broadcast('DELETE', child, null, gone);
+      }
+    }
+
+    const [goneRoom] = rooms.splice(idx, 1);
+    this._broadcast('DELETE', 'rooms', null, goneRoom);
+    return true;
+  }
+
   denyWrites(table) { this._denied.add(table); }
   /** Undo denyWrites. */
   allowWrites(table) { this._denied.delete(table); }
@@ -883,8 +922,7 @@ export class FakeStore {
         && !p.is_bot && String(p.id) !== String(args?.p_player_id));
       if (humansLeft) return 'left';
 
-      const [goneRoom] = rooms.splice(roomIdx, 1);
-      this._broadcast('DELETE', 'rooms', null, goneRoom);
+      this._deleteRoomCascade(args.p_room_id);
       return 'room deleted';
     }
 
@@ -906,8 +944,7 @@ export class FakeStore {
         const abandoned = humans.length > 0 && humans.every(p =>
           p.last_seen_at && new Date(p.last_seen_at).getTime() <= cutoff);
         if (empty || staleLobby || abandoned) {
-          const [goneRoom] = rooms.splice(i, 1);
-          this._broadcast('DELETE', 'rooms', null, goneRoom);
+          this._deleteRoomCascade(r.id);
           gone++;
         }
       }
@@ -928,12 +965,7 @@ export class FakeStore {
       const admin = me && this.table('profiles').some(p =>
         String(p.user_id) === String(me) && p.is_admin);
       if (!admin) return false;
-      const rooms = this.table('rooms');
-      const idx = rooms.findIndex(r => String(r.id) === String(args?.p_room_id));
-      if (idx === -1) return false;
-      const [gone] = rooms.splice(idx, 1);
-      this._broadcast('DELETE', 'rooms', null, gone);
-      return true;
+      return this._deleteRoomCascade(args?.p_room_id);
     }
 
     // ---- migration 047: the server owns the clock --------------------------

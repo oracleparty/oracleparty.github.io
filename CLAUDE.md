@@ -1901,6 +1901,14 @@ So `insertBlankAnswers` (DO NOTHING) survived 049 untouched, `upsertAnswers`
 started throwing where anyone could see it, and the two plain statements died
 in silence — which is why those were the two that stayed broken.
 
+**The fake store also cascades what the room cascades** (`_deleteRoomCascade`),
+because deleting a room really does take its players, answers and chat with it
+— `answers.room_id -> rooms ON DELETE CASCADE` is measured, from migration 052's
+own output. `game_plays` deliberately does not, since 033 dropped its keys, and
+since 052 a PLAYER deletion takes nothing at all. The store used to leave every
+one of those rows behind: the #10 gap in its usual direction, the harness
+allowing what the real database would already have swept away.
+
 **The fake store now shuts the same doors** (`_shutDoors` in
 `tests/harness/store.js`), with all three shapes reproduced. It is seeded from
 the migrations and is not a scenario knob: it is the schema. Before this the
