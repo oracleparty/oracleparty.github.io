@@ -1920,10 +1920,23 @@ verification asked `WHERE tablename = 'answers'` with no `schemaname`, while
 every DROP loop is correctly confined to `public`. `pg_policies` spans the whole
 database, so the check could report FAIL for a policy the fix was never going to
 touch. **A verification must ask exactly the question its fix answers**, which
-is the same lesson as 048's single `cmd` value wearing different clothes. The
-migration now ends with a commented-out diagnostic that lists every policy on
-any table named `answers`, with its schema — because when a check and a fix
-disagree, the thing to do is look, not reason.
+is the same lesson as 048's single `cmd` value wearing different clothes.
+
+**050's DROP LOOP NEVER TOOK EFFECT ON THE LIVE DATABASE, and only looking
+established it.** 051 came back with `door_still_shut` FAIL and everything else
+ok. Two explanations fitted — a policy in `public` that 050's block never
+removed, or one on an `answers` table in another schema, which would not be the
+game's table at all — and the ok/FAIL cell could not tell them apart. Listing
+every policy on any table named `answers`, in every schema, settled it in one
+run: nothing outside `public`, so the offending policy was the app's and had
+survived 050. Why is not known; the likeliest is that the paste errored partway
+and the SQL editor stopped.
+
+**So a check that can fail now prints what it saw.** 051's verification is one
+result set: the verdicts, then every policy on `answers` and `rooms` with its
+schema, on every run whether it passes or not. Settling this cost a round trip
+to the owner that the evidence would have saved. **When a check and a fix
+disagree, the thing to do is look, not reason.**
 
 `rooms` UPDATE deliberately stays open — the phase machine still runs in the
 browser — and 051 asserts that too, because a lockdown that stops a game

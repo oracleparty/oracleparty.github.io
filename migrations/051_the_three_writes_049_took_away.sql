@@ -318,60 +318,53 @@ END $$;
 -- That is the same family of mistake as 048 verifying a single `cmd` value:
 -- the check must ask exactly the question the fix answers.
 -- --------------------------------------------
-SELECT
-  CASE WHEN to_regprocedure('op_reset_answers(uuid,uuid)') IS NOT NULL
-       THEN 'ok' ELSE 'FAIL Play Again cannot clear the last game' END AS play_again,
-  CASE WHEN to_regprocedure('op_reassign_answers(uuid,uuid,uuid)') IS NOT NULL
-       THEN 'ok' ELSE 'FAIL rejoining loses your score' END AS rejoin,
-  CASE WHEN to_regprocedure('op_bot_answer(uuid,uuid,int,uuid,int,text,boolean)') IS NOT NULL
-       THEN 'ok' ELSE 'FAIL a bot cannot answer the final question' END AS bots,
-  CASE WHEN to_regprocedure('op_admin_end_room(uuid)') IS NOT NULL
-       THEN 'ok' ELSE 'FAIL the admin cannot end a stuck room' END AS end_room,
-  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
-                         WHERE schemaname = 'public' AND tablename = 'answers'
-                           AND cmd IN ('UPDATE','DELETE','ALL'))
-       THEN 'ok' ELSE 'FAIL a stranger can still edit a score' END AS door_still_shut,
-  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
-                         WHERE schemaname = 'public' AND tablename = 'rooms'
-                           AND cmd IN ('DELETE','ALL'))
-       THEN 'ok' ELSE 'FAIL a stranger can still delete a live room' END AS rooms_door,
-  CASE WHEN EXISTS (SELECT 1 FROM pg_policies
-                     WHERE schemaname = 'public' AND tablename = 'rooms'
-                       AND cmd IN ('UPDATE','ALL'))
-       THEN 'ok' ELSE 'FAIL nobody can advance a game' END AS rooms_still_playable;
-
-
--- --------------------------------------------
--- IF door_still_shut READS "FAIL", RUN THIS.
+-- ONE RESULT SET, AND A FAILURE CARRIES ITS OWN EVIDENCE.
 --
--- It re-runs the shut-the-door step for `answers` and then LISTS every policy
--- on a table called `answers` anywhere in the database, so the answer is
--- visible rather than inferred. Two things it distinguishes:
---
---   * a policy in `public` that the earlier block never removed — meaning
---     migration 050's DO block did not run, or errored partway;
---   * a policy on an `answers` table in some OTHER schema, which is not the
---     app's table and is not a hole in the game at all.
--- --------------------------------------------
--- DO $$
--- DECLARE pol record;
--- BEGIN
---   IF NOT EXISTS (SELECT 1 FROM pg_policies
---                   WHERE schemaname='public' AND tablename='answers' AND cmd='SELECT') THEN
---     EXECUTE 'CREATE POLICY "Answers: anyone can read" ON public.answers FOR SELECT USING (true)';
---   END IF;
---   IF NOT EXISTS (SELECT 1 FROM pg_policies
---                   WHERE schemaname='public' AND tablename='answers' AND cmd='INSERT') THEN
---     EXECUTE 'CREATE POLICY "Answers: anyone can insert" ON public.answers FOR INSERT WITH CHECK (true)';
---   END IF;
---   FOR pol IN SELECT policyname FROM pg_policies
---               WHERE schemaname='public' AND tablename='answers'
---                 AND cmd IN ('UPDATE','DELETE','ALL')
---   LOOP
---     EXECUTE format('DROP POLICY %I ON public.answers', pol.policyname);
---   END LOOP;
--- END $$;
---
--- SELECT schemaname || '.' || tablename AS relation, policyname, cmd,
---        roles::text AS granted_to
--- FROM pg_policies WHERE tablename = 'answers' ORDER BY schemaname, cmd, policyname;
+-- The first version returned a row of ok/FAIL cells and nothing else. When
+-- door_still_shut came back FAIL on the live database there was no way to tell
+-- WHICH policy was still there, or even which schema it was in, and settling it
+-- cost a separate round trip to the owner. A check that can fail should print
+-- what it saw. The policy listing is appended below the verdicts, so every run
+-- shows the real state of both tables whether it passes or not.
+SELECT * FROM (
+  SELECT 1 AS ord, 'play_again' AS check_name,
+         CASE WHEN to_regprocedure('op_reset_answers(uuid,uuid)') IS NOT NULL
+              THEN 'ok' ELSE 'FAIL Play Again cannot clear the last game' END AS result
+  UNION ALL
+  SELECT 2, 'rejoin',
+         CASE WHEN to_regprocedure('op_reassign_answers(uuid,uuid,uuid)') IS NOT NULL
+              THEN 'ok' ELSE 'FAIL rejoining loses your score' END
+  UNION ALL
+  SELECT 3, 'bots',
+         CASE WHEN to_regprocedure('op_bot_answer(uuid,uuid,int,uuid,int,text,boolean)') IS NOT NULL
+              THEN 'ok' ELSE 'FAIL a bot cannot answer the final question' END
+  UNION ALL
+  SELECT 4, 'end_room',
+         CASE WHEN to_regprocedure('op_admin_end_room(uuid)') IS NOT NULL
+              THEN 'ok' ELSE 'FAIL the admin cannot end a stuck room' END
+  UNION ALL
+  SELECT 5, 'answers_door_shut',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
+                                WHERE schemaname = 'public' AND tablename = 'answers'
+                                  AND cmd IN ('UPDATE','DELETE','ALL'))
+              THEN 'ok' ELSE 'FAIL a stranger can still edit a score' END
+  UNION ALL
+  SELECT 6, 'rooms_door_shut',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
+                                WHERE schemaname = 'public' AND tablename = 'rooms'
+                                  AND cmd IN ('DELETE','ALL'))
+              THEN 'ok' ELSE 'FAIL a stranger can still delete a live room' END
+  UNION ALL
+  SELECT 7, 'rooms_still_playable',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_policies
+                            WHERE schemaname = 'public' AND tablename = 'rooms'
+                              AND cmd IN ('UPDATE','ALL'))
+              THEN 'ok' ELSE 'FAIL nobody can advance a game' END
+  UNION ALL
+  SELECT 8, 'answers may still be', 'read and written, never edited or deleted'
+  UNION ALL
+  -- Every policy on either table, in EVERY schema. A row here naming a schema
+  -- other than public is not the game's table and is not a hole in the game.
+  SELECT 9, schemaname || '.' || tablename, cmd || '  <- ' || policyname
+    FROM pg_policies WHERE tablename IN ('answers', 'rooms')
+) report ORDER BY ord, check_name, result;
