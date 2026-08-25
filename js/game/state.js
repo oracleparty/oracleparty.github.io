@@ -4,6 +4,7 @@
 // ============================================
 
 import { CATEGORY_META, resolveCategoryLabel } from '../categories.js';
+import { answersForCurrentGame } from './scoring-helpers.js';
 
 // --- State ---
 export const state = {
@@ -166,3 +167,19 @@ export function setHostSettingsConfirmTimer(v) { _hostSettingsConfirmTimer = v; 
 // --- Sync guard ---
 export let _syncInFlight = false;
 export function setSyncInFlight(v) { _syncInFlight = v; }
+
+/**
+ * Answers belonging to the game currently being played, from this room.
+ *
+ * A thin wrapper so every fetch is filtered the same way and no call site has
+ * to remember `state.questions`. See answersForCurrentGame for why a room can
+ * still be holding the previous game's answers: the clear-out is host-gated, so
+ * a room that returns to the lobby without its host never runs it.
+ *
+ * It matters more since migration 052. Until then an answer was deleted with
+ * its player row, which quietly limited how long a stale one could survive;
+ * now they persist until the room itself goes.
+ */
+export function currentGameAnswers(rows) {
+  return answersForCurrentGame(rows, state.questions);
+}

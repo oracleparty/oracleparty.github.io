@@ -26,7 +26,7 @@ import {
 } from '../supabase.js';
 import { getDisplayName } from '../auth.js';
 import {
-  state, canControlGame,
+  state, canControlGame, currentGameAnswers,
   resolveFieldMap,
   _isLeaving, setIsLeaving,
   setLastScoresRendered,
@@ -444,7 +444,8 @@ export async function handlePhaseTransition(phase) {
     // On reconnect (questionStartedAt present), check if we already answered
     if (state.questionStartedAt) {
       const qNum = state.currentQuestion;
-      fetchAnswersForQuestion(state.room.id, qNum).then(answers => {
+      fetchAnswersForQuestion(state.room.id, qNum).then(rows => {
+        const answers = currentGameAnswers(rows);
         // String() on both sides. Everywhere else in this file compares ids
         // that way, and here a type mismatch would not throw — it would quietly
         // find nothing, show a returning player an empty question box, and let
@@ -521,7 +522,7 @@ export async function handlePhaseTransition(phase) {
         // Already on reveal screen — re-fetch answers before revealing
         // (host's auto-submitted answers may not have arrived via Realtime yet)
         try {
-          state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+          state.currentAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, state.currentQuestion));
         } catch (_) { /* doReveal's background fetch will retry */ }
         doReveal();
       }
@@ -840,7 +841,8 @@ export function handleAnswerChange(payload) {
 
   // Fallback for DELETE or unknown events: full re-fetch
   const fallbackQNum = state.currentQuestion;
-  fetchAnswersForQuestion(state.room.id, fallbackQNum).then(answers => {
+  fetchAnswersForQuestion(state.room.id, fallbackQNum).then(rows => {
+    const answers = currentGameAnswers(rows);
     if (state.currentQuestion !== fallbackQNum) return; // question changed, discard stale fetch
     state.currentAnswers = answers;
     renderRevealAnswers(answers);

@@ -45,7 +45,7 @@ import { sendHonk, getHonkCount } from '../honk.js';
 import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import {
-  state, canControlGame, getCategoryLabel,
+  state, canControlGame, currentGameAnswers, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
   _lastScoresRenderedForQuestion, setLastScoresRendered,
   _isLeaving, setIsLeaving,
@@ -698,7 +698,7 @@ function renderFinalWagerPlayers(lockedWagers) {
 }
 
 export async function updateFinalWagerPlayerList() {
-  const answers = await fetchAnswersForQuestion(state.room.id, state.totalQuestions);
+  const answers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, state.totalQuestions));
   const wagers = {};
   for (const a of answers) {
     if (a.submitted_answer === '__WAGER_LOCKED__') {
@@ -934,7 +934,7 @@ async function openScoreEditQuestion(questionNumber) {
   answersEl.style.display = '';
   answersEl.innerHTML = '<p style="text-align:center; color: var(--color-text-muted);">Loading...</p>';
 
-  const answers = await fetchAnswersForQuestion(state.room.id, questionNumber);
+  const answers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, questionNumber));
   const q = state.questions[questionNumber];
 
   answersEl.innerHTML = `

@@ -3,7 +3,7 @@
 // Answer reveal, judgment overrides, feedback UI, honks.
 // ============================================
 
-import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
+import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
          _qbFeedback, setQbFeedback } from './state.js';
@@ -73,7 +73,7 @@ export async function showRevealScreen() {
 
   // Fetch existing answers (some players may not have submitted yet) and cache them
   const currentQ = state.currentQuestion;
-  state.currentAnswers = await fetchAnswersForQuestion(state.room.id, currentQ);
+  state.currentAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, currentQ));
   // Skip render if doReveal() will be called immediately (it re-renders with colors)
   if (!state.resultsRevealed) {
     renderRevealAnswers(state.currentAnswers);
@@ -83,7 +83,7 @@ export async function showRevealScreen() {
   if (!state.resultsRevealed && submittedCount(state.currentAnswers) < state.players.length) {
     setTimeout(async () => {
       if (!state.onRevealScreen || state.currentQuestion !== currentQ || state.resultsRevealed) return;
-      const fresh = await fetchAnswersForQuestion(state.room.id, currentQ);
+      const fresh = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, currentQ));
       if (submittedCount(fresh) > submittedCount(state.currentAnswers)) {
         state.currentAnswers = fresh;
         renderRevealAnswers(fresh);
@@ -497,7 +497,8 @@ export function doReveal() {
 
   // Background re-fetch to catch any answers missed by Realtime
   const revealQNum = state.currentQuestion;
-  fetchAnswersForQuestion(state.room.id, revealQNum).then(answers => {
+  fetchAnswersForQuestion(state.room.id, revealQNum).then(rows => {
+    const answers = currentGameAnswers(rows);
     if (state.currentQuestion !== revealQNum) return; // question changed, discard stale fetch
     const cachedIds = state.currentAnswers.map(a => String(a.id)).sort().join(',');
     const fetchedIds = answers.map(a => String(a.id)).sort().join(',');
@@ -546,7 +547,7 @@ async function handleRevealResults() {
 
   // Re-fetch all answers (including just-submitted auto-answers) before revealing.
   try {
-    state.currentAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+    state.currentAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, state.currentQuestion));
   } catch (err) {
     logger.warn('Game', 'Pre-reveal fetch failed, using cached answers', err);
   }
@@ -706,8 +707,20 @@ function recordCurrentQuestionOutcomes() {
     // This check has to come FIRST. When it sat between the two writes, the
     // outcome was recorded and only the text was skipped, which is the worse
     // half to keep.
+    //
+    // AND AN ANSWER WE CANNOT ATTRIBUTE IS SKIPPED TOO. Until migration 052 an
+    // answer was deleted along with its player row, so every row here had a
+    // player to look up. Now an answer outlives the seat — which is what makes
+    // a rejoining player's score recoverable — and `player` can be undefined,
+    // making `player?.is_bot` quietly false and letting a departed BOT's answer
+    // through into exactly the two tables this guard exists to keep clean.
+    //
+    // Skipping costs one human's answer out of an aggregate over thousands of
+    // plays. Recording a bot's puts an invented percentage into the evidence
+    // used to judge whether a question is too hard and whether its answer key
+    // is wrong. That is not a close call.
     const player = (state.players || []).find(p => String(p.id) === String(answer.player_id));
-    if (player?.is_bot) continue;
+    if (!player || player.is_bot) continue;
 
     const overridden = answer.auto_correct != null
       && !!answer.auto_correct !== !!answer.is_correct;

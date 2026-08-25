@@ -3,7 +3,7 @@
 // Wager grid, timer, answer submission.
 // ============================================
 
-import { state, canControlGame, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
+import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
          _screenTransitioning, setScreenTransitioning } from './state.js';
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
@@ -404,7 +404,7 @@ async function handleTimerExpired() {
   // Host/cohost: auto-submit blank for any players who didn't answer, then broadcast reveal.
   if (canControlGame()) {
     // Re-fetch answers to ensure we have the host's just-submitted answer
-    const freshAnswers = await fetchAnswersForQuestion(state.room.id, state.currentQuestion);
+    const freshAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, state.currentQuestion));
     state.currentAnswers = freshAnswers;
     const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
     const q = state.questions[state.currentQuestion];

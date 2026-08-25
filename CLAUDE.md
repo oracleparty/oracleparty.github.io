@@ -1267,7 +1267,31 @@ while Carol is still typing, the host is shown "Reveal Results", and the
 countdown hides itself. `countAnswersFrom` counts only answers whose player is
 still in the room (and de-duplicates by player id, closing the same gap from
 the other side). **A fix that changes what a row's lifetime means changes every
-count taken over those rows.**
+count taken over those rows** — so the rest of them were gone through too:
+
+| Reads answers | Verdict |
+|---|---|
+| `computeScoresFromAnswers` | safe — keys by player id, and a departed player's total is rendered nowhere |
+| `buildDisqualifiedSet` | safe — an extra wrong-and-worth-nothing row cannot flip a set that already contains a correct one |
+| `renderRevealAnswers` | safe — iterates `state.players` and looks each answer up |
+| `addRoomScores`, results placement | safe — both iterate `state.players` |
+| `recordCurrentQuestionOutcomes` | **NOT safe**, below |
+
+**The bot guard went soft, and that is the one that mattered.** It identifies a
+bot by looking the answer's player up in the room — and an orphan has no player,
+so `player?.is_bot` became quietly `false` and a departed bot's answer would
+have gone into `question_stats` and `answer_tally`, the two tables the rule
+"nothing a bot does is recorded" exists to protect. It skips an answer it cannot
+attribute now. Losing one human's answer from an aggregate over thousands of
+plays costs nothing; putting an invented percentage into the evidence used to
+judge a question does.
+
+**And `state.currentAnswers` needed the same structural filter as the score
+paths.** It comes from `fetchAnswersForQuestion(room, N)`, which returns every
+answer in the room at round N — including the PREVIOUS game's, whenever the
+clear-out did not run. `currentGameAnswers` in `state.js` wraps
+`answersForCurrentGame` so all ten fetch sites are filtered identically without
+each one having to remember `state.questions`.
 
 **A player whose phone died for two minutes mid-game has always come back to
 nothing**, and nothing said so: the reassignment reported success having moved
