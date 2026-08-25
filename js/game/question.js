@@ -8,7 +8,7 @@ import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestio
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
-import { updateGameState, startClockOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, incrementQuestionsAnswered } from '../supabase.js';
+import { updateGameState, startClockOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -450,19 +450,37 @@ async function handleTimerExpired() {
       // answered. The final wager is the only round that subtracts, so leaving
       // 20 there is the difference between "scored nothing" and "lost 20 for
       // being away". A blank answer bets 0, whatever was chosen.
+      //
+      // upsertAnswers, NOT submitAnswer. This is the host writing on OTHER
+      // PEOPLE'S behalf, and submitAnswer is a player-facing call: it toasts
+      // "Your answer didn't save — check your connection and try again". The
+      // host's own answer is not what is being written, so that message was
+      // wrong whatever the cause, and it appeared once per absent player.
+      //
+      // It can now only fail one way. These rows all EXIST — the placeholder
+      // is what makes this second pass necessary — so the upsert conflicts, and
+      // migration 049 revoked UPDATE on `answers`: 42501, measured. That is not
+      // a reason to go quiet. If this branch is ever reached, the locked wager
+      // stays attached to a question nobody answered, and the final round is
+      // the only one that SUBTRACTS — the difference between scoring nothing
+      // and losing 20 for being away. It needs to be loud in a log, and it is
+      // reached only when op_fill_blank_answers (migration 046, which does this
+      // correctly server-side) could not be called at all.
       if (state.isFinalWagerRound) {
         const unanswered = freshAnswers.filter(a =>
           (a.submitted_answer || '').trim() === '__WAGER_LOCKED__');
-        await Promise.all(unanswered.map(a => submitAnswer({
-          roomId: state.room.id,
-          playerId: a.player_id,
-          questionNumber: state.currentQuestion,
-          questionId: q.id,
-          wager: 0,
-          submittedAnswer: '',
-          isCorrect: false,
-          scoreEarned: 0
-        })));
+        if (unanswered.length) {
+          await upsertAnswers(unanswered.map(a => ({
+            roomId: state.room.id,
+            playerId: a.player_id,
+            questionNumber: state.currentQuestion,
+            questionId: q.id,
+            wager: 0,
+            submittedAnswer: '',
+            isCorrect: false,
+            scoreEarned: 0
+          })), 'finalWagerBlankFill (fallback — op_fill_blank_answers was unreachable)');
+        }
       }
     }
     // Broadcast reveal phase so all clients transition
@@ -599,7 +617,11 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
         wager,
         submittedAnswer: answer,
         isCorrect,
-        scoreEarned
+        scoreEarned,
+        // A refusal plus a row that already exists is the system working, not a
+        // failure — see submitAnswer. Without this the player got a "check your
+        // connection" toast on top of the correct message below.
+        afterServerRefusal: !!serverRefusal
       });
     }
   }

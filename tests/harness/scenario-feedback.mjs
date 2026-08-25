@@ -173,6 +173,70 @@ try {
     }
   }
 
+  // ============================================================
+  // 5b. A LATE SUBMIT IS THE SYSTEM WORKING, NOT A FAILURE
+  //
+  // Once the round is closed the player already holds a row — the blank fill
+  // wrote one, or on the final round the __WAGER_LOCKED__ placeholder did. If
+  // they press Submit now, op_submit_answer refuses ("time is up") and the
+  // client falls back to a direct upsert, which HITS that row.
+  //
+  // Measured against a real Postgres in the shape migration 049 left `answers`:
+  // a non-conflicting ON CONFLICT DO UPDATE is written, a conflicting one is
+  // refused with 42501. So the right thing happens — the row already there
+  // stands — but the player was shown "Your answer didn't save — check your
+  // connection and try again", which is wrong three times over, on top of the
+  // correct message the screen was already showing.
+  //
+  // Found because this fired INTERMITTENTLY in scenario-social, where whether
+  // a submit lands before or after expiry is a matter of timing. Driven
+  // directly here so it happens every run.
+  // ============================================================
+  heading('a submit refused after the round closed');
+  if (bobAnswer) {
+    const roomId = table.store.table('rooms')[0]?.id;
+    const qId = table.store.table('answers').find(a => a.question_number === 0)?.question_id;
+
+    const lateSubmit = (afterServerRefusal) => bob.page.evaluate(async (args) => {
+      document.querySelectorAll('.toast').forEach(t => t.remove());
+      const m = await import('/js/supabase.js');
+      const res = await m.submitAnswer({
+        roomId: args.roomId, playerId: args.playerId, questionNumber: 0,
+        questionId: args.qId, wager: 4, submittedAnswer: 'too late',
+        isCorrect: false, scoreEarned: 0,
+        afterServerRefusal: args.afterServerRefusal,
+      });
+      await new Promise(r => setTimeout(r, 400));   // the toast import is async
+      return {
+        code: res?.error?.code || null,
+        toast: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | '),
+      };
+    }, { roomId, playerId: bobPlayerId, qId, afterServerRefusal });
+
+    const quiet = await lateSubmit(true).catch(e => ({ code: 'threw', toast: e.message }));
+    note(`refused-after-rejection: code=${quiet.code}, toast=${JSON.stringify(quiet.toast)}`);
+    if (quiet.code !== '42501') {
+      problems.push(`a late submit onto an existing row should be refused with 42501, got ${quiet.code} — either the door is open or the row was not there`);
+    }
+    if (quiet.toast) {
+      problems.push(`a late submit told the player ${JSON.stringify(quiet.toast)} — the round is closed and their answer stands, so this is a lie about the connection`);
+    }
+    const stillTheirs = table.store.table('answers')
+      .find(a => String(a.player_id) === String(bobPlayerId) && a.question_number === 0);
+    if (stillTheirs?.submitted_answer !== TYPED) {
+      problems.push(`a late submit overwrote a stored answer — ${JSON.stringify(stillTheirs?.submitted_answer)} replaced the player's text`);
+    }
+
+    // THE NEGATIVE HALF. Without it the check above passes just as happily when
+    // nothing ever toasts, which is exactly the "check that cannot fail" this
+    // project keeps deleting. The same call WITHOUT the flag must still shout.
+    const loud = await lateSubmit(false).catch(e => ({ code: 'threw', toast: e.message }));
+    note(`refused-without-the-flag: code=${loud.code}, toast=${JSON.stringify(loud.toast)}`);
+    if (!/didn.t save|could not save|connection/i.test(loud.toast || '')) {
+      problems.push('a refused write with no refusal context said NOTHING to the player — the quiet path above is therefore measuring nothing');
+    }
+  }
+
   const expiredAnswers = table.store.table('answers');
   note(`answers after expiry: ${expiredAnswers.length}`);
   for (const a of expiredAnswers) {
@@ -192,6 +256,71 @@ try {
     note(`wagers burned: ${JSON.stringify(wagers)}`);
     if (wagers.some(w => w !== 1)) {
       problems.push(`a missed first question burned wager ${JSON.stringify(wagers)} instead of the lowest (1)`);
+    }
+  }
+
+  // ============================================================
+  // 5c. LOCKING A FINAL WAGER MUST NOT NEED TO OVERWRITE ANYTHING
+  //
+  // lockInFinalWager writes the __WAGER_LOCKED__ placeholder so the rest of the
+  // room can see the number. It used an UPSERT — and migration 049 revoked
+  // UPDATE on `answers`, so the moment ANY row already existed at the final
+  // question (the blank fill runs when the 20s wager clock expires) locking
+  // raised 42501: the placeholder never landed, nobody saw the wager, and the
+  // player was told their answer had not saved because of their connection.
+  //
+  // Found as an intermittent console error in scenario-social — about one run
+  // in five, depending on whether a player locked before or after the fill.
+  // Driven directly here so it is the same every time.
+  //
+  // DO NOTHING is the correct rule, not a workaround: the server's own
+  // op_submit_answer keeps `existing.wager` on the final round, because LOCKED
+  // IS LOCKED, and a placeholder must never overwrite a real answer.
+  // ============================================================
+  heading('locking a final wager onto an existing row');
+  {
+    const roomRow = table.store.table('rooms')[0];
+    const SLOT = 3;                       // a round nothing has written to yet
+    table.store.seed('answers', [{
+      id: 'preexisting-final', room_id: roomRow.id, player_id: bobPlayerId,
+      question_number: SLOT, question_id: null, wager: 2,
+      submitted_answer: '', is_correct: false, auto_correct: false, score_earned: 0,
+    }]);
+
+    const lock = (fn) => bob.page.evaluate(async (args) => {
+      document.querySelectorAll('.toast').forEach(t => t.remove());
+      const m = await import('/js/supabase.js');
+      const row = {
+        roomId: args.roomId, playerId: args.playerId, questionNumber: args.slot,
+        questionId: null, wager: 20, submittedAnswer: '__WAGER_LOCKED__',
+        isCorrect: false, scoreEarned: 0,
+      };
+      const res = args.fn === 'insertAnswersIfAbsent'
+        ? await m.insertAnswersIfAbsent([row], 'lockInFinalWager')
+        : await m.submitAnswer(row);
+      await new Promise(r => setTimeout(r, 400));
+      return {
+        code: res?.error?.code || null,
+        toast: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | '),
+      };
+    }, { roomId: roomRow.id, playerId: bobPlayerId, slot: SLOT, fn });
+
+    const now = await lock('insertAnswersIfAbsent').catch(e => ({ code: 'threw', toast: e.message }));
+    note(`lock with the current write: code=${now.code}, toast=${JSON.stringify(now.toast)}`);
+    if (now.code) problems.push(`locking a final wager onto an existing row failed with ${now.code} — the player's chosen wager never reaches the room`);
+    if (now.toast) problems.push(`locking a final wager told the player ${JSON.stringify(now.toast)}`);
+    const untouched = table.store.table('answers').find(a => a.id === 'preexisting-final');
+    if (untouched?.submitted_answer === '__WAGER_LOCKED__') {
+      problems.push('the placeholder overwrote a row that was already there — a locked wager must never replace a real answer or a blank');
+    }
+
+    // THE NEGATIVE HALF: the write this replaced. Without it, the check above
+    // passes for a build where `answers` is wide open and proves nothing about
+    // the door 049 shut.
+    const before = await lock('submitAnswer').catch(e => ({ code: 'threw', toast: e.message }));
+    note(`lock the old way (upsert): code=${before.code}, toast=${JSON.stringify(before.toast)}`);
+    if (before.code !== '42501') {
+      problems.push(`an upsert onto an existing answer row was NOT refused (got ${before.code}) — either the door is open in this harness or the row was not there, and the check above is measuring nothing`);
     }
   }
 
@@ -400,6 +529,10 @@ try {
       // "Save feedback affected zero rows" is the refusal THIS scenario caused
       // on purpose above, and logging it loudly is the behaviour being tested.
       !/Save feedback affected zero rows/i.test(e) &&
+      // The NEGATIVE half of "a submit refused after the round closed" provokes
+      // this on purpose, to prove the quiet path is quiet for a reason. Logging
+      // it loudly is the behaviour being tested.
+      !/Submit answer failed/i.test(e) &&
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }

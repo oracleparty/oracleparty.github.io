@@ -5,7 +5,7 @@
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-19.
+> Last verified against the code: 2026-08-25.
 >
 > The live database was verified directly on 2026-08-18 via
 > `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
@@ -320,9 +320,34 @@ describes — but "confirmed" was too strong, and a later session would have
 treated it as measured. **Say where a number came from, or do not write it
 down.**
 
+**A fourth and a fifth, found 2026-08-25, and both are the same shape as the
+third: the probe could not tell "nothing there" from "I looked in the wrong
+place".**
+
+- **`question_health` was listed under the wrong key column.** The `PK` map said
+  `question_id`; migration 025 builds the view as `SELECT q.id, ...`, so the key
+  is `id`. `samplePks` asked for a column that does not exist, PostgREST answered
+  42703, the sample came back empty — and the write section reported
+  `no rows to probe with` **for a view holding 4,859 rows**. Fixed, and
+  `samplePks` now returns WHY it could not sample, so a wrong column name reads
+  as `NOT PROBED — could not sample "x" (HTTP 400 / 42703)` instead of as an
+  empty table.
+- **`player_totals_computed` was not on the watch list at all.** The GLOBAL
+  leaderboard reads it (migration 032). Its absence is quieter than
+  `player_stats_computed`'s, which is exactly why it needs watching:
+  `fetchPlayerTotalsForLeaderboard` falls back to summing the per-category
+  rollups, so **the board still draws — with a question filed under two
+  categories counted twice.** 11% of the bank carries more than one, so the
+  people who play the broadest categories rank highest and nothing anywhere
+  says why. It is on the list and in WHAT THIS MEANS FOR A PLAYER now.
+
 The lesson generalises past this script: **when a check reports that everything
 is fine, or that everything is broken, suspect the check.** Both are shapes a
-broken measurement makes far more readily than a real system does.
+broken measurement makes far more readily than a real system does. And the
+particular way this script keeps failing is worth naming on its own: **every
+one of these five reported an ABSENCE that was really a bad question.** A probe
+that cannot reach something must say so; returning the same answer as "there is
+nothing here" is how a dead feature reads as a healthy one.
 
 ### 7. Migrations are applied by hand
 
@@ -393,6 +418,48 @@ returns success when the pair is already friends rather than relying on the
 **When a lookup breaks on duplicates, go and find every OTHER lookup keyed on
 the same pair.** One table was fixed and the identical shape sat one join away
 for weeks.
+
+**AND THAT INSTRUCTION WAS NOT FOLLOWED FAR ENOUGH — two more, found
+2026-08-25.** Both are read-then-write on a pair, both used `.maybeSingle()`,
+and both **discarded the read error**, which is what turns a lookup fault into a
+ratchet: `maybeSingle()` errors on more than one row, the error was thrown away,
+`existing` came back undefined, and the code took the "no row yet" branch and
+**inserted another one**.
+
+| | keyed on | what one duplicate then does |
+|---|---|---|
+| `upsertQuestionHistory` | `(user_id, question_id)` | every reveal of that question adds another row — and accuracy is `SUM(times_correct)/SUM(times_seen)` across them, so each one is a permanent extra attempt the player never made |
+| `upsertTitleUnlock` | `(user_id, word_id)` | `evaluateUnlocks` runs at the end of EVERY game, so the ratchet turns once per game — and the level check goes with it, since a fresh row is written at whatever level was passed instead of being compared to the level already held |
+
+`title_unlocks` **declares** `UNIQUE(user_id, word_id)` in migration 007. So did
+`friend_requests` in migration 003, and the live table did not have it. A
+declared constraint is not a measured one, and the client should not need it.
+
+Both now use `.limit(1)` and **stop on a read error rather than inserting**. A
+FAILED READ IS NOT AN ABSENT ROW: inserting when you cannot tell is the step
+that creates the duplicate. Losing one attempt or one unlock is recoverable —
+Proficiency reads the most recent verdict, and the unlock check runs again after
+the next game — while a duplicate cannot be undone from inside the app at all.
+`upsertTitleUnlock` also orders by level so that if duplicates already exist it
+compares against the HIGHEST one held, not an arbitrary row.
+
+**Nothing has established that duplicates exist on the live database**, and this
+is a hardening, not a diagnosis. Both tables are locked to visitors, so the
+probe cannot count them; the owner can, from the SQL Editor:
+
+```sql
+SELECT 'question_history' AS tbl, count(*) AS duplicate_pairs FROM (
+  SELECT user_id, question_id FROM question_history
+   GROUP BY 1,2 HAVING count(*) > 1) d
+UNION ALL
+SELECT 'title_unlocks', count(*) FROM (
+  SELECT user_id, word_id FROM title_unlocks
+   GROUP BY 1,2 HAVING count(*) > 1) d;
+```
+
+Two zeroes means the client fix is pure insurance. Anything else needs a merge
+migration written deliberately — for `question_history` the counters must be
+SUMMED, never deduplicated by deletion, or real attempts are thrown away.
 
 **When something works in the harness and fails live, ask what the real
 database REFUSES that the fake one allows.** Two faithfulness gaps were found
@@ -604,14 +671,29 @@ switching it to `game_history.score`.
 │   ├── titles.js       Title unlock rules
 │   ├── utils.js        Fuzzy answer matching, DOM helpers, escaping
 │   ├── honk.js / typing.js / presence.js / theme.js / logger.js
+│   ├── celebration.js  Unlock overlays (planCelebration lives in titles.js)
+│   ├── difficulty-band.js  "How hard was that?" on the reveal
+│   ├── NO-IMPORT modules — pure, unit-testable in Node, because everything
+│   │   else here pulls Supabase from esm.sh and the test runner cannot load it:
+│   │   ├── question-selection.js  bucketQuestionsByHistory — what to ask next
+│   │   ├── honeycomb.js          the Map's geometry
+│   │   ├── radar.js              the profile's twelve-axis chart
+│   │   ├── answer-health.js      which answer keys need a human (admin + probe)
+│   │   ├── presence-health.js    is the presence channel still joined
+│   │   └── game/bot-logic.js     bot decisions
 │   └── constants.js    All timing + threshold values
 ├── migrations/         Hand-applied SQL (see #7 above)
 ├── scripts/
 │   ├── screenshot.js       Playwright screenshots of mock states
 │   ├── mock-states.js      Fake data for visual review
+│   ├── layout-sweep.mjs    Measured layout/contrast/overlap check, all 3 themes
+│   ├── probe-db.mjs        What the LIVE database actually has (runs in CI)
+│   ├── verify-sql.mjs      SQL/JS judging parity + tests/sql/ rule tables
+│   ├── check-arity.mjs     Calls passing fewer arguments than required
+│   ├── check-rpc-args.mjs  .rpc() argument names vs the function's real ones
 │   ├── bump-version.js     Bumps ?v= on assets + sw.js cache key
 │   └── inspect-db.sql      Read-only live schema report
-└── tests/              Vitest unit tests
+└── tests/              Vitest unit tests + harness/ robot scenarios
 ```
 
 ## Screens
@@ -719,6 +801,14 @@ concluded everyone was ready. Before the reveal a placeholder means *waiting*;
 only afterwards does it mean they never answered. The same distinction fixes
 the countdown, which had been hiding itself on the final question because
 `answers.length === players.length` was true before anybody had typed a word.
+
+**THAT LAST SENTENCE WAS TRUE OF ONE SCREEN AND WRITTEN AS THOUGH IT WERE TRUE
+OF THE FEATURE.** The guard went into a private helper in `reveal.js` and two
+other readers of the same count — `updateRevealButtonText` and the Realtime
+answer handler in `phases.js` — never got it, so the countdown went on vanishing
+on the last round of every game until 2026-08-25. See "Dropping the key broke
+'has everybody answered'" for how it was found and what it now shares with the
+departed-player guard.
 
 **A disqualified round could still be marked correct**, in all three places a
 host can flip a judgement. Awarding points inside a round the host has just
@@ -1276,6 +1366,36 @@ count taken over those rows** — so the rest of them were gone through too:
 | `renderRevealAnswers` | safe — iterates `state.players` and looks each answer up |
 | `addRoomScores`, results placement | safe — both iterate `state.players` |
 | `recordCurrentQuestionOutcomes` | **NOT safe**, below |
+| `submittedCount` in `reveal.js` | **NOT safe** — missed entirely, found 2026-08-25 |
+| the host's review overlay in `scores.js` | **NOT safe** — same, found 2026-08-25 |
+
+**THAT TABLE MISSED TWO, AND ONE OF THEM ALREADY HELD THE OTHER HALF OF THE
+RULE.** `reveal.js` had its own private `submittedCount`, written months earlier
+for a different fault: on the final question every player holds a
+`__WAGER_LOCKED__` row the moment they pick 0/10/20, so counting rows said the
+round was complete before anybody had typed. So there were **two half-rules in
+two files** —
+
+| | skips a departed player | skips `__WAGER_LOCKED__` |
+|---|---|---|
+| `countAnswersFrom` | yes | **no** |
+| `submittedCount` | **no** | yes |
+
+— and each was blind to exactly what the other guarded. `countAnswersFrom` is
+used by `updateRevealButtonText` and the Realtime answer handler, so **on the
+last round of every game the reveal countdown still vanished and the host was
+still told "Reveal Results" while people were answering**, which is the bug the
+2026-08-20 playtest recorded as fixed. It was fixed on the reveal screen and
+nowhere else.
+
+One function holds both rules now and `submittedCount` is a thin wrapper over
+it. `tests/scoring.test.js` fails by name when either guard is removed, and
+keeps a case for a **deliberately blank** answer, which IS a real submission —
+somebody the fill has already closed out must not hold the round open.
+
+The review overlay is the smaller one: since 052 it grew a row labelled
+"Unknown" for everybody who had left, each with a live toggle offering to
+re-judge a player whose score is rendered nowhere. It filters to the room now.
 
 **The bot guard went soft, and that is the one that mattered.** It identifies a
 bot by looking the answer's player up in the room — and an orphan has no player,
@@ -1476,6 +1596,28 @@ staying separate rows. `mergedCategoryRows` in `titles.js` sums them, which
 cannot under-report and is the identity when there is only one. **The profile's
 totals ran over the same rows**, so games, wins and questions were inflated
 too, not just the list.
+
+**AND `computeCategoryTiers` WAS NEVER CONVERTED WITH IT (found 2026-08-25).**
+`mergedCategoryRows` was written for the profile and applied to the profile.
+The function that decides a TIER kept iterating raw rows, and a tier is not a
+display detail — it gates every title unlock, the tier badge in every lobby, and
+`hasReachedApprentice`, which is what opens the Title Builder at all.
+
+Reading one fragment of a split category understates it twice over. The fragment
+carries a slice of the questions, **and `MIN_QUESTIONS_FOR_TITLE` is applied to
+that slice** — so somebody with 36 questions met, split 12/12/12, gets **no tier
+whatsoever** rather than a lower one, and nothing is wrong on screen except an
+absence. Where the volume gate was cleared, which of the three rollups won was
+simply whichever the view returned last.
+
+Category rollups are merged; **subcategory rows are not** — each one is its own
+tier under its own key, which is the whole point of them. `tests/titles.test.js`
+pins both directions and fails by name when the merge is removed.
+
+**One bug, one fix, three call sites, two converted.** That is the same shape as
+"the seat ratchet had a third copy" and as the answer-count rule below. When a
+fix is written as a shared helper, grep for every reader of the thing it
+replaces before calling it done.
 
 **Subcategory rows had no icons.** One line held two mistakes: it read
 `subNode.icon`, the HIEROGLYPH, while the category row above it reads the
@@ -1894,12 +2036,28 @@ Postgres with the UPDATE policy removed, not assumed:**
 | Statement | Result |
 |---|---|
 | `UPDATE` / `DELETE` | 0 rows, **no error** — silent |
-| `INSERT … ON CONFLICT DO UPDATE` | **hard error 42501** — loud |
+| `INSERT … ON CONFLICT DO UPDATE`, **conflicting** | **hard error 42501** — loud, nothing written |
+| `INSERT … ON CONFLICT DO UPDATE`, **no conflict** | **OK, the row is written** |
 | `INSERT … ON CONFLICT DO NOTHING` | fine, 0 rows inserted |
+| plain `INSERT` onto an existing key | 23505, as it always was |
 
 So `insertBlankAnswers` (DO NOTHING) survived 049 untouched, `upsertAnswers`
 started throwing where anyone could see it, and the two plain statements died
 in silence — which is why those were the two that stayed broken.
+
+**That table had four rows on 2026-08-25 and one of them was too broad.** It
+said `ON CONFLICT DO UPDATE` was simply a hard 42501, and a session reading it
+concluded the client's whole fallback submit path was dead — that a first answer
+could no longer be written at all. Re-measured against a scratch Postgres in
+exactly the 049 shape, that is wrong: **the UPDATE arm is only reached when
+there is a conflict**, so a first answer still inserts and only an EDIT is
+refused. Which is the behaviour the fallback wants.
+
+**A measurement summarised one notch too confidently is a measurement that will
+be believed and acted on.** The original was taken on a conflicting statement
+and written down without the condition; nothing in the repo could tell the two
+apart, and the fake store — which had it right — read as the thing that was
+wrong. Re-measure before you widen a claim, and state what the case WAS.
 
 **The fake store also cascades what the room cascades** (`_deleteRoomCascade`),
 because deleting a room really does take its players, answers and chat with it
@@ -1972,6 +2130,49 @@ back to deleting rooms on its own local count.
 **Four of these five were found by grepping every write to the two tables the
 migrations had touched, and none by a failing test.** After revoking a
 permission, that grep is the work — not an afterthought.
+
+**AND THE GREP MISSED ONE — the sixth, found 2026-08-25, and it was the worst
+of them.** `lockInFinalWager` in `js/game/scores.js` writes the
+`__WAGER_LOCKED__` placeholder so the rest of the room can see the number, and
+it did so through `submitAnswer` — an UPSERT. Measured: a conflicting
+`ON CONFLICT DO UPDATE` raises 42501 under 049 and writes nothing.
+
+So **the moment any row already existed at the final question, locking a wager
+failed.** One does exist whenever the 20-second wager clock has expired, because
+the blank fill writes a row for every player. The placeholder never landed,
+nobody else in the room saw the number, and the player was told:
+
+> Your answer didn't save — check your connection and try again
+
+for a wager they had just chosen. That is the "I bet 20 and it wagered 0"
+family, coming back through the door 049 shut.
+
+It is `insertAnswersIfAbsent` now — `ON CONFLICT DO NOTHING` — and **that is the
+correct rule, not a workaround**: `op_submit_answer` keeps `existing.wager` on
+the final round because LOCKED IS LOCKED, and a placeholder must never overwrite
+a real answer or a blank. A write that can only ever ADD is exactly what this
+needs.
+
+**Why the grep missed it, which is the part worth keeping.** The grep was for
+writes to `answers`, and this one does not look like one: it is called
+`submitAnswer`, in `scores.js`, on the final-wager screen, and it reads as a
+player submitting. Its table is three files away. **Grep for the TABLE and you
+find the writes you already think of as writes.**
+
+**What did find it was a flaky test, and I nearly dismissed it.**
+`scenario-social` failed about one run in five with a console error nobody had
+put there. The temptation with a one-in-five failure is to re-run it; the run
+that passes tells you nothing, and this one had been failing for as long as 049
+had been live. Two wrong guesses at the cause were eliminated only by tracing
+the actual call, and both were plausible enough to have been written down as
+the answer. **A flaky failure is a real failure with a timing condition
+attached.** `scenario-feedback` now drives it directly so it fails every time,
+with a negative half that makes the same call the old way and fails if it is
+NOT refused.
+
+That scenario also prints **every** console error now, not just the first. It
+was the first that was truncated to 140 characters, which is what made two
+rounds of guessing necessary.
 
 **A ROOM OUTLIVES A GAME, so the clear-out is now belt AND braces.**
 `answersForCurrentGame` in `scoring-helpers.js` filters every answer fetch
@@ -2083,6 +2284,68 @@ does; `scenario-fullgame` seeds mixed difficulties, drops the update carrying
 the swap, and fails if the players' answers name more than one question id.
 Verified by removing the fix: **"players were asked 2 DIFFERENT final
 questions".**
+
+## A submit refused after the round closed is the system working
+
+Found 2026-08-25, from an **intermittent** scenario failure —
+`scenario-social` failed roughly one run in five with a console error nobody
+had put there: `Submit answer failed … code: 42501`.
+
+Once a round is closed the player already holds a row: the blank fill wrote one,
+or on the final round the `__WAGER_LOCKED__` placeholder did. If they press
+Submit now, `op_submit_answer` refuses with *time is up*, and the client falls
+back to a direct upsert — which HITS that row, and 049 revoked UPDATE.
+
+**Nothing is wrong with what happens.** The row already there is the one that
+should stand, and it does. What was wrong was what the player was told:
+
+> Your answer didn't save — check your connection and try again
+
+Wrong three times in one sentence. It is not the connection, trying again cannot
+help, and something IS saved. The screen was already showing the true thing —
+"Time's up — your last answer stands" — directly underneath it. It also logged
+at ERROR, so the system working filled the console with a fault.
+
+`submitAnswer` takes `afterServerRefusal` now. With it, a **42501 and only a
+42501** is a warn with no toast; every other error, and every error without that
+context, reports exactly as before. Widening that would put #4 — the deepest
+fault in this codebase — back into its loudest path.
+
+**The check for it lives in `scenario-feedback`, driven directly rather than
+waited for**, because whether a submit lands before or after expiry is a matter
+of timing and a flaky check is one people learn to re-run. It has a NEGATIVE
+half that makes the same call without the flag and fails if the player is told
+nothing — without it, the quiet assertion passes just as happily when nothing
+ever toasts. Verified by disabling the branch: it reports the lie by name.
+
+**A related one in the same sweep: the host's final-round tidy-up used
+`submitAnswer` too.** When `op_fill_blank_answers` cannot be reached, the host
+converts everyone's leftover `__WAGER_LOCKED__` rows into blanks — writing on
+OTHER PEOPLE'S behalf — and `submitAnswer` toasts *the host* "Your answer didn't
+save", once per absent player. It is `upsertAnswers` now, which logs and does
+not toast. **Deliberately still loud in the log**: if that branch is ever
+reached the locked wager stays attached to a question nobody answered, and the
+final round is the only one that SUBTRACTS.
+
+## Chat showed the FIRST hundred messages, not the last
+
+`fetchMessages` ordered `created_at` ASCENDING and limited to
+`CHAT_MESSAGES_LIMIT` (100). That asks Postgres for the OLDEST hundred rows —
+so the moment a room passed the limit, anybody reloading, returning from a game,
+or opening the in-game chat pane saw the first hundred things ever said and
+nothing since.
+
+Realtime still delivered live messages, so **the hole healed itself the instant
+somebody typed**, which is about as hard to report as a bug gets: by the time
+you look, it is gone.
+
+Descending-then-reversed returns the identical set under the limit and the right
+one over it. `archiveChatMessages` gains by the same argument — a truncated
+archive should hold the conversation, not the opening hellos.
+
+`scenario-social` seeds **120** messages, because under 100 both orderings agree
+and the check could not fail. Verified by restoring the old ordering: it reports
+the newest message missing and names the cause.
 
 ## "I bet 20 and it wagered 0"
 
@@ -2469,6 +2732,19 @@ rather than seconds.
 **What it cannot catch:** schema drift. The fake store accepts any column, so
 a missing column is invisible to it. That is what `probe-db.mjs` is for.
 
+**It also cannot catch a rule that is stated twice and fixed once.** Every fault
+found on 2026-08-25 — the two half-rules in `countAnswersFrom` / `submittedCount`,
+`computeCategoryTiers` never getting `mergedCategoryRows`, two more
+read-then-writes still on `.maybeSingle()` — was found by READING for the shape,
+not by anything failing. All twelve scenarios passed before and after, and would
+have gone on passing. The unit tests they now carry each fail when reverted, but
+only because somebody went looking first.
+
+**So after any fix that introduces a shared helper, grep for every OTHER reader
+of what it replaced.** That single habit would have caught four separate live
+bugs in this file: the seat ratchet's third copy, the writes Slice 6 shut,
+`computeCategoryTiers`, and the answer count.
+
 **Drive robots from whatever screen they are on, never a fixed click
 sequence.** Phases arrive over Realtime and never land in lockstep, so a
 scripted order desynchronises and then reports the script's own impatience as
@@ -2805,6 +3081,19 @@ with no rule at all — three items in a non-wrapping flex row, one of which is
 every distinct reason anybody gave, comma-joined. It fitted the two short
 strings a mock would have used and nothing longer. **The section had shipped
 months earlier.**
+
+**And a third time on 2026-08-25: `leaderboard.html` had no mock either.** Two
+were added (`leaderboard-global`, `leaderboard-category`) and the first sweep
+reported the first-place rank at **2.22:1 on the light theme** — the number "1"
+in medal gold `#d4a017`, effectively invisible against `#F8F7F4`. It measured
+7.18 on dark and 8.84 on OLED, which is why nobody looking at a phone at night
+would ever have seen it.
+
+The three medal colours are CSS variables now, with light values chosen by
+measurement (`#8a6508` / `#6b6b6b` / `#8a5a33`, at 4.97 / 4.97 / 5.46) and the
+originals kept under `[data-theme="dark"]` and `[data-theme="oled"]`. **Same
+lesson as the tier badges: a colour cannot answer to three palettes from one
+value.** The page has been live since the leaderboard existed.
 
 - **Always screenshot before pushing UI changes**, then read the screenshot and
   assess it honestly.

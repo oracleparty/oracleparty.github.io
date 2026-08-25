@@ -106,6 +106,62 @@ try {
   if (stored === 0) problems.push('chat messages are not being stored at all');
 
   // ============================================================
+  // 1b. A BUSY ROOM SHOWS THE NEWEST HUNDRED, NOT THE FIRST HUNDRED
+  //
+  // fetchMessages ordered ASCENDING and limited to CHAT_MESSAGES_LIMIT, which
+  // asks Postgres for the OLDEST hundred rows. Past the limit, anybody
+  // reloading or returning from a game saw the first hundred things ever said
+  // and nothing since — and it healed itself as soon as one more message
+  // arrived over Realtime, which is about as hard to report as a bug gets.
+  //
+  // Under the limit BOTH orderings return the identical set, so this check has
+  // to push past it or it cannot fail. 120 seeded, so the oldest 20 must be
+  // gone and the newest must be there.
+  // ============================================================
+  heading('chat history past the 100-message limit');
+  {
+    const roomRow = table.store.table('rooms')[0];
+    const base = Date.now() - 60 * 1000;
+    const bulk = [];
+    for (let i = 1; i <= 120; i++) {
+      bulk.push({
+        id: `bulk-${i}`,
+        room_id: roomRow.id,
+        player_name: 'Alice',
+        message: `bulk message ${String(i).padStart(3, '0')}`,
+        hearts: [],
+        // Well inside the room's life, and strictly increasing so "newest" is
+        // unambiguous. 250ms apart keeps all 120 after Bob's entry cut-off.
+        created_at: new Date(base + i * 250).toISOString(),
+      });
+    }
+    table.store.seed('chat_messages', bulk);
+
+    // Reload rather than waiting on Realtime: the fault is in what a returning
+    // phone FETCHES, and live delivery is exactly what used to paper over it.
+    await bob.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await bob.page.waitForTimeout(3000);
+    await clickIfReady(bob, '#chat-bar');
+    await bob.page.waitForTimeout(1200);
+
+    const seen = await bob.page.evaluate(() => {
+      const t = document.querySelector('#chat-drawer-messages')?.textContent || '';
+      return {
+        newest: t.includes('bulk message 120'),
+        oldest: t.includes('bulk message 001'),
+        rendered: (t.match(/bulk message/g) || []).length,
+      };
+    }).catch(() => ({ newest: false, oldest: false, rendered: 0 }));
+
+    note(`rendered ${seen.rendered} of 120; newest present: ${seen.newest}; oldest present: ${seen.oldest}`);
+    if (seen.rendered === 0) {
+      problems.push('no chat history rendered at all after a reload — the fetch or the cut-off is wrong');
+    } else if (!seen.newest) {
+      problems.push('the most recent chat message is missing after a reload — the fetch is taking the OLDEST hundred, so a busy room loses its live conversation');
+    }
+  }
+
+  // ============================================================
   // start a game for the in-game checks
   // ============================================================
   await host.page.waitForSelector('#btn-start-game', { state: 'visible', timeout: 20000 }).catch(() => {});
@@ -358,7 +414,7 @@ try {
   for (const r of [host, bob]) {
     const real = r.consoleErrors.filter(e =>
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
-    if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
+    if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — ${real.map(e => e.slice(0, 200)).join(' || ')}`);
   }
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);

@@ -410,12 +410,38 @@ export async function fetchQuestionsByIds(questionIds) {
  * disqualified round is not an attempt at all.
  */
 export async function upsertQuestionHistory(userId, questionId, isCorrect) {
-  const { data: existing } = await supabase
+  // .limit(1), NOT .maybeSingle(), and the read error is CHECKED — both for the
+  // reason CLAUDE.md #10 records one table along.
+  //
+  // maybeSingle() ERRORS when more than one row matches. This function is a
+  // read-then-write on (user_id, question_id) and there is no unique index
+  // guaranteeing one row — record_round_history is deliberately written
+  // update-then-insert rather than ON CONFLICT for exactly that reason. So a
+  // single duplicate pair, however it arose, made the read error; the error was
+  // discarded, `existing` came back undefined, and this INSERTED ANOTHER ROW.
+  // Every reveal of that question added one more, forever.
+  //
+  // That is not cosmetic here. Accuracy is SUM(times_correct) / SUM(times_seen)
+  // across these rows, so each duplicate is a permanent extra attempt the player
+  // never made — the worst version of the fault this function's own comment
+  // warns about.
+  //
+  // A FAILED READ IS NOT AN ABSENT ROW. Inserting when we could not tell is the
+  // step that creates the duplicate, so an error stops here instead. Losing one
+  // attempt costs a fraction of a percent that the next sighting corrects
+  // (migration 040 reads the most recent verdict); a duplicate cannot be undone
+  // from inside the app at all.
+  const { data: rows, error: readError } = await supabase
     .from('question_history')
     .select('id, times_seen, times_correct')
     .eq('user_id', userId)
     .eq('question_id', questionId)
-    .maybeSingle();
+    .limit(1);
+  if (readError) {
+    logger.error('Supabase', 'upsertQuestionHistory read failed — not writing, an insert here would duplicate the row', readError);
+    return;
+  }
+  const existing = (rows || [])[0] || null;
 
   if (existing) {
     const { error } = await supabase.from('question_history').update({

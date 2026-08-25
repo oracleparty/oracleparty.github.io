@@ -423,8 +423,32 @@ export async function completeGamePlay({ roomId, playerId, finalScore }) {
 /**
  * Submit or update an answer for a question.
  * Uses upsert on (room_id, player_id, question_number).
+ *
+ * `afterServerRefusal` says this is the fallback below a rejection from
+ * op_submit_answer, and it changes ONLY what the player is told. Measured
+ * against a real Postgres with the UPDATE policy removed, which is the shape
+ * migration 049 left `answers` in:
+ *
+ *   INSERT ... ON CONFLICT DO UPDATE, no conflict  -> OK, the row is written
+ *   INSERT ... ON CONFLICT DO UPDATE, conflicting  -> 42501, nothing written
+ *
+ * So the safety valve still works for a FIRST answer, and cannot overwrite an
+ * existing row — which is exactly right when the server has just said the
+ * round is over: the row already there is the one that stands.
+ *
+ * But the generic path then fired "Your answer didn't save — check your
+ * connection and try again", which is a lie in three ways: it is not the
+ * connection, trying again cannot help, and something IS saved. The screen was
+ * already saying the true thing ("Time's up — your last answer stands") right
+ * underneath it. It also logged at ERROR, so a legitimate late submit filled
+ * the console with a refusal that is the system working.
+ *
+ * A 42501 in this one situation is therefore expected: warn, no toast. Any
+ * OTHER error here, and every error when we did not come from a refusal, is
+ * reported exactly as before — the distinction is the point, and widening it
+ * would put this codebase's deepest fault (#4) back into its loudest path.
  */
-export async function submitAnswer({ roomId, playerId, questionNumber, questionId, wager, submittedAnswer, isCorrect, scoreEarned }) {
+export async function submitAnswer({ roomId, playerId, questionNumber, questionId, wager, submittedAnswer, isCorrect, scoreEarned, afterServerRefusal = false }) {
   const { data, error } = await supabase
     .from('answers')
     .upsert({
@@ -443,6 +467,13 @@ export async function submitAnswer({ roomId, playerId, questionNumber, questionI
     }, { onConflict: 'room_id,player_id,question_number' })
     .select()
     .single();
+
+  if (afterServerRefusal && error?.code === '42501') {
+    logger.warn('Supabase', 'the server refused this answer and a row already stands for it, so nothing was overwritten', {
+      questionNumber
+    });
+    return { data: null, error };
+  }
 
   if (reportWriteFailure('Submit answer', error, "Your answer didn't save — check your connection and try again")) {
     return { data: null, error };

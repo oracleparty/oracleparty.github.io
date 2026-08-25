@@ -99,11 +99,27 @@ export function answersForCurrentGame(answers, questions) {
  *
  * Counting only answers whose player is still here fixes it. Deduplicating by
  * player id costs nothing and closes the same gap from the other side.
+ *
+ * A __WAGER_LOCKED__ ROW IS NOT AN ANSWER, and leaving that out was the second
+ * half of the same rule sitting in a different file. On the final question
+ * lockInFinalWager writes that placeholder the moment somebody picks 0/10/20,
+ * so every player holds a row before anyone has typed a word — which is exactly
+ * the fault the 2026-08-20 playtest recorded as "the countdown hid itself on
+ * the final question". `submittedCount` in reveal.js was written to fix it and
+ * fixed it only on the reveal SCREEN; updateRevealButtonText and the Realtime
+ * answer handler both went on counting rows, so on the last round of every game
+ * the timer still vanished and the host was still told "Reveal Results" while
+ * people were typing.
+ *
+ * The two guards are now one function rather than two half-rules that each
+ * looked complete. THE SAME PATTERN ELSEWHERE is the standing instruction in
+ * CLAUDE.md, and this is what it costs when only one site gets the fix.
  */
 export function countAnswersFrom(answers, players) {
   const here = new Set((players || []).map(p => String(p.id)));
   const answered = new Set();
   for (const a of answers || []) {
+    if ((a.submitted_answer || '').trim() === '__WAGER_LOCKED__') continue;
     const id = String(a.player_id);
     if (here.has(id)) answered.add(id);
   }

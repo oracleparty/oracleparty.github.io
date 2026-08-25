@@ -1215,6 +1215,90 @@ export const STATES = {
   // type rules and therefore its own way to go wrong. It is also the page a
   // stranger is most likely to open on a phone in daylight.
   // ==========================================
+  // ==========================================
+  // LEADERBOARD
+  //
+  // leaderboard.html had NO mock at all, so the sweep had never rendered it —
+  // not once, in any theme, at any width. That is the same gap that shipped a
+  // bare unstyled back button on Profile and Leaderboard, and an admin flag row
+  // that fitted only the two short strings a mock would have used.
+  //
+  // Two states, because the rows differ: the global board carries a points
+  // figure, and the CATEGORY board carries a percentage plus the longest
+  // secondary line in the app ("120 Qs met · 96 known"). Names and titles are
+  // deliberately long — a row that only fits its mock data is one real display
+  // name away from breaking.
+  // ==========================================
+  'leaderboard-global': {
+    page: 'leaderboard',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const row = (rank, name, title, primary, secondary, me) => `
+        <div class="leaderboard-row${me ? ' leaderboard-row--me' : ''}">
+          <span class="leaderboard-rank">${rank}</span>
+          <div class="avatar" style="width:28px;height:28px;background:#A87830;">🦊</div>
+          <div class="leaderboard-row__info">
+            <div class="leaderboard-row__name">${name}</div>
+            <div class="leaderboard-row__title">${title}</div>
+          </div>
+          <div class="leaderboard-row__stats">
+            <div class="leaderboard-row__primary">${primary}</div>
+            <div class="leaderboard-row__secondary">${secondary}</div>
+          </div>
+        </div>`;
+      const list = document.getElementById('lb-global-list');
+      if (list) {
+        list.innerHTML = [
+          row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '1,284', '96 games · 41 wins', false),
+          row(2, 'Sam', 'Novice', '640', '23 games · 8 wins', true),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar of the Atomic Age', '512', '18 games · 5 wins', false),
+          row(4, 'Jo', 'Apprentice', '96', '4 games · 0 wins', false),
+        ].join('');
+      }
+    },
+  },
+
+  'leaderboard-category': {
+    page: 'leaderboard',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      document.querySelectorAll('.leaderboard-tab').forEach(t => { t.style.display = 'none'; });
+      document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+      const catTab = document.querySelector('.profile-tab[data-tab="category"]');
+      if (catTab) catTab.classList.add('active');
+      const panel = document.getElementById('tab-category');
+      if (panel) panel.style.display = '';
+      const sub = document.getElementById('lb-subcategory-select');
+      if (sub) {
+        sub.style.display = '';
+        sub.innerHTML = '<option>Ancient &amp; Classical</option>';
+      }
+      const row = (rank, name, title, primary, secondary, me) => `
+        <div class="leaderboard-row${me ? ' leaderboard-row--me' : ''}">
+          <span class="leaderboard-rank">${rank}</span>
+          <div class="avatar" style="width:28px;height:28px;background:#4A7C59;">🦉</div>
+          <div class="leaderboard-row__info">
+            <div class="leaderboard-row__name">${name}</div>
+            <div class="leaderboard-row__title">${title}</div>
+          </div>
+          <div class="leaderboard-row__stats">
+            <div class="leaderboard-row__primary">${primary}</div>
+            <div class="leaderboard-row__secondary">${secondary}</div>
+          </div>
+        </div>`;
+      const list = document.getElementById('lb-category-list');
+      if (list) {
+        list.innerHTML = [
+          row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '94%', '248 Qs met · 233 known', false),
+          row(2, 'Sam', 'Keeper of Secrets', '72%', '120 Qs met · 86 known', true),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar', '51%', '60 Qs met · 30 known', false),
+        ].join('');
+      }
+    },
+  },
+
   'privacy': {
     page: 'privacy',
     screen: null,

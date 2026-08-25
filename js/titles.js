@@ -392,10 +392,34 @@ export function tierProgress(row) {
 /**
  * Compute the category tier for each category from player_stats.
  * Returns { 'history': 'Scholar', 'science': 'Apprentice', ... }
+ *
+ * THE ROLLUP ROWS ARE MERGED FIRST, and leaving that out was a real bug in the
+ * most consequential place it could be. player_stats_computed emitted THREE
+ * rollup rows for Wild Card — the profile showed the category three times, which
+ * is how it was found — because `null`, `''` and `undefined` all read as "no
+ * subcategory" while staying separate rows. mergedCategoryRows was written to
+ * fix the profile and this function was not converted with it.
+ *
+ * A tier is not a display detail: it gates every title unlock, the tier badge in
+ * every lobby, and hasReachedApprentice, which is what opens the Title Builder.
+ * Reading one fragment of a split category understates it twice over — the
+ * fragment carries a slice of the questions, and MIN_QUESTIONS_FOR_TITLE is
+ * applied to that slice, so somebody with 36 questions met split 12/12/12 gets
+ * NO TIER AT ALL rather than a lower one. Which of the three won was also just
+ * whichever the view happened to return last.
+ *
+ * SUBCATEGORY ROWS ARE NOT MERGED. Each one is its own tier under its own key,
+ * which is the whole point of them; only the category-level rollups are
+ * ambiguous. With a single rollup per category the merge is the identity, so
+ * this is a no-op wherever the view behaves.
  */
 export function computeCategoryTiers(stats) {
   const tiers = {};
-  for (const s of (stats || [])) {
+  const rows = [
+    ...mergedCategoryRows(stats),
+    ...(stats || []).filter(s => s.subcategory),
+  ];
+  for (const s of rows) {
     const prof = rowProficiency(s);
     if (!prof || prof.met < MIN_QUESTIONS_FOR_TITLE) continue;
     const accuracy = prof.accuracy;

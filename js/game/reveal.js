@@ -187,14 +187,15 @@ function honkBtnHtml(player) {
 /**
  * How many players have actually ANSWERED, as opposed to merely having a row.
  *
- * On the final question lockInFinalWager writes a __WAGER_LOCKED__ placeholder
- * for every player the moment they choose a number, so plain answers.length
- * equals the player count before anybody has typed a word — which made the
- * screen believe the round was complete and hide the countdown.
+ * This used to be its own filter here, skipping the __WAGER_LOCKED__ placeholder
+ * and nothing else — so it was blind to the fault migration 052 introduced, in
+ * which an answer outlives the seat it was given in and a departed player's row
+ * stands in for somebody still typing. countAnswersFrom had the opposite half.
+ * One function holds both rules now; this is a thin wrapper so the call sites
+ * below still read as the question they are asking.
  */
 function submittedCount(answers) {
-  return (answers || []).filter(a =>
-    (a.submitted_answer || '').trim() !== '__WAGER_LOCKED__').length;
+  return countAnswersFrom(answers, state.players);
 }
 
 export function renderRevealAnswers(answers) {

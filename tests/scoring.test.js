@@ -491,4 +491,34 @@ describe('countAnswersFrom', () => {
     expect(countAnswersFrom(null, players)).toBe(0);
     expect(countAnswersFrom([{ player_id: 'p1' }], null)).toBe(0);
   });
+
+  // On the FINAL question lockInFinalWager writes __WAGER_LOCKED__ for every
+  // player the moment they pick 0/10/20, so everybody holds a row before anyone
+  // has typed a word. reveal.js had this guard in a private helper of its own
+  // and countAnswersFrom did not, so updateRevealButtonText and the Realtime
+  // answer handler both counted placeholders: on the last round of every game
+  // the countdown vanished and the host was told "Reveal Results" while people
+  // were still answering. Half a rule in each of two files.
+  it('does not count a locked final wager as an answer', () => {
+    const answers = players.map(p => ({ player_id: p.id, submitted_answer: '__WAGER_LOCKED__' }));
+    expect(countAnswersFrom(answers, players)).toBe(0);
+    expect(countAnswersFrom(answers, players) >= players.length).toBe(false);
+  });
+
+  it('counts the real answer that replaces a placeholder', () => {
+    const answers = [
+      { player_id: 'p1', submitted_answer: 'Paris' },
+      { player_id: 'p2', submitted_answer: '__WAGER_LOCKED__' },
+      { player_id: 'p3', submitted_answer: '  __WAGER_LOCKED__  ' },
+    ];
+    expect(countAnswersFrom(answers, players)).toBe(1);
+  });
+
+  it('still counts a deliberately blank answer, which is a real submission', () => {
+    // A blank is what somebody who ran out of time actually has. Treating it as
+    // "not answered" would hold the round open for a player the fill has
+    // already closed out.
+    const answers = players.map(p => ({ player_id: p.id, submitted_answer: '' }));
+    expect(countAnswersFrom(answers, players)).toBe(3);
+  });
 });

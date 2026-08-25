@@ -17,6 +17,15 @@
 /* --- CSS Variables --- */
 :root {
   /* Colors — Warm Light Theme */
+  /* Medal colours for the top three leaderboard ranks.
+     THEME-AWARE, because an inline colour cannot answer to three palettes —
+     the same lesson as the tier badges. The gold was hardcoded #d4a017 and
+     measured 2.22:1 on this background: first place was unreadable, and
+     leaderboard.html had no mock so the sweep had never rendered the page to
+     find out. Light values measured at 4.97, 4.97 and 5.46. */
+  --medal-gold:         #8a6508;
+  --medal-silver:       #6b6b6b;
+  --medal-bronze:       #8a5a33;
   --color-bg:           #F8F7F4;
   --color-bg-deep:      #F0EFEB;
   --color-surface:      #FFFFFF;
@@ -77,6 +86,10 @@
 
 /* --- Dark Theme --- */
 [data-theme="dark"] {
+  /* Bright on a dark ground: 7.18, 5.14 and 4.04 against #1A1A2E. */
+  --medal-gold:         #d4a017;
+  --medal-silver:       #8d8d8d;
+  --medal-bronze:       #a0714f;
   --color-bg:           #1A1A2E;
   --color-bg-deep:      #141425;
   --color-surface:      #242440;
@@ -97,6 +110,10 @@
 
 /* --- OLED Black Theme --- */
 [data-theme="oled"] {
+  /* The same three, and blacker ground lifts them: 8.84, 6.33 and 4.97. */
+  --medal-gold:         #d4a017;
+  --medal-silver:       #8d8d8d;
+  --medal-bronze:       #a0714f;
   --color-bg:           #000000;
   --color-bg-deep:      #050505;
   --color-surface:      #0A0A0A;
@@ -6457,9 +6474,9 @@ body::after {
   min-width: 24px;
   text-align: center;
 }
-.leaderboard-row:nth-child(1) .leaderboard-rank { color: #d4a017; }
-.leaderboard-row:nth-child(2) .leaderboard-rank { color: #8d8d8d; }
-.leaderboard-row:nth-child(3) .leaderboard-rank { color: #a0714f; }
+.leaderboard-row:nth-child(1) .leaderboard-rank { color: var(--medal-gold); }
+.leaderboard-row:nth-child(2) .leaderboard-rank { color: var(--medal-silver); }
+.leaderboard-row:nth-child(3) .leaderboard-rank { color: var(--medal-bronze); }
 
 .leaderboard-row__info {
   flex: 1;

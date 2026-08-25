@@ -217,12 +217,35 @@ export async function fetchTitleUnlocks(userId) {
  * Upsert a title unlock — insert new or upgrade level.
  */
 export async function upsertTitleUnlock(userId, wordId, level) {
-  const { data: existing } = await supabase
+  // .limit(1) and a CHECKED read error, for the reason CLAUDE.md #10 records.
+  //
+  // Migration 007 declares UNIQUE(user_id, word_id) on this table — and
+  // migration 003 declared UNIQUE(sender_id, receiver_id) on friend_requests,
+  // which the live table turned out not to have. A declared constraint is not a
+  // measured one, and the client should not need it to be right.
+  //
+  // Without this, one duplicate pair made maybeSingle() error, the error was
+  // discarded, `existing` came back undefined, and another row was inserted.
+  // evaluateUnlocks runs at the end of EVERY game, so that ratchet turns once
+  // per game for the rest of the account's life — and takes the level check
+  // with it, since a fresh row is written at whatever level was passed rather
+  // than being compared against the level already held.
+  //
+  // A failed read is not an absent row: inserting when we cannot tell is the
+  // step that creates the duplicate. Missing one unlock is recoverable — the
+  // check runs again after the next game — so an error stops here.
+  const { data: rows, error: readError } = await supabase
     .from('title_unlocks')
     .select('id, level')
     .eq('user_id', userId)
     .eq('word_id', wordId)
-    .maybeSingle();
+    .order('level', { ascending: false })
+    .limit(1);
+  if (readError) {
+    logger.error('Supabase', 'upsertTitleUnlock read failed — not writing, an insert here would duplicate the unlock', readError);
+    return;
+  }
+  const existing = (rows || [])[0] || null;
 
   if (existing) {
     if (level > existing.level) {

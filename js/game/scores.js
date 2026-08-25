@@ -11,7 +11,7 @@ import {
   updateGameState,
   startClockOnServer,
   addRoomScores,
-  submitAnswer,
+  insertAnswersIfAbsent,
   fetchAnswersForQuestion,
   updateAnswerJudgment,
   setJudgementOnServer,
@@ -644,9 +644,28 @@ async function lockInFinalWager() {
     $('#btn-fw-reveal').classList.remove('hidden');
   }
 
-  // Submit placeholder so others see the wager via Realtime
+  // Submit placeholder so others see the wager via Realtime.
+  //
+  // insertAnswersIfAbsent (ON CONFLICT DO NOTHING), NOT submitAnswer, and this
+  // was a real bug that migration 049 introduced and nothing was watching.
+  //
+  // submitAnswer is an UPSERT. Measured against a real Postgres in the shape
+  // 049 left `answers` — INSERT permitted, UPDATE revoked — a conflicting
+  // ON CONFLICT DO UPDATE raises 42501 and writes nothing. So the moment ANY
+  // row already existed at the final question, locking a wager failed: the
+  // placeholder never landed, nobody else in the room saw the number, and the
+  // player got "Your answer didn't save — check your connection and try again"
+  // for a wager they had just chosen. It surfaced as an intermittent console
+  // error in scenario-social, one run in five.
+  //
+  // DO NOTHING is not a workaround here, it is the correct rule, and it is the
+  // one the server already enforces: LOCKED IS LOCKED. op_submit_answer keeps
+  // `existing.wager` on the final round rather than taking a new one, so a
+  // second lock must not move the number — and a placeholder must never
+  // overwrite a real answer or a blank the fill has already written. A write
+  // that can only ever ADD is exactly what this needs.
   const q = state.questions[state.totalQuestions];
-  await submitAnswer({
+  await insertAnswersIfAbsent([{
     roomId: state.room.id,
     playerId: state.room.playerId,
     questionNumber: state.totalQuestions,
@@ -655,7 +674,7 @@ async function lockInFinalWager() {
     submittedAnswer: '__WAGER_LOCKED__',
     isCorrect: false,
     scoreEarned: 0
-  });
+  }], 'lockInFinalWager');
 }
 
 function renderFinalWagerPlayers(lockedWagers) {
@@ -1445,7 +1464,15 @@ async function handleReviewQuestions() {
     // Same rule as the reveal and the score-edit sheet: a disqualified round
     // shows what happened but offers no way to re-judge it.
     if (canControlGame() && !state.disqualifiedQuestions?.has(i)) {
-      const qAnswers = allAnswers.filter(a => a.question_number === i && a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__');
+      // Only people still in the room. Until migration 052 an answer died with
+      // its player row, so a departed player could never appear here; 052 drops
+      // that key deliberately (it is what lets a rejoining player recover their
+      // score), and without this filter the host's review grew a row labelled
+      // "Unknown" for everybody who had left, each with a live toggle offering
+      // to re-judge somebody whose score is rendered nowhere.
+      const stillHere = new Set(state.players.map(p => String(p.id)));
+      const qAnswers = allAnswers.filter(a => a.question_number === i && a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__'
+        && stillHere.has(String(a.player_id)));
       if (qAnswers.length > 0) {
         const isFinalWager = i === state.totalQuestions;
         hostAnswersHtml = '<div class="review-item__answers">' + qAnswers.map(a => {

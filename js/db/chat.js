@@ -102,6 +102,19 @@ export async function archiveChatMessages(roomId) {
  *
  * Omitting it reads everything, which is what archiveChatMessages needs: the
  * archive is the room's record, not one player's view of it.
+ *
+ * IT TAKES THE NEWEST HUNDRED, NOT THE FIRST HUNDRED, and it used to do the
+ * opposite. `.order(created_at, ascending) .limit(100)` asks Postgres for the
+ * OLDEST hundred rows — so the moment a room passed CHAT_MESSAGES_LIMIT, anyone
+ * reloading, returning from a game, or opening the in-game chat pane saw the
+ * first hundred things ever said and nothing since. Realtime still delivered
+ * live messages, so the transcript had a hole in the middle that healed itself
+ * as soon as somebody typed, which is about as hard to report as a bug gets.
+ *
+ * Descending then reversed is the same hundred rows either way when a room is
+ * under the limit, and the RIGHT hundred when it is over. archiveChatMessages
+ * benefits by the same argument: a truncated archive should hold the
+ * conversation, not the opening hellos.
  */
 export async function fetchMessages(roomId, since = null) {
   let query = supabase
@@ -112,14 +125,15 @@ export async function fetchMessages(roomId, since = null) {
   if (since) query = query.gte('created_at', since);
 
   const { data, error } = await query
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(CHAT_MESSAGES_LIMIT);
 
   if (error) {
     logger.error('Supabase', 'fetchMessages failed', error);
     return [];
   }
-  return data;
+  // Oldest first for display, which is what both callers render.
+  return (data || []).slice().reverse();
 }
 
 /**

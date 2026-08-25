@@ -27,6 +27,15 @@ const TABLES = [
   // player_stats. It was absent from this list, so nothing here would have
   // noticed the leaderboard silently returning an empty list.
   'player_stats_computed',
+  // The GLOBAL board reads player_totals_computed (migration 032), which counts
+  // each answered question once. It was absent from this list for the same
+  // reason player_stats_computed was: it is a view added later, and the list
+  // was written from the table names. Its absence is quieter than the one above
+  // — fetchPlayerTotalsForLeaderboard falls back to summing the per-category
+  // rollups — but the fallback counts a question filed under two topics TWICE,
+  // and 11% of the bank carries more than one category. So the board still
+  // draws, with inflated totals, and nothing anywhere says why.
+  'player_totals_computed',
   // Migration 029 — what people actually typed.
   'answer_tally',
 ];
@@ -130,7 +139,14 @@ for (const t of present) {
 
 const PK = {
   profiles: 'user_id', site_settings: 'key', question_stats: 'question_id',
-  question_health: 'question_id', answer_tally: 'question_id',
+  // question_health is a VIEW over questions, and migration 025 selects `q.id`
+  // — so its key column is `id`, not `question_id`. It was listed as
+  // `question_id` here, which does not exist: PostgREST answered 42703, the
+  // sample came back empty, and every write verdict for this object read
+  // "no rows to probe with" for a view holding 4,859 of them. A probe that
+  // cannot find a column reports the same thing as a probe that found an empty
+  // table — CLAUDE.md #6, in miniature.
+  answer_tally: 'question_id',
 };
 const pkOf = t => PK[t] || 'id';
 
@@ -138,12 +154,26 @@ function pgCode(body) {
   try { return JSON.parse(body || '{}').code || null; } catch { return null; }
 }
 
+// Returns the sampled keys, and — when it could not sample — WHY.
+//
+// This used to return a bare [], so "the table is empty" and "the column name
+// in PK above is wrong" produced the identical verdict downstream: "no rows to
+// probe with". question_health was listed under the wrong key column for as
+// long as it has been on this list, and every write verdict for it read as an
+// empty view holding 4,859 rows. A probe that cannot tell those apart is the
+// fault CLAUDE.md #6 is about, in the tool #6 was written for.
 async function samplePks(t, n = 2) {
   const pk = pkOf(t);
   const r = await req(`${t}?select=${pk}&limit=${n}`);
-  if (r.status !== 200) return [];
-  try { return JSON.parse(r.body || '[]').map(row => row[pk]).filter(v => v != null); }
-  catch { return []; }
+  if (r.status !== 200) {
+    const code = pgCode(r.body);
+    return { pks: [], why: `could not sample "${pk}" (HTTP ${r.status}${code ? ` / ${code}` : ''})` };
+  }
+  try {
+    return { pks: JSON.parse(r.body || '[]').map(row => row[pk]).filter(v => v != null), why: null };
+  } catch {
+    return { pks: [], why: 'could not sample (unreadable response)' };
+  }
 }
 
 async function probeInsert(t, existingPk) {
@@ -189,7 +219,8 @@ console.log('\n--- WRITE PERMISSIONS (nothing is created, changed or removed) --
 console.log('    "ALLOWED" means any visitor could do this to real rows.');
 console.log('    DELETE is not probed: it cannot be tested without deleting.\n');
 for (const t of present) {
-  const pks = await samplePks(t);
+  const { pks, why } = await samplePks(t);
+  if (why) { console.log(`  ${t.padEnd(20)} NOT PROBED — ${why}`); continue; }
   const ins = await probeInsert(t, pks[0]);
   const upd = await probeUpdate(t, pks);
   console.log(`  ${t.padEnd(20)} INSERT: ${ins.padEnd(24)} UPDATE: ${upd}`);
@@ -537,6 +568,13 @@ const CONSEQUENCES = [
       'no tier badge appears in any lobby',
       'NO TITLE EVER UNLOCKS — the check runs against nothing and reports success',
     ] },
+  { object: 'player_totals_computed', kind: 'table',
+    fix: 'run migrations/032_totals_and_mastery.sql',
+    breaks: [
+      'the GLOBAL leaderboard falls back to summing the per-category rollups, which draws fine and is WRONG',
+      'a question filed under two categories is counted twice there — 11% of the bank carries more than one',
+      'so the people who play the broadest categories are ranked highest, and nothing says so',
+    ] },
   { object: 'amend_question_history', kind: 'rpc',
     fix: 'run migrations/041_host_can_correct_history.sql',
     breaks: [
@@ -695,6 +733,9 @@ const REQUIRED = {
                           // counters without these, so nothing breaks; the
                           // number just means the old thing.
                           'questions_met', 'questions_mastered'],
+  // One row per user, not per category — that is the whole difference.
+  player_totals_computed: ['user_id', 'questions_answered', 'correct_answers',
+                           'games_played', 'wins'],
 };
 
 console.log('\n--- COLUMNS THE APP DEPENDS ON ---');

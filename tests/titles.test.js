@@ -88,6 +88,47 @@ describe('computeCategoryTiers', () => {
     ];
     expect(computeCategoryTiers(stats)).toEqual({ history: 'Oracle' });
   });
+
+  // player_stats_computed emitted THREE rollup rows for Wild Card — null, ''
+  // and undefined all read as "no subcategory" while staying separate rows.
+  // mergedCategoryRows was written for the profile and this function was not
+  // converted with it, so a tier — which gates every title unlock and every
+  // lobby badge — was computed from one fragment of a split category.
+  //
+  // 60 questions met split three ways. Merged: 46/60 = 0.767, log2(60) ≈ 5.91,
+  // score ≈ 4.53 → Scholar. Any ONE row alone: 15 or 16 of 20, log2(20) ≈ 4.32,
+  // score ≈ 3.24–3.46 → Apprentice. So the answer differs, and which of the
+  // three "won" was only ever whichever the view returned last.
+  it('merges split rollup rows before deciding a tier', () => {
+    const stats = [
+      { category: 'wild-card', subcategory: null, questions_answered: 20, correct_answers: 15 },
+      { category: 'wild-card', subcategory: '', questions_answered: 20, correct_answers: 15 },
+      { category: 'wild-card', questions_answered: 20, correct_answers: 16 },
+    ];
+    expect(computeCategoryTiers(stats)).toEqual({ 'wild-card': 'Scholar' });
+  });
+
+  it('gives a tier at all when no single fragment reaches the volume gate', () => {
+    // Three fragments of 12, none of which reaches MIN_QUESTIONS_FOR_TITLE (20),
+    // so reading them one at a time returns NOTHING for somebody with 36
+    // questions met at 92%.
+    const stats = [
+      { category: 'wild-card', subcategory: null, questions_answered: 12, correct_answers: 11 },
+      { category: 'wild-card', subcategory: '', questions_answered: 12, correct_answers: 11 },
+      { category: 'wild-card', subcategory: undefined, questions_answered: 12, correct_answers: 11 },
+    ];
+    expect(computeCategoryTiers(stats)['wild-card']).toBeTruthy();
+  });
+
+  it('still keeps subcategory rows apart — each is its own tier', () => {
+    const stats = [
+      { category: 'history', subcategory: 'ancient', questions_answered: 200, correct_answers: 200 },
+      { category: 'history', subcategory: 'modern', questions_answered: 20, correct_answers: 10 },
+    ];
+    const tiers = computeCategoryTiers(stats);
+    expect(tiers['history:ancient']).toBe('Oracle');
+    expect(tiers['history:modern']).toBeUndefined();
+  });
 });
 
 // ============================================
