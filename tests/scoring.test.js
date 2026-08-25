@@ -10,6 +10,7 @@ import {
   pickWeightedDifficulty,
   allowedDifficulties,
   answersForCurrentGame,
+  countAnswersFrom,
 } from '../js/game/scoring-helpers.js';
 
 // ============================================
@@ -440,5 +441,54 @@ describe('answersForCurrentGame', () => {
   it('survives an empty answer list', () => {
     expect(answersForCurrentGame([], questions)).toEqual([]);
     expect(answersForCurrentGame(null, questions)).toEqual([]);
+  });
+});
+
+
+// ============================================
+// countAnswersFrom
+//
+// "Has everybody answered?" used to be answers.length >= players.length, which
+// worked only by accident: until migration 052 an answer was deleted along with
+// its player row, so both sides shrank together. 052 drops that key on purpose
+// — it is what lets a rejoining player recover their score — so an answer now
+// outlives the seat, and the old test concludes the room is done while somebody
+// is still typing.
+// ============================================
+describe('countAnswersFrom', () => {
+  const players = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }];
+
+  it('ignores an answer left behind by somebody who has gone', () => {
+    // Alice answered and left; only Bob of the two remaining has answered.
+    const answers = [{ player_id: 'gone' }, { player_id: 'p1' }];
+    expect(countAnswersFrom(answers, [{ id: 'p1' }, { id: 'p2' }])).toBe(1);
+  });
+
+  it('does not report everyone done while somebody is still typing', () => {
+    const remaining = [{ id: 'p1' }, { id: 'p2' }];
+    const answers = [{ player_id: 'gone' }, { player_id: 'p1' }];
+    expect(countAnswersFrom(answers, remaining) >= remaining.length).toBe(false);
+    // The old test, for contrast: 2 >= 2 — the bug this replaces.
+    expect(answers.length >= remaining.length).toBe(true);
+  });
+
+  it('counts a player once however many rows they have', () => {
+    const answers = [{ player_id: 'p1' }, { player_id: 'p1' }, { player_id: 'p2' }];
+    expect(countAnswersFrom(answers, players)).toBe(2);
+  });
+
+  it('reaches the full count when everyone present has answered', () => {
+    const answers = players.map(p => ({ player_id: p.id }));
+    expect(countAnswersFrom(answers, players)).toBe(3);
+  });
+
+  it('compares as strings, so a numeric id still matches', () => {
+    expect(countAnswersFrom([{ player_id: 7 }], [{ id: '7' }])).toBe(1);
+  });
+
+  it('survives empty and missing inputs', () => {
+    expect(countAnswersFrom([], players)).toBe(0);
+    expect(countAnswersFrom(null, players)).toBe(0);
+    expect(countAnswersFrom([{ player_id: 'p1' }], null)).toBe(0);
   });
 });

@@ -1231,11 +1231,18 @@ not see this before and honestly said so** — the OpenAPI description carries n
 foreign-key annotations, which is why #9 had to be measured by hand. Embedding
 sees the relationship; it just cannot see the ON DELETE action.
 
-**And 052 does not need to know which action it was, because all three are
-broken and all three are fixed by dropping the key.** An earlier draft of this
-section asserted it had to be CASCADE or SET NULL, reasoning that NO ACTION
-would make the stale sweep fail. That was an inference dressed as a
-measurement, and it is exactly what this file exists to stop:
+**MEASURED: it was `CASCADE`.** 052 captures `confdeltype` before dropping,
+because that is the only moment the answer is knowable, and the live database
+reported `CASCADE — answers were DELETED with the seat`. So a released seat
+really did destroy the score, and the alternative below is ruled out — which
+also confirms the ghost rows this project chased were the code faults already
+fixed, not a failing delete.
+
+**The migration did not need to know, and an earlier draft of this section
+pretended to.** It asserted the action had to be CASCADE or SET NULL, reasoning
+that NO ACTION would make the stale sweep fail and somebody would have noticed.
+That was an inference dressed as a measurement. All three are broken and all
+three are fixed by dropping the key:
 
 | ON DELETE | What it did |
 |---|---|
@@ -1243,14 +1250,24 @@ measurement, and it is exactly what this file exists to stop:
 | `SET NULL` | the rows survived having forgotten whose they were |
 | `NO ACTION` / `RESTRICT` | removing the player RAISED 23503 instead, so `removePlayer` failed for anybody who had answered — logged, never shown, and leaving a seat that cannot be swept for **every player who actually played** |
 
-That last one is worth reading twice: it is an alternative explanation for the
-ghost rows this project has been chasing, and it would have been invisible for
-the same reason as everything else here — the failure only reaches a log.
+That last one would have been an alternative explanation for the ghost rows
+this project has been chasing, and it would have been invisible for the same
+reason as everything else here — the failure only reaches a log. It is not what
+happened, but only the measurement says so. Verified against a real Postgres in
+all three shapes: each is dropped, each is named, and `rooms` keeps its cascade
+every time.
 
-**So the migration records it.** 052 captures `confdeltype` before dropping and
-prints it, because once the key is gone nothing can say what it did. Verified
-against a real Postgres in all three shapes: each is dropped, each is named,
-and `rooms` keeps its cascade every time.
+**DROPPING THE KEY BROKE "has everybody answered", and that is worth reading as
+a pattern rather than a detail.** `state.currentAnswers.length >=
+state.players.length` was correct only by accident: while answers died with the
+seat, both sides of the comparison shrank together. Now an answer outlives the
+seat, so three players where Alice answers and leaves and Bob answers gives two
+answers against two remaining players — the room decides everybody is done
+while Carol is still typing, the host is shown "Reveal Results", and the
+countdown hides itself. `countAnswersFrom` counts only answers whose player is
+still in the room (and de-duplicates by player id, closing the same gap from
+the other side). **A fix that changes what a row's lifetime means changes every
+count taken over those rows.**
 
 **A player whose phone died for two minutes mid-game has always come back to
 nothing**, and nothing said so: the reassignment reported success having moved

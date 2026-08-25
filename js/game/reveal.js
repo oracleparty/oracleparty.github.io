@@ -17,6 +17,7 @@ import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
   recordQuestionOutcome, recordAnswerText, fetchQuestionPlayStats,
 } from '../supabase.js';
 import { describeDifficulty } from '../difficulty-band.js';
+import { countAnswersFrom } from './scoring-helpers.js';
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
@@ -356,7 +357,8 @@ export function updateRevealButtonText() {
   if (!canControlGame() || state.resultsRevealed) return;
   const btn = $('#btn-next-question');
   if (!btn) return;
-  const allSubmitted = state.currentAnswers.length >= state.players.length;
+  // Only the people still in the room count — see countAnswersFrom.
+  const allSubmitted = countAnswersFrom(state.currentAnswers, state.players) >= state.players.length;
   btn.textContent = (!state.timerExpired && !allSubmitted) ? 'Reveal Early' : 'Reveal Results';
 }
 

@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../utils.js';
-import { findNextAvailableWager } from './scoring-helpers.js';
+import { findNextAvailableWager, countAnswersFrom } from './scoring-helpers.js';
 import { getCountdownElapsed } from './timer-helpers.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
 import { logger } from '../logger.js';
@@ -818,15 +818,19 @@ export function handleAnswerChange(payload) {
     }
     renderRevealAnswers(state.currentAnswers);
 
-    // Hide reveal timer once all players have submitted
-    if (state.currentAnswers.length >= state.players.length) {
+    // Hide reveal timer once all players have submitted. Counted over the
+    // people still HERE: since migration 052 an answer outlives the seat it was
+    // given in, so a departed player's row would otherwise stand in for
+    // somebody who is still typing.
+    const everyoneAnswered = countAnswersFrom(state.currentAnswers, state.players) >= state.players.length;
+    if (everyoneAnswered) {
       const revealTimer = $('#reveal-timer');
       if (revealTimer) revealTimer.style.display = 'none';
     }
 
     // Host/co-host: check if all submitted → enable reveal button and update text
     if (canControlGame() && !state.resultsRevealed) {
-      if (state.currentAnswers.length >= state.players.length) {
+      if (everyoneAnswered) {
         enableRevealButton();
       }
       updateRevealButtonText();

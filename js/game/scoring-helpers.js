@@ -83,6 +83,34 @@ export function answersForCurrentGame(answers, questions) {
 }
 
 /**
+ * How many of the people CURRENTLY IN THE ROOM have answered.
+ *
+ * `state.currentAnswers.length >= state.players.length` was the test for "has
+ * everybody answered", and migration 052 broke it. Until 052, an answer was
+ * deleted along with its player row, so a departed player's answer disappeared
+ * from the count at the same moment they disappeared from the player list, and
+ * the two sides stayed in step by accident.
+ *
+ * 052 drops that key deliberately — it is what makes a rejoining player's score
+ * recoverable — so an answer now OUTLIVES the seat. Three players, Alice
+ * answers and leaves, Bob answers: two answers against two remaining players,
+ * and the room concludes everybody is done while Carol is still typing. The
+ * host is shown "Reveal Results" and the countdown hides itself.
+ *
+ * Counting only answers whose player is still here fixes it. Deduplicating by
+ * player id costs nothing and closes the same gap from the other side.
+ */
+export function countAnswersFrom(answers, players) {
+  const here = new Set((players || []).map(p => String(p.id)));
+  const answered = new Set();
+  for (const a of answers || []) {
+    const id = String(a.player_id);
+    if (here.has(id)) answered.add(id);
+  }
+  return answered.size;
+}
+
+/**
  * Compute scores from an array of answer records.
  * Each answer has { player_id, score_earned }.
  */
