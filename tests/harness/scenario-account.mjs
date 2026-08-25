@@ -48,10 +48,23 @@ try {
   // possible readings of the data identical, so a page that adds every row up
   // scores the same as one that adds the rollups, and the double-count bug in
   // CLAUDE.md #8 was invisible here by construction.
-  const stats = (userId, category, answered, correct, games, wins, subcategory = null) => ({
+  //
+  // THE PROFICIENCY COLUMNS ARE SEEDED TOO, and deliberately disagree with the
+  // attempt counters. rowProficiency (migration 040) reads questions_met and
+  // questions_mastered and FALLS BACK to questions_answered / correct_answers
+  // when they are absent — so seeding only the counters makes the two readings
+  // identical and any check on which one the page uses passes whatever it does.
+  // That is how the category leaderboard shipped ranking by the lifetime hit
+  // rate 040 replaced: its query named a column list that omitted them, the
+  // fallback fired every time, and falling back is not an error.
+  //
+  // Proficiency is deliberately the LOWER number here, so a page showing the
+  // old measure is visible rather than merely different.
+  const stats = (userId, category, answered, correct, games, wins, subcategory = null, met = null, mastered = null) => ({
     id: `st-${userId}-${category}-${subcategory || 'all'}`,
     user_id: userId, category, subcategory,
     questions_answered: answered, correct_answers: correct,
+    questions_met: met ?? answered, questions_mastered: mastered ?? correct,
     games_played: games, wins,
   });
 
@@ -70,7 +83,7 @@ try {
   // further down check the page agrees.
   const ALICE_GAMES = 23, ALICE_WINS = 8, ALICE_ANSWERED = 200;
   table.store.seed('player_stats_computed', [
-    stats(alice.userId, 'history', 120, 96, 14, 6),
+    stats(alice.userId, 'history', 120, 96, 14, 6, null, 60, 30),
     stats(alice.userId, 'science', 80, 51, 9, 2),
     stats(bob.userId, 'history', 60, 33, 7, 1),
     stats(carol.userId, 'history', 20, 8, 3, 0),
@@ -181,8 +194,14 @@ try {
   // Accuracy is derived from the same sums. It survives an even double count
   // by cancelling, so it is checked to catch an UNEVEN one — a question with
   // no subcategory is counted once and one with a subcategory twice.
+  //
+  // Computed from the PROFICIENCY columns, because that is what the profile
+  // shows (migration 040): Alice's mastered over met across her two rollups,
+  // 30 + 51 over 60 + 80. Deliberately not the attempt counters — her History
+  // row is seeded so the two disagree, which is what makes it possible to tell
+  // which measure a page is using at all.
   const acc = statValue('accuracy');
-  const expectedAcc = `${Math.round(((96 + 51) / ALICE_ANSWERED) * 100)}%`;
+  const expectedAcc = `${Math.round(((30 + 51) / (60 + 80)) * 100)}%`;
   if (acc !== expectedAcc) {
     problems.push(`profile accuracy reads ${acc}, expected ${expectedAcc} from the rollups`);
   }
@@ -297,13 +316,35 @@ try {
   }
   table.store.allowReads('player_totals_computed');
 
-  // Switching to the category tab must not blank the page.
+  // Switching to the category tab must not blank the page — AND it must rank by
+  // Proficiency, not by the lifetime hit rate migration 040 replaced.
+  //
+  // Alice's History row is seeded so the two disagree on purpose: 96 of 120
+  // attempts is 80%, but 30 of the 60 distinct questions she has met is 50%.
+  // The query behind this board named a column list that omitted questions_met
+  // and questions_mastered, so rowProficiency's fallback fired every time and
+  // the page showed 80% while the profile showed 50%. Falling back is not an
+  // error, so nothing said so.
   const catTab = alice.page.locator('[data-tab="category"], #tab-category-btn').first();
   if (await catTab.isVisible().catch(() => false)) {
     await catTab.click().catch(() => {});
+    await alice.page.waitForTimeout(1200);
+    await alice.page.selectOption('#lb-category-select', 'history').catch(() => {});
     await alice.page.waitForTimeout(1500);
-    const catList = await alice.page.textContent('#lb-category-list').catch(() => '');
-    note(`category list after switching: ${(catList || '').replace(/\s+/g, ' ').trim().slice(0, 60) || '(empty)'}`);
+    const catList = ((await alice.page.textContent('#lb-category-list').catch(() => '')) || '')
+      .replace(/\s+/g, ' ').trim();
+    note(`category list: ${catList.slice(0, 110) || '(empty)'}`);
+
+    if (!catList) {
+      problems.push('switching to the category leaderboard left it blank');
+    } else if (catList.includes('80%')) {
+      problems.push('the category leaderboard is ranking by the lifetime hit rate (80%), not Proficiency (50%)');
+    } else if (!catList.includes('50%')) {
+      problems.push(`the category leaderboard shows neither measure for Alice: ${catList.slice(0, 90)}`);
+    }
+    if (catList && !catList.includes('60 Qs met')) {
+      problems.push(`"Qs met" is showing attempts rather than distinct questions met: ${catList.slice(0, 90)}`);
+    }
   }
 
   // ============================================================

@@ -561,6 +561,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
   let earnedFinal = scoreEarned;
   let wagerFinal = wager;
   let submitResult;
+  let serverRefusal = null;   // why the server said no, for the message below
 
   if (autoSubmit && isBlank) {
     submitResult = await insertBlankAnswers([{
@@ -585,8 +586,9 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
       submitResult = { data: server.row, error: null };
     } else {
       if (server.row?.rejected) {
+        serverRefusal = server.row.rejected;
         logger.warn('Game', 'the server refused this answer, storing it locally', {
-          reason: server.row.rejected, question: state.currentQuestion
+          reason: serverRefusal, question: state.currentQuestion
         });
       }
       submitResult = await submitAnswer({
@@ -611,7 +613,22 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     $('#answer-input').disabled = false;
     $('#btn-submit-answer').disabled = false;
     const errEl = $('#wager-error');
-    if (errEl) errEl.textContent = 'Submit failed — try again';
+    // SAY WHY, when the reason is known. "Submit failed — try again" is a lie
+    // whenever the server refused the answer: trying again cannot help, and the
+    // player retypes into a box that will keep saying the same thing.
+    //
+    // The fallback below a refusal can now only fail one way — an EDIT, because
+    // migration 049 revoked UPDATE on `answers` — so the row already holding
+    // their answer is the one that stands. A first answer still inserts, which
+    // is the safety valve CLAUDE.md deliberately keeps until real games show no
+    // rejections; this changes what the screen SAYS, not what the game does.
+    if (errEl) {
+      errEl.textContent = serverRefusal === 'time is up'
+        ? "Time's up — your last answer stands"
+        : serverRefusal
+          ? `Not accepted: ${serverRefusal}`
+          : 'Submit failed — try again';
+    }
     logger.error('Game', 'submitAnswer failed', submitResult.error);
     return;
   }

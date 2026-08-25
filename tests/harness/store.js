@@ -77,8 +77,17 @@ export class FakeStore {
       ['game_plays',        [['room_id', 'player_id']]],
     ]);
     this._shutDoors = new Map([
-      ['answers', new Set(['update', 'delete'])],   // migrations 049 + 050
-      ['rooms',   new Set(['delete'])],             // migration 048
+      ['answers',      new Set(['update', 'delete'])],   // migrations 049 + 050
+      ['rooms',        new Set(['delete'])],             // migration 048
+      // Migration 036. Chat is inserted, read and hearted, and never deleted by
+      // anything — checked against js/db/chat.js rather than assumed. Before it,
+      // any visitor could have wiped every message and every archive.
+      //
+      // Messages still disappear when their room does: a cascade runs as the
+      // table owner and is unaffected by policies, which is why
+      // _deleteRoomCascade splices them directly rather than going through here.
+      ['chat_messages', new Set(['delete'])],
+      ['chat_archive',  new Set(['update', 'delete'])],
     ]);
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
@@ -200,6 +209,33 @@ export class FakeStore {
     const [goneRoom] = rooms.splice(idx, 1);
     this._broadcast('DELETE', 'rooms', null, goneRoom);
     return true;
+  }
+
+  /**
+   * Return only the columns the caller asked for, as PostgREST does.
+   *
+   * The shim used to throw the column list away and the store handed back whole
+   * rows, so a query that FORGOT a column behaved exactly like one that did
+   * not. That is not a small difference: rowProficiency and
+   * bucketQuestionsByHistory both fall back to older columns when the newer
+   * ones are absent, and "absent" is precisely what a short select produces
+   * live. The category leaderboard shipped ranking by the lifetime hit rate for
+   * that reason, and no scenario could see it.
+   *
+   * Only a plain comma-separated list is honoured. `*`, embedded resources
+   * (`players(id)`), aliases and anything else is returned whole rather than
+   * guessed at — a projection that is wrong in the other direction would hide
+   * bugs just as effectively.
+   */
+  _project(row, columns) {
+    if (!columns || typeof columns !== 'string') return { ...row };
+    const spec = columns.trim();
+    if (!spec || spec === '*' || /[(:*]/.test(spec)) return { ...row };
+    const wanted = spec.split(',').map(c => c.trim()).filter(Boolean);
+    if (!wanted.length || wanted.some(c => !/^[A-Za-z_][\w]*$/.test(c))) return { ...row };
+    const out = {};
+    for (const c of wanted) out[c] = row[c];
+    return out;
   }
 
   denyWrites(table) { this._denied.add(table); }
@@ -438,7 +474,7 @@ export class FakeStore {
 
     try {
       if (action === 'select') {
-        let result = this._applyFilters(rows, filters).map(r => ({ ...r }));
+        let result = this._applyFilters(rows, filters).map(r => this._project(r, modifiers.columns));
         if (modifiers.order) {
           const { column, ascending } = modifiers.order;
           result.sort((a, b) => {

@@ -318,9 +318,29 @@ export async function fetchAllPlayerStatsForLeaderboard() {
  * Minimum 20 questions answered. Sorted by accuracy desc client-side.
  */
 export async function fetchCategoryLeaderboard(category, subcategory = null) {
+  // SELECT * ON PURPOSE, and this was a real bug.
+  //
+  // The column list here named only the attempt counters, and its one consumer
+  // — loadCategoryLeaderboard — ranks by rowProficiency, which reads
+  // questions_met and questions_mastered (migration 040) and FALLS BACK to the
+  // attempt counters when they are absent. Absent is exactly what a column list
+  // that omits them produces, so the fallback fired every single time and the
+  // category boards silently ranked by the lifetime hit rate 040 set out to
+  // replace: a question missed once and since learned still counted against
+  // you, forever. The row label said "N Qs met" while showing attempts.
+  //
+  // It disagreed with the profile and the global board, and nothing could say
+  // so, because falling back is not an error.
+  //
+  // This is the same shape as fetchQuestionHistoryForUsers, which MUST select
+  // last_correct for the identical reason (CLAUDE.md, Proficiency). Naming the
+  // new columns explicitly would be better documentation and worse code: if
+  // migration 040 has not been applied they do not exist, PostgREST answers
+  // 42703, and the whole leaderboard goes blank instead of degrading. `*` lets
+  // the fallback mean what it says.
   let query = supabase
     .from('player_stats_computed')
-    .select('user_id, questions_answered, correct_answers, games_played, wins, subcategory')
+    .select('*')
     .eq('category', category)
     .gte('questions_answered', 20);
   if (subcategory) {

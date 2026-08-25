@@ -2520,6 +2520,33 @@ exactly the state `player_stats_computed` was in for months (#8).
 `scenario-account.mjs` uses it to prove the leaderboard falls back to the
 per-category rollups instead of going blank while migration 032 is unapplied.
 
+**THE FAKE STORE NOW RETURNS ONLY THE COLUMNS YOU ASKED FOR**, and until
+2026-08-25 it did not — the shim threw the column list away and handed back
+whole rows. So a query that FORGOT a column behaved exactly like one that did
+not, and that is not a small difference in this codebase: `rowProficiency` and
+`bucketQuestionsByHistory` both FALL BACK to older columns when the newer ones
+are absent, and absent is precisely what a short `select` produces live.
+
+It had already shipped a bug. `fetchCategoryLeaderboard` named a column list
+that omitted `questions_met` and `questions_mastered`, so the fallback fired on
+every row and the category boards ranked by the lifetime hit rate migration 040
+set out to replace — a question missed once and since learned counted against
+you forever. The row label said "N Qs met" while showing attempts. It disagreed
+with the profile and the global board, and nothing could say so, because falling
+back is not an error. It selects `*` now: naming the new columns explicitly
+would be better documentation and worse code, because if 040 were ever unapplied
+PostgREST answers 42703 and the whole board goes blank instead of degrading.
+
+`scenario-account` seeds `questions_met` / `questions_mastered` that DISAGREE
+with the attempt counters (Alice: 96/120 attempts, 30/60 questions) — without
+that the two readings are identical and any check on which measure a page uses
+passes whatever it does. Verified by restoring the old column list: it reports
+"ranking by the lifetime hit rate (80%), not Proficiency (50%)".
+
+Only a plain comma list is honoured; `*`, embedded resources and aliases return
+whole rows rather than being guessed at, because a projection that is wrong in
+the other direction hides bugs just as well.
+
 **`store.denyWrites(table)` simulates an RLS refusal** — zero rows, no error,
 exactly as Postgres behaves when a policy denies a write. This is the most
 misleading thing the database does and the direct cause of #4 and #5, so it is

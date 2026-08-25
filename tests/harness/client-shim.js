@@ -55,9 +55,16 @@ class QueryBuilder {
   constructor(table) {
     this.op = { table, action: 'select', payload: null, filters: [], modifiers: {} };
   }
-  select(_cols, opts) {
+  select(cols, opts) {
     if (this.op.action === 'select') this.op.action = 'select';
     if (opts && opts.count) this.op.modifiers.count = opts.count;
+    // PASS THE COLUMN LIST ON. It used to be discarded, so the store handed
+    // back whole rows whatever the app asked for — and a query that forgot a
+    // column looked identical to one that did not. That is how the category
+    // leaderboard shipped ranking by the wrong measure: its select omitted
+    // questions_met and questions_mastered, so rowProficiency silently fell
+    // back to the attempt counters, and no scenario could tell.
+    if (typeof cols === 'string') this.op.modifiers.columns = cols;
     return this;
   }
   insert(payload)  { this.op.action = 'insert'; this.op.payload = payload; return this; }
