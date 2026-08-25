@@ -307,6 +307,16 @@ END $$;
 
 -- --------------------------------------------
 -- VERIFY — every cell must read "ok"
+--
+-- EVERY CHECK IS SCHEMA-QUALIFIED, and the first version of this was not.
+-- `pg_policies` spans the whole database, so `WHERE tablename = 'answers'`
+-- also matches a table of that name in any other schema — and the DROP loops
+-- above are correctly confined to `public`. An unqualified check can therefore
+-- report FAIL for a policy this migration was never going to touch, sending
+-- the next session hunting a hole that is not in the app's schema at all.
+--
+-- That is the same family of mistake as 048 verifying a single `cmd` value:
+-- the check must ask exactly the question the fix answers.
 -- --------------------------------------------
 SELECT
   CASE WHEN to_regprocedure('op_reset_answers(uuid,uuid)') IS NOT NULL
@@ -318,11 +328,50 @@ SELECT
   CASE WHEN to_regprocedure('op_admin_end_room(uuid)') IS NOT NULL
        THEN 'ok' ELSE 'FAIL the admin cannot end a stuck room' END AS end_room,
   CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
-                         WHERE tablename = 'answers' AND cmd IN ('UPDATE','DELETE','ALL'))
+                         WHERE schemaname = 'public' AND tablename = 'answers'
+                           AND cmd IN ('UPDATE','DELETE','ALL'))
        THEN 'ok' ELSE 'FAIL a stranger can still edit a score' END AS door_still_shut,
   CASE WHEN NOT EXISTS (SELECT 1 FROM pg_policies
-                         WHERE tablename = 'rooms' AND cmd IN ('DELETE','ALL'))
+                         WHERE schemaname = 'public' AND tablename = 'rooms'
+                           AND cmd IN ('DELETE','ALL'))
        THEN 'ok' ELSE 'FAIL a stranger can still delete a live room' END AS rooms_door,
   CASE WHEN EXISTS (SELECT 1 FROM pg_policies
-                     WHERE tablename = 'rooms' AND cmd IN ('UPDATE','ALL'))
+                     WHERE schemaname = 'public' AND tablename = 'rooms'
+                       AND cmd IN ('UPDATE','ALL'))
        THEN 'ok' ELSE 'FAIL nobody can advance a game' END AS rooms_still_playable;
+
+
+-- --------------------------------------------
+-- IF door_still_shut READS "FAIL", RUN THIS.
+--
+-- It re-runs the shut-the-door step for `answers` and then LISTS every policy
+-- on a table called `answers` anywhere in the database, so the answer is
+-- visible rather than inferred. Two things it distinguishes:
+--
+--   * a policy in `public` that the earlier block never removed — meaning
+--     migration 050's DO block did not run, or errored partway;
+--   * a policy on an `answers` table in some OTHER schema, which is not the
+--     app's table and is not a hole in the game at all.
+-- --------------------------------------------
+-- DO $$
+-- DECLARE pol record;
+-- BEGIN
+--   IF NOT EXISTS (SELECT 1 FROM pg_policies
+--                   WHERE schemaname='public' AND tablename='answers' AND cmd='SELECT') THEN
+--     EXECUTE 'CREATE POLICY "Answers: anyone can read" ON public.answers FOR SELECT USING (true)';
+--   END IF;
+--   IF NOT EXISTS (SELECT 1 FROM pg_policies
+--                   WHERE schemaname='public' AND tablename='answers' AND cmd='INSERT') THEN
+--     EXECUTE 'CREATE POLICY "Answers: anyone can insert" ON public.answers FOR INSERT WITH CHECK (true)';
+--   END IF;
+--   FOR pol IN SELECT policyname FROM pg_policies
+--               WHERE schemaname='public' AND tablename='answers'
+--                 AND cmd IN ('UPDATE','DELETE','ALL')
+--   LOOP
+--     EXECUTE format('DROP POLICY %I ON public.answers', pol.policyname);
+--   END LOOP;
+-- END $$;
+--
+-- SELECT schemaname || '.' || tablename AS relation, policyname, cmd,
+--        roles::text AS granted_to
+-- FROM pg_policies WHERE tablename = 'answers' ORDER BY schemaname, cmd, policyname;

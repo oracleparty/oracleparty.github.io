@@ -1915,6 +1915,16 @@ LOOKING, the way 036 and 050 do, and verifies `cmd IN ('DELETE','ALL')`.
 **Never drop a policy by name in this project, and never verify one by a single
 `cmd` value.**
 
+**And always qualify the schema — my own check got this wrong.** 051's first
+verification asked `WHERE tablename = 'answers'` with no `schemaname`, while
+every DROP loop is correctly confined to `public`. `pg_policies` spans the whole
+database, so the check could report FAIL for a policy the fix was never going to
+touch. **A verification must ask exactly the question its fix answers**, which
+is the same lesson as 048's single `cmd` value wearing different clothes. The
+migration now ends with a commented-out diagnostic that lists every policy on
+any table named `answers`, with its schema — because when a check and a fix
+disagree, the thing to do is look, not reason.
+
 `rooms` UPDATE deliberately stays open — the phase machine still runs in the
 browser — and 051 asserts that too, because a lockdown that stops a game
 advancing is worse than the hole it closes.
