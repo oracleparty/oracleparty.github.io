@@ -9,6 +9,9 @@ import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, recallSeat
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
 import { logger } from './logger.js';
+
+// host user id -> reputation row, built up across refreshes. See loadPublicGames.
+const _hostReps = new Map();
 import { PUBLIC_GAMES_REFRESH, PULL_REFRESH_THRESHOLD, MIN_HOST_RATINGS } from './constants.js';
 
 // DOM refs
@@ -221,7 +224,16 @@ async function loadPublicGames() {
   // renders as "new host" — never as 0%. An unrated host and a disliked one
   // must not look alike, which is the same rule the admin panel's counts follow
   // where a failed count shows "?" and never "0".
-  const reps = await fetchHostReputations(rooms.map(r => r.host_user_id));
+  // ACCUMULATED, NOT REPLACED. This list refreshes every ten seconds, and a
+  // transient failure returns an empty map — which would flip every host on
+  // screen to "new host" and back again, telling somebody deciding whether to
+  // join that a host with fifty games has none. Merging into what we already
+  // know means a dropped request shows the last good answer instead of a wrong
+  // one, and a host who genuinely has no ratings was never in the map anyway.
+  for (const [id, rep] of await fetchHostReputations(rooms.map(r => r.host_user_id))) {
+    _hostReps.set(id, rep);
+  }
+  const reps = _hostReps;
 
   const fragment = document.createDocumentFragment();
   for (const room of rooms) {

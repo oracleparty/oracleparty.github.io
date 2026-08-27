@@ -1,6 +1,6 @@
 import { supabase } from './client.js';
 import { logger } from '../logger.js';
-import { PROFILE_SEARCH_LIMIT } from '../constants.js';
+import { PROFILE_SEARCH_LIMIT, MIN_HOST_RATINGS } from '../constants.js';
 
 // ============================================
 // PROFILES & AUTH HELPERS
@@ -288,7 +288,11 @@ export async function fetchHostReputations(userIds) {
  * happened to be in the room than about the host — under it, the count is
  * shown on its own.
  */
-export function describeHostReputation(rep, minRatings = 3) {
+// The default comes from the constant, not from a literal 3 sitting here. A
+// hardcoded copy beside an exported constant is the one-rule-two-places hazard
+// this project keeps paying for: change the constant and every caller that
+// omitted the argument silently keeps the old threshold.
+export function describeHostReputation(rep, minRatings = MIN_HOST_RATINGS) {
   if (!rep || !rep.ratings) return null;
   if (rep.ratings < minRatings) {
     return { text: `${rep.ratings} rating${rep.ratings === 1 ? '' : 's'}`, measured: false, flags: rep.flags || 0 };

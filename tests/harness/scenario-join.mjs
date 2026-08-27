@@ -129,6 +129,29 @@ try {
   // 1 + 2. PUBLIC LISTING, AND PRIVACY
   // ============================================================
   heading('public games list');
+
+  // A HOST WITH A RECORD, so the list has a reputation to show. This is the
+  // surface the whole host-review feature exists for — read BEFORE you tap a
+  // stranger's room — and it had no coverage at all until now.
+  const PUBLIC_HOST_USER = '00000000-0000-4000-8000-0000publichost';
+  {
+    const publicRoomRow = table.store.table('rooms').find(r => r.code === publicCode);
+    const hostRow = table.store.table('players')
+      .find(p => String(p.room_id) === String(publicRoomRow?.id) && p.is_host);
+    if (hostRow) hostRow.user_id = PUBLIC_HOST_USER;
+    // Seeded through op_rate_host's own output shape rather than by hand, so
+    // the percentage on screen has to come from the same arithmetic the view
+    // does — seeding host_reputation directly would let this pass for a board
+    // the ratings do not support.
+    table.store.seed('host_ratings', [
+      { id: 'jr1', host_user_id: PUBLIC_HOST_USER, room_id: 'old-1', voter_id: 'device:1', rating: 1 },
+      { id: 'jr2', host_user_id: PUBLIC_HOST_USER, room_id: 'old-2', voter_id: 'device:2', rating: 1 },
+      { id: 'jr3', host_user_id: PUBLIC_HOST_USER, room_id: 'old-3', voter_id: 'device:3', rating: 1 },
+      { id: 'jr4', host_user_id: PUBLIC_HOST_USER, room_id: 'old-4', voter_id: 'device:4', rating: -1 },
+    ]);
+    table.store._recomputeHostReputation();
+  }
+
   const stranger = await seat('Erin');
   await stranger.goto('join.html');
   await stranger.page.waitForSelector('#code-input', { timeout: 15000 });
@@ -159,6 +182,19 @@ try {
     }
   } else {
     note('public room stored no subcategory — subcategory labelling not exercised');
+  }
+
+  // THE HOST'S STANDING, on the row, before anybody taps it. Three up and one
+  // down is 75% of 4 — and the SAMPLE must be printed beside it, because "75%"
+  // from four games and from four hundred are different claims.
+  if (publicRow) {
+    note(`public row reputation: ${publicRow.slice(0, 90)}`);
+    if (!/75%/.test(publicRow)) {
+      problems.push(`the public games list does not show the host's rating — "${publicRow.slice(0, 80)}"`);
+    }
+    if (!/4 games/.test(publicRow)) {
+      problems.push('the host rating is shown without its sample size, so a percentage from four games looks like one from four hundred');
+    }
   }
 
   // ============================================================

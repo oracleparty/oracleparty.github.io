@@ -151,7 +151,20 @@ function sinceIso() {
   return d.toISOString();
 }
 
+// Every control on this page re-runs load(), and each run is two awaits deep.
+// Tap Proficiency then immediately pick a category and the FIRST request can
+// land last, painting the board for a filter nobody is looking at any more —
+// and there is nothing on screen to say so, because both results are plausible.
+// Each run takes a ticket and a stale one draws nothing.
+let _loadToken = 0;
+
+// The friends list does not change while somebody is prodding a filter, and
+// re-fetching it on every toggle is a query per tap for an answer that cannot
+// have moved.
+let _friendsCache = null;
+
 async function load() {
+  const token = ++_loadToken;
   const container = $('#lb-list');
   const note = $('#lb-scope-note');
   container.innerHTML = '<p class="leaderboard-loading">Loading...</p>';
@@ -164,7 +177,8 @@ async function load() {
   }
 
   const myId = currentUser.user.id;
-  const friends = await fetchFriends(myId);
+  if (!_friendsCache) _friendsCache = await fetchFriends(myId);
+  const friends = _friendsCache;
   const ids = [myId, ...friends.map(f => f.user_id)];
 
   const { rows, windowed } = await fetchLeaderboard(ids, {
@@ -172,6 +186,7 @@ async function load() {
     subcategory: state.subcategory || null,
     since: sinceIso(),
   });
+  if (token !== _loadToken) return;
 
   // The period control appears only once the server can answer it. It never
   // reappears mid-session having been hidden, because the reason it was hidden
@@ -195,6 +210,7 @@ async function load() {
   }
 
   const profiles = await fetchProfilesBatch(ranked.map(r => r.user_id));
+  if (token !== _loadToken) return;
   const profileMap = {};
   for (const p of profiles) profileMap[p.user_id] = p;
 
@@ -226,8 +242,12 @@ function rankRows(rows, measure, floor) {
       // hundred just because it got there first.
       .sort((a, b) => b.accuracy - a.accuracy || b.met - a.met);
   }
+  // met > 0, not mastered > 0. Somebody who has played and mastered nothing yet
+  // still belongs on their own board — hiding them would make the one screen
+  // that is meant to show where you stand answer "nowhere", and the row already
+  // says "0" beside "12 met", which is more use than an absence.
   return withStats
-    .filter(r => r.mastered > 0)
+    .filter(r => r.met > 0)
     .sort((a, b) => b.mastered - a.mastered || b.accuracy - a.accuracy);
 }
 

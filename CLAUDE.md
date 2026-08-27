@@ -1812,6 +1812,18 @@ for months because nothing rendered it, and a new set of class names is how that
 happens again. The count chip goes amber only when non-zero, and renders `?`
 rather than `0` when the count fails.
 
+**The join list's reputation is ACCUMULATED, not replaced.** That list refreshes
+every ten seconds, and a transient failure returns an empty map — which would
+flip every host on screen to "new host" and back, telling somebody deciding
+whether to join that a host with fifty games has none. Merging into what is
+already known means a dropped request shows the last good answer rather than a
+wrong one, and a host who genuinely has no ratings was never in the map anyway.
+
+`scenario-join` seeds three thumbs-up and one down and asserts the row reads
+**75% AND "4 games"** — the sample is half the claim, so both halves are checked
+and both fail when the column list is narrowed back. That surface had no
+coverage at all until then, and it is the one the whole feature exists for.
+
 `scenario-admin` opens it with the rest and then checks it actually SHOWS the
 report — "it opened" is not "it works", and a loader that renders nothing opens
 exactly as happily as one that renders what an admin came to read. Verified by
