@@ -262,90 +262,185 @@ try {
   }
 
   // ============================================================
-  // 3. LEADERBOARD
+  // 3. LEADERBOARD — friends only, ranked on what you KNOW
+  //
+  // The board no longer ranks on "points" (correct_answers, a count of
+  // ATTEMPTS) and is no longer global. It reads get_leaderboard (migration
+  // 053) over question_history, and offers two measures.
+  //
+  // THE SEEDING BELOW MAKES THE TWO MEASURES DISAGREE ON PURPOSE. Bob has more
+  // questions mastered than Alice; Alice gets a larger SHARE of what she has
+  // met right than Bob does. So the two orders are inverted, and a page that
+  // ignored the toggle — or ranked on the wrong column — would show the same
+  // order twice. Without that inversion any check here passes whatever the
+  // page does, which is the "check that cannot fail" this project keeps
+  // deleting.
   // ============================================================
   heading('leaderboard');
+
+  const dave = await table.seatSignedIn('Dave', { tier: 'Oracle' });
+
+  // Alice and Bob and Carol are friends. Dave is NOT, and has the best numbers
+  // of anybody — so if he appears, the board is not friends-only.
+  table.store.seed('friendships', [
+    { id: 'fr-ab', user_a: alice.userId, user_b: bob.userId, source: 'lobby' },
+    { id: 'fr-ac', user_a: alice.userId, user_b: carol.userId, source: 'lobby' },
+  ]);
+
+  const lbQuestions = [];
+  const lbHistory = [];
+  const addKnowledge = (who, prefix, met, mastered, category = 'history') => {
+    for (let i = 1; i <= met; i++) {
+      const id = `${prefix}${i}`;
+      lbQuestions.push({
+        id, question: `${prefix} ${i}?`, correct_answer: 'x', acceptable_answers: [],
+        categories: [category], subcategory: null, difficulty: 'easy', format: 'open',
+        fun_fact: null, discarded: false,
+      });
+      lbHistory.push({
+        user_id: who, question_id: id, times_seen: 1,
+        times_correct: i <= mastered ? 1 : 0,
+        last_correct: i <= mastered,
+        last_seen_at: new Date().toISOString(),
+      });
+    }
+  };
+  // Alice already holds 5 met / 4 mastered from the mastery seeding above.
+  addKnowledge(alice.userId, 'la', 10, 9);    // -> 15 met, 13 mastered, 87%
+  addKnowledge(bob.userId,   'lb', 30, 20);   // -> 30 met, 20 mastered, 67%
+  addKnowledge(carol.userId, 'lc', 4, 4);     // -> 4 met, 4 mastered, 100% but under the floor
+  addKnowledge(dave.userId,  'ld', 40, 39);   // best on both measures, and not a friend
+  table.store.seed('questions', lbQuestions);
+  table.store.seed('question_history', lbHistory);
+
+  const ALICE_MASTERED = 13, BOB_MASTERED = 20, CAROL_MASTERED = 4;
+
+  const boardText = async () =>
+    ((await alice.page.textContent('#lb-list').catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  // Who is listed, in the order the page put them in.
+  const boardOrder = () => alice.page.evaluate(() =>
+    [...document.querySelectorAll('#lb-list .leaderboard-row__name')].map(e => e.textContent.trim())
+  ).catch(() => []);
+
   await alice.goto('leaderboard.html');
   await alice.page.waitForTimeout(2500);
 
-  const globalText = await alice.page.textContent('#lb-global-list').catch(() => '');
-  note(`global list: ${(globalText || '').replace(/\s+/g, ' ').trim().slice(0, 120)}`);
-  if (!(globalText || '').includes('Alice')) {
-    problems.push('the signed-in player does not appear on the global leaderboard despite having stats');
+  const mastered = await boardText();
+  const masteredOrder = await boardOrder();
+  note(`mastered board: ${masteredOrder.join(' > ')} — ${mastered.slice(0, 110)}`);
+
+  if (!masteredOrder.includes('Alice')) {
+    problems.push('the signed-in player is missing from their own leaderboard');
   }
-  const flat = (globalText || '').replace(/\s+/g, ' ');
-  if (flat.includes(`${ALICE_GAMES * 2} games`)) {
-    problems.push(`the global leaderboard credits Alice with ${ALICE_GAMES * 2} games — double her ${ALICE_GAMES}, so subcategory rows are being summed with their rollup`);
-  } else if (!flat.includes(`${ALICE_GAMES} games`)) {
-    problems.push(`the global leaderboard does not show Alice's ${ALICE_GAMES} games (got: ${flat.slice(0, 100)})`);
+  if (masteredOrder.includes('Dave')) {
+    problems.push('a player who is NOT a friend appears on the board — it is not friends-only');
   }
-  // Points must come from the whole-account totals, not from adding the
-  // per-category rows together.
-  if (flat.includes('147 pts')) {
-    problems.push('the global leaderboard shows 147 pts — the sum of Alice\'s per-category rows, which counts a question filed under two topics twice');
-  } else if (!flat.includes(`${ALICE_POINTS} pts`)) {
-    problems.push(`the global leaderboard does not show Alice's ${ALICE_POINTS} points (got: ${flat.slice(0, 100)})`);
+  if (!mastered.includes(String(ALICE_MASTERED))) {
+    problems.push(`the board does not show Alice's ${ALICE_MASTERED} mastered questions (got: ${mastered.slice(0, 90)})`);
+  }
+  // Counting ATTEMPTS instead of questions is the old measure. Alice's
+  // player_stats_computed rows say 200 answered / 140 correct; neither should
+  // appear anywhere on this page.
+  if (/\b(200|140|147)\b/.test(mastered)) {
+    problems.push(`the board is showing attempt counts (200/140/147), not distinct questions: ${mastered.slice(0, 90)}`);
+  }
+  if (masteredOrder.indexOf('Bob') > masteredOrder.indexOf('Alice')) {
+    problems.push(`Bob has ${BOB_MASTERED} mastered to Alice's ${ALICE_MASTERED} but is ranked below her`);
+  }
+  if (!masteredOrder.includes('Carol')) {
+    problems.push(`Carol has ${CAROL_MASTERED} mastered and is missing from the Mastered board`);
   }
 
-  // ============================================================
-  // THE BOARD WHEN THE TOTALS VIEW IS NOT THERE
-  //
-  // Migration 032 is hand-applied, so there is a window where the app is
-  // deployed and the view is not. A leaderboard that is slightly generous
-  // beats one that is blank, so fetchPlayerTotalsForLeaderboard falls back to
-  // the per-category rollups.
-  //
-  // This is only testable because the store can now answer PGRST205 rather
-  // than an empty list — an unseeded table looks like an EMPTY one, and an
-  // empty one never triggers a fallback.
-  // ============================================================
-  heading('the leaderboard with the totals view missing');
-  table.store.denyReads('player_totals_computed');
-  await alice.goto('leaderboard.html');
-  await alice.page.waitForTimeout(2500);
-  const fallbackText = (await alice.page.textContent('#lb-global-list').catch(() => '') || '')
-    .replace(/\s+/g, ' ');
-  note(`global list on the fallback path: ${fallbackText.trim().slice(0, 90)}`);
-  if (!fallbackText.includes('Alice')) {
-    problems.push('with player_totals_computed missing the global leaderboard goes blank instead of falling back');
-  }
-  // The fallback is the per-category rollups, so it reads 147 — generous by
-  // the 7 double-counted answers, and correct about games.
-  if (!fallbackText.includes(`${ALICE_GAMES} games`)) {
-    problems.push(`the fallback board lost Alice's game count (got: ${fallbackText.slice(0, 90)})`);
-  }
-  table.store.allowReads('player_totals_computed');
-
-  // Switching to the category tab must not blank the page — AND it must rank by
-  // Proficiency, not by the lifetime hit rate migration 040 replaced.
-  //
-  // Alice's History row is seeded so the two disagree on purpose: 96 of 120
-  // attempts is 80%, but 30 of the 60 distinct questions she has met is 50%.
-  // The query behind this board named a column list that omitted questions_met
-  // and questions_mastered, so rowProficiency's fallback fired every time and
-  // the page showed 80% while the profile showed 50%. Falling back is not an
-  // error, so nothing said so.
-  const catTab = alice.page.locator('[data-tab="category"], #tab-category-btn').first();
-  if (await catTab.isVisible().catch(() => false)) {
-    await catTab.click().catch(() => {});
-    await alice.page.waitForTimeout(1200);
-    await alice.page.selectOption('#lb-category-select', 'history').catch(() => {});
+  // --- the toggle ---------------------------------------------------------
+  const profTab = alice.page.locator('.profile-tab[data-measure="proficiency"]').first();
+  if (!await profTab.isVisible().catch(() => false)) {
+    problems.push('there is no Proficiency toggle on the leaderboard');
+  } else {
+    await profTab.click().catch(() => {});
     await alice.page.waitForTimeout(1500);
-    const catList = ((await alice.page.textContent('#lb-category-list').catch(() => '')) || '')
-      .replace(/\s+/g, ' ').trim();
-    note(`category list: ${catList.slice(0, 110) || '(empty)'}`);
+    const prof = await boardText();
+    const profOrder = await boardOrder();
+    note(`proficiency board: ${profOrder.join(' > ')} — ${prof.slice(0, 110)}`);
 
-    if (!catList) {
-      problems.push('switching to the category leaderboard left it blank');
-    } else if (catList.includes('80%')) {
-      problems.push('the category leaderboard is ranking by the lifetime hit rate (80%), not Proficiency (50%)');
-    } else if (!catList.includes('50%')) {
-      problems.push(`the category leaderboard shows neither measure for Alice: ${catList.slice(0, 90)}`);
+    // THE INVERSION. Alice knows a larger share of what she has met; Bob has
+    // mastered more questions. If the order is the same on both toggles the
+    // page is ranking on one thing and labelling the other.
+    if (profOrder.indexOf('Alice') > profOrder.indexOf('Bob')) {
+      problems.push(`Alice is at 87% to Bob's 67% but is ranked below him — the Proficiency toggle is not changing the ranking`);
     }
-    if (catList && !catList.includes('60 Qs met')) {
-      problems.push(`"Qs met" is showing attempts rather than distinct questions met: ${catList.slice(0, 90)}`);
+    // Carol is 4-for-4, a perfect score from four questions. The floor exists
+    // so that cannot outrank a large sample, and she must be absent rather than
+    // shown at 100%.
+    if (profOrder.includes('Carol')) {
+      problems.push('Carol qualifies on Proficiency with only 4 questions met — the sample floor is not being applied');
+    }
+    // The sample is always printed beside the percentage. "87%" and "87% of 15"
+    // are different claims.
+    if (!/\d+ of \d+ known/.test(prof)) {
+      problems.push(`the Proficiency board shows a percentage with no sample beside it: ${prof.slice(0, 90)}`);
     }
   }
+
+  // --- a category filter --------------------------------------------------
+  //
+  // Back to Mastered first. On Proficiency this board is empty either way —
+  // Alice's two science questions are under the sample floor — and an empty
+  // list would pass a "Bob is absent" check whether the filter worked or not.
+  await alice.page.locator('.profile-tab[data-measure="mastered"]').first().click().catch(() => {});
+  await alice.page.waitForTimeout(800);
+  await alice.page.selectOption('#lb-category-select', 'science').catch(() => {});
+  await alice.page.waitForTimeout(1500);
+  const scienceOrder = await boardOrder();
+  const scienceText = await boardText();
+  note(`science board: ${scienceOrder.join(' > ') || '(nobody)'} — ${scienceText.slice(0, 80)}`);
+  // Alice has exactly one mastered science question (qm4) and one she currently
+  // gets wrong (qm5). Everybody else's history is filed under history only.
+  if (!scienceOrder.includes('Alice')) {
+    problems.push('Alice has a mastered science question but is missing from the science board');
+  }
+  if (scienceOrder.includes('Bob')) {
+    problems.push('Bob has no science history at all but appears on the science board — the category filter is not being applied');
+  }
+  if (!/\b1\b/.test(scienceText) || !scienceText.includes('2 met')) {
+    problems.push(`the science board does not show Alice's 1 mastered of 2 met: ${scienceText.slice(0, 80)}`);
+  }
+  await alice.page.selectOption('#lb-category-select', '').catch(() => {});
+  await alice.page.waitForTimeout(800);
+
+  // ============================================================
+  // THE BOARD WITH MIGRATION 053 NOT RUN
+  //
+  // Migrations here are pasted by hand, so "the JavaScript is live and the SQL
+  // is not" is a real state the app runs in — and it is the state the fallback
+  // exists for. An RPC this store does not implement used to answer null with
+  // NO error, which is what an installed function returning nothing looks like,
+  // so this path could not be reached from a scenario at all.
+  // ============================================================
+  heading('the leaderboard with get_leaderboard not installed');
+  table.store.hideFunction('get_leaderboard');
+  await alice.goto('leaderboard.html');
+  await alice.page.waitForTimeout(2500);
+  const fallbackOrder = await boardOrder();
+  const fallbackText = await boardText();
+  note(`fallback board: ${fallbackOrder.join(' > ') || '(empty)'} — ${fallbackText.slice(0, 90)}`);
+  if (!fallbackOrder.includes('Alice')) {
+    problems.push('with get_leaderboard missing the board goes blank instead of falling back to player_stats_computed');
+  }
+  // And it must not offer a period it cannot honour: player_stats_computed is
+  // lifetime-only, so a period control beside numbers that ignore it would be
+  // a lie the screen tells confidently.
+  const periodVisible = await alice.page.locator('#lb-period-select').isVisible().catch(() => false);
+  if (periodVisible) {
+    problems.push('the period control is offered on the fallback path, which has no time dimension at all');
+  }
+  table.store.showFunction('get_leaderboard');
+
+  // The board needed Alice to HAVE friends; the friend-request checks below need
+  // her not to, or every send is refused with "Already friends" and five of them
+  // fail for a reason that has nothing to do with what they test. Cleared here
+  // rather than seeded later, so the two sections cannot interfere in either
+  // direction.
+  table.store.table('friendships').length = 0;
 
   // ============================================================
   // 4 + 5. FRIENDS

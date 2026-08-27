@@ -1736,6 +1736,18 @@ body::after {
   min-width: 0;
 }
 
+/* min-width: 0 on the ROW as well, not only on the column inside it.
+   A flex item defaults to min-width: auto, which refuses to shrink below its
+   content's minimum — so the host's reputation, added on the same line as their
+   name, pushed the whole row 33px past a 430px phone even though the column
+   inside it was already allowed to shrink and the name was already ellipsised.
+   Same shape as the `repeat(N, minmax(0, 1fr))` fix on the profile: the child
+   can only shrink if the parent lets it. */
+.public-game-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .public-game-row__host {
   font-family: var(--font-heading);
   font-size: var(--text-sm);
@@ -3504,6 +3516,75 @@ body::after {
 
 .reveal__feedback--faded {
   opacity: 0.2;
+}
+
+/* HOST REVIEW — "play with this host again?"
+   Below the answers and deliberately NOT styled like the question feedback
+   above it. The two rows carry the same three icons and mean entirely
+   different things, so this one is labelled, boxed and separated by a rule.
+   Somebody tapping the wrong pair of thumbs would be silently wrong, and
+   nothing on screen would say so. */
+.host-review {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-surface-light);
+  position: relative;
+}
+
+.host-review__label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.host-review__buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.host-review__confirm {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  min-height: 1em;
+}
+
+.host-review__confirm.show {
+  opacity: 1;
+}
+
+/* The reason menu. It carries .feedback-flag-menu too, for the look and the
+   absolute positioning, and .host-review is position: relative so it anchors to
+   this row rather than to the question feedback above it. This rule exists so
+   the menu can be nudged independently — and so the class is not reported as
+   markup the stylesheet has never heard of. */
+.host-review__menu {
+  z-index: 2;
+}
+
+/* A host's standing, wherever it is shown: the join list, the lobby, a profile.
+   Muted by default because it is context, not a headline. */
+.host-rep {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* Only a genuinely poor record is coloured, and only once it is measured.
+   Colour everything and it stops meaning anything — the same call the admin
+   panel counts make. */
+.host-rep--poor {
+  color: var(--color-danger);
+}
+
+.host-rep--none {
+  font-style: italic;
+  opacity: 0.75;
 }
 
 /* Free text for an "Other" flag. Sits under the reason menu, in the feedback
@@ -6450,6 +6531,33 @@ body::after {
 
 .leaderboard-list {
   width: 100%;
+  /* Was inherited from .leaderboard-tab, which wrapped every panel when this
+     page had four of them. One list now, so the padding lives here. */
+  padding: var(--space-sm) var(--space-lg);
+}
+
+/* Category, subcategory and period, side by side.
+   min-width: 0 is not optional. A <select> sized to its longest option refuses
+   to shrink below that, so three of them in a flex row push the page past 375px
+   and it becomes draggable sideways — the exact failure the profile page's
+   `repeat(2, 1fr)` grid produced, which shipped and needed a photograph to
+   find. Wrapping is allowed for the same reason. */
+.lb-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-lg) 0;
+}
+
+.lb-controls .input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  /* .input is sized for a name you type into. These are filters above a list,
+     and at full size three of them ate a third of the phone before a single
+     row of the board appeared. Smaller, and still a 40px tap target. */
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+  text-align: left;
 }
 
 .leaderboard-row {

@@ -77,6 +77,15 @@ export const PROFILE_SEARCH_LIMIT = 10;
 export const ADMIN_PAGE_SIZE = 25;
 export const LEADERBOARD_LIMIT = 50;
 
+// Below this many votes, a host's percentage says more about who happened to be
+// in the room than about the host, so the count is shown on its own instead.
+// Three, matching MIN_PLAYS_FOR_MEASURED_DIFFICULTY, and for the same reason:
+// it is the lowest number where a percentage is not simply binary, and it is
+// reachable — a threshold nobody can cross is not caution, it is a feature
+// nobody can judge. What makes it safe is that the sample is ALWAYS printed
+// beside the number.
+export const MIN_HOST_RATINGS = 3;
+
 // === SCORING / MASTERY ===
 export const MASTERY_HIGH_THRESHOLD = 75;
 export const MASTERY_COMPLETE_THRESHOLD = 100;

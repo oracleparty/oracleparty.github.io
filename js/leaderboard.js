@@ -1,21 +1,71 @@
 // ============================================
-// Oracle Party — Leaderboards
-// Global, Weekly, Per-Category, Friends
+// Oracle Party — Leaderboard
+//
+// ONE BOARD: you and your friends, ranked on what you actually know.
+//
+// WHY IT IS NOT GLOBAL ANY MORE, in the owner's words and reasoning:
+//
+// Anyone can play solo and mark themselves right every round, so a global
+// ranking is a prize with no way to earn it honestly and no way to police it.
+// Removing the prize removes most of the reason to fake anything — and among
+// friends there IS a remedy a global board has no equivalent of: if somebody's
+// numbers look wrong, unfriend them. A global board also discourages: a top
+// score you cannot see a route to is a wall, not an invitation.
+//
+// WHY IT IS NOT "POINTS" ANY MORE:
+//
+// Points was `correct_answers` — a count of ATTEMPTS. Answering the same
+// question ten times counted ten times, so the measure rewarded re-grinding a
+// handful of questions over learning new ones, and it disagreed with every
+// other number in the app: the profile, the Map, the tiers and the category
+// boards all count QUESTIONS. It was also unbounded, which is what made a top
+// score look unreachable and a faked one impossible to spot. Mastery is capped
+// by the size of the bank, so a leader at 6% reads as an invitation and one at
+// 100% reads as a liar.
+//
+// MASTERED AND PROFICIENCY ARE BOTH HERE because they answer different
+// questions — how much of the bank you have claimed, and how well you know what
+// you have met — and neither alone is a ranking. Toggle, not two boards.
+//
+// THE PERIOD CONTROL IS HIDDEN UNTIL THE SERVER CAN HONOUR IT. See
+// fetchLeaderboard: without migration 053 the fallback is lifetime-only, and a
+// period shown beside numbers that ignore it is worse than no period at all.
 // ============================================
 
 import { $, $$, escapeHtml, renderAvatar, navigateWithFade } from './utils.js';
-import { LEADERBOARD_LIMIT } from './constants.js';
+import { LEADERBOARD_LIMIT, MIN_QUESTIONS_FOR_TITLE } from './constants.js';
 import {
-  fetchPlayerTotalsForLeaderboard,
-  fetchCategoryLeaderboard,
-  fetchGameHistorySince,
+  fetchLeaderboard,
   fetchProfilesBatch,
   fetchFriends
 } from './supabase.js';
-import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
-import { TITLE_WORDS, buildDisplayTitle, rowProficiency } from './titles.js';
-import { CATEGORY_META } from './categories.js';
+import { TITLE_WORDS } from './titles.js';
+import { CATEGORY_META, flattenSubcategories } from './categories.js';
+
+// A PROFICIENCY FLOOR, and it counts QUESTIONS MET, not attempts.
+//
+// Without one, three-for-three sits at 100% above somebody at 92% of six
+// hundred, which is the single most annoying thing a percentage board can do.
+//
+// The old category board had a floor of 20 and applied it to
+// `questions_answered` — ATTEMPTS — while ranking on questions. So replaying
+// three questions twenty times qualified you. Same word, two meanings, which is
+// the mistake this project keeps making.
+//
+// It scales with the period, because a week cannot contain as many questions as
+// a lifetime and a fixed 20 would show an empty board for every window.
+const PROFICIENCY_FLOOR = { all: 10, 30: 5, 7: 3 };
+
+let _windowSupported = true;   // does the server offer time periods at all
+
+const state = {
+  measure: 'mastered',      // 'mastered' | 'proficiency'
+  category: '',             // '' = all categories
+  subcategory: '',
+  periodDays: '',           // '' = all time
+};
 
 // ============================================
 // INIT
@@ -29,293 +79,184 @@ async function init() {
   await initAuth();
   initThemeToggle();
 
-  // Tab switching
-  const tabs = $$('.profile-tab');
-  tabs.forEach(tab => {
+  buildCategorySelect();
+
+  $$('.profile-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      tabs.forEach(t => {
-        const isActive = t.dataset.tab === tab.dataset.tab;
+      state.measure = tab.dataset.measure;
+      $$('.profile-tab').forEach(t => {
+        const isActive = t.dataset.measure === state.measure;
         t.classList.toggle('active', isActive);
         t.setAttribute('aria-selected', isActive ? 'true' : 'false');
       });
-      $$('.leaderboard-tab').forEach(el => { el.style.display = 'none'; });
-      $(`#tab-${tab.dataset.tab}`).style.display = '';
-      loadTab(tab.dataset.tab);
+      load();
     });
   });
 
-  // Category selector
   $('#lb-category-select').onchange = () => {
+    state.category = $('#lb-category-select').value;
+    state.subcategory = '';
     updateSubcategorySelect();
-    _loadedTabs.delete('category');
-    loadTab('category');
+    load();
   };
   $('#lb-subcategory-select').onchange = () => {
-    _loadedTabs.delete('category');
-    loadTab('category');
+    state.subcategory = $('#lb-subcategory-select').value;
+    load();
+  };
+  $('#lb-period-select').onchange = () => {
+    state.periodDays = $('#lb-period-select').value;
+    load();
   };
 
-  // Initialize subcategory select for default category
-  updateSubcategorySelect();
-
-  // Back button
   $('#btn-back').addEventListener('click', () => { navigateWithFade('index.html'); });
   history.pushState({ page: 'leaderboard' }, '');
   window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
 
-  // Weekly reset note
-  const monday = getLastMonday();
-  $('#weekly-reset-note').textContent = `Resets every Monday. Current week: ${monday.toLocaleDateString()}`;
-
-  // Load default tab
-  loadTab('global');
+  load();
 }
 
-const _loadedTabs = new Set();
-
-async function loadTab(tab) {
-  if (tab === 'global' && !_loadedTabs.has('global')) {
-    _loadedTabs.add('global');
-    await loadGlobalLeaderboard();
-  } else if (tab === 'weekly' && !_loadedTabs.has('weekly')) {
-    _loadedTabs.add('weekly');
-    await loadWeeklyLeaderboard();
-  } else if (tab === 'category') {
-    // Always reload on category change
-    await loadCategoryLeaderboard();
-  } else if (tab === 'friends' && !_loadedTabs.has('friends')) {
-    _loadedTabs.add('friends');
-    await loadFriendsLeaderboard();
+function buildCategorySelect() {
+  const sel = $('#lb-category-select');
+  const opts = ['<option value="">All categories</option>'];
+  for (const [key, meta] of Object.entries(CATEGORY_META)) {
+    opts.push(`<option value="${key}">${meta.emoji ? meta.emoji + ' ' : ''}${escapeHtml(meta.label || key)}</option>`);
   }
+  sel.innerHTML = opts.join('');
 }
-
-// ============================================
-// GLOBAL LEADERBOARD
-// ============================================
-
-async function loadGlobalLeaderboard() {
-  const container = $('#lb-global-list');
-  const allStats = await fetchPlayerTotalsForLeaderboard();
-
-  // Aggregate per user.
-  //
-  // "Points" is CORRECT ANSWERS, deliberately not the score from the game.
-  // A game score depends on which wagers a player happened to hold and on
-  // which host was judging — including any judgement they overrode — so it is
-  // not comparable between two people who never played together. Correct
-  // answers is the same measurement for everybody.
-  //
-  // The rows come from player_totals_computed, which counts each answered
-  // question once. Summing the per-category rows here instead would count a
-  // question filed under two topics twice — see fetchPlayerTotalsForLeaderboard.
-  // The loop survives either source: the fallback returns one row per
-  // category, and games are per-category in both, so adding up is correct.
-  const userMap = {};
-  for (const s of allStats) {
-    if (!userMap[s.user_id]) userMap[s.user_id] = { totalScore: 0, gamesPlayed: 0, wins: 0 };
-    userMap[s.user_id].gamesPlayed += s.games_played || 0;
-    userMap[s.user_id].wins += s.wins || 0;
-    userMap[s.user_id].totalScore += s.correct_answers || 0;
-  }
-
-  // Sort by total score desc, take top 50
-  const sorted = Object.entries(userMap)
-    .sort((a, b) => b[1].totalScore - a[1].totalScore)
-    .slice(0, LEADERBOARD_LIMIT);
-
-  if (sorted.length === 0) {
-    container.innerHTML = '<p class="leaderboard-empty">No players yet. Be the first!</p>';
-    return;
-  }
-
-  // Fetch profiles for display
-  const profiles = await fetchProfilesBatch(sorted.map(([uid]) => uid));
-  const profileMap = {};
-  for (const p of profiles) profileMap[p.user_id] = p;
-
-  const currentUser = getCurrentUser();
-  const myId = currentUser?.user?.id;
-
-  container.innerHTML = sorted.map(([uid, data], i) => {
-    const p = profileMap[uid] || {};
-    const winRate = data.gamesPlayed > 0 ? Math.round((data.wins / data.gamesPlayed) * 100) : 0;
-    const title = buildProfileTitle(p);
-    const isMe = uid === myId;
-    return renderRow(i + 1, p, title, `${data.totalScore} pts`, `${data.gamesPlayed} games · ${winRate}% wins`, isMe);
-  }).join('');
-}
-
-// ============================================
-// WEEKLY LEADERBOARD
-// ============================================
-
-function getLastMonday() {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(now);
-  monday.setDate(diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-}
-
-async function loadWeeklyLeaderboard() {
-  const container = $('#lb-weekly-list');
-  const monday = getLastMonday();
-  const games = await fetchGameHistorySince(monday.toISOString());
-
-  if (games.length === 0) {
-    container.innerHTML = '<p class="leaderboard-empty">No games played this week yet.</p>';
-    return;
-  }
-
-  // Aggregate per user
-  const userMap = {};
-  for (const g of games) {
-    if (!userMap[g.user_id]) userMap[g.user_id] = { totalScore: 0, gamesPlayed: 0, wins: 0 };
-    userMap[g.user_id].totalScore += g.score || 0;
-    userMap[g.user_id].gamesPlayed++;
-    if (g.placement === 1) userMap[g.user_id].wins++;
-  }
-
-  const sorted = Object.entries(userMap)
-    .sort((a, b) => b[1].totalScore - a[1].totalScore)
-    .slice(0, LEADERBOARD_LIMIT);
-
-  const profiles = await fetchProfilesBatch(sorted.map(([uid]) => uid));
-  const profileMap = {};
-  for (const p of profiles) profileMap[p.user_id] = p;
-
-  const currentUser = getCurrentUser();
-  const myId = currentUser?.user?.id;
-
-  container.innerHTML = sorted.map(([uid, data], i) => {
-    const p = profileMap[uid] || {};
-    const title = buildProfileTitle(p);
-    const isMe = uid === myId;
-    return renderRow(i + 1, p, title, `${data.totalScore} pts`, `${data.gamesPlayed} games · ${data.wins} wins`, isMe);
-  }).join('');
-}
-
-// ============================================
-// CATEGORY LEADERBOARD
-// ============================================
 
 function updateSubcategorySelect() {
-  const category = $('#lb-category-select').value;
-  const subSelect = $('#lb-subcategory-select');
-  const meta = CATEGORY_META[category];
-  const subs = meta?.subcategories;
-  if (subs?.length) {
-    // Build hierarchical options with indentation
-    function buildOptions(items, depth) {
-      let html = '';
-      for (const item of items) {
-        const indent = '\u00A0\u00A0'.repeat(depth);
-        html += `<option value="${item.key}">${indent}${item.label}</option>`;
-        if (item.children) html += buildOptions(item.children, depth + 1);
-      }
-      return html;
-    }
-    subSelect.innerHTML = `<option value="">All</option>` + buildOptions(subs, 0);
-    subSelect.style.display = '';
-  } else {
-    subSelect.innerHTML = '';
-    subSelect.style.display = 'none';
+  const sub = $('#lb-subcategory-select');
+  // flattenSubcategories takes the category KEY, and is the single source for
+  // this menu everywhere in the app — so a key offered here always resolves back
+  // to a real node, which tests/categories.test.js pins.
+  const flat = state.category ? flattenSubcategories(state.category) : [];
+  if (flat.length === 0) {
+    sub.innerHTML = '';
+    sub.style.display = 'none';
+    return;
   }
+  sub.innerHTML = '<option value="">All of it</option>'
+    + flat.map(f => `<option value="${escapeHtml(f.key)}">${'  '.repeat(f.depth || 0)}${escapeHtml(f.label)}</option>`).join('');
+  sub.style.display = '';
 }
 
-async function loadCategoryLeaderboard() {
-  const container = $('#lb-category-list');
-  const category = $('#lb-category-select').value;
-  const subcategory = $('#lb-subcategory-select').value || null;
+// ============================================
+// LOADING
+// ============================================
+
+function sinceIso() {
+  if (!state.periodDays) return null;
+  const d = new Date();
+  d.setDate(d.getDate() - Number(state.periodDays));
+  return d.toISOString();
+}
+
+async function load() {
+  const container = $('#lb-list');
+  const note = $('#lb-scope-note');
   container.innerHTML = '<p class="leaderboard-loading">Loading...</p>';
 
-  const stats = await fetchCategoryLeaderboard(category, subcategory);
-
-  if (stats.length === 0) {
-    container.innerHTML = '<p class="leaderboard-empty">No qualified players yet (min 20 questions).</p>';
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    note.textContent = 'Ranked among you and your friends.';
+    container.innerHTML = '<p class="leaderboard-empty">Create an account to see a leaderboard. It ranks you against your friends, so you need one first.</p>';
     return;
   }
 
-  // Sort by accuracy desc
-  const sorted = stats
-    // Proficiency, not hit rate: the share of the QUESTIONS somebody has met in
-    // this category that they currently get right. rowProficiency falls back to
-    // the attempt counters where migration 040 has not been applied.
-    .map(s => {
-      const prof = rowProficiency(s);
-      return { ...s, accuracy: prof ? Math.round(prof.accuracy * 100) : 0, _met: prof ? prof.met : 0 };
-    })
-    .sort((a, b) => b.accuracy - a.accuracy || b._met - a._met)
-    .slice(0, LEADERBOARD_LIMIT);
+  const myId = currentUser.user.id;
+  const friends = await fetchFriends(myId);
+  const ids = [myId, ...friends.map(f => f.user_id)];
 
-  const profiles = await fetchProfilesBatch(sorted.map(s => s.user_id));
+  const { rows, windowed } = await fetchLeaderboard(ids, {
+    category: state.category || null,
+    subcategory: state.subcategory || null,
+    since: sinceIso(),
+  });
+
+  // The period control appears only once the server can answer it. It never
+  // reappears mid-session having been hidden, because the reason it was hidden
+  // does not change without a deploy.
+  if (!windowed && _windowSupported) {
+    _windowSupported = false;
+    state.periodDays = '';
+    $('#lb-period-select').style.display = 'none';
+  } else if (windowed && _windowSupported) {
+    $('#lb-period-select').style.display = '';
+  }
+
+  const floor = PROFICIENCY_FLOOR[state.periodDays || 'all'] ?? PROFICIENCY_FLOOR.all;
+  const ranked = rankRows(rows, state.measure, floor);
+
+  note.textContent = scopeNote(friends.length, floor);
+
+  if (ranked.length === 0) {
+    container.innerHTML = `<p class="leaderboard-empty">${emptyMessage(friends.length, floor)}</p>`;
+    return;
+  }
+
+  const profiles = await fetchProfilesBatch(ranked.map(r => r.user_id));
   const profileMap = {};
   for (const p of profiles) profileMap[p.user_id] = p;
 
-  const currentUser = getCurrentUser();
-  const myId = currentUser?.user?.id;
-
-  container.innerHTML = sorted.map((s, i) => {
-    const p = profileMap[s.user_id] || {};
-    const title = buildProfileTitle(p);
-    const isMe = s.user_id === myId;
-    return renderRow(i + 1, p, title, `${s.accuracy}%`, `${s._met} Qs met · ${s.questions_mastered ?? s.correct_answers} known`, isMe);
+  container.innerHTML = ranked.slice(0, LEADERBOARD_LIMIT).map((row, i) => {
+    const p = profileMap[row.user_id] || {};
+    return renderRow(i + 1, p, buildProfileTitle(p), primaryStat(row), secondaryStat(row), row.user_id === myId);
   }).join('');
 }
 
-// ============================================
-// FRIENDS LEADERBOARD
-// ============================================
+/**
+ * Sort and filter for the chosen measure.
+ *
+ * Exported shape kept simple on purpose: rows in, rows out, no DOM. The two
+ * measures need different ties AND different eligibility, and mixing that into
+ * the render loop is how the old board came to rank on one thing while
+ * labelling another.
+ */
+function rankRows(rows, measure, floor) {
+  const withStats = (rows || []).map(r => {
+    const met = r.questions_met || 0;
+    const mastered = r.questions_mastered || 0;
+    return { ...r, met, mastered, accuracy: met > 0 ? mastered / met : 0 };
+  });
 
-async function loadFriendsLeaderboard() {
-  const container = $('#lb-friends-list');
-  const currentUser = getCurrentUser();
-
-  if (!currentUser) {
-    container.innerHTML = '<p class="leaderboard-empty">Create an account to see your friends leaderboard.</p>';
-    return;
+  if (measure === 'proficiency') {
+    return withStats
+      .filter(r => r.met >= floor)
+      // Ties go to the bigger sample: 100% of ten must not outrank 92% of six
+      // hundred just because it got there first.
+      .sort((a, b) => b.accuracy - a.accuracy || b.met - a.met);
   }
+  return withStats
+    .filter(r => r.mastered > 0)
+    .sort((a, b) => b.mastered - a.mastered || b.accuracy - a.accuracy);
+}
 
-  const friends = await fetchFriends(currentUser.user.id);
-  if (friends.length === 0) {
-    container.innerHTML = '<p class="leaderboard-empty">Add friends to compete on this leaderboard!</p>';
-    return;
-  }
+function primaryStat(row) {
+  if (state.measure === 'proficiency') return `${Math.round(row.accuracy * 100)}%`;
+  return `${row.mastered}`;
+}
 
-  // Include self + friends
-  const friendIds = friends.map(f => f.user_id);
-  friendIds.push(currentUser.user.id);
+function secondaryStat(row) {
+  // THE SAMPLE IS ALWAYS PRINTED BESIDE THE PERCENTAGE. "100%" and "100% of 12
+  // questions" are different claims and must never look alike — the same rule
+  // the difficulty band on the reveal follows.
+  if (state.measure === 'proficiency') return `${row.mastered} of ${row.met} known`;
+  return `${row.met} met`;
+}
 
-  const allStats = await fetchPlayerTotalsForLeaderboard();
-  const friendStats = allStats.filter(s => friendIds.includes(s.user_id));
+function scopeNote(friendCount, floor) {
+  const who = friendCount === 0 ? 'Just you so far — add friends to compare.'
+                                : `You and ${friendCount} friend${friendCount === 1 ? '' : 's'}.`;
+  const what = state.measure === 'proficiency'
+    ? `Share of the questions you have met that you currently get right. Needs ${floor}+ met to appear.`
+    : 'Questions you currently get right, counted once each.';
+  return `${who} ${what}`;
+}
 
-  // Aggregate per user
-  const userMap = {};
-  for (const s of friendStats) {
-    if (!userMap[s.user_id]) userMap[s.user_id] = { totalScore: 0, gamesPlayed: 0, wins: 0 };
-    userMap[s.user_id].gamesPlayed += s.games_played || 0;
-    userMap[s.user_id].wins += s.wins || 0;
-    userMap[s.user_id].totalScore += s.correct_answers || 0;
-  }
-
-  const sorted = Object.entries(userMap)
-    .sort((a, b) => b[1].totalScore - a[1].totalScore);
-
-  const profiles = await fetchProfilesBatch(sorted.map(([uid]) => uid));
-  const profileMap = {};
-  for (const p of profiles) profileMap[p.user_id] = p;
-
-  const myId = currentUser.user.id;
-
-  container.innerHTML = sorted.map(([uid, data], i) => {
-    const p = profileMap[uid] || {};
-    const winRate = data.gamesPlayed > 0 ? Math.round((data.wins / data.gamesPlayed) * 100) : 0;
-    const title = buildProfileTitle(p);
-    const isMe = uid === myId;
-    return renderRow(i + 1, p, title, `${data.totalScore} pts`, `${data.gamesPlayed} games · ${winRate}% wins`, isMe);
-  }).join('');
+function emptyMessage(friendCount, floor) {
+  if (friendCount === 0) return 'Add friends to build a leaderboard. Tap a player in a lobby to add them.';
+  if (state.measure === 'proficiency') return `Nobody here has met ${floor} questions in this slice yet.`;
+  return 'Nothing mastered here yet — play a game and it fills in.';
 }
 
 // ============================================
@@ -329,7 +270,7 @@ function buildProfileTitle(profile) {
   return parts.map(id => TITLE_WORDS[id]?.word || id).join(' ');
 }
 
-function renderRow(rank, profile, title, primaryStat, secondaryStat, isMe) {
+function renderRow(rank, profile, title, primary, secondary, isMe) {
   const avatar = renderAvatar({
     displayName: profile.display_name || '?',
     avatarColor: profile.avatar_color || null,
@@ -348,12 +289,11 @@ function renderRow(rank, profile, title, primaryStat, secondaryStat, isMe) {
         <div class="leaderboard-row__title">${escapeHtml(title)}</div>
       </div>
       <div class="leaderboard-row__stats">
-        <div class="leaderboard-row__primary">${primaryStat}</div>
-        <div class="leaderboard-row__secondary">${secondaryStat}</div>
+        <div class="leaderboard-row__primary">${primary}</div>
+        <div class="leaderboard-row__secondary">${secondary}</div>
       </div>
     </div>
   `;
 }
 
-// --- Start ---
 init();

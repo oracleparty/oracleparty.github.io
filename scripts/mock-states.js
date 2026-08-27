@@ -223,16 +223,24 @@ export const STATES = {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
       const container = document.getElementById('public-games');
       if (!container) return;
+      // Three hosts, three states of reputation, because they render as three
+      // different things and only rendering one leaves the others unreviewed:
+      // measured and good, measured and POOR (the only coloured case), and a
+      // host with no account or no ratings — which must read as "new host" and
+      // never as 0%.
       const games = [
-        { host: 'CaptainTrivia', icon: '⏳', cat: 'History \u00b7 10Q \u00b7 30s', code: 'ABCD', players: '4 players', statusClass: 'lobby', statusText: 'In Lobby' },
-        { host: 'QuizWhiz', icon: '⚗️', cat: 'Science \u00b7 15Q \u00b7 45s', code: 'EFGH', players: '2 players', statusClass: 'lobby', statusText: 'In Lobby' },
-        { host: 'BrainStorm', icon: '🃏', cat: 'Wild Card \u00b7 20Q \u00b7 30s', code: 'IJKL', players: '6 players', statusClass: 'playing', statusText: 'In Progress' },
+        { host: 'CaptainTrivia', icon: '⏳', cat: 'History \u00b7 10Q \u00b7 30s', code: 'ABCD', players: '4 players', statusClass: 'lobby', statusText: 'In Lobby',
+          rep: '<span class="host-rep">92% \u00b7 48 games</span>' },
+        { host: 'QuizWhiz', icon: '⚗️', cat: 'Science \u00b7 15Q \u00b7 45s', code: 'EFGH', players: '2 players', statusClass: 'lobby', statusText: 'In Lobby',
+          rep: '<span class="host-rep host-rep--poor">31% \u00b7 13 games</span>' },
+        { host: 'BrainStorm', icon: '🃏', cat: 'Wild Card \u00b7 20Q \u00b7 30s', code: 'IJKL', players: '6 players', statusClass: 'playing', statusText: 'In Progress',
+          rep: '<span class="host-rep host-rep--none">new host</span>' },
       ];
       container.innerHTML = games.map(g => `
         <button class="public-game-row" data-code="${g.code}">
           <span class="public-game-row__icon">${g.icon}</span>
           <div class="public-game-row__info">
-            <div class="public-game-row__host">${g.host}'s game</div>
+            <div class="public-game-row__host">${g.host}'s game &middot; ${g.rep}</div>
             <div class="public-game-row__category">${g.cat}</div>
           </div>
           <div class="public-game-row__meta">
@@ -625,6 +633,25 @@ export const STATES = {
         ff.textContent = 'Some historians debate whether the Hanging Gardens actually existed — no definitive archaeological evidence has been found.';
         ff.style.display = '';
       }
+    },
+  },
+
+  // The host-review row, which exists on no other reveal state. It carries the
+  // same three icons as the question feedback above it and means something
+  // completely different, so the two have to be looked at together — that is
+  // the whole reason it is labelled and ruled off.
+  'reveal-host-review': {
+    page: 'game',
+    screen: 'reveal-screen',
+    inherits: 'reveal-answers',
+    inject: () => {
+      const row = document.getElementById('reveal-host-review');
+      if (!row) return;
+      row.style.display = '';
+      const down = row.querySelector('[data-host-vote="down"]');
+      if (down) down.classList.add('feedback-btn--active');
+      const menu = row.querySelector('.host-review__menu');
+      if (menu) menu.style.display = '';
     },
   },
 
@@ -1229,7 +1256,11 @@ export const STATES = {
   // deliberately long — a row that only fits its mock data is one real display
   // name away from breaking.
   // ==========================================
-  'leaderboard-global': {
+  // The board is one list now: you and your friends, ranked on mastery or on
+  // proficiency. Both mocks exist because they render DIFFERENT stats in the
+  // same slots — a count against a percentage — and only rendering one would
+  // leave the other unreviewed at 375px.
+  'leaderboard-mastered': {
     page: 'leaderboard',
     screen: null,
     inject: () => {
@@ -1237,7 +1268,7 @@ export const STATES = {
       const row = (rank, name, title, primary, secondary, me) => `
         <div class="leaderboard-row${me ? ' leaderboard-row--me' : ''}">
           <span class="leaderboard-rank">${rank}</span>
-          <div class="avatar" style="width:28px;height:28px;background:#A87830;">🦊</div>
+          <div class="avatar" style="width:28px;height:28px;background:#A87830;">\u{1F98A}</div>
           <div class="leaderboard-row__info">
             <div class="leaderboard-row__name">${name}</div>
             <div class="leaderboard-row__title">${title}</div>
@@ -1247,38 +1278,43 @@ export const STATES = {
             <div class="leaderboard-row__secondary">${secondary}</div>
           </div>
         </div>`;
-      const list = document.getElementById('lb-global-list');
+      const note = document.getElementById('lb-scope-note');
+      if (note) note.textContent = 'You and 3 friends. Questions you currently get right, counted once each.';
+      const list = document.getElementById('lb-list');
       if (list) {
         list.innerHTML = [
-          row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '1,284', '96 games · 41 wins', false),
-          row(2, 'Sam', 'Novice', '640', '23 games · 8 wins', true),
-          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar of the Atomic Age', '512', '18 games · 5 wins', false),
-          row(4, 'Jo', 'Apprentice', '96', '4 games · 0 wins', false),
+          row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '412', '486 met', false),
+          row(2, 'Sam', 'Novice', '188', '240 met', true),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar of the Atomic Age', '96', '133 met', false),
+          row(4, 'Jo', 'Apprentice', '11', '19 met', false),
         ].join('');
       }
     },
   },
 
-  'leaderboard-category': {
+  'leaderboard-proficiency': {
     page: 'leaderboard',
     screen: null,
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
-      document.querySelectorAll('.leaderboard-tab').forEach(t => { t.style.display = 'none'; });
-      document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
-      const catTab = document.querySelector('.profile-tab[data-tab="category"]');
-      if (catTab) catTab.classList.add('active');
-      const panel = document.getElementById('tab-category');
-      if (panel) panel.style.display = '';
+      document.querySelectorAll('.profile-tab').forEach(t => {
+        const on = t.dataset.measure === 'proficiency';
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      // A category is chosen, so the subcategory menu is showing. That row is
+      // three controls wide at 375px and exists in no other state.
       const sub = document.getElementById('lb-subcategory-select');
       if (sub) {
         sub.style.display = '';
         sub.innerHTML = '<option>Ancient &amp; Classical</option>';
       }
+      const period = document.getElementById('lb-period-select');
+      if (period) period.style.display = '';
       const row = (rank, name, title, primary, secondary, me) => `
         <div class="leaderboard-row${me ? ' leaderboard-row--me' : ''}">
           <span class="leaderboard-rank">${rank}</span>
-          <div class="avatar" style="width:28px;height:28px;background:#4A7C59;">🦉</div>
+          <div class="avatar" style="width:28px;height:28px;background:#4A7C59;">\u{1F989}</div>
           <div class="leaderboard-row__info">
             <div class="leaderboard-row__name">${name}</div>
             <div class="leaderboard-row__title">${title}</div>
@@ -1288,12 +1324,14 @@ export const STATES = {
             <div class="leaderboard-row__secondary">${secondary}</div>
           </div>
         </div>`;
-      const list = document.getElementById('lb-category-list');
+      const note = document.getElementById('lb-scope-note');
+      if (note) note.textContent = 'You and 3 friends. Share of the questions you have met that you currently get right. Needs 10+ met to appear.';
+      const list = document.getElementById('lb-list');
       if (list) {
         list.innerHTML = [
-          row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '94%', '248 Qs met · 233 known', false),
-          row(2, 'Sam', 'Keeper of Secrets', '72%', '120 Qs met · 86 known', true),
-          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar', '51%', '60 Qs met · 30 known', false),
+          row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '94%', '233 of 248 known', false),
+          row(2, 'Sam', 'Keeper of Secrets', '72%', '86 of 120 known', true),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar', '51%', '30 of 60 known', false),
         ].join('');
       }
     },

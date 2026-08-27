@@ -194,6 +194,93 @@ export async function searchProfiles(query, excludeUserId, discriminator = null)
 }
 
 // ============================================
+// HOST REPUTATION (migration 054)
+//
+// "Would you play with this host again?" — read BEFORE joining a stranger's
+// room, which is the whole reason it exists. Not "was the host correct": nobody
+// can answer that about a ruling on their own answer, and a board that asked
+// would reward lenient hosts and punish accurate ones.
+// ============================================
+
+/**
+ * Record this player's verdict on the host of this game.
+ *
+ * → { ok, reason } — `reason` names a refusal that is NOT a failure, most often
+ *   'host has no account', which is the ordinary case in a game among friends
+ *   and must never be shown as an error.
+ *
+ * Everything goes through op_rate_host rather than a direct insert: the table
+ * has no write policy at all, so a request crafted by hand cannot bury a
+ * stranger whose game the sender was never in.
+ */
+export async function rateHost({ roomId, playerId, voterId, rating = null, flagReason = null, flagNote = null }) {
+  if (!roomId || !playerId || !voterId) return { ok: false, reason: 'missing context' };
+  const { data, error } = await supabase.rpc('op_rate_host', {
+    p_room_id: roomId,
+    p_player_id: playerId,
+    p_voter_id: voterId,
+    p_rating: rating,
+    p_flag_reason: flagReason,
+    p_flag_note: flagNote,
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      logger.debug('Supabase', 'op_rate_host not installed, host ratings are off');
+      return { ok: false, reason: 'not installed' };
+    }
+    logger.error('Supabase', 'op_rate_host failed', error);
+    return { ok: false, reason: 'failed' };
+  }
+  return { ok: data === 'ok', reason: data === 'ok' ? null : String(data || 'refused') };
+}
+
+/**
+ * Reputations for a batch of host user ids → Map(user_id → row).
+ *
+ * A host with NO rows is absent from the map, and callers must render that as
+ * "no rating yet" rather than 0%. An unrated host and a disliked one must never
+ * look alike — the same rule the admin panel counts follow, where a failed
+ * count renders "?" and never "0".
+ */
+export async function fetchHostReputations(userIds) {
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from('host_reputation')
+    .select('*')
+    .in('host_user_id', ids);
+  if (error) {
+    // Missing view or no permission: the feature is simply not available yet.
+    // Not an error the player should see, and not a zero.
+    logger.debug('Supabase', 'host_reputation unavailable', error);
+    return new Map();
+  }
+  return new Map((data || []).map(r => [r.host_user_id, r]));
+}
+
+/**
+ * How a reputation reads on screen, in one place so every surface agrees.
+ *
+ * THE SAMPLE IS ALWAYS PRINTED. "100%" from two games and "100%" from two
+ * hundred are different claims, and the owner asked for the sample explicitly.
+ * MIN_HOST_RATINGS is the point below which a percentage says more about who
+ * happened to be in the room than about the host — under it, the count is
+ * shown on its own.
+ */
+export function describeHostReputation(rep, minRatings = 3) {
+  if (!rep || !rep.ratings) return null;
+  if (rep.ratings < minRatings) {
+    return { text: `${rep.ratings} rating${rep.ratings === 1 ? '' : 's'}`, measured: false, flags: rep.flags || 0 };
+  }
+  return {
+    text: `${rep.pct_positive}% · ${rep.ratings} games`,
+    measured: true,
+    pct: rep.pct_positive,
+    flags: rep.flags || 0,
+  };
+}
+
+// ============================================
 // TITLE UNLOCKS
 // ============================================
 
@@ -310,6 +397,85 @@ export async function deleteMyAccount() {
     return { error };
   }
   return { error: null };
+}
+
+/**
+ * The leaderboard, for a named list of people (migration 053).
+ *
+ * → { rows, windowed }
+ *   rows      [{ user_id, questions_met, questions_mastered }]
+ *   windowed  whether a time window could actually be honoured
+ *
+ * There is no "everybody" mode, deliberately. The owner's decision is that the
+ * board is FRIENDS ONLY: with no global prize there is very little left to fake
+ * for, and a friend whose numbers look wrong can be unfriended, which is a
+ * remedy a global board has no equivalent of.
+ *
+ * THE FALLBACK EXISTS SO THE JAVASCRIPT IS SAFE TO DEPLOY BEFORE THE SQL IS RUN.
+ * That order has been got wrong repeatedly here (CLAUDE.md #3), so: if 053 is
+ * not applied, this reads player_stats_computed instead, which carries the same
+ * two columns per category and has been live since 031.
+ *
+ * `windowed` IS THE HONEST PART. The fallback has no time dimension at all —
+ * player_stats_computed is lifetime — so it cannot answer "the last 30 days"
+ * and must not pretend to. It returns windowed:false and the page hides the
+ * period control entirely rather than showing a period beside numbers that
+ * ignore it. A screen that displays the wrong answer confidently is the fault
+ * this codebase is built out of.
+ */
+export async function fetchLeaderboard(userIds, { category = null, subcategory = null, since = null } = {}) {
+  if (!userIds || userIds.length === 0) return { rows: [], windowed: true };
+
+  const { data, error } = await supabase.rpc('get_leaderboard', {
+    p_user_ids: userIds,
+    p_category: category,
+    p_subcategory: subcategory,
+    p_since: since,
+  });
+
+  if (!error) return { rows: data || [], windowed: true };
+
+  // PGRST202 covers "never created" AND "created under different argument
+  // names", and the second is just as dead to the app as the first (#6).
+  const missing = error.code === 'PGRST202'
+    || /could not find the function/i.test(error.message || '');
+  if (!missing) {
+    logger.error('Supabase', 'get_leaderboard failed', error);
+    return { rows: [], windowed: true };
+  }
+  logger.warn('Supabase', 'get_leaderboard not installed, falling back to player_stats_computed (no time windows)');
+  return { rows: await _leaderboardFallback(userIds, category, subcategory), windowed: false };
+}
+
+async function _leaderboardFallback(userIds, category, subcategory) {
+  // select('*') on purpose, the same call as fetchCategoryLeaderboard makes and
+  // for the same reason: rowProficiency silently falls back to the ATTEMPT
+  // counters when questions_met / questions_mastered are absent, and a short
+  // column list is exactly what makes them absent. That shipped once already.
+  let query = supabase.from('player_stats_computed').select('*').in('user_id', userIds);
+  if (category) {
+    query = query.eq('category', category);
+    // The view stores one exact subcategory per row, so this cannot match a
+    // whole branch the way migration 053 does. Narrower, and it says so by
+    // being the fallback rather than the main path.
+    query = subcategory ? query.eq('subcategory', subcategory) : query.is('subcategory', null);
+  }
+  const { data, error } = await query;
+  if (error) { logger.error('Supabase', 'leaderboard fallback failed', error); return []; }
+
+  // With no category the view emits a row per category AND per subcategory, so
+  // summing would count a question filed under two topics twice and one with a
+  // subcategory twice again. Take the rollups only and add those — the same
+  // rule categoryRollupRows states, applied at the query's edge.
+  const totals = new Map();
+  for (const s of (data || [])) {
+    if (!category && s.subcategory) continue;
+    const acc = totals.get(s.user_id) || { user_id: s.user_id, questions_met: 0, questions_mastered: 0 };
+    acc.questions_met += s.questions_met ?? s.questions_answered ?? 0;
+    acc.questions_mastered += s.questions_mastered ?? s.correct_answers ?? 0;
+    totals.set(s.user_id, acc);
+  }
+  return [...totals.values()];
 }
 
 export async function fetchPlayerTotalsForLeaderboard() {

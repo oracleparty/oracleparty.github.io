@@ -32,6 +32,29 @@ CREATE TABLE IF NOT EXISTS questions (
   fun_fact text
 );
 
+-- question_history is the table EVERY number in the app derives from: accuracy,
+-- proficiency, tiers, titles and the leaderboard. Migration 053 reads it, so it
+-- has to exist here. Same caveat as everything else in this file — the column
+-- names come from probe-db.mjs's measured list, the types are inferred.
+-- auth.users, so migrations with a foreign key to it will compile here. Supabase
+-- owns this schema on the live project; this is a one-column stand-in and
+-- nothing but a FK target.
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);
+
+CREATE TABLE IF NOT EXISTS question_history (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id uuid NOT NULL,
+  question_id uuid NOT NULL,
+  times_seen int NOT NULL DEFAULT 1,
+  times_correct int NOT NULL DEFAULT 0,
+  -- NULLABLE on purpose: rows written before migration 016 have no verdict, and
+  -- everything that reads this column falls back to times_correct > 0 for them.
+  -- A NOT NULL here would make that fallback untestable.
+  last_correct boolean,
+  last_seen_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS rooms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text UNIQUE,

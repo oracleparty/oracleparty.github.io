@@ -122,23 +122,37 @@ export async function fetchPublicRooms() {
   const roomIds = (rooms || []).map(r => r.id);
   if (roomIds.length === 0) return [];
 
+  // `is_host` and `user_id` come back for the host's reputation, which is the
+  // one thing on this list a player most wants BEFORE they tap a stranger's
+  // room. Same lesson as `subcategory` above: the column list is part of what
+  // the screen can say.
   const { data: players, error: pErr } = await supabase
     .from('players')
-    .select('room_id')
+    .select('room_id, is_host, is_bot, user_id')
     .in('room_id', roomIds);
 
   if (pErr) {
     logger.error('Supabase', 'fetchPublicRooms player count failed', pErr);
     // Return rooms without counts
-    return rooms.map(r => ({ ...r, player_count: 0 }));
+    return rooms.map(r => ({ ...r, player_count: 0, host_user_id: null }));
   }
 
   const countMap = {};
+  const hostMap = {};
   for (const p of (players || [])) {
     countMap[p.room_id] = (countMap[p.room_id] || 0) + 1;
+    // A bot is never the host (js/game/host-promotion.js enforces it), but the
+    // filter costs nothing and states the rule where the data is read.
+    if (p.is_host && !p.is_bot && p.user_id) hostMap[p.room_id] = p.user_id;
   }
 
-  return rooms.map(r => ({ ...r, player_count: countMap[r.id] || 0 }));
+  return rooms.map(r => ({
+    ...r,
+    player_count: countMap[r.id] || 0,
+    // null when the host is a guest — which is the ordinary case, not a
+    // failure, and the join list renders it as "no rating yet" rather than 0%.
+    host_user_id: hostMap[r.id] || null,
+  }));
 }
 
 /**

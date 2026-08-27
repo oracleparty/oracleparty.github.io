@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade, showToast } from './utils.js';
-import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT } from './constants.js';
+import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT, MIN_HOST_RATINGS } from './constants.js';
 import {
   supabase,
   fetchProfile,
@@ -27,7 +27,9 @@ import {
   fetchMasteryCounts,
   fetchCategories,
   fetchQuestionCount,
-  fetchProfileByTag
+  fetchProfileByTag,
+  fetchHostReputations,
+  describeHostReputation
 } from './supabase.js';
 import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut, markAccountDeleted } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
@@ -256,6 +258,20 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     const winRate = totalGames > 0 ? Math.round((totalWins / totalGames) * 100) : 0;
     const bestCatLabel = bestCat ? (CATEGORY_META[bestCat]?.label || bestCat) : '--';
 
+    // How they are as a HOST, if anybody has said. Shown here rather than on the
+    // lobby row on purpose: tapping a player in the lobby opens this card, so
+    // the information is one tap from where you need it, and the lobby row is
+    // the single most fragile layout in the app — adding a badge beside a name
+    // there is exactly what overflowed it by 71px and made the whole page
+    // draggable sideways.
+    //
+    // Absent means "nobody has rated them", which renders as its own sentence
+    // and never as 0%.
+    const rep = describeHostReputation((await fetchHostReputations([userId])).get(userId), MIN_HOST_RATINGS);
+    const hostHtml = rep
+      ? `<p class="host-rep${rep.measured && rep.pct < 50 ? ' host-rep--poor' : ''}">As host: ${escapeHtml(rep.text)}</p>`
+      : '<p class="host-rep host-rep--none">No host ratings yet</p>';
+
     statsHtml = `
       <div class="profile-card__stats">
         <div><div class="profile-card__stat-value">${totalGames}</div><div class="profile-card__stat-label">Games</div></div>
@@ -263,6 +279,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
         <div><div class="profile-card__stat-value">${winRate}%</div><div class="profile-card__stat-label">Win Rate</div></div>
         <div><div class="profile-card__stat-value">${bestCatLabel}</div><div class="profile-card__stat-label">Best</div></div>
       </div>
+      ${hostHtml}
     `;
 
     // Friend actions

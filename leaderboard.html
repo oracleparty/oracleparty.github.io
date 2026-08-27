@@ -8,7 +8,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Oracle Party — Leaderboards</title>
+  <title>Oracle Party — Leaderboard</title>
   <script>(function(){var s=localStorage.getItem('oracle_party_theme');if(!s){s=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';localStorage.setItem('oracle_party_theme',s);}if(s!=='light'){document.documentElement.setAttribute('data-theme',s);var m={'dark':'#1A1A2E','oled':'#000000'};document.querySelector('meta[name="theme-color"]').content=m[s]||'#F8F7F4';}})();if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
   <script>
     // App-init heartbeat. If the JS module chain fails to load (e.g. esm.sh
@@ -32,7 +32,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260825j">
+  <link rel="stylesheet" href="css/style.css?v=20260826a">
 </head>
 <body style="opacity:0">
 
@@ -40,62 +40,37 @@
 
     <div class="page-header">
       <button class="page-header__back" id="btn-back">&larr;</button>
-      <h1 class="page-header__title">Leaderboards</h1>
+      <h1 class="page-header__title">Leaderboard</h1>
       <button class="theme-toggle" aria-label="Toggle theme">&#x1F319;</button>
     </div>
 
-    <!-- Tabs -->
-    <div class="profile-tabs" role="tablist" aria-label="Leaderboard views">
-      <button class="profile-tab active" data-tab="global" role="tab" aria-selected="true" aria-controls="tab-global">Global</button>
-      <button class="profile-tab" data-tab="weekly" role="tab" aria-selected="false" aria-controls="tab-weekly">Weekly</button>
-      <button class="profile-tab" data-tab="category" role="tab" aria-selected="false" aria-controls="tab-category">Category</button>
-      <button class="profile-tab" data-tab="friends" role="tab" aria-selected="false" aria-controls="tab-friends">Friends</button>
+    <!-- MEASURE — mastery is a count, proficiency is a share of what you have
+         met. They answer different questions and the owner asked for both, so
+         this is a toggle rather than a second board. -->
+    <div class="profile-tabs" role="tablist" aria-label="What to rank on">
+      <button class="profile-tab active" data-measure="mastered" role="tab" aria-selected="true">Mastered</button>
+      <button class="profile-tab" data-measure="proficiency" role="tab" aria-selected="false">Proficiency</button>
     </div>
 
-    <!-- Global -->
-    <div id="tab-global" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-global">
-      <div id="lb-global-list" class="leaderboard-list">
-        <p class="leaderboard-loading">Loading...</p>
-      </div>
+    <div class="lb-controls">
+      <select id="lb-category-select" class="input" aria-label="Category">
+        <option value="">All categories</option>
+      </select>
+      <select id="lb-subcategory-select" class="input" style="display: none;" aria-label="Subcategory"></select>
+      <!-- Hidden until the server can honour it. See fetchLeaderboard: the
+           fallback has no time dimension, and showing a period next to numbers
+           that ignore it would be worse than not offering one. -->
+      <select id="lb-period-select" class="input" style="display: none;" aria-label="Period">
+        <option value="">All time</option>
+        <option value="30">Last 30 days</option>
+        <option value="7">Last 7 days</option>
+      </select>
     </div>
 
-    <!-- Weekly -->
-    <div id="tab-weekly" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-weekly" style="display:none;">
-      <p class="leaderboard-reset-note" id="weekly-reset-note"></p>
-      <div id="lb-weekly-list" class="leaderboard-list">
-        <p class="leaderboard-loading">Loading...</p>
-      </div>
-    </div>
+    <p class="leaderboard-reset-note" id="lb-scope-note">Ranked among you and your friends.</p>
 
-    <!-- Category -->
-    <div id="tab-category" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-category" style="display:none;">
-      <div style="display: flex; gap: var(--space-xs); margin: var(--space-sm) var(--space-lg);">
-        <select id="lb-category-select" class="input" style="flex: 1;">
-          <option value="history">History</option>
-          <option value="science">Science</option>
-          <option value="nature">Nature</option>
-          <option value="arts-literature">Arts & Lit</option>
-          <option value="culture-society">Culture</option>
-          <option value="pop-culture">Pop Culture</option>
-          <option value="world-geography">Geography</option>
-          <option value="technology">Technology</option>
-          <option value="sports">Sports</option>
-          <option value="food">Food</option>
-          <option value="logic">Logic</option>
-          <option value="wild-card">Wild Card</option>
-        </select>
-        <select id="lb-subcategory-select" class="input" style="flex: 1; display: none;"></select>
-      </div>
-      <div id="lb-category-list" class="leaderboard-list">
-        <p class="leaderboard-loading">Loading...</p>
-      </div>
-    </div>
-
-    <!-- Friends -->
-    <div id="tab-friends" class="leaderboard-tab" role="tabpanel" aria-labelledby="tab-friends" style="display:none;">
-      <div id="lb-friends-list" class="leaderboard-list">
-        <p class="leaderboard-loading">Loading...</p>
-      </div>
+    <div id="lb-list" class="leaderboard-list">
+      <p class="leaderboard-loading">Loading...</p>
     </div>
 
   </div>
@@ -110,7 +85,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/leaderboard.js?v=20260825j"></script>
+  <script type="module" src="js/leaderboard.js?v=20260826a"></script>
 
 </body>
 </html>

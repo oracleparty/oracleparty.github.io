@@ -5,7 +5,7 @@
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-25.
+> Last verified against the code: 2026-08-26.
 >
 > The live database was verified directly on 2026-08-18 via
 > `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
@@ -966,7 +966,12 @@ nothing on the wheel is unreachable.
   publishable key must still be accepted from anyone (#2).
 - **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
 - **Friends** — requests, accept/decline, see friends' active lobbies
-- **Leaderboard** — global and per-category, plus a per-player mastery tree
+- **Leaderboard** — **friends only**, ranked on mastery or proficiency, by
+  category and subcategory, all-time or over a period. See "The leaderboard
+  ranks what you know, among people you know". The per-player mastery tree and
+  the Map live on the profile.
+- **Host reputation** — "would you play with this host again?", read before you
+  join a stranger's game. See "Judging the host, not the ruling".
 - **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`.
 
   **The page is four stat cards and eight collapsed panels**, one open at a
@@ -1135,7 +1140,7 @@ break it and `question_stats` reads `asked=2` where a solo human is `asked=1`.
 `rooms`, `players`, `answers`, `chat_messages`, `chat_archive`, `questions`,
 `question_feedback`, `question_history`, `question_stats`, `answer_tally`,
 `game_plays`, `game_history`, `profiles`, `player_stats`, `friend_requests`,
-`friendships`, `title_unlocks`, `site_settings`, `error_logs`.
+`friendships`, `title_unlocks`, `site_settings`, `error_logs`, `host_ratings`.
 
 ---
 
@@ -1653,6 +1658,152 @@ The lobby taught that expensively: anything added alongside a name takes width
 that is not there at 375px. Below the volume gate it says how many more
 QUESTIONS are needed rather than anything about accuracy, because accuracy
 cannot buy a rank there and saying so would be a promise that cannot be cashed.
+
+## The leaderboard ranks what you know, among people you know
+
+Rebuilt 2026-08-26, on the owner's decision, after a long argument in which they
+were right and I was arguing past them. Migration 053.
+
+**IT IS FRIENDS ONLY. Do not put a global board back without the owner.** Their
+reasoning, which is better than the counter I offered:
+
+- Anyone can play solo and mark themselves right every round, so a global
+  ranking is a prize with no honest route to the top and no way to police it.
+  **Removing the prize removes most of the reason to fake anything.**
+- Among friends there is a remedy a global board has no equivalent of: if
+  somebody's numbers look wrong, unfriend them. In a shared game it is obvious
+  anyway — an Oracle who cannot answer anything is visible to everybody in the
+  room, and can be kicked.
+- A global board **discourages**. A top score with no visible route to it is a
+  wall, not an invitation.
+
+**My counter, recorded because it is the strongest one and it did not win.**
+Cheating does not HAPPEN on the leaderboard — every number comes from
+`question_history`, which any signed-in person can write directly with the key
+every browser carries — so deleting the board hides fake numbers rather than
+preventing them: they still show on the profile, the ranks, the titles and the
+tier badge in every lobby. That is true, and it does not answer the owner's
+point, which is about INCENTIVE rather than about data. Closing the write hole
+is still worth doing and is independent of this.
+
+**Points are gone.** The old global board ranked on `correct_answers`, a count
+of ATTEMPTS: answer the same question ten times and it counted ten times, so the
+measure rewarded re-grinding a handful of questions over learning new ones, and
+it disagreed with every other number in the app. It was also unbounded, which is
+what made a top score look unreachable and a faked one impossible to spot.
+Mastery is capped by the size of the bank: a leader at 6% reads as an invitation
+and one at 100% reads as a liar.
+
+**Mastery AND proficiency, because they answer different questions** — how much
+of the bank you have claimed, and how well you know what you have met. Neither
+alone is a ranking, so it is a toggle rather than two boards.
+
+**The time window is the owner's design and it is better than mine.** Define it
+as *questions you currently get right, last seen inside the window*, and
+all-time collapses to plain mastery with no special case. I proposed a
+`first_correct_at` column to express the same idea and it was not needed. The
+honest limitation, which will otherwise look like a bug: something learned a
+year ago and not seen since does not appear in a 30-day view, so a window
+measures recent ACTIVITY that stuck rather than new learning.
+
+**The period control is hidden when the server cannot honour it.** Migrations
+are hand-applied, so "the JavaScript is live and the SQL is not" is a real
+state; `fetchLeaderboard` falls back to `player_stats_computed`, which is
+lifetime-only, and returns `windowed: false`. Offering a period beside numbers
+that ignore it is a lie the screen tells confidently, which is the fault this
+codebase is made of.
+
+**The proficiency floor counts QUESTIONS MET, and the old one did not.** The
+category board required 20 `questions_answered` — ATTEMPTS — while ranking on
+questions, so replaying three questions twenty times qualified you. Same word,
+two meanings. It also scales with the period, because a week cannot hold as many
+questions as a lifetime and a fixed floor would show an empty board for every
+window.
+
+`COUNT(DISTINCT question_id)` in 053 also fixes something for free:
+`player_totals_computed` exists only because summing per-category rollups counts
+a question filed under two categories twice. Counting distinct ids cannot.
+
+`scenario-account` seeds Bob with MORE mastered questions than Alice and Alice
+with a HIGHER share of what she has met, so the two measures give opposite
+orders — without that inversion any check on the toggle passes whatever the page
+does. Verified by ignoring the toggle (it reports the ranking by name) and by
+widening the id list to everybody (it reports a non-friend on the board).
+`store.hideFunction('get_leaderboard')` proves the fallback, which was
+unreachable from a scenario before: an unimplemented RPC used to answer null
+with NO error, which is what an installed function returning nothing looks like.
+
+## Judging the host, not the ruling
+
+Migration 054, built 2026-08-26 at the owner's request: "before joining a random
+lobby someone would know if the host is reliable or not, as opposed to after
+being negatively affected." Public games are listed, so joining a stranger is a
+real thing people do, and a host still holds one power over everybody in the
+room — overriding the server's verdict, which amends the permanent
+`question_history` of every player it touches (041).
+
+**IT IS NOT "WAS THE HOST CORRECT", AND THE DIFFERENCE IS THE WHOLE DESIGN.**
+Nobody can answer that about a ruling on their own answer. A board that asked
+would reward lenient hosts and punish accurate ones — mark everything right, get
+100% — which damages everyone's stats more than a bad host does. The question is
+**would you play with them again**, which is a thing a player can honestly
+answer and which lets somebody prefer a strict host who is fair.
+
+The owner pushed back on my objection and was partly right: over-generosity IS
+visible, since the reveal shows every answer and verdict, and other players lose
+position by it. The bias is not in the LEVEL — everyone collects some
+thumbs-down — it is in the comparison, because a stricter host collects more of
+them. Milder than I first said. The owner's call was to build it, and their
+framing is the one implemented.
+
+**One vote per player per game, cast from the reveal screen.** Per round was the
+original idea and the owner spotted its flaw first — it skews toward short
+games. It has a worse one: one person in a ten-round game would outweigh four
+people in a five-round one.
+
+**The row is deliberately NOT styled like the question feedback above it.** They
+carry the same three icons and mean completely different things; a player
+tapping the wrong pair would be silently wrong and nothing would say so. Hence
+the label, the rule above it, and separate listeners — a shared handler is how
+one would quietly start writing the other's rows.
+
+**A GUEST HOST CANNOT HAVE A REPUTATION**, and this is a real limitation to
+state rather than work around. It attaches to a user id and a guest has none.
+The row hides itself entirely for a guest host, and their game shows "new host",
+which is honest and is itself a signal. It also gives an account a purpose.
+
+**Every write goes through `op_rate_host`, which checks the voter really has a
+player row in that room.** The table has no INSERT policy at all. Without that
+guard anybody holding the publishable key — which every browser carries, because
+guests play — could bury a stranger whose game they were never in, and a
+reputation nobody can trust is worse than none. A flag is never withdrawn by a
+later thumbs-up: changing your mind about a rating is ordinary, retracting a
+report of misconduct is not something a tap should do.
+
+**The sample is always printed** — `MIN_HOST_RATINGS` (3) is the point below
+which the count is shown on its own instead of a percentage, the same call and
+the same number as the difficulty band.
+
+**Shown on the join list and on the profile card, NOT on the lobby row.** The
+lobby row is the most fragile layout in the app: adding a badge beside a name
+there is exactly what overflowed it by 71px and made the page draggable
+sideways. Tapping a player in the lobby opens the profile card anyway, so it is
+one tap from where it is needed.
+
+**Adding it to the join list overflowed a 430px phone by 33px**, and the sweep
+caught it. `.public-game-row__info` already had `min-width: 0` and the name was
+already ellipsised — but the ROW is itself a flex item, and a flex item defaults
+to `min-width: auto`. **A child can only shrink if the parent lets it.** Same
+shape as the `repeat(N, minmax(0, 1fr))` fix on the profile.
+
+**A pre-existing flaky check surfaced while doing this, and it is worth knowing
+how.** `scenario-feedback` proves a bot's answer is never recorded by flagging a
+real player as a bot in the HOST's `window.__state` — which a player re-fetch
+replaces, and `checkStalePresence` re-fetches on every call. So whether the
+check could see the guard at all depended on how long the run happened to take;
+adding a section before it made it fail. It sets `is_bot` in the store now, and
+only after both players have submitted, because a row with `is_bot` set is one
+the host's browser answers FOR.
 
 ## The shape of what you know
 

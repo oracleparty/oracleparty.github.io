@@ -38,6 +38,8 @@ const TABLES = [
   'player_totals_computed',
   // Migration 029 — what people actually typed.
   'answer_tally',
+  // Migration 054 — would you play with this host again.
+  'host_ratings', 'host_reputation',
 ];
 
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
@@ -515,6 +517,18 @@ const RPC_PROBES = [
   // establish that it EXISTS but not that an admin may call it. That is the
   // right split: a visitor being able to end rooms is the thing it prevents.
   ['op_admin_end_room', { p_room_id: NOT_A_UUID }],
+
+  // Migration 053 — the leaderboard. p_user_ids is an ARRAY, so the unparseable
+  // uuid goes inside it; PostgREST casts before the body runs either way.
+  ['get_leaderboard', { p_user_ids: [NOT_A_UUID], p_category: null,
+                        p_subcategory: null, p_since: null }],
+
+  // Migration 054 — host reputation. It refuses long before it writes anything
+  // (the voter must have a player row in that room), and the uuid does not
+  // parse in any case.
+  ['op_rate_host', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID,
+                     p_voter_id: 'probe', p_rating: 1,
+                     p_flag_reason: null, p_flag_note: null }],
 ];
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
@@ -568,6 +582,18 @@ const CONSEQUENCES = [
       'no tier badge appears in any lobby',
       'NO TITLE EVER UNLOCKS — the check runs against nothing and reports success',
     ] },
+  { object: 'get_leaderboard', kind: 'rpc',
+    fix: 'run migrations/053_leaderboard_by_what_you_know.sql',
+    breaks: [
+      'the leaderboard falls back to player_stats_computed, which has no time dimension',
+      'so the period control disappears — all-time still works, and by design says so rather than lying',
+    ] },
+  { object: 'op_rate_host', kind: 'rpc',
+    fix: 'run migrations/054_host_reputation.sql',
+    breaks: ['nobody can rate a host, silently — the buttons are there and the vote goes nowhere'] },
+  { object: 'host_reputation', kind: 'table',
+    fix: 'run migrations/054_host_reputation.sql',
+    breaks: ['every host reads as "new host" on the join list, however many games they have run'] },
   { object: 'player_totals_computed', kind: 'table',
     fix: 'run migrations/032_totals_and_mastery.sql',
     breaks: [
@@ -736,6 +762,10 @@ const REQUIRED = {
   // One row per user, not per category — that is the whole difference.
   player_totals_computed: ['user_id', 'questions_answered', 'correct_answers',
                            'games_played', 'wins'],
+  host_ratings:     ['host_user_id', 'room_id', 'voter_id', 'voter_name',
+                     'rating', 'flag_reason', 'flag_note'],
+  host_reputation:  ['host_user_id', 'ratings', 'thumbs_up', 'thumbs_down',
+                     'pct_positive', 'flags'],
 };
 
 console.log('\n--- COLUMNS THE APP DEPENDS ON ---');

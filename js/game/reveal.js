@@ -13,7 +13,7 @@ import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js
 import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
          disqualifyRoundOnServer, updateGameState, submitAnswer,
          upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
-         upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
+         upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage, rateHost,
   recordQuestionOutcome, recordAnswerText, fetchQuestionPlayStats,
 } from '../supabase.js';
 import { describeDifficulty } from '../difficulty-band.js';
@@ -414,6 +414,7 @@ export function doReveal() {
 
   // Show feedback icons and start fade timer
   showFeedbackUI();
+  showHostReviewUI();
 
   // Render immediately with cached answers (Realtime keeps these up-to-date).
   renderRevealAnswers(state.currentAnswers);
@@ -807,6 +808,63 @@ function showFeedbackUI() {
   }, RESULTS_ACTION_DELAY_MS);
 }
 
+/**
+ * The host review row: "play with this host again?"
+ *
+ * SHOWN ONLY WHEN THERE IS SOMEBODY TO RATE AND SOMEWHERE TO PUT IT.
+ *
+ *  - not to the host themselves, and not to a bot;
+ *  - only when the host is SIGNED IN. A reputation attaches to an account, and
+ *    a guest has none — that is what guest play means. Hiding the row is the
+ *    honest answer; showing buttons that silently do nothing is not.
+ *
+ * One vote per player per game (migration 054), so this is the same row on
+ * every round of the game and re-tapping changes the vote rather than adding
+ * one. That is why the previous choice is restored from state rather than
+ * re-read: the vote is about the host, not about this question.
+ */
+function showHostReviewUI() {
+  const row = $('#reveal-host-review');
+  if (!row) return;
+
+  const host = state.players.find(p => p.is_host && !p.is_bot);
+  const iAmHost = host && String(host.id) === String(state.room?.playerId);
+  if (!host || !host.user_id || iAmHost) {
+    row.style.display = 'none';
+    return;
+  }
+
+  row.style.display = '';
+  row.querySelectorAll('[data-host-vote]').forEach(b => {
+    b.classList.toggle('feedback-btn--active', b.dataset.hostVote === state.hostVote);
+  });
+  const confirmEl = document.getElementById('host-review-confirm');
+  if (confirmEl) {
+    confirmEl.textContent = state.hostFlagReason ? 'Reported \u2713' : '';
+    confirmEl.classList.toggle('show', !!state.hostFlagReason);
+  }
+}
+
+/** Send the current host verdict. Failure is logged, never toasted: this is an
+ *  optional opinion, and a toast on every dropped one is the noise CLAUDE.md #4
+ *  warns is how real warnings get ignored. */
+function sendHostVote({ rating = null, flagReason = null, flagNote = null }) {
+  const host = state.players.find(p => p.is_host && !p.is_bot);
+  if (!host || !host.user_id) return;
+  rateHost({
+    roomId: state.room.id,
+    playerId: state.room.playerId,
+    voterId: getVoterId(),
+    rating,
+    flagReason,
+    flagNote,
+  }).then(res => {
+    if (!res.ok && res.reason && res.reason !== 'host has no account' && res.reason !== 'not installed') {
+      logger.warn('Game', 'host rating was not recorded', res);
+    }
+  });
+}
+
 function startFeedbackFadeTimer() {
   if (state.feedbackFadeTimer) clearTimeout(state.feedbackFadeTimer);
   const container = $('#reveal-feedback');
@@ -830,7 +888,58 @@ function startFeedbackFadeTimer() {
   }, RESULTS_ACTION_DELAY_MS);
 }
 
+/**
+ * Host review taps. Kept apart from the question feedback listeners on purpose:
+ * the two rows look similar and mean completely different things, and a shared
+ * handler is how one would quietly start writing the other's rows.
+ */
+function initHostReviewListeners() {
+  const row = $('#reveal-host-review');
+  if (!row) return;
+
+  row.querySelectorAll('[data-host-vote]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const vote = btn.dataset.hostVote;
+      const menu = row.querySelector('.host-review__menu');
+
+      if (vote === 'flag') {
+        if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+        return;
+      }
+      if (menu) menu.style.display = 'none';
+
+      // Tap again to take it back. There is no way to WITHDRAW a vote once
+      // cast — op_rate_host only ever sets — so an un-tap flips to the other
+      // side rather than pretending to erase it, and the buttons say so by
+      // both going inactive only when nothing has been sent yet.
+      if (state.hostVote === vote) return;
+      state.hostVote = vote;
+      row.querySelectorAll('[data-host-vote]').forEach(b => {
+        b.classList.toggle('feedback-btn--active', b.dataset.hostVote === vote);
+      });
+      sendHostVote({ rating: vote === 'up' ? 1 : -1 });
+    });
+  });
+
+  row.querySelectorAll('[data-host-reason]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const reason = btn.dataset.hostReason;
+      state.hostFlagReason = reason;
+      const menu = row.querySelector('.host-review__menu');
+      if (menu) menu.style.display = 'none';
+      const confirmEl = document.getElementById('host-review-confirm');
+      if (confirmEl) {
+        confirmEl.textContent = 'Reported \u2713';
+        confirmEl.classList.add('show');
+      }
+      sendHostVote({ flagReason: reason });
+    });
+  });
+}
+
 export function initFeedbackListeners() {
+  initHostReviewListeners();
+
   // Tap question text to bring feedback icons back to full opacity
   $('#reveal-question-text').addEventListener('click', () => {
     const container = $('#reveal-feedback');

@@ -3,12 +3,13 @@
 // ============================================
 
 import { $, $$, escapeHtml, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
-import { findRoomByCode, fetchPublicRooms, addPlayer, claimSeat, cleanupOrphanedRooms } from './supabase.js';
+import { findRoomByCode, fetchPublicRooms, addPlayer, claimSeat, cleanupOrphanedRooms,
+         fetchHostReputations, describeHostReputation } from './supabase.js';
 import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, recallSeat } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
 import { logger } from './logger.js';
-import { PUBLIC_GAMES_REFRESH, PULL_REFRESH_THRESHOLD } from './constants.js';
+import { PUBLIC_GAMES_REFRESH, PULL_REFRESH_THRESHOLD, MIN_HOST_RATINGS } from './constants.js';
 
 // DOM refs
 const codeInput = $('#code-input');
@@ -211,17 +212,32 @@ async function loadPublicGames() {
   // Remove old rows
   $$('.public-game-row', publicGamesEl).forEach(el => el.remove());
 
+  // THE HOST'S STANDING, FETCHED BEFORE THE LIST IS DRAWN — the whole reason
+  // this exists is to be read BEFORE joining a stranger's room, rather than
+  // after they have already affected your record. One batched call for every
+  // room on screen.
+  //
+  // A host with no account, or no ratings yet, is absent from this map and
+  // renders as "new host" — never as 0%. An unrated host and a disliked one
+  // must not look alike, which is the same rule the admin panel's counts follow
+  // where a failed count shows "?" and never "0".
+  const reps = await fetchHostReputations(rooms.map(r => r.host_user_id));
+
   const fragment = document.createDocumentFragment();
   for (const room of rooms) {
     const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
     const catLabel = resolveCategoryLabel(room.category, room.subcategory);
+    const rep = describeHostReputation(reps.get(room.host_user_id), MIN_HOST_RATINGS);
+    const repHtml = rep
+      ? `<span class="host-rep${rep.measured && rep.pct < 50 ? ' host-rep--poor' : ''}">${escapeHtml(rep.text)}</span>`
+      : '<span class="host-rep host-rep--none">new host</span>';
     const row = document.createElement('button');
     row.className = 'public-game-row';
     row.dataset.code = room.code;
     row.innerHTML = `
       <span class="public-game-row__icon">${meta.emoji || meta.icon}</span>
       <div class="public-game-row__info">
-        <div class="public-game-row__host">${escapeHtml(room.host_name)}'s game</div>
+        <div class="public-game-row__host">${escapeHtml(room.host_name)}'s game &middot; ${repHtml}</div>
         <div class="public-game-row__category">${catLabel} &middot; ${room.questions_per_game}Q &middot; ${room.question_timer}s</div>
       </div>
       <div class="public-game-row__meta">

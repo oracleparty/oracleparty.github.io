@@ -84,6 +84,18 @@ try {
   await bob.page.waitForURL('**/lobby.html*', { timeout: 20000 });
   await host.page.waitForTimeout(1500);
 
+  // A HOST WITH AN ACCOUNT, so the host-review row has somewhere to attach.
+  // A reputation belongs to a user id, and a guest has none — that is what
+  // guest play means, and the row hides itself entirely for a guest host. Both
+  // robots stay guests as voters, which is the case that matters: gating the
+  // vote behind sign-up would leave most games unrated.
+  const HOST_USER = '00000000-0000-4000-8000-00000000host';
+  {
+    const hostRow = table.store.table('players').find(p => p.display_name === 'Alice');
+    if (hostRow) hostRow.user_id = HOST_USER;
+    table.store.seed('profiles', [{ user_id: HOST_USER, display_name: 'Alice', discriminator: '0001' }]);
+  }
+
   await host.page.waitForSelector('#btn-start-game', { state: 'visible', timeout: 20000 }).catch(() => {});
   for (let i = 0; i < 12; i++) {
     await clickIfReady(host, '#btn-start-game');
@@ -407,6 +419,92 @@ try {
   // writes nothing and reports success — so until the row count is checked, a
   // refused rating and a rating nobody gave produce exactly the same silence.
   // ============================================================
+  // ============================================================
+  // 6. WOULD YOU PLAY WITH THIS HOST AGAIN? (migration 054)
+  //
+  // The row sits below the answers on the reveal, apart from the question
+  // feedback above it — they carry the same three icons and mean different
+  // things, and a player tapping the wrong pair would be silently wrong.
+  //
+  // The checks that matter are about WHO MAY VOTE, because a reputation
+  // anybody can move from outside the room is worth nothing.
+  // ============================================================
+  heading('rating the host');
+  {
+    const reviewVisible = async (r) => r.page.evaluate(() => {
+      const el = document.querySelector('#reveal-host-review');
+      return !!el && el.style.display !== 'none' && el.offsetParent !== null;
+    }).catch(() => false);
+
+    const bobSees = await reviewVisible(bob);
+    const hostSees = await reviewVisible(host);
+    note(`host-review row — Bob: ${bobSees}, the host themselves: ${hostSees}`);
+    if (!bobSees) {
+      problems.push('a player is never offered the chance to rate a signed-in host');
+    }
+    if (hostSees) {
+      problems.push('the host is offered the chance to rate themselves');
+    }
+
+    const before = table.store.table('host_ratings').length;
+    await bob.page.locator('[data-host-vote="down"]').first().click().catch(() => {});
+    await bob.page.waitForTimeout(1200);
+    const rows = table.store.table('host_ratings');
+    note(`host_ratings after Bob votes: ${JSON.stringify(rows.map(r => ({ r: r.rating, f: r.flag_reason })))}`);
+    if (rows.length !== before + 1) {
+      problems.push(`Bob's thumbs-down wrote ${rows.length - before} rows, expected 1`);
+    } else if (rows[rows.length - 1].rating !== -1) {
+      problems.push(`Bob's thumbs-down was stored as ${rows[rows.length - 1].rating}, not -1`);
+    }
+
+    // ONE VOTE PER PLAYER PER GAME. Changing your mind must replace the vote,
+    // not add another — otherwise a single person in a long game outweighs
+    // everybody in a short one, which is the flaw in rating per round.
+    await bob.page.locator('[data-host-vote="up"]').first().click().catch(() => {});
+    await bob.page.waitForTimeout(1200);
+    const afterChange = table.store.table('host_ratings');
+    note(`after changing to thumbs-up: ${afterChange.length} row(s), rating ${afterChange[afterChange.length - 1]?.rating}`);
+    if (afterChange.length !== before + 1) {
+      problems.push(`changing a vote added a row — ${afterChange.length} where there should be ${before + 1}`);
+    }
+    if (afterChange[afterChange.length - 1]?.rating !== 1) {
+      problems.push('changing the vote to thumbs-up did not replace the thumbs-down');
+    }
+
+    // A flag is a report of misconduct and must survive a later thumbs-up.
+    await bob.page.locator('[data-host-vote="flag"]').first().click().catch(() => {});
+    await bob.page.waitForTimeout(600);
+    await bob.page.locator('[data-host-reason="unfair_judging"]').first().click().catch(() => {});
+    await bob.page.waitForTimeout(1200);
+    const flagged = table.store.table('host_ratings')[before];
+    note(`flag on the row: ${JSON.stringify(flagged?.flag_reason)}`);
+    if (flagged?.flag_reason !== 'unfair_judging') {
+      problems.push(`flagging the host recorded ${JSON.stringify(flagged?.flag_reason)}`);
+    }
+    await bob.page.locator('[data-host-vote="up"]').first().click().catch(() => {});
+    await bob.page.waitForTimeout(900);
+    if (table.store.table('host_ratings')[before]?.flag_reason !== 'unfair_judging') {
+      problems.push('a later thumbs-up withdrew the flag — a report of misconduct must not be retractable by a tap');
+    }
+
+    // AND THE GUARD. Driven directly, because the UI gives no way to aim a vote
+    // at a game you were not in — which is exactly why the rule has to live in
+    // the database rather than in the screen.
+    const outsider = await bob.page.evaluate(async () => {
+      const m = await import('/js/supabase.js');
+      return m.rateHost({
+        roomId: '00000000-0000-4000-8000-000000000999',
+        playerId: '00000000-0000-4000-8000-000000000998',
+        voterId: 'device:outsider',
+        rating: -1,
+      });
+    }).catch(e => ({ ok: false, reason: 'threw: ' + e.message }));
+    note(`a vote aimed at a room the voter was never in: ${JSON.stringify(outsider)}`);
+    if (outsider.ok) {
+      problems.push('somebody who was not in the game was able to rate its host');
+    }
+  }
+
   heading('a rating that cannot be saved says so');
   {
     table.store.denyWrites('question_feedback');
@@ -512,6 +610,22 @@ try {
     await clickIfReady(host, '#btn-submit-answer');
   }
   await host.page.waitForTimeout(2500);
+
+  // FLAG IT IN THE STORE TOO, and this is a fix to the check rather than to the
+  // app. Marking Bob a bot only in the host's `window.__state` is lost the
+  // moment that client re-fetches players — checkStalePresence does so on every
+  // call — so whether this check could see the guard at all depended on how
+  // long the run happened to take. Adding a section earlier in the scenario
+  // made it fail, which is the giveaway: a flaky check is a real failure with a
+  // timing condition attached.
+  //
+  // Set AFTER both players have submitted, deliberately. A row with is_bot set
+  // is one the host's browser will answer FOR (answerQuestionForBots), so
+  // flagging it before the round would have the host writing Bob's answer.
+  {
+    const bobRow = table.store.table('players').find(p => p.display_name === 'Bob');
+    if (bobRow) bobRow.is_bot = true;
+  }
   await advance();
   await host.page.waitForTimeout(1500);
 

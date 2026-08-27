@@ -571,4 +571,169 @@ BEGIN
   FROM answers WHERE room_id = rid AND player_id = bot AND question_number = 0;
 END $$;
 
+
+-- ============================================
+-- Migration 053 — the leaderboard ranks what you KNOW
+--
+-- The board moved off "points" (correct_answers, a count of ATTEMPTS) and onto
+-- mastery and proficiency, which count QUESTIONS. Every rule below is one that
+-- would silently change somebody's ranking if the SQL moved.
+-- ============================================
+
+DO $$
+DECLARE
+  alice uuid := gen_random_uuid();
+  bob   uuid := gen_random_uuid();
+  carol uuid := gen_random_uuid();
+  ids   uuid[];
+  qa uuid; qb uuid; qc uuid; qd uuid;
+  r record;
+BEGIN
+  ids := ARRAY[alice, bob, carol];
+
+  -- qa is filed under TWO categories, which is the case that made the old
+  -- global board double count: 11% of the real bank carries more than one.
+  INSERT INTO questions (question, correct_answer, categories, subcategory)
+    VALUES ('Q A', 'a', ARRAY['history','culture-society'], 'ancient') RETURNING id INTO qa;
+  INSERT INTO questions (question, correct_answer, categories, subcategory)
+    VALUES ('Q B', 'b', ARRAY['history'], 'medieval') RETURNING id INTO qb;
+  INSERT INTO questions (question, correct_answer, categories, subcategory)
+    VALUES ('Q C', 'c', ARRAY['science'], NULL) RETURNING id INTO qc;
+  -- A nested subcategory: 'human-countries' must be found by a 'human' filter,
+  -- the same LIKE 'key%' rule question selection uses.
+  INSERT INTO questions (question, correct_answer, categories, subcategory)
+    VALUES ('Q D', 'd', ARRAY['world-geography'], 'human-countries') RETURNING id INTO qd;
+
+  -- Alice: knows qa and qb; met qc and currently gets it WRONG; knows qd but
+  -- has not seen it in over a year.
+  INSERT INTO question_history (user_id, question_id, times_seen, times_correct, last_correct, last_seen_at)
+  VALUES (alice, qa, 3, 2, true,  now() - interval '2 days'),
+         (alice, qb, 1, 1, true,  now() - interval '2 days'),
+         (alice, qc, 5, 4, false, now() - interval '2 days'),
+         (alice, qd, 1, 1, true,  now() - interval '400 days');
+  -- Bob: ONE question, nine attempts, and last_correct NULL — a row from before
+  -- migration 016. He must read as having mastered 1, not 0 and not 9.
+  INSERT INTO question_history (user_id, question_id, times_seen, times_correct, last_correct, last_seen_at)
+  VALUES (bob, qa, 9, 9, NULL, now() - interval '1 day');
+  -- Carol is on the friends list and has never played.
+
+  SELECT * INTO r FROM get_leaderboard(ids) WHERE user_id = alice;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('met counts QUESTIONS, not attempts', r.questions_met::text, '4'),
+    ('mastered is the CURRENT verdict, not ever-correct', r.questions_mastered::text, '3');
+
+  SELECT * INTO r FROM get_leaderboard(ids) WHERE user_id = bob;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a two-category question is counted ONCE', r.questions_met::text, '1'),
+    ('a null last_correct falls back to times_correct', r.questions_mastered::text, '1');
+
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a friend who has never played is absent, not zero',
+         count(*)::text, '0'
+  FROM get_leaderboard(ids) WHERE user_id = carol;
+
+  SELECT * INTO r FROM get_leaderboard(ids, 'history') WHERE user_id = alice;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a category filter counts only that category', r.questions_met::text, '2');
+
+  SELECT * INTO r FROM get_leaderboard(ids, 'culture-society') WHERE user_id = alice;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the second category of a question still finds it', r.questions_met::text, '1');
+
+  SELECT * INTO r FROM get_leaderboard(ids, 'world-geography', 'human') WHERE user_id = alice;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a subcategory filter matches its whole branch', r.questions_met::text, '1');
+
+  -- The owner's definition of a window: questions you CURRENTLY get right, last
+  -- seen inside it. qd was last seen 400 days ago, so it leaves.
+  SELECT * INTO r FROM get_leaderboard(ids, NULL, NULL, now() - interval '30 days')
+   WHERE user_id = alice;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a window drops what has not been seen inside it', r.questions_met::text, '3'),
+    ('a window still reports mastery of what is left', r.questions_mastered::text, '2');
+
+  -- And the property that makes the window design work at all: take the window
+  -- away and it IS mastery, with no special case anywhere.
+  SELECT * INTO r FROM get_leaderboard(ids, NULL, NULL, NULL) WHERE user_id = alice;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('no window collapses to plain all-time mastery', r.questions_mastered::text, '3');
+END $$;
+
+
+
+-- ============================================
+-- Migration 054 — would you play with this host again?
+--
+-- The rules that matter are the ones that decide who may write a rating at all.
+-- A reputation anybody can move from outside the room is worse than none.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  other uuid := gen_random_uuid();
+  hostU uuid := gen_random_uuid();
+  aliceU uuid := gen_random_uuid();
+  hostP uuid; aliceP uuid; bobP uuid; strangerP uuid;
+  res text;
+BEGIN
+  INSERT INTO auth.users VALUES (hostU), (aliceU);
+  INSERT INTO rooms (code, host_name) VALUES ('054001', 'Hosty') RETURNING id INTO rid;
+  INSERT INTO rooms (code, host_name) VALUES ('054002', 'Elsewhere') RETURNING id INTO other;
+  INSERT INTO players (room_id, user_id, display_name, is_host)
+    VALUES (rid, hostU, 'Hosty', true) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, user_id, display_name)
+    VALUES (rid, aliceU, 'Alice') RETURNING id INTO aliceP;
+  INSERT INTO players (room_id, display_name) VALUES (rid, 'Bob') RETURNING id INTO bobP;
+  INSERT INTO players (room_id, display_name) VALUES (other, 'Stranger') RETURNING id INTO strangerP;
+
+  res := op_rate_host(rid, aliceP, 'user:' || aliceU, 1::smallint);
+  INSERT INTO result (check_name, got, want) VALUES ('a player in the room may rate the host', res, 'ok');
+
+  -- Guests vote. Requiring an account would leave most games unrated, which
+  -- defeats the point of a signal you read BEFORE joining a stranger's room.
+  res := op_rate_host(rid, bobP, 'device:abc', 1::smallint);
+  INSERT INTO result (check_name, got, want) VALUES ('a guest in the room may rate', res, 'ok');
+
+  res := op_rate_host(rid, strangerP, 'device:xyz', -1::smallint);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody who was not in the game cannot rate it', res, 'not in this room');
+
+  res := op_rate_host(rid, hostP, 'user:' || hostU, 1::smallint);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host cannot rate themselves', res, 'cannot rate yourself');
+
+  INSERT INTO result (check_name, got, want)
+  SELECT 'two votes are two votes', ratings::text, '2'
+  FROM host_reputation WHERE host_user_id = hostU;
+
+  -- One vote per player per game: changing your mind must replace it, not add.
+  res := op_rate_host(rid, aliceP, 'user:' || aliceU, -1::smallint);
+  INSERT INTO result (check_name, got, want)
+  SELECT 'changing a vote does not add another', ratings::text, '2'
+  FROM host_reputation WHERE host_user_id = hostU;
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the percentage moves with it', pct_positive::text, '50'
+  FROM host_reputation WHERE host_user_id = hostU;
+
+  -- A flag is a report of misconduct. Changing your rating afterwards must not
+  -- quietly withdraw it.
+  PERFORM op_rate_host(rid, bobP, 'device:abc', NULL, 'unfair judging', 'marked me wrong twice');
+  PERFORM op_rate_host(rid, bobP, 'device:abc', 1::smallint);
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a later thumbs-up does not withdraw a flag', flags::text, '1'
+  FROM host_reputation WHERE host_user_id = hostU;
+
+  res := op_rate_host(rid, aliceP, 'user:' || aliceU, NULL, NULL);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a vote that says nothing is not recorded', res, 'nothing to record');
+
+  -- A guest host has no account to attach a reputation to. That is the ordinary
+  -- case in a game among friends and must not read as a failure.
+  UPDATE players SET user_id = NULL WHERE id = hostP;
+  res := op_rate_host(rid, aliceP, 'user:' || aliceU, 1::smallint);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a guest host cannot be rated, and says why', res, 'host has no account');
+END $$;
+
 SELECT check_name, got, want FROM result ORDER BY ord;

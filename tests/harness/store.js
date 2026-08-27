@@ -56,6 +56,7 @@ export class FakeStore {
     this._slowReads = new Map();   // table -> extra ms, for forcing a race to lose
     this._dropEvents = new Map();  // table -> how many realtime events to swallow
     this._missing = new Set();     // tables that answer as if they do not exist
+    this._hiddenFunctions = new Set();  // RPCs that answer PGRST202
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     // Doors the LIVE database has shut, so the fake refuses what it refuses.
     // See _shutDoor below — this is not a scenario knob, it is the schema.
@@ -256,6 +257,25 @@ export class FakeStore {
   denyReads(table) { this._missing.add(table); }
   /** Undo denyReads. */
   allowReads(table) { this._missing.delete(table); }
+
+  /**
+   * Make an RPC answer PGRST202 — "could not find the function" — the way
+   * PostgREST does for one a migration has not been run.
+   *
+   * The same gap denyReads exists for, one layer along. An RPC this store does
+   * not implement returns NULL WITH NO ERROR, which is indistinguishable from
+   * an installed function that found nothing, so every `functionMissing`
+   * fallback in js/db/ was unreachable from a scenario and shipped untested.
+   * Migrations here are pasted by hand (CLAUDE.md #7), so the window where the
+   * JavaScript is deployed and the SQL is not is a real state the app runs in —
+   * and it is the state the fallbacks exist for.
+   *
+   * PGRST202 also covers a function that EXISTS under different argument names,
+   * which is just as dead to the app as one that was never created (#6).
+   */
+  hideFunction(name) { this._hiddenFunctions.add(name); }
+  /** Undo hideFunction. */
+  showFunction(name) { this._hiddenFunctions.delete(name); }
 
   seed(name, rows) {
     this.table(name).push(...rows.map(r => ({ ...r })));
@@ -601,12 +621,49 @@ export class FakeStore {
       }
 
       if (action === 'rpc') {
+        if (this._hiddenFunctions.has(table)) {
+          return {
+            data: null,
+            error: {
+              message: `Could not find the function public.${table} in the schema cache`,
+              code: 'PGRST202',
+            },
+          };
+        }
         return { data: this._rpc(table, payload), error: null };
       }
 
       return { data: null, error: { message: `unsupported action ${action}` } };
     } catch (err) {
       return { data: null, error: { message: err.message } };
+    }
+  }
+
+  /**
+   * Rebuild host_reputation from host_ratings.
+   *
+   * A VIEW on the live database, so it can never be stale there. The store has
+   * no views, and seeding the derived table directly would let a scenario
+   * assert a percentage the ratings do not support — which is the harness
+   * telling itself a story rather than testing the app.
+   */
+  _recomputeHostReputation() {
+    const byHost = new Map();
+    for (const r of this.table('host_ratings')) {
+      const acc = byHost.get(String(r.host_user_id))
+        || { host_user_id: r.host_user_id, ratings: 0, thumbs_up: 0, thumbs_down: 0, flags: 0 };
+      if (r.rating === 1) { acc.ratings++; acc.thumbs_up++; }
+      else if (r.rating === -1) { acc.ratings++; acc.thumbs_down++; }
+      if (r.flag_reason) acc.flags++;
+      byHost.set(String(r.host_user_id), acc);
+    }
+    const out = this.table('host_reputation');
+    out.length = 0;
+    for (const acc of byHost.values()) {
+      out.push({
+        ...acc,
+        pct_positive: acc.ratings === 0 ? null : Math.round(100 * acc.thumbs_up / acc.ratings),
+      });
     }
   }
 
@@ -1206,6 +1263,87 @@ export class FakeStore {
     // One row per (category, subcategory), no rollups: profile.js adds each
     // row to BOTH its category total and its subcategory, so a rollup row
     // would count every question twice at category level.
+    // Mirrors migration 053. The leaderboard reads nothing else, so without it
+    // here every scenario would exercise the FALLBACK rather than the path the
+    // app actually takes live — which is precisely how a new feature ships
+    // unplayed (CLAUDE.md, on op_submit_answer).
+    //
+    // COUNT(DISTINCT question_id), not a sum of times_seen, and the same
+    // COALESCE(last_correct, times_correct > 0) fallback the SQL has: a fake
+    // that counted attempts would make a board look right here and wrong live.
+    if (name === 'get_leaderboard') {
+      const ids = new Set((args?.p_user_ids || []).map(String));
+      if (ids.size === 0) return [];
+      const cat = args?.p_category ?? null;
+      const sub = args?.p_subcategory ?? null;
+      const since = args?.p_since ? new Date(args.p_since).getTime() : null;
+      const questions = this.table('questions');
+      const byUser = new Map();
+      for (const h of this.table('question_history')) {
+        if (!ids.has(String(h.user_id))) continue;
+        if (since != null && new Date(h.last_seen_at || 0).getTime() < since) continue;
+        const q = questions.find(x => String(x.id) === String(h.question_id));
+        if (!q) continue;
+        if (cat && !(q.categories || []).includes(cat)) continue;
+        // LIKE 'key%' — subcategories nest (human -> human-countries).
+        if (sub && !String(q.subcategory || '').startsWith(sub)) continue;
+        const acc = byUser.get(String(h.user_id))
+          || { user_id: h.user_id, met: new Set(), mastered: new Set() };
+        acc.met.add(String(h.question_id));
+        const knows = h.last_correct == null ? (h.times_correct > 0) : !!h.last_correct;
+        if (knows) acc.mastered.add(String(h.question_id));
+        byUser.set(String(h.user_id), acc);
+      }
+      return [...byUser.values()].map(a => ({
+        user_id: a.user_id,
+        questions_met: a.met.size,
+        questions_mastered: a.mastered.size,
+      }));
+    }
+
+    // Mirrors migration 054. The guard is the point of the function: a rating
+    // anybody could write from outside the room is worth nothing, so a fake
+    // that accepted everything would prove the opposite of what it tests.
+    if (name === 'op_rate_host') {
+      const rating = args?.p_rating ?? null;
+      const flagReason = args?.p_flag_reason ?? null;
+      if (rating == null && flagReason == null) return 'nothing to record';
+      if (rating != null && rating !== 1 && rating !== -1) return 'not a rating';
+
+      const players = this.table('players');
+      const voter = players.find(p => String(p.room_id) === String(args.p_room_id)
+        && String(p.id) === String(args.p_player_id));
+      if (!voter) return 'not in this room';
+
+      const host = players.find(p => String(p.room_id) === String(args.p_room_id)
+        && p.is_host && p.user_id);
+      if (!host) return 'host has no account';
+      if (String(voter.user_id || '') === String(host.user_id)) return 'cannot rate yourself';
+
+      const rows = this.table('host_ratings');
+      const existing = rows.find(r => String(r.host_user_id) === String(host.user_id)
+        && String(r.room_id) === String(args.p_room_id)
+        && String(r.voter_id) === String(args.p_voter_id));
+      if (existing) {
+        // COALESCE, exactly as the SQL does: a later thumbs-up must not
+        // withdraw a flag. Changing your mind about a rating is ordinary;
+        // retracting a report of misconduct is not something a tap should do.
+        if (rating != null) existing.rating = rating;
+        if (flagReason != null) existing.flag_reason = flagReason;
+        if (args?.p_flag_note != null) existing.flag_note = args.p_flag_note;
+      } else {
+        rows.push({
+          id: newId('host_ratings'), host_user_id: host.user_id,
+          room_id: args.p_room_id, voter_id: args.p_voter_id,
+          voter_name: voter.display_name, rating, flag_reason: flagReason,
+          flag_note: args?.p_flag_note ?? null,
+          created_at: new Date().toISOString(),
+        });
+      }
+      this._recomputeHostReputation();
+      return 'ok';
+    }
+
     if (name === 'get_mastery_counts') {
       const uid = String(args?.p_user_id ?? '');
       if (!uid) return [];
