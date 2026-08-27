@@ -11,13 +11,15 @@ import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
-         disqualifyRoundOnServer, updateGameState, submitAnswer,
+         disqualifyRoundOnServer, updateGameState,
          upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
-         upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage, rateHost,
+         upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
+  rateHost, fetchHostReputations, hostRatingsAvailable,
+  insertBlankAnswers, fetchAllAnswers,
   recordQuestionOutcome, recordAnswerText, fetchQuestionPlayStats,
 } from '../supabase.js';
 import { describeDifficulty } from '../difficulty-band.js';
-import { countAnswersFrom } from './scoring-helpers.js';
+import { countAnswersFrom, findNextAvailableWager } from './scoring-helpers.js';
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
@@ -525,26 +527,64 @@ async function handleRevealResults() {
   }
   state.timerExpired = true;
 
-  // BUG 3 FIX: Submit blank answers for ALL players who haven't answered
-  const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
+  // CLOSE THE ROUND FOR EVERYONE WHO NEVER ANSWERED.
+  //
+  // THIS WAS THE THIRD BLANK-FILL SITE AND IT NEVER GOT EITHER OF THE FIXES THE
+  // OTHER TWO DID. It called submitAnswer — an UPSERT — with a hardcoded
+  // wager of 1, and both halves were wrong:
+  //
+  //  * Migration 049 revoked UPDATE on `answers`, and a conflicting
+  //    ON CONFLICT DO UPDATE raises 42501 and writes nothing (measured). On the
+  //    final round every player who locked a wager already HOLDS a row — the
+  //    __WAGER_LOCKED__ placeholder — so pressing "Reveal Results" while
+  //    somebody had not answered wrote nothing at all, left their locked wager
+  //    attached to a question they never answered, and told the HOST "your
+  //    answer didn't save" once per absent player. The final round is the only
+  //    one that SUBTRACTS, so that is the difference between scoring nothing
+  //    and losing 20 for being away.
+  //  * A hardcoded wager of 1 is the exact fault the 2026-08-18 playtest fixed
+  //    in the other two fill paths: it hands a player a second answer at a
+  //    wager they had already spent, breaking the rule that 1..N are each used
+  //    exactly once.
+  //
+  // insertBlankAnswers, and NOT op_fill_blank_answers, which is the wider call
+  // handleTimerExpiry makes. The two mean different things and reaching for the
+  // server function here changed the feature:
+  //
+  //   the CLOCK running out  -> close everybody out, including converting a
+  //                             __WAGER_LOCKED__ placeholder into a blank
+  //   the host revealing EARLY -> only people who have no row at all
+  //
+  // Somebody who has locked a final wager and is still typing has a row, and a
+  // host cutting the round short must not turn their 20 into a blank. Using the
+  // server call here did exactly that, and scenario-fullgame caught it by name:
+  // "Bob tapped 20 on the final wager and was committed to 0."
+  //
+  // ON CONFLICT DO NOTHING is what makes that safe by construction rather than
+  // by remembering: it cannot touch a row that already exists, whatever is in
+  // it. It also survives 049, which the upsert this replaces did not.
   const q = state.questions[state.currentQuestion];
   if (q) {
-    const autoSubmits = [];
-    for (const p of state.players) {
-      if (!submittedIds.has(String(p.id))) {
-        autoSubmits.push(submitAnswer({
-          roomId: state.room.id,
-          playerId: p.id,
-          questionNumber: state.currentQuestion,
-          questionId: q.id,
-          wager: 1,
-          submittedAnswer: '',
-          isCorrect: false,
-          scoreEarned: 0
-        }));
-      }
+    const submittedIds = new Set(state.currentAnswers.map(a => String(a.player_id)));
+    const allAnswers = currentGameAnswers(await fetchAllAnswers(state.room.id));
+    const spent = new Map();
+    for (const a of allAnswers) {
+      const key = String(a.player_id);
+      if (!spent.has(key)) spent.set(key, new Set());
+      if (a.wager != null) spent.get(key).add(a.wager);
     }
-    if (autoSubmits.length) await Promise.allSettled(autoSubmits);
+    const blanks = [];
+    for (const p of state.players) {
+      if (submittedIds.has(String(p.id))) continue;
+      blanks.push({
+        roomId: state.room.id,
+        playerId: p.id,
+        questionNumber: state.currentQuestion,
+        questionId: q.id,
+        wager: findNextAvailableWager(spent.get(String(p.id)) || new Set(), state.totalQuestions)
+      });
+    }
+    if (blanks.length) await insertBlankAnswers(blanks);
   }
 
   // Re-fetch all answers (including just-submitted auto-answers) before revealing.
@@ -830,6 +870,34 @@ function showHostReviewUI() {
   const host = state.players.find(p => p.is_host && !p.is_bot);
   const iAmHost = host && String(host.id) === String(state.room?.playerId);
   if (!host || !host.user_id || iAmHost) {
+    row.style.display = 'none';
+    return;
+  }
+
+  // NOTHING IS SHOWN UNTIL WE KNOW THE FEATURE IS INSTALLED, and "show it and
+  // hide it when the answer comes back" is not good enough.
+  //
+  // Migrations here are pasted by hand, so there is a real window where this
+  // JavaScript is live and migration 054 is not. In that window an optimistic
+  // row puts three buttons on screen that light up when tapped and record
+  // NOTHING — a player believing they rated somebody when they did not, which
+  // is the silent-failure shape this codebase is built out of (#4). Hiding it
+  // only once the failure arrives leaves exactly that window open, for however
+  // long the round trip takes.
+  //
+  // So: hide, ask once per game, and draw the row only if the answer says the
+  // feature is there. The cost is that on a working system the row appears a
+  // moment after the reveal, which for a secondary control is nothing.
+  if (!state._hostRepChecked) {
+    state._hostRepChecked = true;
+    fetchHostReputations([host.user_id]).then(() => {
+      state._hostRepKnown = true;
+      // Re-render rather than un-hiding here: the round may have moved on, and
+      // this function already knows every reason the row should stay hidden.
+      if (state.onRevealScreen) showHostReviewUI();
+    });
+  }
+  if (!state._hostRepKnown || !hostRatingsAvailable()) {
     row.style.display = 'none';
     return;
   }

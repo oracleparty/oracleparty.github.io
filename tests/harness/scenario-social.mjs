@@ -414,7 +414,7 @@ try {
   for (const r of [host, bob]) {
     const real = r.consoleErrors.filter(e =>
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
-    if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — ${real.map(e => e.slice(0, 200)).join(' || ')}`);
+    if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — ${real.map(e => e.slice(0, 700)).join(' || ')}`);
   }
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);

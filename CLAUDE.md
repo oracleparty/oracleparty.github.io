@@ -1784,6 +1784,21 @@ report of misconduct is not something a tap should do.
 which the count is shown on its own instead of a percentage, the same call and
 the same number as the difficulty band.
 
+**THE ROW IS NOT DRAWN UNTIL THE FEATURE IS KNOWN TO BE INSTALLED**, and
+"show it, then hide it when the failure comes back" was not good enough. In the
+window where this JavaScript is live and 054 is not, an optimistic row puts
+three buttons on screen that light up when tapped and record nothing — a player
+believing they rated somebody when they did not. Hiding on the failure leaves
+exactly that window open for however long the round trip takes.
+
+**The first version of that check could not fail, and I nearly shipped it.**
+With the async hide in place, removing the synchronous gate changed nothing the
+scenario could see: by the time it looked, the failure had arrived and the row
+was gone either way. The fix was to the DESIGN, not the check — hide by default,
+ask once per game, draw only on a positive answer. Then the check fails by name
+when the gate is removed. **A check that agrees with you whatever you do is the
+thing this project keeps deleting.**
+
 **Shown on the join list and on the profile card, NOT on the lobby row.** The
 lobby row is the most fragile layout in the app: adding a badge beside a name
 there is exactly what overflowed it by 71px and made the page draggable
@@ -2477,6 +2492,58 @@ save", once per absent player. It is `upsertAnswers` now, which logs and does
 not toast. **Deliberately still loud in the log**: if that branch is ever
 reached the locked wager stays attached to a question nobody answered, and the
 final round is the only one that SUBTRACTS.
+
+## The third blank-fill site, and it had missed two fixes
+
+Found 2026-08-26, by tracing an intermittent `scenario-social` failure to its
+call site instead of guessing at it again. **A SEVENTH thing migration 049 shut,
+and the one with the worst consequence.**
+
+`handleRevealResults` — the host pressing "Reveal Results" before everybody has
+answered — closed the round for the missing players with `submitAnswer` and a
+hardcoded `wager: 1`. Both halves were wrong, and each is a fix that had already
+been made TWICE somewhere else:
+
+- **It is an upsert.** On the final round every player who has locked a wager
+  already holds a `__WAGER_LOCKED__` row, so the statement conflicted, 049
+  refused it with 42501, and **nothing was written**. Their locked wager stayed
+  attached to a question they never answered — and the final round is the only
+  one that SUBTRACTS, so that is the difference between scoring nothing and
+  losing 20 for being away. It also toasted the HOST "your answer didn't save",
+  once per absent player.
+- **`wager: 1` is the exact fault the 2026-08-18 playtest fixed** in the other
+  two fill paths: it hands somebody a second answer at a wager they have already
+  spent, breaking the rule that 1..N are each used exactly once.
+
+It uses `insertBlankAnswers` now — ON CONFLICT DO NOTHING, which survives 049
+— with each player burning their OWN lowest unused wager.
+
+**NOT `op_fill_blank_answers`, and reaching for it changed the feature.** The
+two paths mean different things: the CLOCK running out closes everybody out,
+including converting a `__WAGER_LOCKED__` placeholder into a blank; the host
+revealing EARLY should only close out people with no row at all. Somebody who
+has locked a final wager and is still typing HAS a row, and the server call
+turned their 20 into a blank. `scenario-fullgame` caught it by name — "Bob
+tapped 20 on the final wager and was committed to 0" — which is the bug the
+2026-08-20 playtest is named after, reintroduced by a fix for something else.
+DO NOTHING makes it safe by construction rather than by remembering.
+
+**Three sites, and the two earlier fixes each reached two of them.** That is the
+fourth time this file has recorded the same shape. The habit that finds it is
+not a test: it is grepping for every OTHER caller of the thing you just changed.
+
+**The check for this is probabilistic and that is stated rather than dressed
+up.** `scenario-social` failed roughly one run in three before and passes
+consistently after, which is evidence but not a named assertion. The SQL rule
+table pins the SERVER path (`op_fill_blank_answers`) exactly; what has no
+deterministic check is the client fallback, because reaching it requires the RPC
+to be unavailable at the moment a host reveals early with somebody absent.
+
+**And the way it was found is the reusable part.** Two earlier attempts guessed
+at the call site from the symptom and were both wrong — one of them twice. What
+settled it in a single run was printing the STACK from inside the failing
+function. When an error names a function with several callers, make it say which
+one; reasoning about which is most likely has now cost three rounds.
 
 ## Chat showed the FIRST hundred messages, not the last
 

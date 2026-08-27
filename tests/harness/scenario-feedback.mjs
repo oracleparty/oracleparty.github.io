@@ -487,6 +487,23 @@ try {
       problems.push('a later thumbs-up withdrew the flag — a report of misconduct must not be retractable by a tap');
     }
 
+    // WITH MIGRATION 054 NOT RUN, THE ROW MUST NOT APPEAR AT ALL. Migrations
+    // are pasted by hand, so "the JavaScript is live and the SQL is not" is a
+    // real state — and three buttons that light up when tapped and record
+    // nothing is worse than no feature. Checked on a fresh page load, which is
+    // when the app asks.
+    table.store.denyReads('host_reputation');
+    table.store.hideFunction('op_rate_host');
+    await bob.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await bob.page.waitForTimeout(4000);
+    const stillOffered = await reviewVisible(bob);
+    note(`host-review row with migration 054 missing: ${stillOffered}`);
+    if (stillOffered) {
+      problems.push('the host-review buttons are offered when the feature is not installed — tapping them would record nothing and say nothing');
+    }
+    table.store.allowReads('host_reputation');
+    table.store.showFunction('op_rate_host');
+
     // AND THE GUARD. Driven directly, because the UI gives no way to aim a vote
     // at a game you were not in — which is exactly why the rule has to live in
     // the database rather than in the screen.
@@ -625,6 +642,16 @@ try {
   {
     const bobRow = table.store.table('players').find(p => p.display_name === 'Bob');
     if (bobRow) bobRow.is_bot = true;
+    // AND in the host's memory, again, right here. The store copy survives a
+    // player re-fetch; the in-memory copy is what the guard reads THIS instant.
+    // Setting only one of them leaves a window: a re-fetch between the earlier
+    // in-memory mutation and this point replaces the array and drops the flag,
+    // and if no further re-fetch happens before the recording, neither is in
+    // effect. Both, at the last possible moment, closes it from both sides.
+    await host.page.evaluate(name => {
+      const p = (window.__state?.players || []).find(p => p.display_name === name);
+      if (p) p.is_bot = true;
+    }, 'Bob').catch(() => {});
   }
   await advance();
   await host.page.waitForTimeout(1500);

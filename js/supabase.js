@@ -58,7 +58,7 @@ export {
   fetchTitleUnlocks, upsertTitleUnlock,
   fetchAllPlayerStatsForLeaderboard, fetchPlayerTotalsForLeaderboard, fetchCategoryLeaderboard,
   fetchLeaderboard,
-  rateHost, fetchHostReputations, describeHostReputation,
+  rateHost, fetchHostReputations, describeHostReputation, hostRatingsAvailable,
   fetchGameHistorySince, fetchProfilesBatch,
   fetchSiteSettings, upsertSiteSetting, deleteSiteSetting,
   sendFriendRequest, fetchPendingRequests, fetchSentRequests,

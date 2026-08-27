@@ -242,6 +242,20 @@ export async function rateHost({ roomId, playerId, voterId, rating = null, flagR
  * look alike — the same rule the admin panel counts follow, where a failed
  * count renders "?" and never "0".
  */
+let _hostRatingsAvailable = true;
+
+/**
+ * Is the host-rating feature actually installed?
+ *
+ * FALSE ONLY AFTER A READ HAS FAILED, so it starts optimistic and cannot hide
+ * the feature on a cold start. This exists because migrations here are pasted
+ * by hand: without it, deploying the JavaScript before migration 054 would put
+ * three buttons on the reveal screen that light up when tapped and record
+ * NOTHING — a player believing they had rated somebody when they had not,
+ * which is the silent-failure shape this whole codebase is built out of.
+ */
+export function hostRatingsAvailable() { return _hostRatingsAvailable; }
+
 export async function fetchHostReputations(userIds) {
   const ids = [...new Set((userIds || []).filter(Boolean))];
   if (ids.length === 0) return new Map();
@@ -250,11 +264,18 @@ export async function fetchHostReputations(userIds) {
     .select('*')
     .in('host_user_id', ids);
   if (error) {
-    // Missing view or no permission: the feature is simply not available yet.
-    // Not an error the player should see, and not a zero.
+    // PGRST205 is "no such relation" — migration 054 has not been run. Anything
+    // else is a transient failure and must NOT switch the feature off, or one
+    // dropped request would hide it for the rest of the session.
+    if (error.code === 'PGRST205' || /could not find the table/i.test(error.message || '')) {
+      _hostRatingsAvailable = false;
+    }
+    // Not an error the player should see, and not a zero: an unrated host and
+    // a disliked one must never look alike.
     logger.debug('Supabase', 'host_reputation unavailable', error);
     return new Map();
   }
+  _hostRatingsAvailable = true;
   return new Map((data || []).map(r => [r.host_user_id, r]));
 }
 

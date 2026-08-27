@@ -37,6 +37,11 @@ export const state = {
   // lives here rather than being re-read for each question. 'up' | 'down' | null.
   hostVote: null,
   hostFlagReason: null,
+  // Has this game asked whether host ratings are installed at all, and has the
+  // answer come back? The row is not drawn until the second is true — see
+  // showHostReviewUI for why optimism is the wrong default here.
+  _hostRepChecked: false,
+  _hostRepKnown: false,
   isFinalWagerRound: false,
   // Has the final-wager screen already been drawn this game? Guards the
   // player's chosen wager against being cleared by a re-render.
