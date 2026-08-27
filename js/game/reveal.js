@@ -902,6 +902,17 @@ function showHostReviewUI() {
     return;
   }
 
+  // THE VOTE BELONGS TO A HOST, NOT TO THE GAME. The role can move mid-game —
+  // a host who leaves is replaced by promotion — and without this the buttons
+  // would show your verdict on the OLD host as already cast for the new one,
+  // who you have never rated. Each vote is its own row on the server, so
+  // nothing is lost; what was wrong was the screen.
+  if (state.hostVoteFor && String(state.hostVoteFor) !== String(host.user_id)) {
+    state.hostVote = null;
+    state.hostFlagReason = null;
+  }
+  state.hostVoteFor = host.user_id;
+
   row.style.display = '';
   row.querySelectorAll('[data-host-vote]').forEach(b => {
     b.classList.toggle('feedback-btn--active', b.dataset.hostVote === state.hostVote);

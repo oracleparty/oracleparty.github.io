@@ -37,6 +37,9 @@ export const state = {
   // lives here rather than being re-read for each question. 'up' | 'down' | null.
   hostVote: null,
   hostFlagReason: null,
+  // WHICH host the vote above is for. The role can move mid-game, and a vote
+  // belongs to a person rather than to the game.
+  hostVoteFor: null,
   // Has this game asked whether host ratings are installed at all, and has the
   // answer come back? The row is not drawn until the second is true — see
   // showHostReviewUI for why optimism is the wrong default here.

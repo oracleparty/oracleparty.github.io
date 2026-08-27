@@ -230,9 +230,9 @@ export const STATES = {
       // never as 0%.
       const games = [
         { host: 'CaptainTrivia', icon: '⏳', cat: 'History \u00b7 10Q \u00b7 30s', code: 'ABCD', players: '4 players', statusClass: 'lobby', statusText: 'In Lobby',
-          rep: '<span class="host-rep">92% \u00b7 48 games</span>' },
+          rep: '<span class="host-rep">92% \u00b7 48 ratings</span>' },
         { host: 'QuizWhiz', icon: '⚗️', cat: 'Science \u00b7 15Q \u00b7 45s', code: 'EFGH', players: '2 players', statusClass: 'lobby', statusText: 'In Lobby',
-          rep: '<span class="host-rep host-rep--poor">31% \u00b7 13 games</span>' },
+          rep: '<span class="host-rep host-rep--poor">31% \u00b7 13 ratings</span>' },
         { host: 'BrainStorm', icon: '🃏', cat: 'Wild Card \u00b7 20Q \u00b7 30s', code: 'IJKL', players: '6 players', statusClass: 'playing', statusText: 'In Progress',
           rep: '<span class="host-rep host-rep--none">new host</span>' },
       ];
@@ -967,7 +967,7 @@ export const STATES = {
       if (!el) return;
       // Mirrors loadFlaggedHosts() in js/admin.js.
       const rows = [
-        ['Wilhelmina-Rose#4417', '22% \u00b7 14 games', '3 reports',
+        ['Wilhelmina-Rose#4417', '22% \u00b7 14 ratings', '3 reports',
          'unfair judging, ended the game early',
          'marked three of my answers wrong when they were right and then quit'],
         ['Jo#0102', 'no rating yet', '1 report', 'other', ''],

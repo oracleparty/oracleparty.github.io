@@ -186,14 +186,21 @@ try {
 
   // THE HOST'S STANDING, on the row, before anybody taps it. Three up and one
   // down is 75% of 4 — and the SAMPLE must be printed beside it, because "75%"
-  // from four games and from four hundred are different claims.
+  // from four ratings and from four hundred are different claims.
+  //
+  // "ratings", not "games": a rating is keyed on the ROOM, and a room survives
+  // Play Again, so six rounds with one group is one rating each. Calling it
+  // games would describe a different measurement from the one shown.
   if (publicRow) {
     note(`public row reputation: ${publicRow.slice(0, 90)}`);
     if (!/75%/.test(publicRow)) {
       problems.push(`the public games list does not show the host's rating — "${publicRow.slice(0, 80)}"`);
     }
-    if (!/4 games/.test(publicRow)) {
-      problems.push('the host rating is shown without its sample size, so a percentage from four games looks like one from four hundred');
+    if (!/4 ratings/.test(publicRow)) {
+      problems.push('the host rating is shown without its sample size, so a percentage from four ratings looks like one from four hundred');
+    }
+    if (/\d+ games/.test(publicRow)) {
+      problems.push('the host standing is labelled "games" — it counts rooms, and a room survives Play Again, so six rounds with one group is one rating');
     }
   }
 

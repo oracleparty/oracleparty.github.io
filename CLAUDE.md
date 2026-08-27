@@ -1793,6 +1793,17 @@ the case it is for.
 a host accumulates SAMPLE, not the value of the percentage, and the sample is
 printed beside it.
 
+**AND THE SAMPLE IS LABELLED "RATINGS", NOT "GAMES", because a room survives
+Play Again.** The key is `(host, ROOM, voter)`, so a group playing six rounds
+together in one evening produces one rating each, not six. That IS the right
+unit — one considered opinion per person per sitting rather than six taps, and
+it stops a host farming votes with quick rematches. But it means the number is
+not a count of games, and calling it that would be the same mistake this file is
+full of: **a label describing a different measurement from the one shown**. The
+admin page already draws exactly this distinction — six rounds with one group is
+six games and ONE session. `scenario-join` fails if the row ever says "games"
+again.
+
 **WHO VOTED WHICH WAY IS NOT PUBLIC, and that is a privacy fix rather than
 tidiness.** The rows carry `voter_id` and `voter_name`. With a public SELECT a
 host could look up exactly who thumbs-downed them and retaliate in the next game
@@ -1853,6 +1864,14 @@ dropping the note line: it reports that by name.
 **The sample is always printed** — `MIN_HOST_RATINGS` (3) is the point below
 which the count is shown on its own instead of a percentage, the same call and
 the same number as the difficulty band.
+
+**A VOTE BELONGS TO A HOST, NOT TO A GAME.** The role can move mid-game — a
+host who leaves is replaced by promotion — and without a guard the buttons would
+show your verdict on the OLD host as already cast for the new one, who you have
+never rated. Each vote is its own row, so nothing is lost; what was wrong was
+the screen. **Inspection-verified only**, like the final-wager guards: making a
+host change mid-reveal happen in the harness was not worth a check that could
+not be trusted to fail, and saying so beats a check that agrees with you.
 
 **THE ROW IS NOT DRAWN UNTIL THE FEATURE IS KNOWN TO BE INSTALLED**, and
 "show it, then hide it when the failure comes back" was not good enough. In the

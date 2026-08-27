@@ -297,8 +297,21 @@ export function describeHostReputation(rep, minRatings = MIN_HOST_RATINGS) {
   if (rep.ratings < minRatings) {
     return { text: `${rep.ratings} rating${rep.ratings === 1 ? '' : 's'}`, measured: false, flags: rep.flags || 0 };
   }
+  // "RATINGS", NOT "GAMES", and the difference is real rather than pedantic.
+  //
+  // A rating is keyed on (host, ROOM, voter) — and a room survives Play Again,
+  // so a group playing six rounds together in one evening produces ONE rating
+  // from each of them, not six. That is the right unit: one considered opinion
+  // per person per sitting, rather than six taps, and it stops a host farming
+  // votes by running quick rematches with a friendly group.
+  //
+  // But it means the number is NOT a count of games, and saying so would be the
+  // same mistake this project keeps making with Proficiency and Mastery — a
+  // label that describes a different measurement from the one shown. This is
+  // exactly the distinction the admin page already draws: six rounds with the
+  // same group is six games and ONE session.
   return {
-    text: `${rep.pct_positive}% · ${rep.ratings} games`,
+    text: `${rep.pct_positive}% · ${rep.ratings} rating${rep.ratings === 1 ? '' : 's'}`,
     measured: true,
     pct: rep.pct_positive,
     flags: rep.flags || 0,
