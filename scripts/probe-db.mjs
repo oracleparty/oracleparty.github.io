@@ -39,6 +39,13 @@ const TABLES = [
   // Migration 029 — what people actually typed.
   'answer_tally',
   // Migration 054 — would you play with this host again.
+  //
+  // host_ratings ALWAYS READS AS rows=0 HERE, BY DESIGN. Its rows carry
+  // voter_id and voter_name, and a public SELECT would let a host look up who
+  // thumbs-downed them, so the policy admits admins only — and this probe is an
+  // anonymous visitor. An RLS filter returns zero rows rather than an error, so
+  // "readable rows=0" is the CORRECT output and not a table to investigate.
+  // host_reputation is the aggregate, and that one really is public.
   'host_ratings', 'host_reputation',
 ];
 

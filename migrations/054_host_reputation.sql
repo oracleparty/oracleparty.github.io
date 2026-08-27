@@ -65,9 +65,31 @@ CREATE INDEX IF NOT EXISTS idx_host_ratings_host ON host_ratings (host_user_id);
 
 ALTER TABLE host_ratings ENABLE ROW LEVEL SECURITY;
 
--- Readable by anyone: the whole point is that you can see it before you join.
+-- NOT readable by players, and this is a privacy fix rather than a lockdown for
+-- its own sake.
+--
+-- The rows carry voter_id and voter_name. With a public SELECT, a host could
+-- look up exactly who thumbs-downed them and retaliate in the next game they
+-- share — which would make an honest rating unsafe to give, and an unsafe
+-- rating is worse than none. What the app needs public is the AGGREGATE, and
+-- host_reputation below provides it.
+--
+-- The view still works for everybody. It is an ordinary (definer-rights) view,
+-- so it reads the table with its owner's rights rather than the caller's —
+-- exactly how question_health already exposes the locked question_stats. That
+-- precedent is why this is safe to do rather than a guess.
+--
+-- Admins CAN read the rows, because the flag panel has to show who reported
+-- whom and what they typed. profiles.USER_ID, never profiles.id: migration 024
+-- compared the wrong column and granted nothing while looking installed, and
+-- tests/migration-policies.test.js fails on any migration that repeats it.
 DROP POLICY IF EXISTS "Host ratings: public read" ON host_ratings;
-CREATE POLICY "Host ratings: public read" ON host_ratings FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Host ratings: admins read" ON host_ratings;
+CREATE POLICY "Host ratings: admins read" ON host_ratings FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM profiles p
+     WHERE p.user_id = auth.uid() AND p.is_admin = true
+  ));
 
 -- NO insert, update or delete policy. Every write goes through op_rate_host
 -- below, which runs as the table owner and checks that the voter was actually
@@ -240,6 +262,14 @@ SELECT * FROM (
        WHERE schemaname = 'public' AND tablename = 'host_ratings'
          AND cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL'))
     THEN 'FAIL a policy lets clients write it' ELSE 'ok' END
+  -- Who voted which way must not be public: a host who could look it up could
+  -- retaliate, and a rating that is unsafe to give is worse than none.
+  UNION ALL SELECT 5, 'no policy exposes who voted',
+    CASE WHEN EXISTS (
+      SELECT 1 FROM pg_policies
+       WHERE schemaname = 'public' AND tablename = 'host_ratings'
+         AND cmd IN ('SELECT', 'ALL') AND qual = 'true')
+    THEN 'FAIL voter names are readable by anyone' ELSE 'ok' END
 ) report ORDER BY ord;
 
 -- And every policy on the table, listed, so a FAIL above can be read rather

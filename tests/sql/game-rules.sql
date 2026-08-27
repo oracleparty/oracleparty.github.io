@@ -749,4 +749,66 @@ BEGIN
     ('a guest host cannot be rated, and says why', res, 'host has no account');
 END $$;
 
+-- ============================================
+-- Migration 054 — who may READ a rating
+--
+-- A PRIVACY PROPERTY, and the one most worth pinning: the rows carry voter_id
+-- and voter_name, so a public SELECT would let a host look up exactly who
+-- thumbs-downed them and retaliate in the next game they share. A rating that
+-- is unsafe to give is worse than no rating at all.
+--
+-- What must be public is the AGGREGATE. host_reputation is an ordinary
+-- (definer-rights) view, so it reads the locked table with its owner's rights
+-- rather than the caller's — the same arrangement question_health already uses
+-- over question_stats.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  hostU uuid := gen_random_uuid();
+  adminU uuid := gen_random_uuid();
+  hostP uuid; aliceP uuid;
+  n int; agg int;
+BEGIN
+  INSERT INTO auth.users VALUES (hostU), (adminU);
+  INSERT INTO profiles (user_id, display_name, is_admin) VALUES (adminU, 'Admin', true);
+  INSERT INTO rooms (code, host_name) VALUES ('054900', 'Hosty') RETURNING id INTO rid;
+  INSERT INTO players (room_id, user_id, display_name, is_host)
+    VALUES (rid, hostU, 'Hosty', true) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name) VALUES (rid, 'Alice') RETURNING id INTO aliceP;
+  INSERT INTO answers (room_id, player_id, question_number, wager, submitted_answer)
+    VALUES (rid, aliceP, 0, 1, 'played');
+  PERFORM op_rate_host(rid, aliceP, 'device:alice', (-1)::smallint, 'unfair_judging', 'a note');
+
+  -- A visitor: no rows from the table, but the aggregate still answers.
+  SET LOCAL ROLE anon;
+  SELECT count(*) INTO n FROM host_ratings WHERE host_user_id = hostU;
+  SELECT ratings INTO agg FROM host_reputation WHERE host_user_id = hostU;
+  RESET ROLE;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a visitor cannot see WHO voted', n::text, '0'),
+    ('but the aggregate is still public', agg::text, '1');
+
+  -- A signed-in ordinary player: also nothing. Being logged in is not standing.
+  PERFORM set_config('request.jwt.claim.sub', hostU::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM host_ratings WHERE host_user_id = hostU;
+  RESET ROLE;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the HOST cannot see who reported them', n::text, '0');
+
+  -- An admin: the whole row, because the flag panel has to show who said what.
+  -- Scoped to THIS host — an earlier block in this file leaves ratings behind,
+  -- and a bare count would pin a number that moves whenever anything above it
+  -- changes.
+  PERFORM set_config('request.jwt.claim.sub', adminU::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM host_ratings WHERE host_user_id = hostU;
+  RESET ROLE;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('an admin CAN read the reports', n::text, '1');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+END $$;
+
 SELECT check_name, got, want FROM result ORDER BY ord;

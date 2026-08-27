@@ -1793,6 +1793,27 @@ the case it is for.
 a host accumulates SAMPLE, not the value of the percentage, and the sample is
 printed beside it.
 
+**WHO VOTED WHICH WAY IS NOT PUBLIC, and that is a privacy fix rather than
+tidiness.** The rows carry `voter_id` and `voter_name`. With a public SELECT a
+host could look up exactly who thumbs-downed them and retaliate in the next game
+they share — which makes an honest rating unsafe to give, and **a rating that is
+unsafe to give is worse than none**. The policy admits admins only; the
+AGGREGATE is what the app needs public, and `host_reputation` provides it.
+
+The view keeps working for everybody because it is an ordinary (definer-rights)
+view, so it reads the locked table with its owner's rights rather than the
+caller's — the same arrangement `question_health` already uses over the locked
+`question_stats`. That precedent is why this was safe to do rather than a guess,
+and all four cases were measured against a real Postgres: a visitor and a
+signed-in non-admin see nothing, the aggregate still answers, an admin sees the
+reporter and their note. `tests/sql/game-rules.sql` pins all four, and reopening
+the policy to `USING (true)` fails two of them by name.
+
+**`host_ratings` therefore reads as `rows=0` in the CI probe, and that is
+correct output.** An RLS filter returns zero rows rather than an error, so a
+future session must not read it as a table to investigate — the probe says so
+inline.
+
 **Every write goes through `op_rate_host`, which checks the voter really has a
 player row in that room.** The table has no INSERT policy at all. Without that
 guard anybody holding the publishable key — which every browser carries, because

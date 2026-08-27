@@ -42,6 +42,39 @@ CREATE TABLE IF NOT EXISTS questions (
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);
 
+-- auth.uid(), so a POLICY can be exercised here rather than only read. Supabase
+-- derives it from the request's JWT; this reads the same setting PostgREST sets,
+-- so `SET request.jwt.claim.sub` in a test makes the caller that user.
+CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS
+  $fn$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $fn$;
+
+-- The two roles PostgREST connects as. Every GRANT in migrations/ names them,
+-- and without them a migration cannot be applied here at all.
+DO $roles$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    CREATE ROLE authenticated NOLOGIN;
+  END IF;
+END $roles$;
+GRANT USAGE ON SCHEMA public, auth TO anon, authenticated;
+
+-- profiles, so admin-gated policies have something to gate on. is_admin is the
+-- column those policies read, and USER_ID is the one that holds the auth user's
+-- id — migration 024 compared `id` instead and granted nothing while looking
+-- installed, which tests/migration-policies.test.js now lints for.
+CREATE TABLE IF NOT EXISTS profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid UNIQUE,
+  display_name text,
+  discriminator text,
+  is_admin boolean DEFAULT false,
+  title_builder_unlocked boolean DEFAULT false
+);
+GRANT SELECT ON profiles TO anon, authenticated;
+
 CREATE TABLE IF NOT EXISTS question_history (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id uuid NOT NULL,
