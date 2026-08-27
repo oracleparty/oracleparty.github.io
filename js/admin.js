@@ -12,9 +12,10 @@ import { findAnswersNeedingReview } from './answer-health.js';
 // the host screen shows, so the two agree.
 const CATEGORY_KEYS = Object.keys(CATEGORY_META);
 import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
-  fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts, endRoomAsAdmin } from './supabase.js';
+  fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts, endRoomAsAdmin,
+  fetchHostReputations, describeHostReputation } from './supabase.js';
 import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
-import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS, ABANDONED_ROOM_MS } from './constants.js';
+import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS, ABANDONED_ROOM_MS, MIN_HOST_RATINGS } from './constants.js';
 
 // ============================================
 // INIT
@@ -91,6 +92,7 @@ function setStatus(el, text, { sticky = false } = {}) {
 
 const PANEL_LOADERS = {
   flagged:      loadFlaggedQueue,
+  hosts:        loadFlaggedHosts,
   health:       loadQuestionHealth,
   questions:    loadQuestions,
   games:        loadRecentGames,
@@ -202,7 +204,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 async function loadPanelCounts() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [flags, ratings, played, questions, games, errors, chats, settings] = await Promise.all([
+  const [flags, ratings, played, questions, games, errors, chats, settings, hostFlags] = await Promise.all([
     countRows('question_feedback', q => q.eq('feedback_type', 'flag')),
     countRows('question_feedback'),
     countRows('question_health', q => q.gt('times_asked', 0)),
@@ -214,6 +216,7 @@ async function loadPanelCounts() {
       logger.error('Admin', 'panel counts: site settings failed', err);
       return null;
     }),
+    countRows('host_ratings', q => q.not('flag_reason', 'is', null)),
   ]);
 
   // Flags: the one number on this page somebody is meant to act on.
@@ -229,6 +232,13 @@ async function loadPanelCounts() {
       : played > 0 ? `${played} played`
       : ratings ? `${plural(ratings, 'rating')}, 0 played`
       : 'No data yet');
+
+  // Amber only when non-zero, like the question flags: colour everything and
+  // it stops meaning anything. `?` and never `0` when the count fails — an
+  // unreachable table and an empty one must not look alike.
+  setPanelCount('hosts',
+    hostFlags === null ? '?' : hostFlags === 0 ? 'None' : plural(hostFlags, 'report'),
+    hostFlags ? 'alert' : null);
 
   setPanelCount('questions', questions === null ? '?' : questions.toLocaleString());
   setPanelCount('games',     games === null ? '?' : games === 0 ? 'None' : games.toLocaleString());
@@ -743,6 +753,99 @@ async function loadFeatureFlags() {
 // ============================================
 // FLAGGED QUEUE
 // ============================================
+
+/**
+ * Hosts somebody has reported (migration 054).
+ *
+ * A FLAG THAT REACHES NOWHERE IS THEATRE. The point of letting a player report
+ * a host is that a person eventually reads it, so this sits next to Flagged
+ * Questions — the two things on this page anybody is meant to act on.
+ *
+ * Same rule as the question queue: a failed query and an empty queue must not
+ * render the same reassuring sentence. And a host with a poor score but no
+ * flags is shown too, because a pattern of thumbs-down is a report of a kind.
+ */
+async function loadFlaggedHosts() {
+  const container = $('#flagged-hosts');
+
+  const { data: rows, error } = await supabase
+    .from('host_ratings')
+    .select('host_user_id, voter_name, rating, flag_reason, flag_note, created_at')
+    .not('flag_reason', 'is', null)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    // A missing relation means migration 054 has not been run, which is a
+    // different problem from a query that failed, and says so.
+    const notInstalled = error.code === 'PGRST205' || /could not find the table/i.test(error.message || '');
+    logger.error('Admin', 'loadFlaggedHosts failed', error);
+    container.innerHTML = notInstalled
+      ? `<p style="color:var(--color-text-muted); font-size:var(--text-sm);">Host ratings are not installed yet — run migration 054.</p>`
+      : `<p style="color:var(--color-danger); font-size:var(--text-sm);">Couldn't load host reports: ${escapeHtml(error.message || String(error))}</p>`;
+    return;
+  }
+
+  if (!rows || rows.length === 0) {
+    // "No reports" answers the wrong question when the worry is whether
+    // ratings are being recorded at all — the same distinction the question
+    // queue draws, and for the same reason.
+    const { count, error: countErr } = await supabase
+      .from('host_ratings')
+      .select('id', { count: 'exact', head: true });
+    const suffix = countErr
+      ? ` (couldn't count other ratings: ${escapeHtml(countErr.message || String(countErr))})`
+      : count > 0
+        ? ` ${count} host rating${count === 1 ? '' : 's'} recorded, so the pipeline is working.`
+        : ' No host ratings of any kind recorded yet.';
+    container.innerHTML = `<p style="color:var(--color-text-muted); font-size:var(--text-sm);">No hosts reported.${suffix}</p>`;
+    return;
+  }
+
+  const byHost = new Map();
+  for (const r of rows) {
+    const acc = byHost.get(r.host_user_id) || { reports: [], count: 0 };
+    acc.count++;
+    acc.reports.push(r);
+    byHost.set(r.host_user_id, acc);
+  }
+
+  // Names, so an admin is not reading a list of uuids.
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, display_name, discriminator')
+    .in('user_id', [...byHost.keys()]);
+  const nameOf = new Map((profiles || []).map(p =>
+    [p.user_id, `${p.display_name || 'New Player'}${p.discriminator ? '#' + p.discriminator : ''}`]));
+
+  // And their standing, so a single report against a well-liked host reads
+  // differently from three against a badly-liked one.
+  const reps = await fetchHostReputations([...byHost.keys()]);
+
+  const REASONS = {
+    unfair_judging: 'unfair judging',
+    abusive: 'abusive',
+    ended_early: 'ended the game early',
+    other: 'other',
+  };
+
+  const sorted = [...byHost.entries()].sort((a, b) => b[1].count - a[1].count);
+  container.innerHTML = sorted.map(([userId, info]) => {
+    const rep = describeHostReputation(reps.get(userId), MIN_HOST_RATINGS);
+    const standing = rep ? escapeHtml(rep.text) : 'no rating yet';
+    const reasons = info.reports.map(r => REASONS[r.flag_reason] || r.flag_reason);
+    const notes = info.reports.map(r => r.flag_note).filter(Boolean);
+    return `
+      <div class="admin-flag-row">
+        <div class="admin-flag-row__text">${escapeHtml(nameOf.get(userId) || userId)}</div>
+        <div class="admin-flag-row__meta">
+          <span class="admin-flag-row__answer">${standing}</span>
+          <span class="admin-flag-row__count">${plural(info.count, 'report')}</span>
+          <span class="admin-flag-row__reasons">${escapeHtml([...new Set(reasons)].join(', '))}</span>
+        </div>
+        ${notes.map(t => `<div class="admin-flag-row__note">\u201C${escapeHtml(t)}\u201D</div>`).join('')}
+      </div>`;
+  }).join('');
+}
 
 async function loadFlaggedQueue() {
   const container = $('#flagged-queue');

@@ -142,6 +142,32 @@ BEGIN
     RETURN 'cannot rate yourself';
   END IF;
 
+  -- AND THEY MUST HAVE ACTUALLY PLAYED — at least one answer in this room.
+  --
+  -- The owner asked whether a rating should require being present for the WHOLE
+  -- game, "to keep it fully authentic and unriggable". Deliberately not, and the
+  -- reason matters: a bad host is the commonest reason somebody leaves early, so
+  -- requiring them to stay to the end silences precisely the people with the
+  -- strongest complaint. It would also disqualify anyone who hot-joined and
+  -- anyone whose phone died mid-game, both of which happen constantly here.
+  --
+  -- Nor would it stop a determined rigger, who can simply stay.
+  --
+  -- Having answered is the guard that does real work. It cannot be satisfied by
+  -- occupying a seat, so a drive-by who joins a stranger's room and downvotes on
+  -- arrival is refused, while somebody who played three rounds and left in
+  -- disgust is not. A blank answer counts: running out of time is still having
+  -- been in the round and seen how it was judged.
+  --
+  -- CHECKED AFTER the self-rating guard: a host who has not answered would
+  -- otherwise be told "you have not played a round yet", which is true and
+  -- useless. A refusal should name the reason the player can act on.
+  IF NOT EXISTS (
+    SELECT 1 FROM answers WHERE room_id = p_room_id AND player_id = p_player_id
+  ) THEN
+    RETURN 'you have not played a round yet';
+  END IF;
+
   INSERT INTO host_ratings (host_user_id, room_id, voter_id, voter_name,
                             rating, flag_reason, flag_note)
   VALUES (v_host_user, p_room_id, p_voter_id, v_voter_name,

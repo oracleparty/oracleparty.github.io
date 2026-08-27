@@ -687,8 +687,18 @@ BEGIN
   INSERT INTO players (room_id, display_name) VALUES (rid, 'Bob') RETURNING id INTO bobP;
   INSERT INTO players (room_id, display_name) VALUES (other, 'Stranger') RETURNING id INTO strangerP;
 
+  -- Nobody has answered anything yet, so nobody has standing to rate.
   res := op_rate_host(rid, aliceP, 'user:' || aliceU, 1::smallint);
-  INSERT INTO result (check_name, got, want) VALUES ('a player in the room may rate the host', res, 'ok');
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody who has not played a round cannot rate', res, 'you have not played a round yet');
+
+  -- Now they play. A BLANK answer counts: running out of time is still having
+  -- been in the round and seen how it was judged.
+  INSERT INTO answers (room_id, player_id, question_number, wager, submitted_answer)
+  VALUES (rid, aliceP, 0, 1, 'something'), (rid, bobP, 0, 1, '');
+
+  res := op_rate_host(rid, aliceP, 'user:' || aliceU, 1::smallint);
+  INSERT INTO result (check_name, got, want) VALUES ('a player who has played may rate the host', res, 'ok');
 
   -- Guests vote. Requiring an account would leave most games unrated, which
   -- defeats the point of a signal you read BEFORE joining a stranger's room.
@@ -699,9 +709,12 @@ BEGIN
   INSERT INTO result (check_name, got, want) VALUES
     ('somebody who was not in the game cannot rate it', res, 'not in this room');
 
+  -- The host has answered nothing here, so this ALSO proves the ordering: a
+  -- host who has not played must be told the reason they can act on, not
+  -- "you have not played a round yet".
   res := op_rate_host(rid, hostP, 'user:' || hostU, 1::smallint);
   INSERT INTO result (check_name, got, want) VALUES
-    ('the host cannot rate themselves', res, 'cannot rate yourself');
+    ('the host cannot rate themselves, whatever else is wrong', res, 'cannot rate yourself');
 
   INSERT INTO result (check_name, got, want)
   SELECT 'two votes are two votes', ratings::text, '2'

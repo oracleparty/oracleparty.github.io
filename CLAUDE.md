@@ -1772,6 +1772,27 @@ state rather than work around. It attaches to a user id and a guest has none.
 The row hides itself entirely for a guest host, and their game shows "new host",
 which is honest and is itself a signal. It also gives an account a purpose.
 
+**YOU MUST HAVE PLAYED, NOT MERELY BEEN THERE — and the whole game is
+deliberately NOT required.** The owner asked whether a rating should need full
+attendance, "to keep it fully authentic and unriggable". It must not, for a
+reason that reverses the intent: **a bad host is the commonest reason somebody
+leaves early**, so requiring them to stay to the end silences exactly the people
+with the strongest complaint. It would also disqualify anyone who hot-joined and
+anyone whose phone died mid-game, both of which happen constantly here. And it
+would not stop a determined rigger, who can simply stay.
+
+One answer in that room is the guard that does real work: it cannot be satisfied
+by occupying a seat, so a drive-by who joins a stranger's room and downvotes on
+arrival is refused. A BLANK answer counts — running out of time is still having
+been in the round and seen how it was judged — and in practice everybody present
+through a round has a row, because the blank fill writes one. So it bites only
+the case it is for.
+
+**Short and long games both produce one vote, and that is right.** The unit of
+"would you play with them again" is a game, not a round. Length changes how fast
+a host accumulates SAMPLE, not the value of the percentage, and the sample is
+printed beside it.
+
 **Every write goes through `op_rate_host`, which checks the voter really has a
 player row in that room.** The table has no INSERT policy at all. Without that
 guard anybody holding the publishable key — which every browser carries, because
@@ -1779,6 +1800,22 @@ guests play — could bury a stranger whose game they were never in, and a
 reputation nobody can trust is worse than none. A flag is never withdrawn by a
 later thumbs-up: changing your mind about a rating is ordinary, retracting a
 report of misconduct is not something a tap should do.
+
+**A FLAG THAT REACHES NOWHERE IS THEATRE**, so the admin page has a **Flagged
+Hosts** panel, second, next to Flagged Questions — the two things on that page
+anybody is meant to act on. It groups by host, names them rather than printing a
+uuid, shows their current standing beside the report count (one report against a
+well-liked host reads differently from three against a badly-liked one), and
+prints the free text somebody typed. It reuses the flagged-QUESTION row's
+classes rather than inventing a parallel set: half of that row shipped unstyled
+for months because nothing rendered it, and a new set of class names is how that
+happens again. The count chip goes amber only when non-zero, and renders `?`
+rather than `0` when the count fails.
+
+`scenario-admin` opens it with the rest and then checks it actually SHOWS the
+report — "it opened" is not "it works", and a loader that renders nothing opens
+exactly as happily as one that renders what an admin came to read. Verified by
+dropping the note line: it reports that by name.
 
 **The sample is always printed** — `MIN_HOST_RATINGS` (3) is the point below
 which the count is shown on its own instead of a percentage, the same call and

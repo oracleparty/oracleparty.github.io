@@ -1166,7 +1166,15 @@ export class FakeStore {
             if (String(existing.submitted_answer || '').trim() !== '__WAGER_LOCKED__') continue;
             const before = { ...existing };
             existing.submitted_answer = '';
-            existing.wager = isFinal ? 0 : nextWager(p.id);
+            // KEEP THE WAGER THAT IS ALREADY THERE. Migration 050 writes
+            // `wager = COALESCE(answers.wager, EXCLUDED.wager)` precisely so a
+            // locked final wager survives the fill — zeroing it is the "I bet
+            // 20 and it wagered 0" bug that migration exists to fix. What a
+            // blank COSTS is expressed in score_earned, not by rewriting what
+            // the player chose. This fake was zeroing it, which made the
+            // harness harsher than the live database: less dangerous than the
+            // other direction, and still wrong.
+            if (existing.wager == null) existing.wager = isFinal ? 0 : nextWager(p.id);
             existing.is_correct = false;
             existing.auto_correct = false;
             existing.score_earned = 0;
@@ -1319,6 +1327,15 @@ export class FakeStore {
         && p.is_host && p.user_id);
       if (!host) return 'host has no account';
       if (String(voter.user_id || '') === String(host.user_id)) return 'cannot rate yourself';
+
+      // Must have actually PLAYED, not merely occupied a seat — otherwise a
+      // drive-by could join a stranger's room and bury them on arrival. Checked
+      // after the self-rating guard for the same reason the SQL does it in that
+      // order: a refusal should name the reason the player can act on.
+      const played = this.table('answers').some(a =>
+        String(a.room_id) === String(args.p_room_id)
+        && String(a.player_id) === String(args.p_player_id));
+      if (!played) return 'you have not played a round yet';
 
       const rows = this.table('host_ratings');
       const existing = rows.find(r => String(r.host_user_id) === String(host.user_id)

@@ -900,6 +900,7 @@ export const STATES = {
 
       const counts = {
         flagged: ['4 flags', 'alert'],
+        hosts: ['2 reports', 'alert'],
         health: ['3 ratings, 0 played', null],
         questions: ['4,782', null],
         games: ['1,204', null],
@@ -943,6 +944,43 @@ export const STATES = {
             <button class="btn btn-secondary">Unflag</button>
             <button class="btn btn-secondary btn-danger-text">Remove Q</button>
           </div>
+        </div>`).join('');
+    },
+  },
+
+  // Flagged Hosts, open. Its rows carry a name, a standing and free text a
+  // player typed, and no other state renders any of that — the flagged-question
+  // row shipped for months with two of its three parts unstyled because the
+  // only mock used short strings.
+  'admin-flagged-hosts': {
+    page: 'admin',
+    screen: null,
+    inherits: 'admin-panels',
+    inject: () => {
+      document.querySelectorAll('.admin-panel__head').forEach(h => h.setAttribute('aria-expanded', 'false'));
+      document.querySelectorAll('.admin-panel__body').forEach(b => { b.hidden = true; });
+      const head = document.querySelector('.admin-panel__head[data-panel="hosts"]');
+      if (head) head.setAttribute('aria-expanded', 'true');
+      const body = document.getElementById('panel-hosts');
+      if (body) body.hidden = false;
+      const el = document.getElementById('flagged-hosts');
+      if (!el) return;
+      // Mirrors loadFlaggedHosts() in js/admin.js.
+      const rows = [
+        ['Wilhelmina-Rose#4417', '22% \u00b7 14 games', '3 reports',
+         'unfair judging, ended the game early',
+         'marked three of my answers wrong when they were right and then quit'],
+        ['Jo#0102', 'no rating yet', '1 report', 'other', ''],
+      ];
+      el.innerHTML = rows.map(([name, standing, count, reasons, note]) => `
+        <div class="admin-flag-row">
+          <div class="admin-flag-row__text">${name}</div>
+          <div class="admin-flag-row__meta">
+            <span class="admin-flag-row__answer">${standing}</span>
+            <span class="admin-flag-row__count">${count}</span>
+            <span class="admin-flag-row__reasons">${reasons}</span>
+          </div>
+          ${note ? `<div class="admin-flag-row__note">\u201C${note}\u201D</div>` : ''}
         </div>`).join('');
     },
   },

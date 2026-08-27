@@ -522,11 +522,26 @@ try {
     }
   }
 
+  // A reported host, so the Flagged Hosts panel has something to render. An
+  // empty panel opens just as happily as a working one, so seeding it is what
+  // makes "opened and stayed blank" a distinguishable outcome.
+  table.store.seed('host_ratings', [
+    { id: 'hr1', host_user_id: 'host-user-1', room_id: 'r-old', voter_id: 'device:a',
+      voter_name: 'Bob', rating: -1, flag_reason: 'unfair_judging',
+      flag_note: 'marked me wrong twice', created_at: new Date().toISOString() },
+    { id: 'hr2', host_user_id: 'host-user-1', room_id: 'r-old2', voter_id: 'device:b',
+      voter_name: 'Carol', rating: -1, flag_reason: 'ended_early',
+      flag_note: null, created_at: new Date().toISOString() },
+  ]);
+  table.store.seed('profiles', [
+    { user_id: 'host-user-1', display_name: 'Hosty', discriminator: '0007' },
+  ]);
+
   // ============================================================
   // EVERY PANEL OPENS
   //
-  // Each section is fetched the first time it is opened, so eight sections
-  // mean eight code paths that now run at a moment nothing used to run at.
+  // Each section is fetched the first time it is opened, so every section is a
+  // code path that now runs at a moment nothing used to run at.
   // Before this they all ran at page load, where one throwing loader was
   // loud; now a broken one shows as a panel that opens and stays blank.
   //
@@ -538,7 +553,7 @@ try {
   await admin.goto('admin.html');
   await admin.page.waitForTimeout(2500);
 
-  for (const key of ['flagged', 'health', 'questions', 'games', 'errors', 'chat', 'announcement', 'flags']) {
+  for (const key of ['flagged', 'hosts', 'health', 'questions', 'games', 'errors', 'chat', 'announcement', 'flags']) {
     await admin.page.click(`.admin-panel__head[data-panel="${key}"]`).catch(() => {});
     await admin.page.waitForTimeout(800);
 
@@ -563,6 +578,29 @@ try {
     if (state.openCount > 1) {
       problems.push(`opening ${key} left ${state.openCount} panels open — they are meant to be one at a time`);
     }
+  }
+
+  // AND THE PANEL ACTUALLY SHOWS THE REPORT. "It opened" is not "it works" —
+  // a loader that renders nothing opens exactly as happily as one that renders
+  // the thing an admin came to read. A flag that reaches nowhere is theatre.
+  await admin.page.click('.admin-panel__head[data-panel="hosts"]').catch(() => {});
+  await admin.page.waitForTimeout(1200);
+  const hostsText = ((await admin.page.textContent('#flagged-hosts').catch(() => '')) || '')
+    .replace(/\s+/g, ' ').trim();
+  note(`flagged hosts panel: ${hostsText.slice(0, 120)}`);
+  if (!hostsText.includes('Hosty')) {
+    problems.push(`the flagged-hosts panel does not name the reported host: ${hostsText.slice(0, 90)}`);
+  }
+  if (!/unfair judging/.test(hostsText)) {
+    problems.push('the flagged-hosts panel does not say WHY the host was reported');
+  }
+  if (!hostsText.includes('marked me wrong twice')) {
+    problems.push('a note somebody typed against a report is not shown, so the report says something is wrong with no way to find out what');
+  }
+  const hostsCount = ((await admin.page.textContent('[data-count="hosts"]').catch(() => '')) || '').trim();
+  note(`flagged hosts count chip: ${JSON.stringify(hostsCount)}`);
+  if (hostsCount === '0' || /None/i.test(hostsCount)) {
+    problems.push(`the flagged-hosts count reads ${JSON.stringify(hostsCount)} with two reports stored`);
   }
 
   // ============================================================

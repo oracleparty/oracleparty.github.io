@@ -504,6 +504,31 @@ try {
     table.store.allowReads('host_reputation');
     table.store.showFunction('op_rate_host');
 
+    // AND YOU MUST HAVE PLAYED, not merely been in the room. The owner asked
+    // whether the whole game should be required; it must not be, because a bad
+    // host is the commonest reason somebody leaves early and that rule would
+    // silence exactly them. Having answered is the guard that does real work: a
+    // drive-by who joins a stranger's room and downvotes on arrival is refused.
+    const roomId = table.store.table('rooms')[0]?.id;
+    const driveById = 'drive-by-seat';
+    table.store.seed('players', [{
+      id: driveById, room_id: roomId, display_name: 'Passer-by',
+      is_host: false, joined_at: new Date().toISOString(),
+    }]);
+    const driveBy = await bob.page.evaluate(async (args) => {
+      const m = await import('/js/supabase.js');
+      return m.rateHost({
+        roomId: args.roomId, playerId: args.playerId,
+        voterId: 'device:drive-by', rating: -1,
+      });
+    }, { roomId, playerId: driveById }).catch(e => ({ ok: false, reason: 'threw: ' + e.message }));
+    note(`a seat that has never answered voting: ${JSON.stringify(driveBy)}`);
+    if (driveBy.ok) {
+      problems.push('somebody who joined the room and never played a round was able to rate the host');
+    }
+    table.store.table('players').splice(
+      table.store.table('players').findIndex(p => p.id === driveById), 1);
+
     // AND THE GUARD. Driven directly, because the UI gives no way to aim a vote
     // at a game you were not in — which is exactly why the rule has to live in
     // the database rather than in the screen.

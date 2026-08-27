@@ -593,7 +593,10 @@ const CONSEQUENCES = [
     breaks: ['nobody can rate a host, silently — the buttons are there and the vote goes nowhere'] },
   { object: 'host_reputation', kind: 'table',
     fix: 'run migrations/054_host_reputation.sql',
-    breaks: ['every host reads as "new host" on the join list, however many games they have run'] },
+    breaks: [
+      'every host reads as "new host" on the join list, however many games they have run',
+      'and the admin page cannot show who has been reported, so a flag reaches nobody',
+    ] },
   { object: 'player_totals_computed', kind: 'table',
     fix: 'run migrations/032_totals_and_mastery.sql',
     breaks: [
