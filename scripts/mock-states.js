@@ -1330,6 +1330,22 @@ export const STATES = {
     },
   },
 
+  // What a brand-new player actually sees: no friends yet. The longest string
+  // this page renders, and the first thing anybody signing up will read.
+  'leaderboard-no-friends': {
+    page: 'leaderboard',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const note = document.getElementById('lb-scope-note');
+      if (note) note.textContent = 'Just you so far \u2014 add friends to compare. Questions you currently get right, counted once each.';
+      const list = document.getElementById('lb-list');
+      if (list) {
+        list.innerHTML = '<p class="leaderboard-empty">Add friends to build a leaderboard. Tap a signed-in player in a lobby to send a request \u2014 they accept it from their own profile.</p>';
+      }
+    },
+  },
+
   'leaderboard-proficiency': {
     page: 'leaderboard',
     screen: null,

@@ -1731,6 +1731,21 @@ window.
 `player_totals_computed` exists only because summing per-category rollups counts
 a question filed under two categories twice. Counting distinct ids cannot.
 
+**THE EMPTY STATE SAYS WHAT ACTUALLY HAPPENS.** "Tap a player to add them" was
+half the story and would have read as a broken board: the button sends a
+REQUEST, the other person accepts it from their own profile, and it is only
+offered for players who have an account at all. Somebody who taps once, sees
+"Request Sent", and comes back to an empty leaderboard would reasonably conclude
+the feature does not work. `leaderboard-no-friends` is a mock state because that
+screen is the first thing a new player sees and carries the longest string on
+the page.
+
+**A friends board needs friends, and this project has three players.** Accepting
+a friend request was completely broken until migration 044 — a constraint in no
+migration file rejected every accept, silently — so anyone who tried before that
+never became friends. Worth counting before assuming the board has anything to
+show: `SELECT count(*) FROM friendships;`
+
 `scenario-account` seeds Bob with MORE mastered questions than Alice and Alice
 with a HIGHER share of what she has met, so the two measures give opposite
 orders — without that inversion any check on the toggle passes whatever the page

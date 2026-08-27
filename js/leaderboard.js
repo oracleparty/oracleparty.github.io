@@ -274,7 +274,12 @@ function scopeNote(friendCount, floor) {
 }
 
 function emptyMessage(friendCount, floor) {
-  if (friendCount === 0) return 'Add friends to build a leaderboard. Tap a player in a lobby to add them.';
+  // SAY WHAT ACTUALLY HAPPENS. "Tap a player to add them" was half the story:
+  // the button sends a REQUEST, which the other person accepts from their own
+  // profile, and it is only offered for players who have an account. Somebody
+  // who taps once, sees "Request Sent" and comes back to an empty board would
+  // reasonably conclude the board is broken.
+  if (friendCount === 0) return 'Add friends to build a leaderboard. Tap a signed-in player in a lobby to send a request — they accept it from their own profile.';
   if (state.measure === 'proficiency') return `Nobody here has met ${floor} questions in this slice yet.`;
   return 'Nothing mastered here yet — play a game and it fills in.';
 }
