@@ -551,8 +551,8 @@ logged and returned `[]`:
 
 | Read | What the player sees |
 |---|---|
-| `fetchAllPlayerStatsForLeaderboard` | global leaderboard empty |
-| `fetchCategoryLeaderboard` | every category leaderboard empty |
+| `fetchAllPlayerStatsForLeaderboard` | global leaderboard empty (that board is gone as of 2026-08-26; this is the fallback path now) |
+| `fetchCategoryLeaderboard` | every category leaderboard empty (superseded by `get_leaderboard`, migration 053) |
 | `fetchPlayerStats` | profile shows no stats — **and no title ever unlocks** |
 | `fetchPlayerStatsBatch` | no tier badge in any lobby |
 
@@ -613,21 +613,28 @@ removing the fix), and `scenario-account.mjs` seeds subcategory rows so the
 two possible readings of the data give different answers — with rollups alone
 they are indistinguishable, which is why the scenario was blind to it.
 
-**A third counting question, and the owner settled it.** The global board sums
+**A third counting question, and the owner settled it.** A combined total sums
 across *categories*, and a question filed under two topics produces a row under
 each. Measured: **105 of 1000 questions carry more than one category (11%),
 1.11 tags each**. For a per-topic proficiency that duplication is correct and
 stays — getting a History-and-Culture question right is evidence about both.
-For the single combined total it is not, so `player_totals_computed`
-(migration 032) counts each answered question once, and the leaderboards read
-that instead.
+For a single combined total it is not, so `player_totals_computed`
+(migration 032) counts each answered question once.
 
-**Points are correct answers, not game score, and that is deliberate.** The
-owner's reasoning, which is better than the alternative: a game score depends
-on which wagers a player happened to hold and on which host was judging —
-including any judgement they overrode — so it is not comparable between two
-people who never played together. Do not "improve" the global board by
-switching it to `game_history.score`.
+**HISTORICAL FROM 2026-08-26.** The global board is gone and points with it —
+see "The leaderboard ranks what you know, among people you know". Migration 053
+does the same de-duplication with `COUNT(DISTINCT question_id)`, which cannot
+double count and needs no second view. The reasoning above is kept because the
+counting question outlives the board that raised it: **anything summing
+per-category rows still double counts a multi-category question**, and that
+applies to the profile, the titles and anything added later.
+
+**Points were correct answers, not game score, and that was deliberate.** The
+owner's reasoning, which still holds for any score-based measure: a game score
+depends on which wagers a player happened to hold and on which host was judging
+— including any judgement they overrode — so it is not comparable between two
+people who never played together. If a points measure is ever wanted again, do
+not build it on `game_history.score`.
 
 ---
 
@@ -640,7 +647,7 @@ switching it to `game_history.score`.
 ├── lobby.html          Lobby: chat, player list, ready state, start
 ├── game.html           All in-game screens (see below)
 ├── profile.html        Player profile, stats, mastery tree
-├── leaderboard.html    Global + per-category rankings
+├── leaderboard.html    Friends only: mastery / proficiency, by category
 ├── admin.html          Admin dashboard (requires profiles.is_admin)
 ├── sw.js               Service worker — CACHE_VERSION must be bumped on deploy
 ├── css/style.css       All styles; CSS variables for theming
@@ -3016,10 +3023,10 @@ node tests/harness/scenario-fullgame.mjs   # full game, score agreement, channel
 node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous answers
 node tests/harness/scenario-playagain.mjs # second game, room reset, no leakage
 node tests/harness/scenario-social.mjs    # chat, honks, score editing, review
-node tests/harness/scenario-join.mjs      # public listing, privacy, hot join
-node tests/harness/scenario-feedback.mjs  # votes, flags, timer-expiry scoring
+node tests/harness/scenario-join.mjs      # public listing, host reputation, privacy, hot join
+node tests/harness/scenario-feedback.mjs  # votes, flags, host review, timer-expiry scoring
 node tests/harness/scenario-cohost.mjs    # promote, demote, gated controls
-node tests/harness/scenario-account.mjs  # profile, leaderboard, friends, signed-in lobby
+node tests/harness/scenario-account.mjs  # profile, friends leaderboard, friends, signed-in lobby
 node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused writes
 node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
 node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
@@ -3140,9 +3147,16 @@ which is the only way the label can be exercised at all; hosting on "All" could
 never have shown it. Verified by dropping the column again.
 
 The other narrow selects were traced to their consumers and are sound: the
-global board reads `correct_answers` on purpose (points are volume, not
-proficiency), the admin's online drill uses only the two columns it asks for,
-and every `rowProficiency` caller is fed by `select('*')`. **A query is only as
+admin's online drill uses only the two columns it asks for, and every
+`rowProficiency` caller is fed by `select('*')`. (The global board's deliberate
+`correct_answers` was in this list until 2026-08-26; that board is gone and the
+column list with it.)
+
+**And the same hunt found the same thing again on 2026-08-26**, in the OTHER
+direction: `fetchPublicRooms` selected only `room_id` from `players` when
+counting them, so when the join list started showing the host's reputation there
+was no host id to look one up with. The column list is part of what a screen can
+SAY, not merely part of what a query costs. **A query is only as
 right as what its one consumer reads** — check the consumer, not the query.
 
 **`store.denyWrites(table)` simulates an RLS refusal** — zero rows, no error,
@@ -3389,7 +3403,10 @@ every distinct reason anybody gave, comma-joined. It fitted the two short
 strings a mock would have used and nothing longer. **The section had shipped
 months earlier.**
 
-**And a third time on 2026-08-25: `leaderboard.html` had no mock either.** Two
+**And a third time on 2026-08-25: `leaderboard.html` had no mock either.** (Its
+two mocks were replaced on 2026-08-26 when the board became friends-only —
+`leaderboard-mastered` and `leaderboard-proficiency`, because the two measures
+render different stats in the same slots.) Two
 were added (`leaderboard-global`, `leaderboard-category`) and the first sweep
 reported the first-place rank at **2.22:1 on the light theme** — the number "1"
 in medal gold `#d4a017`, effectively invisible against `#F8F7F4`. It measured
