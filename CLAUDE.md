@@ -2925,6 +2925,72 @@ settled it in a single run was printing the STACK from inside the failing
 function. When an error names a function with several callers, make it say which
 one; reasoning about which is most likely has now cost three rounds.
 
+## You could not find a friend by their exact tag
+
+Found 2026-08-28 by going through every `.maybeSingle()` in `js/` looking for
+the read-then-write ratchet CLAUDE.md #10 records four times. These two are a
+different fault in the same family — **a lookup that cannot survive more than
+one match** — and they sit in the friend-adding path, which is the path the
+friends-only leaderboard depends on entirely.
+
+`fetchProfileByTag` was `.ilike('display_name', name).eq('discriminator', d)
+.maybeSingle()`. **Measured against a real Postgres, not assumed:**
+
+```
+ILIKE 'Bob_1'  -> 2 rows   (Bob_1 AND Bob01)
+ILIKE 'Alice'  -> 2 rows   (Alice AND alice)
+ILIKE 'Bob\_1' -> 1 row
+```
+
+Two independent hazards in one call:
+
+- **`_` and `%` are wildcards and display names have no character
+  restriction.** `setDisplayName` trims and stores whatever was typed, up to 20
+  characters. So looking somebody up by tag could match a DIFFERENT PERSON —
+  and with `.limit(1)` instead of `maybeSingle()` it would have returned them
+  silently, and the friend request would have gone to a stranger.
+- **Uniqueness was checked case-SENSITIVELY and looked up
+  case-INSENSITIVELY.** `generateDiscriminator` filtered
+  `.eq('display_name', displayName)`, so "Alice" and "alice" could each be
+  handed `#1234` without either uniqueness check seeing the other. From that
+  moment **neither of them could be found by tag again, ever.**
+
+`maybeSingle()` ERRORS on more than one row, so either collision returned null,
+which `js/profile.js` renders as **"No results found"** for a person who plainly
+exists. And the search box's OTHER branch — a partial "Name#" — goes through
+`searchProfiles`, which uses a wildcard LIKE and finds them perfectly well. So
+the full tag failed while the shorter query worked, which is an inconsistency
+nobody could report usefully.
+
+**A third fault underneath both.** `generateDiscriminator` destructured `data`
+only and threw the error away, so ANY failed read — a blip, a refusal, a
+multi-row error — left `data` undefined and it returned that discriminator as
+free. **A failed read is not an absent row**, the same rule as
+`upsertQuestionHistory`: trying another is free, handing out a duplicate is
+permanent.
+
+**The fix removes the hazard rather than escaping around it.** Both queries are
+keyed on the discriminator with `.eq` — no pattern language in the query at all
+— and the name is matched in JS by `pickProfileByTag` in `utils.js`, which
+prefers an EXACT-case match so that when two people really do share a tag, the
+one you typed is the one you get. Escaping the backslash would have worked in
+Postgres (measured above) but depends on how PostgREST passes it through to
+ILIKE, and betting on unverified middleware behaviour is exactly what #10 is
+about.
+
+**The exact-tag branch had NO robot coverage at all** — every scenario searched
+by plain name, which takes the other branch. `scenario-account` now seeds a
+case-variant impostor on the same discriminator and searches the full tag.
+Verified by restoring the old query: it reports **"searching a player's exact
+tag Bob#1001 reported No results found for somebody who exists"**. The fake
+store was already faithful here (it translates `%` to `.*` and `_` to `.`, and
+`ilike` is case-insensitive), so a check would have caught this the day it
+shipped had one existed.
+
+`tests/utils.test.js` pins `pickProfileByTag` and fails four ways when it is
+reduced to "first match", which is what `.limit(1)` on the old query would have
+done.
+
 ## Chat showed the FIRST hundred messages, not the last
 
 `fetchMessages` ordered `created_at` ASCENDING and limited to

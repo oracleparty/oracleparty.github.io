@@ -519,6 +519,76 @@ try {
   }
 
   // ============================================================
+  // 5a-bis. FINDING SOMEBODY BY THEIR EXACT TAG, "Name#1234"
+  //
+  // This path had NO robot coverage at all. Every scenario searched by plain
+  // name, which goes through searchProfiles; the exact-tag branch calls
+  // fetchProfileByTag, and nothing had ever exercised it. Same lesson as a page
+  // with no mock — a branch nobody drives is a branch nobody is checking.
+  //
+  // It used to be `.ilike('display_name', name).eq('discriminator', d)
+  // .maybeSingle()`, and every part of that was a hazard. Measured against a
+  // real Postgres: ILIKE 'Alice' also matches 'alice', and ILIKE 'Bob_1' also
+  // matches 'Bob01', because `_` is a single-character wildcard and display
+  // names have no character restriction. maybeSingle() ERRORS on more than one
+  // row, so either collision returned null — which the friend search renders as
+  // "No results found" for a person who plainly exists, while the shorter
+  // "Name#" query finds them perfectly well.
+  // ============================================================
+  console.log('\n=== finding a friend by their exact tag ===');
+  {
+    const profiles = table.store.table('profiles');
+    const bobProfile = profiles.find(p => p.user_id === bob.userId);
+    if (!bobProfile?.discriminator) {
+      problems.push('Bob has no discriminator, so the exact-tag lookup cannot be checked');
+    } else {
+      // An impostor differing from Bob ONLY by case, holding the same
+      // discriminator. Reachable on the live database because
+      // generateDiscriminator used to check uniqueness case-SENSITIVELY while
+      // this lookup matched case-INSENSITIVELY, so neither could see the other.
+      const impostorId = 'impostor-user-id';
+      profiles.push({
+        id: 'impostor-profile-id',
+        user_id: impostorId,
+        display_name: String(bobProfile.display_name).toLowerCase() === bobProfile.display_name
+          ? String(bobProfile.display_name).toUpperCase()
+          : String(bobProfile.display_name).toLowerCase(),
+        discriminator: bobProfile.discriminator,
+      });
+      const tag = `${bobProfile.display_name}#${bobProfile.discriminator}`;
+      note(`searching "${tag}" with a case-variant impostor on the same tag`);
+
+      await alice.page.goto(alice.page.url().split('?')[0]).catch(() => {});
+      await alice.page.waitForTimeout(1500);
+      const tab = alice.page.locator('.profile-tab[data-tab="friends"]').first();
+      await tab.click().catch(() => {});
+      await alice.page.waitForTimeout(800);
+      const box = alice.page.locator('#friends-search-input');
+      await box.fill(tag).catch(() => {});
+      await alice.page.waitForTimeout(2200);
+
+      const shown = await alice.page.evaluate(() => {
+        const el = document.querySelector('#friends-search-results')
+          || document.querySelector('.profile-search-results');
+        return el ? el.innerText.trim().slice(0, 200) : '(no results container)';
+      }).catch(e => `(threw: ${String(e).slice(0, 60)})`);
+      note(`results: ${JSON.stringify(shown)}`);
+
+      if (/no results/i.test(shown)) {
+        problems.push(`searching a player's exact tag "${tag}" reported "No results found" for somebody who exists — the ILIKE collision is back`);
+      } else if (!shown.includes(bobProfile.display_name)) {
+        problems.push(`searching "${tag}" did not show ${bobProfile.display_name} — it resolved to somebody else, and a friend request would go to the wrong person`);
+      } else {
+        note('the exact tag found the right person despite the collision');
+      }
+
+      // Leave the store as it was found: later sections count profiles.
+      const at = profiles.findIndex(p => p.user_id === impostorId);
+      if (at !== -1) profiles.splice(at, 1);
+    }
+  }
+
+  // ============================================================
   // 5b. ASKING AGAIN AFTER A DECLINE
   //
   // friend_requests is UNIQUE(sender_id, receiver_id), so there is at most one

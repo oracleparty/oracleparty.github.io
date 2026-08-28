@@ -393,6 +393,49 @@ function digitSequencesMatch(a, b) {
  * identical before Levenshtein is applied. This prevents "1994" ≈ "1996" while
  * still allowing "Appollo 13" ≈ "Apollo 13" (word typo, same number).
  */
+/**
+ * Pick the right profile out of everyone sharing a discriminator.
+ *
+ * Pure, so it can be unit tested — `js/db/social.js` pulls the Supabase client
+ * from esm.sh and the test runner cannot load it.
+ *
+ * WHY THIS EXISTS RATHER THAN A DATABASE FILTER. Looking somebody up by
+ * "Name#1234" used to be `.ilike('display_name', name).eq('discriminator', d)
+ * .maybeSingle()`, and every part of that was a hazard. Measured against a real
+ * Postgres, not assumed:
+ *
+ *   ILIKE 'Bob_1'  matches Bob_1 AND Bob01  — `_` is a single-character
+ *                  wildcard, and display names have no character restriction,
+ *                  so a name containing _ or % looks up a DIFFERENT PERSON
+ *   ILIKE 'Alice'  matches Alice AND alice  — so two people can hold the same
+ *                  tag, since generateDiscriminator checked uniqueness
+ *                  case-SENSITIVELY while this looked up case-INSENSITIVELY
+ *
+ * and `maybeSingle()` ERRORS on more than one row, so either collision made the
+ * lookup return null. The friend search reports that as "No results found" —
+ * a person who exists, cannot be added, and nothing anywhere says why. With the
+ * search box's OTHER path (partial, "Name#") finding them perfectly well, which
+ * is the kind of inconsistency nobody can report usefully.
+ *
+ * So the query is now keyed on the discriminator with `.eq` — an exact match
+ * with no pattern language in it at all — and the name is compared here. That
+ * removes the wildcard hazard rather than escaping around it, and does not
+ * depend on how PostgREST passes a backslash through to ILIKE, which is exactly
+ * the kind of thing this project has been burned assuming.
+ *
+ * An EXACT-case match wins over a case-insensitive one, so when two people
+ * really do share a tag the one you typed is the one you get.
+ */
+export function pickProfileByTag(rows, displayName) {
+  const typed = (displayName || '').trim();
+  if (!typed) return null;
+  const lowered = typed.toLowerCase();
+  const list = Array.isArray(rows) ? rows : [];
+  return list.find(r => (r?.display_name || '').trim() === typed)
+      || list.find(r => (r?.display_name || '').trim().toLowerCase() === lowered)
+      || null;
+}
+
 export function fuzzyMatch(submitted, correct, alternates = []) {
   const normalizedSubmitted = normalizeAnswer(submitted);
   if (!normalizedSubmitted) return false;

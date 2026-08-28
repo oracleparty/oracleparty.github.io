@@ -3,6 +3,7 @@ import {
   normalizeAnswer,
   levenshteinDistance,
   fuzzyMatch,
+  pickProfileByTag,
   calculateTitle,
   getAvatarHue,
   shuffleArray,
@@ -292,5 +293,70 @@ describe('shuffleArray', () => {
   it('contains the same elements', () => {
     const arr = [1, 2, 3, 4, 5];
     expect(shuffleArray(arr).sort()).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+// ============================================
+// pickProfileByTag — finding one person by "Name#1234"
+//
+// This replaced an ILIKE query whose every part was a hazard. Measured against
+// a real Postgres: ILIKE 'Bob_1' matches Bob01 too, because `_` is a
+// single-character wildcard and display names have no character restriction;
+// and ILIKE 'Alice' matches 'alice'. Paired with .maybeSingle(), which ERRORS
+// on more than one row, either collision made the lookup return null — which
+// the friend search renders as "No results found" for somebody who exists.
+// ============================================
+
+describe('pickProfileByTag', () => {
+  it('returns the only candidate when the name matches', () => {
+    const rows = [{ display_name: 'Alice', discriminator: '1234' }];
+    expect(pickProfileByTag(rows, 'Alice')?.display_name).toBe('Alice');
+  });
+
+  it('IGNORES a wildcard collision — Bob_1 must never resolve to Bob01', () => {
+    // The exact pair measured in Postgres. Under the old ILIKE query these two
+    // came back together and the lookup failed; with .limit(1) instead it would
+    // have returned the WRONG PERSON and the friend request would have gone to
+    // a stranger. Order is deliberately hostile: the impostor is first.
+    const rows = [
+      { display_name: 'Bob01', discriminator: '1234' },
+      { display_name: 'Bob_1', discriminator: '1234' },
+    ];
+    expect(pickProfileByTag(rows, 'Bob_1')?.display_name).toBe('Bob_1');
+    expect(pickProfileByTag(rows, 'Bob01')?.display_name).toBe('Bob01');
+  });
+
+  it('prefers the EXACT case when two people share a tag', () => {
+    // Reachable because generateDiscriminator used to check uniqueness
+    // case-sensitively while this lookup was case-insensitive, so neither
+    // uniqueness check could see the other.
+    const rows = [
+      { display_name: 'alice', discriminator: '1234' },
+      { display_name: 'Alice', discriminator: '1234' },
+    ];
+    expect(pickProfileByTag(rows, 'Alice')?.display_name).toBe('Alice');
+    expect(pickProfileByTag(rows, 'alice')?.display_name).toBe('alice');
+  });
+
+  it('still finds somebody when only the case differs', () => {
+    const rows = [{ display_name: 'Alice', discriminator: '1234' }];
+    expect(pickProfileByTag(rows, 'ALICE')?.display_name).toBe('Alice');
+  });
+
+  it('returns null rather than a stranger when nobody matches', () => {
+    const rows = [{ display_name: 'Carol', discriminator: '1234' }];
+    expect(pickProfileByTag(rows, 'Alice')).toBeNull();
+  });
+
+  it('survives an empty, missing or malformed candidate list', () => {
+    expect(pickProfileByTag([], 'Alice')).toBeNull();
+    expect(pickProfileByTag(null, 'Alice')).toBeNull();
+    expect(pickProfileByTag([{}, null], 'Alice')).toBeNull();
+    expect(pickProfileByTag([{ display_name: 'Alice' }], '')).toBeNull();
+  });
+
+  it('ignores whitespace around the typed name', () => {
+    const rows = [{ display_name: 'Alice', discriminator: '1234' }];
+    expect(pickProfileByTag(rows, '  Alice  ')?.display_name).toBe('Alice');
   });
 });

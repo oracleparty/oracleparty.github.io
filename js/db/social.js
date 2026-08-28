@@ -1,6 +1,7 @@
 import { supabase } from './client.js';
 import { logger } from '../logger.js';
-import { PROFILE_SEARCH_LIMIT, MIN_HOST_RATINGS } from '../constants.js';
+import { PROFILE_SEARCH_LIMIT, PROFILE_TAG_CANDIDATES, MIN_HOST_RATINGS } from '../constants.js';
+import { pickProfileByTag } from '../utils.js';
 
 // ============================================
 // PROFILES & AUTH HELPERS
@@ -10,15 +11,29 @@ import { PROFILE_SEARCH_LIMIT, MIN_HOST_RATINGS } from '../constants.js';
  * Generate an unused 4-digit discriminator for a display name.
  */
 export async function generateDiscriminator(displayName) {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  const wanted = (displayName || '').trim().toLowerCase();
+  for (let attempt = 0; attempt < 25; attempt++) {
     const disc = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-    const { data } = await supabase
+    // KEYED ON THE DISCRIMINATOR, and the name compared here.
+    //
+    // This used to filter `.eq('display_name', displayName)` — case-SENSITIVE —
+    // while fetchProfileByTag looked the same person up case-INSENSITIVELY.
+    // Two halves of one rule disagreeing, which is the shape this codebase
+    // keeps producing: "Alice" and "alice" could both be handed #1234, because
+    // neither uniqueness check could see the other, and from that moment
+    // NEITHER of them could be found by tag at all.
+    const { data, error } = await supabase
       .from('profiles')
-      .select('user_id')
-      .eq('display_name', displayName)
+      .select('display_name')
       .eq('discriminator', disc)
-      .maybeSingle();
-    if (!data) return disc;
+      .limit(PROFILE_TAG_CANDIDATES);
+    // A FAILED READ IS NOT AN ABSENT ROW. The old code destructured `data`
+    // only, so any error — a network blip, a refusal — left it undefined and
+    // this handed out a discriminator that may well be taken. Trying another is
+    // free; handing out a duplicate is permanent.
+    if (error) continue;
+    const taken = (data || []).some(r => (r.display_name || '').trim().toLowerCase() === wanted);
+    if (!taken) return disc;
   }
   // Fallback: find any unused discriminator
   const { data: taken } = await supabase
@@ -71,18 +86,40 @@ export async function fetchProfile(userId) {
  * Fetch a profile by display_name + discriminator.
  */
 export async function fetchProfileByTag(displayName, discriminator) {
+  // NO PATTERN LANGUAGE IN THE QUERY AT ALL. The old version was
+  // `.ilike('display_name', displayName).maybeSingle()`, and both halves were
+  // hazards — measured against a real Postgres, not assumed:
+  //
+  //   ILIKE 'Bob_1'  matches Bob_1 AND Bob01. `_` is a single-character
+  //                  wildcard and display names have no character restriction,
+  //                  so looking up a friend by tag could return a DIFFERENT
+  //                  PERSON, silently, and you would send them the request.
+  //   ILIKE 'Alice'  matches alice too, so a case-variant pair sharing a
+  //                  discriminator made this return two rows.
+  //
+  // and maybeSingle() ERRORS on more than one row, so either collision made
+  // this return null — which the friend search renders as "No results found"
+  // for somebody who exists. Worse, the search box's OTHER path (partial,
+  // "Name#") uses a LIKE with wildcards and finds them perfectly well, so the
+  // full tag failed while the shorter query worked: an inconsistency nobody
+  // could report usefully.
+  //
+  // Keyed on the discriminator with `.eq` instead, and the name matched in JS
+  // by pickProfileByTag. That removes the wildcard hazard rather than escaping
+  // around it, and does not depend on how PostgREST passes a backslash through
+  // to ILIKE — which is exactly the kind of thing this project has been burned
+  // assuming (CLAUDE.md #10).
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .ilike('display_name', displayName)
     .eq('discriminator', discriminator)
-    .maybeSingle();
+    .limit(PROFILE_TAG_CANDIDATES);
 
   if (error) {
     logger.error('Supabase', 'fetchProfileByTag failed', error);
     return { data: null, error };
   }
-  return { data, error: null };
+  return { data: pickProfileByTag(data, displayName), error: null };
 }
 
 /**

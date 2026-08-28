@@ -91,6 +91,13 @@ export const WILDCARD_LIMIT = 200;
 export const DIFFICULTY_QUESTION_LIMIT = 20;
 export const TITLE_BATCH_SIZE = 100;
 export const PROFILE_SEARCH_LIMIT = 10;
+// How many profiles sharing one discriminator to pull back when resolving a
+// "Name#1234" tag. The name is then matched in JS rather than by ILIKE, because
+// ILIKE treats _ and % in a display name as wildcards and display names have no
+// character restriction — measured: ILIKE 'Bob_1' matches Bob01 too. Ten
+// thousand discriminators means this stays a handful of rows for a very long
+// time, and a generous cap costs nothing on a query keyed by an indexed column.
+export const PROFILE_TAG_CANDIDATES = 50;
 export const ADMIN_PAGE_SIZE = 25;
 export const LEADERBOARD_LIMIT = 50;
 
