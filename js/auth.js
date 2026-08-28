@@ -102,15 +102,82 @@ export async function ensureDisplayName() {
 // AUTH STATE
 // ============================================
 
+// A REAL ACCOUNT ONLY. Never holds an invisible (anonymous) session — see
+// getAuthUserId below for why those are kept strictly apart.
 let _currentUser = null;   // Supabase auth.user object
 let _currentProfile = null; // profiles table row
+// An INVISIBLE ACCOUNT: a real auth user id issued to somebody who never signed
+// up. Deliberately a separate variable rather than a flag on _currentUser.
+let _anonUserId = null;
 
 /**
  * Get current auth user + profile, or null if guest.
+ *
+ * "Guest" here still means SOMEBODY WITHOUT AN ACCOUNT, exactly as it always
+ * has, and that is the whole point of keeping _anonUserId separate. Roughly
+ * thirty call sites across the app read this as "is this a real member" to
+ * decide whether to record stats, shape question selection, offer friends, show
+ * a tier badge or list somebody as an account. Letting an invisible account
+ * through here would switch every one of those on for guests silently, with
+ * every test still passing — the exact shape of the damage migration 049 did.
+ *
+ * So this answers "do they have an ACCOUNT". getAuthUserId answers "does the
+ * database know who is asking". They are different questions and were only ever
+ * the same question because a guest had no answer to the second one.
  */
 export function getCurrentUser() {
   if (!_currentUser) return null;
   return { user: _currentUser, profile: _currentProfile };
+}
+
+/**
+ * The auth user id behind this browser, real account or invisible one.
+ *
+ * This exists so the DATABASE can tell one guest from another. Until now a
+ * guest had no identity at all — every guest was the same anonymous key — which
+ * is why `players` and `rooms` could never be locked down: "remove me" and
+ * "remove them" are the same request from somebody who cannot prove who they
+ * are. An invisible account costs the player nothing (no email, no password, no
+ * sign-up screen) and, when they later make a real account, Supabase KEEPS THE
+ * SAME ID, so everything built as a guest carries over untouched.
+ *
+ * → null when there is no session at all, which is also what happens if
+ *   anonymous sign-ins are switched off in the Supabase dashboard or the call
+ *   fails. Everything then behaves exactly as it did before this existed.
+ */
+export function getAuthUserId() {
+  return _currentUser?.id || _anonUserId || null;
+}
+
+/** Is this browser holding an invisible account rather than a real one? */
+export function isAnonymousSession() {
+  return !_currentUser && !!_anonUserId;
+}
+
+/**
+ * Get an invisible account for somebody who has not signed up.
+ *
+ * NEVER FATAL. If anonymous sign-ins are not enabled on the project, or the
+ * request fails, or the network is down, this returns null and the app carries
+ * on exactly as it did before — a guest with no identity. A hiccup at
+ * Supabase's end must not stop somebody playing, which is the one thing that
+ * would make this change worse than the problem it solves.
+ */
+async function ensureAnonymousSession() {
+  try {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) {
+      // Not an error the player can act on, and not one worth a toast: they can
+      // still play. Logged at debug so a future session reading a console does
+      // not mistake a switched-off dashboard setting for a bug in this code.
+      logger.debug('Auth', 'no invisible account (anonymous sign-ins may be off)', error);
+      return null;
+    }
+    return data?.session || null;
+  } catch (err) {
+    logger.debug('Auth', 'invisible account request threw', err);
+    return null;
+  }
 }
 
 /**
@@ -128,7 +195,23 @@ export async function initAuth() {
     return;
   }
 
+  // No session at all? Ask for an invisible one. This is what gives a guest an
+  // identity the database can check, without anything changing on screen.
+  if (!session?.user) {
+    session = await ensureAnonymousSession();
+  }
   if (!session?.user) return;
+
+  // AN INVISIBLE ACCOUNT STOPS HERE, and that is deliberate. It sets no
+  // _currentUser, loads no profile, computes no title, and caches nothing — so
+  // getCurrentUser() still answers null and every "is this a real member" branch
+  // in the app behaves exactly as it did before. Acquiring the identity and
+  // changing what a guest can DO are two separate changes, and doing both at
+  // once is how a lockdown silently breaks three features nobody was watching.
+  if (session.user.is_anonymous) {
+    _anonUserId = session.user.id;
+    return;
+  }
   _currentUser = session.user;
 
   // Step 2: Load cached profile immediately so getCurrentUser() works even if fetch fails
@@ -414,6 +497,7 @@ function consumeAccountDeletedFlag() {
 export async function signOut() {
   try { await supabase.auth.signOut(); } catch (e) { logger.warn('Auth', 'signOut error', e); }
   _currentUser = null;
+  _anonUserId = null;
   _currentProfile = null;
   localStorage.removeItem(PROFILE_CACHE_KEY);
   localStorage.removeItem(STORAGE_KEY);

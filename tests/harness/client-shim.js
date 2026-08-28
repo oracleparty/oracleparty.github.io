@@ -219,6 +219,25 @@ export function createClient(_url, _key) {
       // Returning an error keeps the button's failure path honest rather than
       // throwing "signInWithOAuth is not a function" and looking like a crash.
       signInWithOAuth: async () => ({ data: { provider: 'google', url: null }, error: { message: 'OAuth not supported in tests' } }),
+      // An INVISIBLE ACCOUNT for somebody who never signed up. Real, so the
+      // robots take the same path a real guest now does — without it every
+      // scenario would keep testing the old identity-less route and the new one
+      // would ship unplayed, which is how the server-judging path nearly did.
+      //
+      // window.__fakeAnonDisabled reproduces the dashboard setting being OFF,
+      // which is a state that really exists and in which the app must behave
+      // exactly as it did before invisible accounts existed.
+      signInAnonymously: async () => {
+        if (window.__fakeAnonDisabled) {
+          return { data: { user: null, session: null },
+                   error: { message: 'Anonymous sign-ins are disabled', code: 'anonymous_provider_disabled' } };
+        }
+        const id = 'anon-' + Math.random().toString(36).slice(2, 10);
+        // is_anonymous is the flag the app reads to keep these strictly apart
+        // from real accounts. Supabase sets it on the user and in the JWT.
+        window.__fakeSession = { user: { id, is_anonymous: true }, access_token: 'fake-anon' };
+        return { data: { user: window.__fakeSession.user, session: window.__fakeSession }, error: null };
+      },
       // Clears the session, like the real client does. A no-op here was not a
       // harmless shortcut: it left a session alive after sign-out, so the next
       // page load looked like "signed in with no profile" and initAuth's

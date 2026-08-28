@@ -1087,10 +1087,12 @@ nothing on the wheel is unreachable.
   delete list is deliberately identical to `delete_my_account`'s: if one grows
   a table the other does not, "I deleted my account" and "an admin deleted my
   account" stop meaning the same thing.
-- **Bans are not built, and would not work yet.** Guests never sign in, so a
-  ban could only bind to an account, and the banned person plays as a guest or
-  clears their browser data. It becomes possible with server authority (#1),
-  not before.
+- **Bans are not built, and would not work yet.** Guests never signed in, so a
+  ban could only bind to an account, and the banned person played as a guest or
+  cleared their browser data. **Invisible accounts (Slice 8a) change the first
+  half of that**: a guest now has a durable id per device, so a ban has
+  something to bind to. Clearing browser data still mints a new one, so it
+  raises the cost rather than closing the door — do not describe it as solved.
 - **Co-host** — a second player can share host controls
 - **Presence + heartbeat** — `last_seen_at` drives stale-player cleanup
 - **Practice bot** — one per room, added by the host in the lobby. Makes solo
@@ -2475,6 +2477,77 @@ either.
 **Still open after this:** `rooms` UPDATE stays wide open, because the rest of
 the phase machine is still browser-side. Locking it is the next slice and must
 wait for that.
+
+### Slice 8a — a guest has an identity now (invisible accounts)
+
+Built 2026-08-28 on the owner's decision, after they pushed back — correctly —
+on my claim that locking `players` was impossible.
+
+**What was impossible, and why it no longer is.** The database can only tell
+people apart if they have an account. A guest had none, so every guest was the
+same anonymous key — like unsigned letters. "Remove me" and "remove them"
+arrive looking identical, with no way to tell which is which, and that is why
+CLAUDE.md #2 says `players` cannot be locked. Supabase's **anonymous sign-in**
+issues a real auth user id with no email, no password and no sign-up screen.
+The player types their name and plays exactly as before, and never knows.
+
+**Conversion is the part that makes it worth doing.** When somebody later makes
+a real account, Supabase **keeps the same user id**, so everything built as a
+guest carries over untouched — nothing to migrate. Signing up stops meaning
+"unlock a reputation you do not have" and starts meaning "keep what you have
+already built", which is a far stronger reason.
+
+**The downsides, measured rather than asserted.** Anonymous users count toward
+Supabase's MONTHLY ACTIVE user billing — so a dormant pile costs nothing, only
+people who actually played that month. Free covers 50,000/month; Pro is
+100,000, then about a third of a cent each. A returning guest keeps the same id
+per device, so it is one per person, not one per game. An earlier version of
+this section implied the accumulated ROWS were the cost; that was wrong and is
+corrected here.
+
+**THIS SLICE ACQUIRES THE IDENTITY AND CHANGES NOTHING ELSE.** That separation
+is the whole design, and it is the lesson of migration 049 applied in advance.
+About thirty places in `js/` ask "do they have a user id?" and mean **"are they
+a real member"** — whether to record stats, shape question selection, offer
+friends, show a tier badge, list somebody as an account. Hand guests an id
+through the same door and every one of those switches on silently, for people
+who never signed up, with every test still passing.
+
+So `_currentUser` and `_anonUserId` are **separate variables in `auth.js`**, and
+the two questions are separated with them:
+
+| Function | Answers |
+|---|---|
+| `getCurrentUser()` | do they have an ACCOUNT — unchanged meaning, every existing call site untouched |
+| `getAuthUserId()` | does the database know who is asking — real or invisible |
+| `isAnonymousSession()` | is this an invisible account |
+
+An invisible session returns early from `initAuth`: no profile loaded, no title
+computed, nothing cached.
+
+**NEVER FATAL.** If anonymous sign-ins are switched off in the dashboard, or the
+call fails, or the network is down, `getAuthUserId()` is null and the app
+behaves exactly as it did before this existed. A hiccup at Supabase's end must
+not stop somebody playing — that is the one way this change could be worse than
+the problem it solves. `window.__fakeAnonDisabled` in the harness reproduces
+that state, because it is real.
+
+`scenario-lobby` checks the identity is PRESENT and everything downstream
+UNCHANGED — a check for only the first would go green on the version that
+quietly turns a guest into a member. Verified by letting the anonymous session
+through `getCurrentUser()`: three guests instantly became **three accounts with
+three profiles and three seats carrying user ids**, and it reports all four by
+name.
+
+**Needs the owner to switch anonymous sign-ins on** in the Supabase dashboard.
+Until then this is inert, by design.
+
+**Still to come, and deliberately NOT in this slice:** writing that id onto
+`players.user_id`, which is what makes guest hosts ratable and what the `players`
+lockdown needs. That is a behaviour change and gets its own pass, with every
+reader of `players.user_id` enumerated first. The server can tell the two apart
+when it matters — `auth.users.is_anonymous` — so the distinction survives into
+SQL rather than depending on anyone remembering it.
 
 ### Shutting a door shut three things nobody was watching (migration 051)
 

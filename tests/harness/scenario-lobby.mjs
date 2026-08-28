@@ -156,6 +156,76 @@ try {
   await setHidden(bob, false);
   await host.page.waitForTimeout(1200);
 
+  // ============================================================
+  // A GUEST HAS AN IDENTITY NOW, AND IS STILL A GUEST
+  // ============================================================
+  //
+  // Guests get an INVISIBLE ACCOUNT: a real auth user id, with no email, no
+  // password and no sign-up screen. It exists so the database can tell one
+  // guest from another, which is the thing that has always made `players` and
+  // `rooms` impossible to lock down — "remove me" and "remove them" are the
+  // same request from somebody who cannot prove who they are.
+  //
+  // THE DANGER IS THE OTHER DIRECTION, and it is what this checks. Around
+  // thirty places in the app ask "do they have a user id?" and mean "are they a
+  // real member" — whether to record stats, shape question selection, offer
+  // friends, show a tier badge, list them as an account. Hand guests an id and
+  // every one of those switches on silently, with every test still passing.
+  // That is exactly the damage migration 049 did by closing one door without
+  // enumerating what walked through it.
+  //
+  // So the identity is checked as PRESENT, and everything downstream of it as
+  // UNCHANGED. A check for only the first would go green on the version that
+  // quietly turns a guest into a member.
+  console.log('\n=== a guest has an identity, and is still a guest ===');
+  const guestAuth = await host.page.evaluate(async () => {
+    const m = await import('/js/auth.js');
+    const s = window.__fakeSession;
+    return {
+      hasSession: !!s?.user?.id,
+      isAnonymous: s?.user?.is_anonymous === true,
+      authUserId: m.getAuthUserId ? m.getAuthUserId() : '(no such function)',
+      currentUser: m.getCurrentUser ? m.getCurrentUser() : '(no such function)',
+      anonFlag: m.isAnonymousSession ? m.isAnonymousSession() : '(no such function)',
+    };
+  }).catch(e => ({ err: String(e).slice(0, 140) }));
+  console.log('   · guest auth:', JSON.stringify(guestAuth));
+
+  if (!guestAuth.hasSession || !guestAuth.isAnonymous) {
+    problems.push('a guest got no invisible account — the database still cannot tell one guest from another, so players and rooms can never be locked');
+  }
+  if (!guestAuth.authUserId || guestAuth.authUserId === '(no such function)') {
+    problems.push('getAuthUserId() gave nothing for a guest holding an invisible account');
+  }
+  // THE ONE THAT GUARDS EVERYTHING ELSE. getCurrentUser() is what the app reads
+  // to mean "real member"; an invisible account must never come back through it.
+  if (guestAuth.currentUser !== null) {
+    problems.push(`getCurrentUser() returned an account for a GUEST (${JSON.stringify(guestAuth.currentUser)}) — every stats, friends, title and tier branch in the app has just switched on for people who never signed up`);
+  }
+  if (guestAuth.anonFlag !== true) {
+    problems.push('isAnonymousSession() does not report an invisible account as one');
+  }
+
+  // Structural proof rather than a claim: if anything had started treating the
+  // invisible id as a real one, it would be written onto the seat and into a
+  // profile. Both must still be empty for a guest.
+  const guestRows = {
+    playersWithUserId: table.store.table('players').filter(p => p.user_id).length,
+    players: table.store.table('players').length,
+    profiles: table.store.table('profiles').length,
+    history: table.store.table('question_history').length,
+  };
+  console.log('   · guest rows:', JSON.stringify(guestRows));
+  if (guestRows.playersWithUserId > 0) {
+    problems.push(`${guestRows.playersWithUserId} guest seat(s) carry a user_id — guests are being recorded as accounts`);
+  }
+  if (guestRows.profiles > 0) {
+    problems.push(`${guestRows.profiles} profile row(s) exist in a lobby of guests — signing up has stopped meaning anything`);
+  }
+  if (guestRows.history > 0) {
+    problems.push(`${guestRows.history} question_history row(s) for guests — a durable record is being kept for people who did not sign up`);
+  }
+
   for (const r of [host, ...joiners]) {
     if (r.consoleErrors.length) {
       problems.push(`${r.name} had ${r.consoleErrors.length} console error(s): ${r.consoleErrors[0].slice(0, 120)}`);
