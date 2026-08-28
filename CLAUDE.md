@@ -2215,7 +2215,7 @@ Three things become impossible that were reachable by anyone willing to edit a
 request: answering a question that is not on screen, answering after the timer,
 and spending a wager twice.
 
-`tests/sql/game-rules.sql` states 135 rules as `check | got | want` data and
+`tests/sql/game-rules.sql` states 149 rules as `check | got | want` data and
 `verify-sql.mjs` fails on any row where the two differ, naming the rule — and
 on any line that is not exactly three fields, because a line the script cannot
 read counted as a rule whose `got` and `want` were both `undefined` and
@@ -2662,6 +2662,64 @@ because leaving goes through `op_leave_room` (048) and never reaches
 break the commonest seat removal in the game, which is precisely what 049 failed
 to check — but its comment now says which of the two it tests. **A check that
 passes for a reason you did not intend is not coverage.**
+
+### Slice 10 — only the rules make you host (migration 058)
+
+**The biggest hole left, and it was not about phases.** `players` had
+`FOR UPDATE USING (true)`, so anyone reaching the site could set
+`is_host = true` on their own row in any live game. A host is not a badge here:
+they override the machine's verdict on any answer, and **migration 041 makes
+that override amend the PERMANENT `question_history` of every player it
+touches**. One request took over somebody's game AND let the taker rewrite other
+people's records. It also reopened 057 in two steps — with UPDATE open you could
+backdate another player's `last_seen_at` and have the sweep remove them for you.
+
+**THE MECHANISM IS COLUMN-LEVEL GRANTS, not a function per write, and this is
+the only slice that works that way.** Postgres enforces column privileges
+independently of RLS. Measured against a real Postgres BEFORE the migration was
+written:
+
+```
+UPDATE players SET last_seen_at = now()   granted column     -> allowed
+UPDATE players SET is_host = true         ungranted column   -> refused
+```
+
+That matters more than tidiness. Wrapping the heartbeat in an RPC would change a
+write that runs every 15 seconds on every phone, and wrapping `disconnected_at`
+is not even possible — it is a keepalive fetch during page unload, which cannot
+await. Column grants leave both untouched and still make the role unwritable.
+Clients keep `last_seen_at`, `disconnected_at` and `is_ready`; **the UPDATE
+policy is still `USING (true)`, and asserting the policy would prove nothing** —
+the rule check asserts `has_column_privilege` instead.
+
+**INSERT had to be narrowed with it**, or the lock would be pointless: you could
+simply insert yourself into somebody's room with `is_host = true`. Refused only
+when the room already has a LIVE host, so the room's creator and a returning
+host whose seat was swept both still work. The policy calls
+`op_room_has_live_host`, which is SECURITY DEFINER so RLS does not recurse into
+`players` from a policy on `players`.
+
+**WHAT THIS DOES NOT DO.** `last_seen_at` is still writable by anybody FOR
+anybody, so the two-step sweep is narrowed to one column rather than closed.
+Restricting it to your own row needs `user_id = auth.uid()`, which is only safe
+once invisible accounts are known reliable in production — a guest whose
+anonymous sign-in failed would otherwise be unable to heartbeat and would be
+swept out of their own game. Its own slice, deliberately.
+
+**`check-rpc-args.mjs` earned its keep here.** An inline comment between two
+parameters in the `CREATE FUNCTION` list made the script stop reading, and it
+reported `p_value` as undeclared — which is precisely the fault it exists to
+catch, because PostgREST answers 404 to an unknown argument name and
+`functionMissing()` reads that as "not installed" and silently falls back. The
+comment moved above the list; **the tool was right and the SQL was ambiguous.**
+
+Verified by breaking both halves: leaving the table-wide grant in place fails
+*"is_host is not a column a client may write"*, and removing the promotion guard
+fails three rules including *"a player cannot make themselves host"*. And by
+forcing the old direct writes, which `scenario-cohost` reports as *"promoting to
+co-host did not persist"* and `scenario-nasty` as *"the only person in the lobby
+was never made host, because abandoned rows still held the crown"* — the
+photographed ghost-host bug, caught by the conversion's own coverage.
 
 ### Shutting a door shut three things nobody was watching (migration 051)
 

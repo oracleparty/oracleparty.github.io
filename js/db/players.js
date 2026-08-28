@@ -168,7 +168,7 @@ export async function addBot(roomId, displayName, { avatarColor, avatarEmoji } =
 /**
  * Promote a player to host. Sets is_host on the player and updates room's host_name.
  */
-export async function promoteToHost(roomId, playerId, displayName) {
+export async function promoteToHost(roomId, playerId, displayName, callerId) {
   // TAKE THE CROWN OFF EVERYONE ELSE FIRST.
   //
   // This used to only set the flag on the new host and never clear it on the
@@ -180,23 +180,76 @@ export async function promoteToHost(roomId, playerId, displayName) {
   // Clearing first, not last: if the second statement fails the room briefly
   // has no host, which promotion is designed to fix on its next pass. The other
   // order leaves two hosts, which nothing was looking for.
-  const { error: clearError } = await supabase
-    .from('players').update({ is_host: false })
-    .eq('room_id', roomId).neq('id', playerId);
-  if (clearError) logger.error('Supabase', 'promoteToHost could not clear the previous host', clearError);
+  // One statement server-side, which also removes the clear-then-set race: the
+  // function does both inside a single call, in that order, for the reason
+  // below.
+  const served = await setHostRoleOnServer(roomId, callerId, playerId, 'host', true);
 
-  const [playerResult, roomResult] = await Promise.all([
-    supabase.from('players').update({ is_host: true }).eq('id', playerId),
-    supabase.from('rooms').update({ host_name: displayName }).eq('id', roomId)
-  ]);
-  if (playerResult.error) logger.error('Supabase', 'promoteToHost player update failed', playerResult.error);
-  if (roomResult.error) logger.error('Supabase', 'promoteToHost room update failed', roomResult.error);
+  if (!served) {
+    const { error: clearError } = await supabase
+      .from('players').update({ is_host: false })
+      .eq('room_id', roomId).neq('id', playerId);
+    if (clearError) logger.error('Supabase', 'promoteToHost could not clear the previous host', clearError);
+
+    const { error: setError } = await supabase
+      .from('players').update({ is_host: true }).eq('id', playerId);
+    if (setError) logger.error('Supabase', 'promoteToHost player update failed', setError);
+  }
+
+  // The room's host_name either way — `rooms` UPDATE is still open, and this is
+  // a display field rather than an authority one.
+  const { error: roomError } = await supabase
+    .from('rooms').update({ host_name: displayName }).eq('id', roomId);
+  if (roomError) logger.error('Supabase', 'promoteToHost room update failed', roomError);
+}
+
+/**
+ * Grant or take the host / co-host role, through the server. Needs migration 058.
+ *
+ * `players` no longer grants a client UPDATE on `is_host` or `is_cohost` — the
+ * columns, not the policy, are what stop it, so a direct write is refused
+ * outright rather than silently matching zero rows. That matters: a host
+ * overrides the machine's verdict on any answer, and migration 041 makes that
+ * amend the PERMANENT question_history of every player it touches, so one
+ * request used to take over a game AND let the taker rewrite other people's
+ * records.
+ *
+ * The server allows it when the caller IS the current host — a deliberate
+ * transfer — or when the room has no live host at all, which is the promotion
+ * path after somebody has gone. Never while a live host is sitting there.
+ *
+ * → true when the server handled it; false when the function is missing, so the
+ *   caller can fall back to the old direct write and this stays safe to deploy
+ *   before the SQL is run.
+ */
+async function setHostRoleOnServer(roomId, callerId, targetId, role, value) {
+  if (!roomId || !callerId || !targetId) return false;
+  const { data, error } = await supabase.rpc('op_set_host_role', {
+    p_room_id: roomId,
+    p_caller_id: callerId,
+    p_target_id: targetId,
+    p_role: role,
+    p_value: value,
+  });
+  if (error) {
+    if (functionMissing(error)) { noteServerFunctions(false); return false; }
+    logger.error('Supabase', 'op_set_host_role failed', error);
+    return true;   // reached the server and was refused — do NOT retry directly
+  }
+  if (data !== 'ok') {
+    // Not a fault the player can act on: both the lobby and the stale sweep
+    // race to promote, so "a live host is already here" is the guard working.
+    logger.debug('Supabase', `op_set_host_role declined: ${data}`, { role, targetId });
+  }
+  return true;
 }
 
 /**
  * Demote a player from host status.
  */
-export async function demoteHost(playerId) {
+export async function demoteHost(playerId, roomId, callerId) {
+  if (await setHostRoleOnServer(roomId, callerId, playerId, 'host', false)) return;
+
   const { error } = await supabase.from('players').update({ is_host: false }).eq('id', playerId);
   if (error) logger.error('Supabase', 'demoteHost failed', error);
 }
@@ -204,7 +257,9 @@ export async function demoteHost(playerId) {
 /**
  * Promote a player to co-host.
  */
-export async function promoteToCohost(playerId) {
+export async function promoteToCohost(playerId, roomId, callerId) {
+  if (await setHostRoleOnServer(roomId, callerId, playerId, 'cohost', true)) return;
+
   const { error } = await supabase.from('players').update({ is_cohost: true }).eq('id', playerId);
   reportWriteFailure('Promote co-host', error, "Couldn't make them co-host");
 }
@@ -212,7 +267,9 @@ export async function promoteToCohost(playerId) {
 /**
  * Demote a player from co-host status.
  */
-export async function demoteCohost(playerId) {
+export async function demoteCohost(playerId, roomId, callerId) {
+  if (await setHostRoleOnServer(roomId, callerId, playerId, 'cohost', false)) return;
+
   const { error } = await supabase.from('players').update({ is_cohost: false }).eq('id', playerId);
   reportWriteFailure('Demote co-host', error, "Couldn't remove co-host");
 }

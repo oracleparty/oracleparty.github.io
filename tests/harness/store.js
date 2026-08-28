@@ -108,6 +108,12 @@ export class FakeStore {
       // heartbeat — far worse than the hole it would close.
       ['players', new Set(['delete'])],
     ]);
+    // Migration 058: columns a client may NOT write. The role is what a host
+    // overrides verdicts with, and 041 makes an override amend the permanent
+    // question_history of every player it touches.
+    this._lockedColumns = new Map([
+      ['players', new Set(['is_host', 'is_cohost'])],
+    ]);
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
     this.presence = new Map();     // topic -> Map(robotId -> state)
@@ -482,6 +488,27 @@ export class FakeStore {
     // filtered by USING, which matches nothing and reports success. Same
     // permission, two completely different things to code against — which is
     // why they are modelled separately rather than as one "refused".
+    // COLUMN-LEVEL REFUSAL (migration 058). Postgres enforces column privileges
+    // independently of RLS: with no table-wide UPDATE grant and only three
+    // columns granted, `UPDATE players SET is_host = true` is refused outright
+    // rather than matching zero rows. Modelled here so a scenario cannot pass on
+    // a write the live database rejects — the faithfulness gap CLAUDE.md #10 is
+    // about, in the direction that hides bugs.
+    const locked = this._lockedColumns.get(table);
+    if (locked && action === 'update') {
+      const payload0 = Array.isArray(payload) ? (payload[0] || {}) : (payload || {});
+      const bad = Object.keys(payload0).filter(k => locked.has(k));
+      if (bad.length) {
+        return {
+          data: null,
+          error: {
+            message: `permission denied for column ${bad[0]} of relation "${table}"`,
+            code: '42501',
+          },
+        };
+      }
+    }
+
     const shut = this._shutDoors.get(table);
     if (shut && action === 'insert' && shut.has('insert')) {
       return {
@@ -1151,6 +1178,58 @@ export class FakeStore {
     }
 
     if (name === 'op_server_now') return new Date().toISOString();
+
+    // ---- migration 058: only the rules make you host ----------------------
+    //
+    // `players` no longer grants a client UPDATE on is_host / is_cohost, so a
+    // direct write is refused OUTRIGHT rather than matching zero rows. A host
+    // overrides the machine's verdict on any answer, and 041 makes that amend
+    // the permanent question_history of everyone it touches — so one request
+    // took over a game and let the taker rewrite other people's records.
+    if (name === 'op_set_host_role') {
+      if (!['host', 'cohost'].includes(args?.p_role)) return 'not a role';
+      const rows = this.table('players');
+      const inRoom = id => rows.find(p => String(p.id) === String(id)
+        && String(p.room_id) === String(args?.p_room_id));
+      const target = inRoom(args?.p_target_id);
+      const caller = inRoom(args?.p_caller_id);
+      if (!target || !caller) return 'not in this room';
+      // A bot is never host or co-host: a room whose host is a bot is a room
+      // nobody can start, advance or judge.
+      if (args.p_value && target.is_bot) return 'not allowed';
+
+      // CANNOT TELL MEANS HERE — a host row with no timestamps counts as
+      // present, so a room is not declared leaderless just because nobody has
+      // heartbeated yet.
+      const liveHost = rows.some(p => String(p.room_id) === String(args.p_room_id)
+        && p.is_host && !p.is_bot
+        && (!(p.last_seen_at || p.joined_at)
+            || Date.now() - new Date(p.last_seen_at || p.joined_at).getTime() < 120000));
+      const callerIsHost = !!caller.is_host;
+      if (!(callerIsHost || !liveHost)) return 'not allowed';
+
+      const touch = (row, patch) => {
+        const before = { ...row };
+        Object.assign(row, patch);
+        this._broadcast('UPDATE', 'players', { ...row }, before);
+      };
+
+      if (args.p_role === 'cohost') {
+        touch(target, { is_cohost: !!args.p_value });
+        return 'ok';
+      }
+      if (args.p_value) {
+        // CLEAR THE ROOM FIRST, THEN SET. The other order leaves two hosts,
+        // which is the photographed "two abandoned copies both flagged HOST".
+        for (const p of rows) {
+          if (String(p.room_id) === String(args.p_room_id) && p.is_host) touch(p, { is_host: false });
+        }
+        touch(target, { is_host: true });
+      } else {
+        touch(target, { is_host: false });
+      }
+      return 'ok';
+    }
 
     // ---- migration 057: only the rules remove a player --------------------
     //

@@ -827,9 +827,9 @@ async function handleHostPromotion() {
     // Update local player state immediately so badge renders
     const localIdx = players.findIndex(p => String(p.id) === String(room.playerId));
     if (localIdx !== -1) { players[localIdx].is_host = true; players[localIdx].is_cohost = false; }
-    await promoteToHost(room.id, room.playerId, getDisplayName());
+    await promoteToHost(room.id, room.playerId, getDisplayName(), room.playerId);
     // Clear co-host flag if we were co-host
-    if (nextHost.is_cohost) await demoteCohost(room.playerId);
+    if (nextHost.is_cohost) await demoteCohost(room.playerId, room.id, room.playerId);
     activateHostUI();
     renderPlayers();
     // Notify all players about the host transfer
@@ -894,8 +894,11 @@ async function handleTransferHost(targetPlayerId, targetDisplayName) {
   _isTransferring = true;
   try {
     // Demote self first, then promote target (serialized to avoid brief two-host state)
-    await demoteHost(room.playerId);
-    await promoteToHost(room.id, targetPlayerId, targetDisplayName);
+    // The caller is the CURRENT host handing the room over deliberately, so
+    // the transfer is passed as coming from them — the server's other branch
+    // (a leaderless room) must not be what lets this through.
+    await promoteToHost(room.id, targetPlayerId, targetDisplayName, room.playerId);
+    await demoteHost(room.playerId, room.id, targetPlayerId);
 
     // Update local state
     const myIdx = players.findIndex(p => String(p.id) === String(room.playerId));
@@ -924,7 +927,7 @@ async function handleCohostToggle(playerId, displayName, isDemote) {
   _isCohostToggling = true;
   try {
     if (isDemote) {
-      await demoteCohost(playerId);
+      await demoteCohost(playerId, room.id, room.playerId);
       const idx = players.findIndex(p => String(p.id) === String(playerId));
       if (idx !== -1) players[idx].is_cohost = false;
       sendMessage(room.id, 'System', `${displayName} is no longer co-host`);
@@ -932,10 +935,10 @@ async function handleCohostToggle(playerId, displayName, isDemote) {
       // Demote any existing co-host first (only one co-host at a time)
       const existingCohost = players.find(p => p.is_cohost);
       if (existingCohost) {
-        await demoteCohost(existingCohost.id);
+        await demoteCohost(existingCohost.id, room.id, room.playerId);
         existingCohost.is_cohost = false;
       }
-      await promoteToCohost(playerId);
+      await promoteToCohost(playerId, room.id, room.playerId);
       const idx = players.findIndex(p => String(p.id) === String(playerId));
       if (idx !== -1) players[idx].is_cohost = true;
       sendMessage(room.id, 'System', `${displayName} is now co-host`);

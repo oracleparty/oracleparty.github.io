@@ -1202,5 +1202,107 @@ BEGIN
     ('removing a seat that is already gone is harmless', verdict, 'already gone');
 END $$;
 
+-- ============================================
+-- MIGRATION 058 — ONLY THE RULES MAKE YOU HOST
+--
+-- `players` had FOR UPDATE USING (true), so anyone could set is_host on their
+-- own row in any live game. A host overrides the machine's verdict on any
+-- answer, and migration 041 makes that amend the PERMANENT question_history of
+-- every player it touches. One request took over somebody's game and let the
+-- taker rewrite other people's records.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  hostP uuid; aliceP uuid; botP uuid; ghostRoom uuid; ghostHost uuid; bystander uuid;
+  verdict text; n int; seized text;
+BEGIN
+  INSERT INTO rooms (code, host_name) VALUES ('058900', 'Hosty') RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now()) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Alice', now()) RETURNING id INTO aliceP;
+  INSERT INTO players (room_id, display_name, is_bot, last_seen_at)
+    VALUES (rid, 'Practice Bot', true, now()) RETURNING id INTO botP;
+
+  -- THE HOLE ITSELF: an ordinary player takes the room while the host is here.
+  SELECT op_set_host_role(rid, aliceP, aliceP, 'host', true) INTO verdict;
+  SELECT count(*) INTO n FROM players WHERE room_id = rid AND is_host AND id = aliceP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a player cannot make themselves host', verdict, 'not allowed'),
+    ('and they did not get the crown', n::text, '0');
+
+  -- COLUMN PRIVILEGE, which is the mechanism the whole slice rests on. RLS is
+  -- not what stops this: the UPDATE policy is still USING (true), and it is the
+  -- GRANT that was narrowed. Asserting the policy would prove nothing.
+  seized := CASE WHEN has_column_privilege('anon', 'public.players', 'is_host', 'UPDATE')
+                 THEN 'writable' ELSE 'refused' END;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('is_host is not a column a client may write', seized, 'refused');
+
+  -- AND THE THREE THAT MUST STAY WRITABLE. Revoking last_seen_at would sweep
+  -- every player in every room as stale within two minutes -- far worse than
+  -- the hole being closed.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the heartbeat column stays writable',
+      CASE WHEN has_column_privilege('anon', 'public.players', 'last_seen_at', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable'),
+    ('the unload beacon column stays writable',
+      CASE WHEN has_column_privilege('anon', 'public.players', 'disconnected_at', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable'),
+    ('the ready toggle stays writable',
+      CASE WHEN has_column_privilege('anon', 'public.players', 'is_ready', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable');
+
+  -- THE HOST MAY HAND IT OVER DELIBERATELY, and doing so must leave exactly one
+  -- host. promoteToHost used to set the new one without clearing the old, so
+  -- every promotion ADDED a host -- the photographed "two copies both flagged
+  -- HOST" this project spent a session on.
+  SELECT op_set_host_role(rid, hostP, aliceP, 'host', true) INTO verdict;
+  SELECT count(*) INTO n FROM players WHERE room_id = rid AND is_host;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host can hand the room over', verdict, 'ok'),
+    ('and the room has exactly one host afterwards', n::text, '1');
+
+  -- A BOT IS NEVER HOST OR CO-HOST. A room whose host is a bot is a room
+  -- nobody can start, advance or judge.
+  SELECT op_set_host_role(rid, aliceP, botP, 'host', true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a bot can never be made host', verdict, 'not allowed');
+  SELECT op_set_host_role(rid, aliceP, botP, 'cohost', true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('nor co-host', verdict, 'not allowed');
+
+  -- CO-HOST IS THE HOST'S TO GRANT.
+  SELECT op_set_host_role(rid, aliceP, hostP, 'cohost', true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host can appoint a co-host', verdict, 'ok');
+
+  -- PROMOTION AFTER THE HOST HAS GONE MUST STILL WORK, or a room whose host
+  -- left is a room nobody can ever start again.
+  INSERT INTO rooms (code, host_name) VALUES ('058901', 'Ghosty') RETURNING id INTO ghostRoom;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (ghostRoom, 'Ghosty', true, now() - interval '10 minutes') RETURNING id INTO ghostHost;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (ghostRoom, 'Bystander', now()) RETURNING id INTO bystander;
+  SELECT op_set_host_role(ghostRoom, bystander, bystander, 'host', true) INTO verdict;
+  SELECT count(*) INTO n FROM players WHERE room_id = ghostRoom AND is_host;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a leaderless room can promote somebody', verdict, 'ok'),
+    ('and still ends up with exactly one host', n::text, '1');
+
+  -- CANNOT TELL MEANS HERE. A host row with no timestamps at all counts as
+  -- present, so a room is not declared leaderless just because nobody has
+  -- heartbeated yet -- which would let the first person through the door take
+  -- a room whose host is simply new.
+  UPDATE players SET is_host = true, last_seen_at = NULL, joined_at = NULL
+   WHERE id = ghostHost;
+  UPDATE players SET is_host = false WHERE id = bystander;
+  SELECT op_set_host_role(ghostRoom, bystander, bystander, 'host', true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a host with no timestamp still counts as present', verdict, 'not allowed');
+END $$;
+
 
 SELECT check_name, got, want FROM result ORDER BY ord;

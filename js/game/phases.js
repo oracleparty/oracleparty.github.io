@@ -92,7 +92,7 @@ export async function handlePlayerChange(payload) {
         // Update local player state immediately so host badge renders
         const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
         if (localIdx !== -1) state.players[localIdx].is_host = true;
-        await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
+        await promoteToHost(state.room.id, state.room.playerId, getDisplayName(), state.room.playerId);
         // Show host controls for current phase WITHOUT re-triggering phase logic
         // (handlePhaseTransition can cause auto-submits, screen transitions, etc.)
         _activateHostControlsForCurrentPhase();
@@ -967,14 +967,14 @@ export async function checkStalePresence() {
       state.room.isCohost = false;
       const localMe = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
       if (localMe !== -1) state.players[localMe].is_cohost = false;
-      demoteCohost(state.room.playerId).catch(e => logger.warn('Game', 'demoteCohost on promotion failed', e));
+      demoteCohost(state.room.playerId, state.room.id, state.room.playerId).catch(e => logger.warn('Game', 'demoteCohost on promotion failed', e));
     }
     state.isDeputy = false;          // the real thing now, not a stand-in
     state.room.isHost = true;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
     const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
     if (localIdx !== -1) state.players[localIdx].is_host = true;
-    await promoteToHost(state.room.id, state.room.playerId, getDisplayName());
+    await promoteToHost(state.room.id, state.room.playerId, getDisplayName(), state.room.playerId);
     _activateHostControlsForCurrentPhase();
     sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
   }
