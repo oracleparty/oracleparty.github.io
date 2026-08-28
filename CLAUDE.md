@@ -19,6 +19,18 @@
 > 2026-08-19, which silently killed the leaderboard, tier badges, profile
 > stats and every title unlock. Migration 031 was run and the probe confirms
 > it. Kept as #8 because of how it hid, not because it is open.
+>
+> **Migrations 053, 054 and 055 are APPLIED — measured on the live database on
+> 2026-08-28**, from the owner's SQL Editor, by a report that looks at
+> `pg_proc`, `pg_policies` and `to_regclass` rather than asserting a count.
+> Every one of its eight rules came back ok: `get_leaderboard` and
+> `op_rate_host` installed, `host_ratings` and `host_reputation` present, no
+> policy exposing who voted, no policy letting a client forge a rating, no
+> policy letting a player write their own `question_history`, reading still
+> open so question selection does not revert to a plain shuffle, and all three
+> SECURITY DEFINER writers of history intact. **`friendships` holds 2 rows** —
+> so the friends leaderboard has something to show, which was the open question
+> when it shipped.
 
 ## What This Is
 
