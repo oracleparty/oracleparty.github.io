@@ -233,6 +233,15 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       fetchPlayerStats(userId)
     ]);
 
+    // AN ID WITH NO PROFILE ROW IS A GUEST, and since invisible accounts
+    // (Slice 8a) that is a case which really happens. `userId` used to mean
+    // "real member" only because nobody else had one; a guest has an id now.
+    //
+    // Branching on the id alone would show a guest a stats card of zeros, "No
+    // host ratings yet", and an ADD FRIEND button — a request to an account
+    // with no profile page, which can never be seen or accepted and would sit
+    // pending forever. The PROFILE ROW is what actually defines a real account,
+    // so that is what everything below branches on.
     if (profile) {
       nameTag = `${escapeHtml(profile.display_name)}<span class="profile-card__tag">#${escapeHtml(profile.discriminator)}</span>`;
       const titleInfo = calculateTitle(stats);
@@ -267,12 +276,14 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     //
     // Absent means "nobody has rated them", which renders as its own sentence
     // and never as 0%.
-    const rep = describeHostReputation((await fetchHostReputations([userId])).get(userId), MIN_HOST_RATINGS);
+    const rep = profile
+      ? describeHostReputation((await fetchHostReputations([userId])).get(userId), MIN_HOST_RATINGS)
+      : null;
     const hostHtml = rep
       ? `<p class="host-rep${rep.measured && rep.pct < 50 ? ' host-rep--poor' : ''}">As host: ${escapeHtml(rep.text)}</p>`
       : '<p class="host-rep host-rep--none">No host ratings yet</p>';
 
-    statsHtml = `
+    statsHtml = !profile ? `<p class="profile-card__guest-hint">Guest player</p>` : `
       <div class="profile-card__stats">
         <div><div class="profile-card__stat-value">${totalGames}</div><div class="profile-card__stat-label">Games</div></div>
         <div><div class="profile-card__stat-value">${totalWins}</div><div class="profile-card__stat-label">Wins</div></div>
@@ -284,7 +295,11 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
 
     // Friend actions
     const viewer = getCurrentUser();
-    if (viewer && viewer.user.id !== userId) {
+    if (!profile) {
+      // Nothing. A friend request to an invisible account would be accepted by
+      // the database and never seen by anybody.
+      actionsHtml = '';
+    } else if (viewer && viewer.user.id !== userId) {
       const alreadyFriends = await isFriend(viewer.user.id, userId);
       if (alreadyFriends) {
         actionsHtml = `<button class="btn btn-secondary btn-block" id="profile-card-remove-friend">Remove Friend</button>`;

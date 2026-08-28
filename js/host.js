@@ -5,7 +5,7 @@
 
 import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount } from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
@@ -672,8 +672,24 @@ async function handleHostGame() {
     }
 
     // Add host as a player in the room
+    // getAuthUserId(), NOT getCurrentUser(). Since invisible accounts (Slice
+    // 8a) a guest has a real auth id too, and putting it on the seat is what
+    // makes four things work:
+    //
+    //   * claimSeat becomes EXACT for a guest. Its guest rule is a heuristic —
+    //     "a same-name row that is still alive might be somebody else" — and
+    //     that guess is what let a returning guest be handed a second seat
+    //     beside their own. An id is not a guess about who somebody is.
+    //   * their play is remembered (record_round_history keys on user_id), so
+    //     the game stops re-asking questions they already know, and all of it
+    //     carries over the day they sign up because Supabase keeps the id.
+    //   * a guest HOST can be rated (op_rate_host needs a host user id).
+    //   * `players` becomes lockable at all, which is the whole point.
+    //
+    // It stays null when anonymous sign-ins are unavailable, and everything
+    // then behaves exactly as it did before.
     const authUser = getCurrentUser();
-    const userId = authUser?.user?.id || null;
+    const userId = getAuthUserId();
     const extras = {};
     if (authUser?.profile) {
       extras.avatarColor = authUser.profile.avatar_color;

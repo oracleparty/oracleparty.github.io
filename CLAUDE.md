@@ -2552,12 +2552,54 @@ name.
 **Needs the owner to switch anonymous sign-ins on** in the Supabase dashboard.
 Until then this is inert, by design.
 
-**Still to come, and deliberately NOT in this slice:** writing that id onto
-`players.user_id`, which is what makes guest hosts ratable and what the `players`
-lockdown needs. That is a behaviour change and gets its own pass, with every
-reader of `players.user_id` enumerated first. The server can tell the two apart
-when it matters — `auth.users.is_anonymous` — so the distinction survives into
-SQL rather than depending on anyone remembering it.
+### Slice 8b — the id goes on the seat
+
+**Anonymous sign-ins were switched on by the owner on 2026-08-28**, so 8a is
+live and this is the behaviour change that follows it. The enumeration came
+FIRST, which is 049's lesson applied rather than learned again.
+
+**The owner's decision: a guest's play IS remembered.** It reverses their
+earlier call, and the premise is what changed — that decision was made when a
+guest had no durable identity, so tracking them meant "keeping a record of
+somebody who did not sign up". An invisible account IS a durable identity, and
+Supabase keeps the same id through conversion, so the record is theirs the day
+they sign up. Their words: someone should be able to play solo and progress.
+
+| Reader of `players.user_id` | What changes for a guest |
+|---|---|
+| `claimSeat` | **exact** instead of a heuristic — the big win, below |
+| `record_round_history` (043) | their play is remembered; selection stops re-asking what they know |
+| `op_rate_host` (054) | a guest HOST can now be rated |
+| `playerUserIds` (`init.js`) | their history shapes question selection, which is the point of the above |
+| tier badge (`lobby.js`) | no stats, so no badge — unchanged |
+| `data-profile-user-id` | **THE ONE REGRESSION**, guarded below |
+
+**`claimSeat` stops guessing.** Its guest rule is a heuristic — *a same-name row
+that is still alive might genuinely be somebody else* — and CLAUDE.md records
+the duplicate seats, ghost hosts and photographed "three copies of one player"
+that came of it. An id is not a guess about who somebody is. The old heuristic
+stays as the fallback for when anonymous sign-in is unavailable.
+
+**THE REGRESSION, and it is the reason the enumeration mattered.**
+`showProfileCard` branched on `if (userId)`, which meant "real member" only
+because nobody else had one. A guest has an id now, so tapping them in a lobby
+would have shown a stats card of zeros, "No host ratings yet", and an **ADD
+FRIEND button** — a request to an account with no profile page, accepted by the
+database, never seen by anybody, pending forever. It branches on the PROFILE ROW
+now, which is what actually defines a real account. Verified by reverting it:
+`scenario-lobby` reports both the button and the fake stats card by name.
+
+**A FOURTH seat-creation site existed, and it is the same one that was missed
+before.** `join.js`, `host.js` and `lobby.js` were the obvious three;
+`js/game/init.js` also calls `claimSeat`, and CLAUDE.md already records that
+page being missed when the seat ratchet was fixed — two of three call sites
+converted, for months. Grepping for every caller before changing anything is
+what found it this time.
+
+**Still to come:** the `players` and `rooms` lockdowns, which are what all of
+this was for. The server can tell an invisible account from a real one via
+`auth.users.is_anonymous`, so that distinction survives into SQL rather than
+depending on anyone remembering it.
 
 ### Shutting a door shut three things nobody was watching (migration 051)
 

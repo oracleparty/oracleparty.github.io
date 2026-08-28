@@ -38,7 +38,7 @@ import {
   fetchExclusiveWildCardQuestions,
   fetchQuestionFeedback
 } from '../supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getVoterId,
+import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
@@ -203,8 +203,17 @@ async function init() {
     // the other half of the photographed "two hosts in the lobby". If a host is
     // already here and it is not us, we return as an ordinary player.
     const prevPlayerId = state.room.playerId || recallSeat(state.room.id);
+    // getAuthUserId(), NOT getCurrentUser() — the FOURTH site that creates a
+    // seat, and the one the seat-ratchet fix reached last. CLAUDE.md records
+    // that history: join.html and the lobby were routed through claimSeat and
+    // this page was missed, so refreshing here still ratcheted for months.
+    // Grepping for every other caller is exactly how it was found, and it is
+    // why this pass grepped before changing anything.
+    //
+    // A guest has a real auth id since Slice 8a, and putting it here is what
+    // makes claimSeat EXACT for them rather than a guess about who somebody is.
     const authUser = getCurrentUser();
-    const rejoinUserId = authUser?.user?.id || null;
+    const rejoinUserId = getAuthUserId();
     const extras = {};
     if (authUser?.profile) {
       extras.avatarColor = authUser.profile.avatar_color;

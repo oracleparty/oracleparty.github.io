@@ -216,14 +216,46 @@ try {
     history: table.store.table('question_history').length,
   };
   console.log('   · guest rows:', JSON.stringify(guestRows));
-  if (guestRows.playersWithUserId > 0) {
-    problems.push(`${guestRows.playersWithUserId} guest seat(s) carry a user_id — guests are being recorded as accounts`);
+  // THE SEAT NOW CARRIES THE ID (Slice 8b), and that is the point: it makes
+  // claimSeat exact for a guest instead of guessing from a display name, lets
+  // their play be remembered, and is what `players` needs before it can ever be
+  // locked down. Every seat must have one — a lobby where only some do means
+  // the invisible account is failing for somebody.
+  if (guestAuth.hasSession && guestRows.playersWithUserId !== guestRows.players) {
+    problems.push(`only ${guestRows.playersWithUserId} of ${guestRows.players} guest seats carry an id — claimSeat is back to guessing who somebody is from their display name`);
   }
+  // AND THE THING THAT MUST NOT FOLLOW FROM IT. A profile row is what makes
+  // somebody a real member; an id is not. If signing up stops being what
+  // creates a profile, every account-only feature has just opened to guests.
   if (guestRows.profiles > 0) {
     problems.push(`${guestRows.profiles} profile row(s) exist in a lobby of guests — signing up has stopped meaning anything`);
   }
-  if (guestRows.history > 0) {
-    problems.push(`${guestRows.history} question_history row(s) for guests — a durable record is being kept for people who did not sign up`);
+
+  // TAPPING A GUEST MUST NOT OFFER "ADD FRIEND". The profile card used to
+  // branch on "has a user id", which meant "real member" only because nobody
+  // else had one. A guest has an id now, so branching on it would offer a
+  // friend request to an account with no profile page — accepted by the
+  // database, never seen by anybody, pending forever.
+  const guestCard = await host.page.evaluate(async () => {
+    const row = document.querySelector('[data-profile-user-id]');
+    if (!row) return { tappable: false };
+    row.click();
+    await new Promise(r => setTimeout(r, 1500));
+    const sheet = document.querySelector('#profile-card-sheet');
+    return {
+      tappable: true,
+      open: !!sheet && sheet.classList.contains('active'),
+      text: (sheet?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+      addFriend: !!document.querySelector('#profile-card-add-friend'),
+    };
+  }).catch(e => ({ err: String(e).slice(0, 120) }));
+  console.log('   · tapping a guest:', JSON.stringify(guestCard));
+
+  if (guestCard.tappable && guestCard.addFriend) {
+    problems.push('tapping a GUEST offers "Add Friend" — the request would go to an account with no profile page and sit pending forever');
+  }
+  if (guestCard.tappable && guestCard.open && !/guest/i.test(guestCard.text || '')) {
+    problems.push(`tapping a guest showed a real-member card instead of "Guest player": ${JSON.stringify(guestCard.text)}`);
   }
 
   for (const r of [host, ...joiners]) {
