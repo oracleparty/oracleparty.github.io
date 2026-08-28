@@ -754,6 +754,20 @@ const REQUIRED = {
   // statement, so an unchecked write is a feature that can die silently.
   profiles:         ['user_id', 'display_name', 'is_admin', 'title_builder_unlocked',
                      'avatar_color', 'avatar_emoji', 'discriminator'],
+  // THIS PROBE CANNOT VERIFY MIGRATION 055, AND A GREEN LINE HERE MUST NOT BE
+  // READ AS THOUGH IT HAD. 055 revoked the INSERT and UPDATE that let a
+  // SIGNED-IN player write their own history — and this script runs as an
+  // anonymous visitor, who was refused by the old policies too, because they
+  // required `user_id = auth.uid()` and anon has no uid. So the write section
+  // reported "refused" before 055 and reports "refused" after it: the same
+  // answer for the wide-open state and the shut one.
+  //
+  // That is the exact failure shape #6 is a catalogue of — a check that returns
+  // the same result whatever the truth is. Naming it here rather than adding a
+  // check that cannot fail: verifying 055 needs a signed-in session, which this
+  // script deliberately does not have, and the migration's own verification
+  // block (run as the owner, looking at pg_policies) is what settles it.
+  // tests/sql/game-rules.sql pins the behaviour against a real Postgres.
   question_history: ['user_id', 'question_id', 'times_seen', 'times_correct',
                      'last_correct', 'last_seen_at'],
   title_unlocks:    ['user_id', 'word_id', 'unlocked_at'],
