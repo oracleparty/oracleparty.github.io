@@ -1536,7 +1536,7 @@ export class FakeStore {
     // anybody could write from outside the room is worth nothing, so a fake
     // that accepted everything would prove the opposite of what it tests.
     if (name === 'op_rate_host') {
-      const rating = args?.p_rating ?? null;
+      let rating = args?.p_rating ?? null;   // let: 059 may drop it while keeping a flag
       const flagReason = args?.p_flag_reason ?? null;
       if (rating == null && flagReason == null) return 'nothing to record';
       if (rating != null && rating !== 1 && rating !== -1) return 'not a rating';
@@ -1559,6 +1559,35 @@ export class FakeStore {
         String(a.room_id) === String(args.p_room_id)
         && String(a.player_id) === String(args.p_player_id));
       if (!played) return 'you have not played a round yet';
+
+      // THE THUMBS NEED THE WHOLE GAME; THE FLAG NEVER DOES (migration 059).
+      //
+      // Measured the same way the server does it: every round ends with the
+      // blank fill writing a row for EVERY player in the room, so a seated
+      // player accumulates one per round whether they answered or not. Somebody
+      // who joined late never has the earlier ones. Being AWAY costs nothing —
+      // the seat is what matters — which is exactly the line the owner drew.
+      if (rating != null) {
+        const room = this.table('rooms').find(r => String(r.id) === String(args.p_room_id));
+        const ids = room?.question_ids || [];
+        // op_room_total_questions is GREATEST(1, length - 1), so even a
+        // one-question room reports two rounds. Reading it as one is how the
+        // SQL rules were mis-seeded on the first attempt.
+        const finalRound = Math.max(1, (ids.length ? ids.length - 1 : (room?.questions_per_game ?? 10)));
+        const present = new Set(this.table('answers')
+          .filter(a => String(a.room_id) === String(args.p_room_id)
+            && String(a.player_id) === String(args.p_player_id)
+            && a.question_number >= 0 && a.question_number <= finalRound)
+          .map(a => a.question_number));
+        const wholeGame = (room?.current_question ?? -1) >= finalRound
+          && present.size >= finalRound + 1;
+        if (!wholeGame) {
+          // A flag riding along with a refused rating must still land, or the
+          // one thing a leaver CAN do is lost to the rule that stops the other.
+          if (flagReason == null) return 'you did not play the whole game';
+          rating = null;
+        }
+      }
 
       const rows = this.table('host_ratings');
       const existing = rows.find(r => String(r.host_user_id) === String(host.user_id)

@@ -678,7 +678,21 @@ DECLARE
   res text;
 BEGIN
   INSERT INTO auth.users VALUES (hostU), (aliceU);
-  INSERT INTO rooms (code, host_name) VALUES ('054001', 'Hosty') RETURNING id INTO rid;
+  -- A ONE-QUESTION GAME, ALREADY ON ITS LAST ROUND. Since migration 059 a
+  -- RATING needs the whole game, so a room with no question list at all would
+  -- refuse every rating here and these checks would be testing 059's rule
+  -- instead of the privacy and standing rules they are about. One question
+  -- means one round, so "played a round" and "played it all" coincide and each
+  -- check still tests the thing it was written for.
+  -- A TWO-ROUND GAME, ALREADY ON ITS LAST ROUND. Since migration 059 a RATING
+  -- needs the whole game, so a room with no question list would refuse every
+  -- rating here and these checks would be testing 059's rule instead of the
+  -- privacy and standing rules they are about. Note op_room_total_questions is
+  -- GREATEST(1, ...), so even a one-question room reports two rounds — reading
+  -- it as one is how this seeding was wrong on the first attempt.
+  INSERT INTO rooms (code, host_name, question_ids, current_question)
+    VALUES ('054001', 'Hosty', ARRAY[gen_random_uuid(), gen_random_uuid()], 1)
+    RETURNING id INTO rid;
   INSERT INTO rooms (code, host_name) VALUES ('054002', 'Elsewhere') RETURNING id INTO other;
   INSERT INTO players (room_id, user_id, display_name, is_host)
     VALUES (rid, hostU, 'Hosty', true) RETURNING id INTO hostP;
@@ -695,7 +709,8 @@ BEGIN
   -- Now they play. A BLANK answer counts: running out of time is still having
   -- been in the round and seen how it was judged.
   INSERT INTO answers (room_id, player_id, question_number, wager, submitted_answer)
-  VALUES (rid, aliceP, 0, 1, 'something'), (rid, bobP, 0, 1, '');
+  VALUES (rid, aliceP, 0, 1, 'something'), (rid, bobP, 0, 1, ''),
+         (rid, aliceP, 1, 2, 'something'), (rid, bobP, 1, 2, '');
 
   res := op_rate_host(rid, aliceP, 'user:' || aliceU, 1::smallint);
   INSERT INTO result (check_name, got, want) VALUES ('a player who has played may rate the host', res, 'ok');
@@ -773,12 +788,14 @@ DECLARE
 BEGIN
   INSERT INTO auth.users VALUES (hostU), (adminU);
   INSERT INTO profiles (user_id, display_name, is_admin) VALUES (adminU, 'Admin', true);
-  INSERT INTO rooms (code, host_name) VALUES ('054900', 'Hosty') RETURNING id INTO rid;
+  INSERT INTO rooms (code, host_name, question_ids, current_question)
+    VALUES ('054900', 'Hosty', ARRAY[gen_random_uuid(), gen_random_uuid()], 1)
+    RETURNING id INTO rid;
   INSERT INTO players (room_id, user_id, display_name, is_host)
     VALUES (rid, hostU, 'Hosty', true) RETURNING id INTO hostP;
   INSERT INTO players (room_id, display_name) VALUES (rid, 'Alice') RETURNING id INTO aliceP;
   INSERT INTO answers (room_id, player_id, question_number, wager, submitted_answer)
-    VALUES (rid, aliceP, 0, 1, 'played');
+    VALUES (rid, aliceP, 0, 1, 'played'), (rid, aliceP, 1, 2, 'played');
   PERFORM op_rate_host(rid, aliceP, 'device:alice', (-1)::smallint, 'unfair_judging', 'a note');
 
   -- A visitor: no rows from the table, but the aggregate still answers.
@@ -1302,6 +1319,99 @@ BEGIN
   SELECT op_set_host_role(ghostRoom, bystander, bystander, 'host', true) INTO verdict;
   INSERT INTO result (check_name, got, want) VALUES
     ('a host with no timestamp still counts as present', verdict, 'not allowed');
+END $$;
+
+-- ============================================
+-- MIGRATION 059 — RATE THE HOST ONLY IF YOU PLAYED IT ALL
+--
+-- The owner's rule. The danger is not that it refuses too much — that is the
+-- point — but that it refuses the FLAG too, which is the one thing a player who
+-- left in disgust must still be able to do. Both directions are pinned.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  q uuid[] := ARRAY[]::uuid[];
+  qid uuid;
+  hostU uuid := gen_random_uuid();
+  hostP uuid; fullP uuid; lateP uuid; awayP uuid;
+  verdict text; n int;
+BEGIN
+  INSERT INTO auth.users VALUES (hostU);
+  FOR i IN 1..3 LOOP
+    qid := gen_random_uuid();
+    INSERT INTO questions (id, question, correct_answer, format)
+      VALUES (qid, 'Q' || i, 'yes', 'open');
+    q := q || qid;
+  END LOOP;
+  -- Three questions => op_room_total_questions is 2, rounds are 0,1,2.
+  INSERT INTO rooms (code, host_name, question_ids, current_question, game_phase)
+    VALUES ('059900', 'Hosty', q, 2, 'reveal') RETURNING id INTO rid;
+  INSERT INTO players (room_id, user_id, display_name, is_host)
+    VALUES (rid, hostU, 'Hosty', true) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name) VALUES (rid, 'Full') RETURNING id INTO fullP;
+  INSERT INTO players (room_id, display_name) VALUES (rid, 'Late') RETURNING id INTO lateP;
+  INSERT INTO players (room_id, display_name) VALUES (rid, 'Away') RETURNING id INTO awayP;
+
+  -- Full played every round. Away kept her SEAT throughout, so the blank fill
+  -- wrote her a row every round even while her screen was off — that is exactly
+  -- the case the owner wanted to keep eligible. Late joined at round 2.
+  FOR i IN 0..2 LOOP
+    INSERT INTO answers (room_id, player_id, question_number, wager, submitted_answer)
+      VALUES (rid, fullP, i, 1, 'yes');
+    INSERT INTO answers (room_id, player_id, question_number, wager, submitted_answer)
+      VALUES (rid, awayP, i, 1, '');
+  END LOOP;
+  INSERT INTO answers (room_id, player_id, question_number, wager, submitted_answer)
+    VALUES (rid, lateP, 2, 1, 'yes');
+
+  SELECT op_rate_host(rid, fullP, 'device:full', (1)::smallint) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody who played the whole game can rate', verdict, 'ok');
+
+  -- AWAY BUT STILL SEATED IS ELIGIBLE. This is the owner's line, and getting it
+  -- wrong would punish somebody for putting their phone down.
+  SELECT op_rate_host(rid, awayP, 'device:away', (1)::smallint) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('away with the seat kept still counts as playing it all', verdict, 'ok');
+
+  -- The rule itself.
+  SELECT op_rate_host(rid, lateP, 'device:late', (-1)::smallint) INTO verdict;
+  SELECT count(*) INTO n FROM host_ratings
+   WHERE room_id = rid AND voter_id = 'device:late';
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody who joined midway cannot rate', verdict, 'you did not play the whole game'),
+    ('and nothing was recorded for them', n::text, '0');
+
+  -- THE FLAG IS NOT GATED BY IT. Somebody who left because the host was
+  -- improper must still be able to report them — that is what made the
+  -- stricter rating rule defensible in the first place.
+  SELECT op_rate_host(rid, lateP, 'device:late', NULL, 'unfair_judging', 'left because of this')
+    INTO verdict;
+  SELECT count(*) INTO n FROM host_ratings
+   WHERE room_id = rid AND voter_id = 'device:late' AND flag_reason IS NOT NULL;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('but they can still FLAG the host', verdict, 'ok'),
+    ('and the report is recorded', n::text, '1');
+
+  -- A flag sent WITH a refused rating must still land, or the one thing a
+  -- leaver can do is lost to the rule that stops the other.
+  SELECT op_rate_host(rid, lateP, 'device:late2', (-1)::smallint, 'rude', 'note') INTO verdict;
+  SELECT count(*) INTO n FROM host_ratings
+   WHERE room_id = rid AND voter_id = 'device:late2'
+     AND flag_reason IS NOT NULL AND rating IS NULL;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a flag riding with a refused rating still lands', verdict, 'ok'),
+    ('with the report kept and the rating dropped', n::text, '1');
+
+  -- NOT ON THE LAST ROUND YET. Before that, "present for every round so far" is
+  -- not "played the whole game" — otherwise somebody rates at round one and
+  -- leaves.
+  UPDATE rooms SET current_question = 1 WHERE id = rid;
+  SELECT op_rate_host(rid, fullP, 'device:early', (1)::smallint) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('nobody can rate before the final round', verdict, 'you did not play the whole game');
 END $$;
 
 

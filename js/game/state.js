@@ -45,6 +45,10 @@ export const state = {
   // showHostReviewUI for why optimism is the wrong default here.
   _hostRepChecked: false,
   _hostRepKnown: false,
+  // Set when the server refuses a rating because this player did not play the
+  // whole game (migration 059). The thumbs then stay hidden for the rest of the
+  // game rather than lighting up and recording nothing.
+  _hostReviewRefused: false,
   isFinalWagerRound: false,
   // Has the final-wager screen already been drawn this game? Guards the
   // player's chosen wager against being cleared by a re-render.

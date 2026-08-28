@@ -1918,21 +1918,64 @@ state rather than work around. It attaches to a user id and a guest has none.
 The row hides itself entirely for a guest host, and their game shows "new host",
 which is honest and is itself a signal. It also gives an account a purpose.
 
-**YOU MUST HAVE PLAYED, NOT MERELY BEEN THERE — and the whole game is
-deliberately NOT required.** The owner asked whether a rating should need full
-attendance, "to keep it fully authentic and unriggable". It must not, for a
-reason that reverses the intent: **a bad host is the commonest reason somebody
-leaves early**, so requiring them to stay to the end silences exactly the people
-with the strongest complaint. It would also disqualify anyone who hot-joined and
-anyone whose phone died mid-game, both of which happen constantly here. And it
-would not stop a determined rigger, who can simply stay.
+**THE WHOLE GAME IS REQUIRED FOR A RATING — REVERSED 2026-08-28, migration
+059.** This section previously argued the opposite and the reasoning is kept
+below, because the owner answered it rather than overruling it.
 
-One answer in that room is the guard that does real work: it cannot be satisfied
-by occupying a seat, so a drive-by who joins a stranger's room and downvotes on
-arrival is refused. A BLANK answer counts — running out of time is still having
-been in the round and seen how it was judged — and in practice everybody present
-through a round has a row, because the blank fill writes one. So it bites only
-the case it is for.
+The rule now: **the thumbs need every round; the FLAG needs one.** A drive-by
+cannot score a host on a single round, and somebody who walks out because the
+host was improper still reports them.
+
+My objections, and what happened to each:
+
+- *"A bad host is the commonest reason somebody leaves early, so this silences
+  the strongest complaint."* — **Answered.** The flag is a separate tool and
+  keeps the old rule. Thumbs mean "would you play with them again"; a flag means
+  "this was improper". Those want different evidence, and only the second is
+  urgent enough to come from somebody who left.
+- *"It locks out anyone who joins a game in progress."* — **Answered:** they can
+  play the next game. Hot-joining is a way IN, not a claim on a vote.
+- *"An away phone and a leaver look identical."* — **This was simply WRONG and I
+  said so.** Being away costs nothing: you keep your seat, and the blank fill
+  writes you a row every round while your screen is off. Only after ~2 minutes
+  of silence is the seat released. So "kept your seat throughout" is exactly the
+  line the owner drew, and it is precisely measurable.
+
+**HOW IT IS MEASURED, with no inference in between.** Every round ends with
+`op_fill_blank_answers` writing a row for EVERY player in the room, so a seated
+player accumulates one per round whether they answered or not. A latecomer never
+has the earlier ones; a swept seat stops getting them. `op_played_whole_game`
+counts distinct rounds and compares against `op_room_total_questions` — which is
+`GREATEST(1, length - 1)`, so **even a one-question room reports two rounds**.
+Reading that as one is how the rule table was mis-seeded on the first attempt.
+
+**AND IT IS ONLY TRUE AT THE END**, so the room must be on its final round.
+Otherwise somebody rates at round one, leaves, and has technically been present
+for everything so far.
+
+**The thumbs are HIDDEN until then rather than shown and refused** — three
+buttons that light up and record nothing is the shape #4 is about. The flag
+stays on screen every round. A refusal that does reach a player ("you did not
+play the whole game") changes the label rather than being swallowed.
+
+One answer in the room is still the guard for the FLAG: it cannot be satisfied
+by occupying a seat, so a drive-by who joins and reports on arrival is refused.
+A BLANK answer counts — running out of time is still having been in the round.
+
+**Verified by breaking both halves.** Removing the whole-game requirement fails
+four rules; gating the FLAG on it too fails four, including *"but they can still
+FLAG the host"* — which is the mistake that would silence the leaver and undo
+the whole justification. `scenario-feedback` fails by name if the thumbs appear
+mid-game.
+
+**Three attempts at that scenario broke other sections, and the trail was
+long.** Seeding rows for rounds the game had not played made three later checks
+report *"record_answer_text was never called"*; then jumping the live room to its
+final round did the same, because `syncToCurrentState` polls the room and the
+host's client skipped the rest of the game. The vote mechanics now run against a
+SEPARATE synthetic room and the live one is never touched. **When a change to
+one section breaks a check three sections away, suspect what you seeded, not
+what you changed.**
 
 **Short and long games both produce one vote, and that is right.** The unit of
 "would you play with them again" is a game, not a round. Length changes how fast
@@ -2215,7 +2258,7 @@ Three things become impossible that were reachable by anyone willing to edit a
 request: answering a question that is not on screen, answering after the timer,
 and spending a wager twice.
 
-`tests/sql/game-rules.sql` states 149 rules as `check | got | want` data and
+`tests/sql/game-rules.sql` states 158 rules as `check | got | want` data and
 `verify-sql.mjs` fails on any row where the two differ, naming the rule — and
 on any line that is not exactly three fields, because a line the script cannot
 read counted as a rule whose `got` and `want` were both `undefined` and

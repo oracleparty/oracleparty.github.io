@@ -446,9 +446,78 @@ try {
       problems.push('the host is offered the chance to rate themselves');
     }
 
+    // THE THUMBS NEED THE WHOLE GAME (migration 059); THE FLAG NEVER DOES.
+    //
+    // The owner's rule: a satisfaction score should come from somebody who saw
+    // the game through, so a drive-by cannot tank a host on one round. A report
+    // is the opposite — somebody who walks out because the host was improper is
+    // the person most worth hearing — so the flag keeps its old rule.
+    //
+    // MID-GAME, THE THUMBS ARE HIDDEN AND THE FLAG IS NOT. Checked on the real
+    // screen, because that is the visible half of the rule and the reason it is
+    // not simply a silent refusal: three buttons that light up and record
+    // nothing is the shape CLAUDE.md #4 is about.
+    const thumbsShown = await bob.page.evaluate(() => {
+      const vis = sel => {
+        const el = document.querySelector(sel);
+        return !!el && el.style.display !== 'none' && el.offsetParent !== null;
+      };
+      const label = document.querySelector('#reveal-host-review .host-review__label');
+      return {
+        up: vis('[data-host-vote="up"]'),
+        flag: vis('[data-host-vote="flag"]'),
+        label: (label?.textContent || '').trim(),
+      };
+    }).catch(e => ({ err: String(e).slice(0, 100) }));
+    note(`mid-game host review: ${JSON.stringify(thumbsShown)}`);
+    if (thumbsShown.up) {
+      problems.push('the thumbs are offered mid-game — a tap would be refused, so they would light up and record nothing');
+    }
+    if (!thumbsShown.flag) {
+      problems.push('the flag is hidden mid-game — somebody leaving because the host is improper has no way to report it');
+    }
+
+    // The vote MECHANICS are then driven against a SEPARATE, FINISHED room —
+    // not the live one. Jumping the real room to its final round to satisfy the
+    // rule is a mutation behind the app's back, and syncToCurrentState polls
+    // the room: the host's client picked the jump up and skipped the rest of
+    // the game, which surfaced three sections later as "record_answer_text was
+    // never called". Nothing to do with host ratings, and a genuinely hard
+    // trail to follow.
+    //
+    // A synthetic room also makes this section independent of where the live
+    // game happens to be, which is what a check of vote MECHANICS wants.
+    const ratingRoom = {
+      id: 'rating-room', code: '990099', host_name: 'Hosty',
+      question_ids: ['rq0', 'rq1'], current_question: 1, game_phase: 'reveal',
+      questions_per_game: 1, question_timer: 15, status: 'playing',
+    };
+    table.store.table('rooms').push(ratingRoom);
+    const ratedHostUser = '00000000-0000-4000-8000-00000ratedhost';
+    table.store.table('players').push(
+      { id: 'rr-host', room_id: ratingRoom.id, display_name: 'Hosty',
+        is_host: true, user_id: ratedHostUser, last_seen_at: new Date().toISOString() },
+      { id: 'rr-bob', room_id: ratingRoom.id, display_name: 'Bob',
+        is_host: false, last_seen_at: new Date().toISOString() },
+    );
+    // A row for every round — what the blank fill writes for every SEATED
+    // player, whether they answered or not.
+    for (let i = 0; i <= 1; i++) {
+      table.store.table('answers').push({
+        id: `rr-a${i}`, room_id: ratingRoom.id, player_id: 'rr-bob',
+        question_number: i, question_id: `rq${i}`, wager: 1,
+        submitted_answer: '', is_correct: false, score_earned: 0,
+      });
+    }
+    const bobSeat = { id: 'rr-bob' };
+
+    const castVote = (extra) => bob.page.evaluate(async ([rid, pid, e]) => {
+      const m = await import('/js/supabase.js');
+      return m.rateHost({ roomId: rid, playerId: pid, voterId: 'device:bob-rater', ...e });
+    }, [ratingRoom.id, bobSeat.id, extra]).catch(err => ({ err: String(err).slice(0, 100) }));
+
     const before = table.store.table('host_ratings').length;
-    await bob.page.locator('[data-host-vote="down"]').first().click().catch(() => {});
-    await bob.page.waitForTimeout(1200);
+    await castVote({ rating: -1 });
     const rows = table.store.table('host_ratings');
     note(`host_ratings after Bob votes: ${JSON.stringify(rows.map(r => ({ r: r.rating, f: r.flag_reason })))}`);
     if (rows.length !== before + 1) {
@@ -460,7 +529,7 @@ try {
     // ONE VOTE PER PLAYER PER GAME. Changing your mind must replace the vote,
     // not add another — otherwise a single person in a long game outweighs
     // everybody in a short one, which is the flaw in rating per round.
-    await bob.page.locator('[data-host-vote="up"]').first().click().catch(() => {});
+    await castVote({ rating: 1 });
     await bob.page.waitForTimeout(1200);
     const afterChange = table.store.table('host_ratings');
     note(`after changing to thumbs-up: ${afterChange.length} row(s), rating ${afterChange[afterChange.length - 1]?.rating}`);
@@ -472,7 +541,7 @@ try {
     }
 
     // A flag is a report of misconduct and must survive a later thumbs-up.
-    await bob.page.locator('[data-host-vote="flag"]').first().click().catch(() => {});
+    await castVote({ flagReason: 'unfair_judging' });
     await bob.page.waitForTimeout(600);
     await bob.page.locator('[data-host-reason="unfair_judging"]').first().click().catch(() => {});
     await bob.page.waitForTimeout(1200);
@@ -481,7 +550,7 @@ try {
     if (flagged?.flag_reason !== 'unfair_judging') {
       problems.push(`flagging the host recorded ${JSON.stringify(flagged?.flag_reason)}`);
     }
-    await bob.page.locator('[data-host-vote="up"]').first().click().catch(() => {});
+    await castVote({ rating: 1 });
     await bob.page.waitForTimeout(900);
     if (table.store.table('host_ratings')[before]?.flag_reason !== 'unfair_judging') {
       problems.push('a later thumbs-up withdrew the flag — a report of misconduct must not be retractable by a tap');
@@ -545,6 +614,57 @@ try {
     if (outsider.ok) {
       problems.push('somebody who was not in the game was able to rate its host');
     }
+
+    // SOMEBODY WHO JOINED PARTWAY IS REFUSED THE THUMBS BUT NOT THE FLAG.
+    // The owner's rule, and the flag exemption is what makes it defensible: a
+    // player who walks out because the host was improper is the one most worth
+    // hearing, so they report it rather than scoring it.
+    //
+    // A FRESH SEAT, not an existing player with their answers rewritten. The
+    // first version did the latter and quietly corrupted the data three later
+    // sections depend on — they report "record_answer_text was never called",
+    // which is nothing to do with host ratings. Seeding must add, not disturb.
+    {
+      const lateId = 'latecomer-seat';
+      table.store.table('players').push({
+        id: lateId, room_id: ratingRoom.id, display_name: 'Latecomer',
+        is_host: false, is_bot: false, joined_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      });
+      table.store.table('answers').push({
+        id: 'latecomer-answer', room_id: ratingRoom.id, player_id: lateId,
+        question_number: 0, question_id: (ratingRoom.question_ids || [])[0] || null,
+        wager: 1, submitted_answer: 'played one round', is_correct: false, score_earned: 0,
+      });
+
+      const call = (args) => bob.page.evaluate(async ([rid, pid, extra]) => {
+        const m = await import('/js/supabase.js');
+        return m.rateHost({ roomId: rid, playerId: pid, voterId: 'device:latecomer', ...extra });
+      }, [ratingRoom.id, lateId, args]).catch(e => ({ err: String(e).slice(0, 100) }));
+
+      const rated = await call({ rating: -1 });
+      note(`a latecomer's thumbs-down: ${JSON.stringify(rated)}`);
+      if (rated.ok) {
+        problems.push('somebody who joined partway through was able to rate the host');
+      }
+      const flagged = await call({ flagReason: 'abusive', flagNote: 'left because of this' });
+      note(`the same latecomer's FLAG: ${JSON.stringify(flagged)}`);
+      if (!flagged.ok) {
+        problems.push('a player who left partway cannot report the host — the one thing they must still be able to do');
+      }
+
+      // Leave the room as it was found.
+      const ps = table.store.table('players');
+      const pi = ps.findIndex(p => p.id === lateId);
+      if (pi !== -1) ps.splice(pi, 1);
+      const as = table.store.table('answers');
+      const ai = as.findIndex(a => a.id === 'latecomer-answer');
+      if (ai !== -1) as.splice(ai, 1);
+    }
+
+    // Nothing to restore: the live room was never touched, which is the whole
+    // point of using a synthetic one.
+
   }
 
   heading('a rating that cannot be saved says so');

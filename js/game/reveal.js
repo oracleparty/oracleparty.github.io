@@ -913,6 +913,30 @@ function showHostReviewUI() {
   }
   state.hostVoteFor = host.user_id;
 
+  // THE THUMBS NEED THE WHOLE GAME; THE FLAG NEVER DOES (migration 059).
+  //
+  // The owner's rule: a satisfaction score should come from somebody who saw
+  // the game through, so a drive-by cannot tank a host on one round. A REPORT
+  // is the opposite — somebody who walks out because the host was improper is
+  // the person most worth hearing, so the flag keeps its old rule and stays on
+  // screen every round.
+  //
+  // Hidden rather than shown-and-refused. The server enforces this either way,
+  // but three buttons that light up when tapped and record nothing is the
+  // silent-failure shape this codebase is made of (#4) — a player believing
+  // they rated somebody when they did not.
+  const onFinalRound = state.currentQuestion >= state.totalQuestions;
+  const canRate = onFinalRound && !state._hostReviewRefused;
+  row.querySelectorAll('[data-host-vote="up"], [data-host-vote="down"]').forEach(b => {
+    b.style.display = canRate ? '' : 'none';
+  });
+  const labelEl = row.querySelector('.host-review__label');
+  if (labelEl) {
+    labelEl.textContent = canRate ? 'Play with this host again?'
+      : state._hostReviewRefused ? 'Play the whole game to rate this host'
+      : 'Report a problem with this host';
+  }
+
   row.style.display = '';
   row.querySelectorAll('[data-host-vote]').forEach(b => {
     b.classList.toggle('feedback-btn--active', b.dataset.hostVote === state.hostVote);
@@ -938,6 +962,15 @@ function sendHostVote({ rating = null, flagReason = null, flagNote = null }) {
     flagReason,
     flagNote,
   }).then(res => {
+    // A refusal the player can act on, rather than a silent no-op. It is the
+    // only outcome here that is about THEM and not about the system, so it is
+    // the only one that changes the screen.
+    if (res.reason === 'you did not play the whole game') {
+      state._hostReviewRefused = true;
+      state.hostVote = null;
+      if (state.onRevealScreen) showHostReviewUI();
+      return;
+    }
     if (!res.ok && res.reason && res.reason !== 'host has no account' && res.reason !== 'not installed') {
       logger.warn('Game', 'host rating was not recorded', res);
     }
