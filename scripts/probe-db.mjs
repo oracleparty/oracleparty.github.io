@@ -637,7 +637,13 @@ const CONSEQUENCES = [
     breaks: ['the admin page cannot show what people actually typed'] },
   { object: 'record_round_history', kind: 'rpc',
     fix: 'run migrations/043_record_round_history.sql',
-    breaks: ['a round is recorded only by the phones that were awake for the reveal, so two players who both missed the same question can end up with different permanent records'] },
+    // SINCE MIGRATION 055 THIS IS NO LONGER A DEGRADED FALLBACK, IT IS TOTAL.
+    // 055 revoked the client's own INSERT and UPDATE on question_history, so
+    // the per-device fallback in doReveal is refused. With this function gone,
+    // NOTHING records a round: no accuracy, no proficiency, no mastery, no tier,
+    // no title, and an empty leaderboard — accumulating silently, because a
+    // permission working and a feature dead look identical from a browser.
+    breaks: ['NOTHING records a round at all, so accuracy, proficiency, mastery, tiers, titles and the leaderboard all stop moving — the client fallback is refused by migration 055'] },
   { object: 'record_answer_text', kind: 'rpc',
     fix: 'run migrations/029_answer_tally.sql',
     breaks: ['nothing anybody types is ever counted'] },

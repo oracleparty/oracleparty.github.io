@@ -88,6 +88,26 @@ CREATE TABLE IF NOT EXISTS question_history (
   last_seen_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- THE STATE MIGRATION 011 LEFT THE LIVE TABLE IN, reproduced exactly, because
+-- migration 055 exists to take it away and a drop loop that finds nothing to
+-- drop is a test that cannot fail. The grants matter as much as the policies:
+-- without them a client role is refused at the GRANT layer and never reaches
+-- RLS at all, so the check would pass with 055 reverted.
+ALTER TABLE question_history ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON question_history TO anon, authenticated;
+DO $qh$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                  WHERE schemaname = 'public' AND tablename = 'question_history') THEN
+    CREATE POLICY "Question history: public read"
+      ON question_history FOR SELECT USING (true);
+    CREATE POLICY "Question history: user insert own"
+      ON question_history FOR INSERT WITH CHECK (user_id = auth.uid());
+    CREATE POLICY "Question history: user update own"
+      ON question_history FOR UPDATE USING (user_id = auth.uid());
+  END IF;
+END $qh$;
+
 CREATE TABLE IF NOT EXISTS rooms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text UNIQUE,

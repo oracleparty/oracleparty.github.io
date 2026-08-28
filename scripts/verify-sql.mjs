@@ -52,8 +52,16 @@ const MIGRATIONS = [
   '050_blank_fill_keeps_the_locked_wager.sql',
   '051_the_three_writes_049_took_away.sql',
   '052_answers_outlive_the_seat.sql',
+  // 041 and 043 are out of sequence deliberately: they predate the rebuild
+  // slices and were not needed here until 055 shut the door beside them. They
+  // hold all three SECURITY DEFINER writers of question_history, and the whole
+  // point of 055 is that those keep working after clients cannot write it —
+  // which is only provable with the real functions, not a stand-in.
+  '041_host_can_correct_history.sql',
+  '043_record_round_history.sql',
   '053_leaderboard_by_what_you_know.sql',
   '054_host_reputation.sql',
+  '055_history_is_written_by_the_server.sql',
 ];
 
 // 046 touches rooms, players and answers, none of which any migration in this

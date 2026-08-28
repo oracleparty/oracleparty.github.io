@@ -408,6 +408,25 @@ export async function fetchQuestionsByIds(questionIds) {
  * Call this exactly once per player, per question, per round — from doReveal.
  * A host changing their mind afterwards is not a second attempt; a
  * disqualified round is not an attempt at all.
+ *
+ * SINCE MIGRATION 055 THIS IS REFUSED, AND THAT IS THE POINT. It is the only
+ * place in `js/` that writes question_history directly, and a direct write is
+ * exactly what made every number in the app forgeable: a signed-in person could
+ * set their own times_correct for the whole bank in one request, without
+ * playing. Every legitimate write now goes through record_round_history (043),
+ * amend_question_history or revoke_question_history (041).
+ *
+ * It is kept, rather than deleted, as the last resort for a room where
+ * record_round_history is unreachable — the reveal calls this only when that
+ * function fails. What it must NOT do is fail quietly: a refused UPDATE reports
+ * success with zero rows, which is the single most misleading thing this
+ * database does (CLAUDE.md #4, #5). So both branches now say which of the two
+ * things happened, and name 055, so the next session reading a 42501 in a
+ * console does not go hunting for a bug that is a permission working.
+ *
+ * It logs rather than toasting, deliberately. This is background stat
+ * recording and the round has already been scored on screen; a toast per player
+ * per round is the noise that teaches people to ignore real warnings.
  */
 export async function upsertQuestionHistory(userId, questionId, isCorrect) {
   // .limit(1), NOT .maybeSingle(), and the read error is CHECKED — both for the
@@ -444,13 +463,19 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
   const existing = (rows || [])[0] || null;
 
   if (existing) {
-    const { error } = await supabase.from('question_history').update({
+    // .select() so the ROW COUNT is visible. Without it a refusal under 055 is
+    // indistinguishable from a successful write — no error, nothing changed —
+    // and this would go on reporting that it had recorded the round.
+    const { data: updated, error } = await supabase.from('question_history').update({
       times_seen: existing.times_seen + 1,
       times_correct: existing.times_correct + (isCorrect ? 1 : 0),
       last_correct: isCorrect,
       last_seen_at: new Date().toISOString()
-    }).eq('id', existing.id);
+    }).eq('id', existing.id).select('id');
     if (error) logger.error('Supabase', 'upsertQuestionHistory update failed', error);
+    else if (!updated || updated.length === 0) {
+      logger.warn('Supabase', 'upsertQuestionHistory update changed nothing — expected since migration 055; the round should have been recorded by record_round_history');
+    }
   } else {
     const { error } = await supabase.from('question_history').insert({
       user_id: userId,
@@ -460,7 +485,11 @@ export async function upsertQuestionHistory(userId, questionId, isCorrect) {
       last_correct: isCorrect,
       last_seen_at: new Date().toISOString()
     });
-    if (error) logger.error('Supabase', 'upsertQuestionHistory insert failed', error);
+    if (error?.code === '42501') {
+      logger.warn('Supabase', 'upsertQuestionHistory refused — expected since migration 055; the round should have been recorded by record_round_history');
+    } else if (error) {
+      logger.error('Supabase', 'upsertQuestionHistory insert failed', error);
+    }
   }
 }
 

@@ -811,4 +811,111 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', '', true);
 END $$;
 
+
+
+-- ============================================
+-- MIGRATION 055 — QUESTION HISTORY IS WRITTEN BY THE SERVER
+--
+-- Every number the app shows about a player derives from question_history, and
+-- migration 011 let a signed-in client write their own rows directly. So the
+-- leaderboard, the tiers and the titles could all be set to anything in one
+-- request, without playing.
+--
+-- The danger in closing it is the one migration 049 already caused once: shut a
+-- door, break something nobody was watching, and pass every test. So this pins
+-- BOTH halves — the client is refused, AND the three SECURITY DEFINER writers
+-- still get through. A check for only the first would go green on a change that
+-- stopped anybody's history being recorded at all.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  u uuid := gen_random_uuid();
+  pid uuid;
+  qid uuid := gen_random_uuid();
+  refused text;
+  n int;
+  seen int;
+BEGIN
+  INSERT INTO auth.users VALUES (u);
+  INSERT INTO questions (id, question, correct_answer, format)
+    VALUES (qid, 'Locked?', 'yes', 'open');
+  INSERT INTO rooms (code, host_name, question_ids, current_question)
+    VALUES ('055900', 'Hosty', ARRAY[qid], 0) RETURNING id INTO rid;
+  INSERT INTO players (room_id, user_id, display_name, is_host)
+    VALUES (rid, u, 'Hosty', true) RETURNING id INTO pid;
+  INSERT INTO answers (room_id, player_id, question_number, question_id,
+                       wager, submitted_answer, is_correct)
+    VALUES (rid, pid, 0, qid, 1, 'yes', true);
+
+  -- A SIGNED-IN PLAYER CANNOT INVENT A ROW FOR THEMSELVES.
+  -- Refused by WITH CHECK, which raises 42501 — loud, and nothing written.
+  PERFORM set_config('request.jwt.claim.sub', u::text, true);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    INSERT INTO question_history (user_id, question_id, times_seen, times_correct,
+                                  last_correct)
+      VALUES (u, gen_random_uuid(), 9999, 9999, true);
+    refused := 'no — the row was written';
+  EXCEPTION WHEN insufficient_privilege THEN
+    refused := 'refused';
+  END;
+  RESET ROLE;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a player cannot write their own history', refused, 'refused');
+
+  -- THE SERVER STILL WRITES IT. record_round_history is SECURITY DEFINER, so it
+  -- runs with the table owner's rights and the policies do not apply to it.
+  -- Without this half, deleting every policy on the table would look like a fix.
+  SELECT record_round_history(rid, qid) INTO n;
+  SELECT count(*) INTO seen FROM question_history
+   WHERE user_id = u AND question_id = qid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the server records the round for everybody', n::text, '1'),
+    ('and the row really landed', seen::text, '1');
+
+  -- A PLAYER CANNOT EDIT THE ROW THE SERVER JUST WROTE FOR THEM.
+  -- A refused UPDATE is SILENT — zero rows, no error — which is the single most
+  -- misleading thing this database does and the reason #4 and #5 exist. So it is
+  -- checked by counting what changed, never by catching an exception.
+  PERFORM set_config('request.jwt.claim.sub', u::text, true);
+  SET LOCAL ROLE authenticated;
+  UPDATE question_history SET times_correct = 9999, last_correct = true
+   WHERE user_id = u AND question_id = qid;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RESET ROLE;
+  SELECT times_correct INTO seen FROM question_history
+   WHERE user_id = u AND question_id = qid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a player cannot edit their own history', n::text, '0'),
+    ('the count they tried to forge is untouched', seen::text, '1');
+
+  -- READING STAYS OPEN. The host's browser reads every player's history to shape
+  -- question selection; a restrictive read policy would revert every room to a
+  -- plain shuffle, silently, and nothing on any screen would say so.
+  SET LOCAL ROLE anon;
+  SELECT count(*) INTO n FROM question_history WHERE user_id = u;
+  RESET ROLE;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('question selection can still read history', n::text, '1');
+
+  -- A HOST'S CORRECTION STILL REACHES THE PLAYER IT IS ABOUT. amend_ and
+  -- revoke_ are the other two definer-rights writers, and 041 exists precisely
+  -- because a host is very often a guest with no auth.uid() to grant anything to.
+  PERFORM amend_question_history(u, qid, rid, false);
+  SELECT times_correct INTO seen FROM question_history
+   WHERE user_id = u AND question_id = qid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a host can still correct a verdict', seen::text, '0');
+
+  PERFORM revoke_question_history(u, qid, rid);
+  SELECT count(*) INTO n FROM question_history
+   WHERE user_id = u AND question_id = qid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a disqualified round can still be taken back out', n::text, '0');
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+END $$;
+
 SELECT check_name, got, want FROM result ORDER BY ord;

@@ -5,7 +5,7 @@
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-26.
+> Last verified against the code: 2026-08-28.
 >
 > The live database was verified directly on 2026-08-18 via
 > `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
@@ -98,6 +98,13 @@ that could not be rebuilt.
 Locking the rest is deliberately deferred: with judging and scoring running in
 the players' browsers, the clients *need* those write rights. The lockdown
 comes free with server authority (#1), and is wasted effort before it.
+
+**`question_history` was the exception, and it is closed — migration 055.** See
+"Nobody can write down their own score" below. Every number the app shows about
+a player derived from a table any signed-in person could write directly, so a
+leaderboard position, a tier badge and every title could be set to anything in
+one request, without playing. It could be shut ahead of the rest for the same
+reason `chat_messages` could: the app had already stopped needing the right.
 
 **But rights the app never uses are not deferred, they are just wrong.**
 Migration 036 removes DELETE from `chat_messages` and `chat_archive`, and
@@ -1666,6 +1673,88 @@ that is not there at 375px. Below the volume gate it says how many more
 QUESTIONS are needed rather than anything about accuracy, because accuracy
 cannot buy a rank there and saying so would be a promise that cannot be cashed.
 
+## Nobody can write down their own score
+
+Migration 055, built 2026-08-28. **This is the counter-argument recorded in the
+section below, finally acted on.** It does not change the owner's decision that
+the leaderboard is friends-only; it closes the hole that made that decision an
+argument about incentive rather than about data.
+
+Every number this app shows about a player — accuracy, proficiency, mastery, the
+tier badge in every lobby, every title unlock, and the whole leaderboard —
+derives from `question_history`. Migration 011 gave clients:
+
+```
+INSERT WITH CHECK (user_id = auth.uid())
+UPDATE USING      (user_id = auth.uid())
+```
+
+Every browser carries the publishable key by necessity, because guests play. So
+any signed-in person could set their own `times_correct` and `last_correct` for
+the entire bank **in one request**. Not by cheating at a game — by writing the
+number down. 055 drops both policies. SELECT stays public: the host's browser
+reads every player's history to shape question selection, and a restrictive read
+policy would revert every room to a plain shuffle with nothing on screen saying
+so.
+
+**WHAT THIS DOES NOT DO, and must not be claimed to.** A host may override the
+machine's verdict — that is a feature, and it is how a real answer the fuzzy
+matcher rejected gets counted. So somebody hosting a solo game can still mark
+themselves right every round, and their history is then honestly recorded. This
+turns "one request sets any number" into "you have to sit through the game",
+which is a real cost and not an impossibility. The owner named that ceiling
+first and accepted it. **Do not write this up as making the stats
+un-fakeable.**
+
+**It was written the opposite way round from 049, deliberately.** 049 was
+written about the writes that were *dangerous* and broke three that were not —
+Play Again, rejoining and practice bots — silently, with every test passing. So
+here `js/` was grepped for the TABLE first and every writer enumerated before a
+line of SQL was written:
+
+| Writer | Route | After 055 |
+|---|---|---|
+| `recordRoundHistory` | `record_round_history` (043) | unaffected |
+| `amendQuestionHistory` | `amend_question_history` (041) | unaffected |
+| `revokeQuestionHistory` | `revoke_question_history` (041) | unaffected |
+| `upsertQuestionHistory` | **direct INSERT/UPDATE** | refused |
+
+All three survivors are SECURITY DEFINER and run with the table owner's rights,
+the same arrangement `question_health` and `host_reputation` already use — and
+that is **asserted in `tests/sql/game-rules.sql`, not assumed**. Six rules pin
+both halves: a signed-in player is refused an insert AND an update, the forged
+count is unchanged, reading still works, and all three server writers still get
+through. A check for only the refusal would go green on a change that stopped
+anybody's history being recorded at all.
+
+Verified by reverting the drop loop: **5 of 105 rules fail, including `got
+"9999", want "1"`** — the forged number landing exactly as it would have live.
+
+**`upsertQuestionHistory` stays in the client, and now says which of two things
+happened.** It is the last resort for a room where `record_round_history` is
+unreachable. But the two refusal shapes differ and code has to tell them apart:
+an INSERT is refused by `WITH CHECK` and **raises 42501**, while an UPDATE is
+filtered by `USING` and **matches nothing and reports success**. The update
+branch therefore `.select()`s and checks the row count — without it, this would
+go on reporting that it had recorded the round. Both log at **warn** and name
+055, so the next session reading a 42501 in a console does not hunt for a bug
+that is a permission working. Neither toasts: this is background stat recording,
+the round is already scored on screen, and a toast per player per round is the
+noise that teaches people to ignore real warnings.
+
+**The probe's consequence line changed with it, and that mattered more than the
+migration.** `record_round_history` was already watched, described as a
+degradation — "a round is recorded only by the phones that were awake". Since
+055 it is **total**: with that function gone, nothing records a round at all and
+every number in the app silently stops moving. A dependency that was a fallback
+becomes load-bearing the moment you shut the door beside it, and the monitoring
+has to be re-read in that light or it will describe the old world confidently.
+
+The fake store shuts the same door (`_shutDoors`), including the plain-INSERT
+42501 shape it had never modelled. The three RPCs mutate the table array
+directly rather than going through `_execute`, which is how definer rights are
+modelled there — structurally, not by a flag.
+
 ## The leaderboard ranks what you know, among people you know
 
 Rebuilt 2026-08-26, on the owner's decision, after a long argument in which they
@@ -1686,12 +1775,16 @@ reasoning, which is better than the counter I offered:
 
 **My counter, recorded because it is the strongest one and it did not win.**
 Cheating does not HAPPEN on the leaderboard — every number comes from
-`question_history`, which any signed-in person can write directly with the key
+`question_history`, which any signed-in person could write directly with the key
 every browser carries — so deleting the board hides fake numbers rather than
 preventing them: they still show on the profile, the ranks, the titles and the
 tier badge in every lobby. That is true, and it does not answer the owner's
-point, which is about INCENTIVE rather than about data. Closing the write hole
-is still worth doing and is independent of this.
+point, which is about INCENTIVE rather than about data.
+
+**That write hole is closed as of 2026-08-28 — migration 055, "Nobody can write
+down their own score" above.** It was always independent of this decision, and
+acting on it does not reopen the question: the board stays friends-only, on the
+owner's reasoning, which was never about the mechanism.
 
 **Points are gone.** The old global board ranked on `correct_answers`, a count
 of ATTEMPTS: answer the same question ten times and it counted ten times, so the
@@ -2091,7 +2184,7 @@ Three things become impossible that were reachable by anyone willing to edit a
 request: answering a question that is not on screen, answering after the timer,
 and spending a wager twice.
 
-`tests/sql/game-rules.sql` states 24 rules as `check | got | want` data and
+`tests/sql/game-rules.sql` states 105 rules as `check | got | want` data and
 `verify-sql.mjs` fails on any row where the two differ, naming the rule — and
 on any line that is not exactly three fields, because a line the script cannot
 read counted as a rule whose `got` and `want` were both `undefined` and

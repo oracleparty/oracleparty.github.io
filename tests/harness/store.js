@@ -89,6 +89,18 @@ export class FakeStore {
       // _deleteRoomCascade splices them directly rather than going through here.
       ['chat_messages', new Set(['delete'])],
       ['chat_archive',  new Set(['update', 'delete'])],
+      // Migration 055. Every number the app shows about a player derives from
+      // this table, and migration 011 let a signed-in client write their own
+      // rows directly — so a leaderboard position, a tier and every title could
+      // be set to anything in one request, without playing.
+      //
+      // The three SECURITY DEFINER writers (record_round_history,
+      // amend_question_history, revoke_question_history) are unaffected, and in
+      // this store that is modelled structurally rather than by a flag: they
+      // mutate the table array directly instead of going through _execute, the
+      // way a definer-rights function runs with the owner's rights rather than
+      // the caller's.
+      ['question_history', new Set(['insert', 'update', 'delete'])],
     ]);
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
@@ -453,11 +465,27 @@ export class FakeStore {
     //   UPDATE / DELETE              -> 0 rows, NO ERROR. Silent.
     //   INSERT .. ON CONFLICT DO UPDATE -> hard error 42501. Loud.
     //   INSERT .. ON CONFLICT DO NOTHING -> fine, 0 rows inserted.
+    //   plain INSERT refused by WITH CHECK -> hard error 42501. Loud.
     //
     // The middle one matters most: an upsert that lands on an existing row does
     // not fail quietly, it throws, so code relying on it breaks visibly rather
     // than drifting.
+    //
+    // The last is different from the first two in the way that matters here: an
+    // INSERT is refused by WITH CHECK, which raises, while UPDATE and DELETE are
+    // filtered by USING, which matches nothing and reports success. Same
+    // permission, two completely different things to code against — which is
+    // why they are modelled separately rather than as one "refused".
     const shut = this._shutDoors.get(table);
+    if (shut && action === 'insert' && shut.has('insert')) {
+      return {
+        data: null,
+        error: {
+          message: `new row violates row-level security policy for table "${table}"`,
+          code: '42501',
+        },
+      };
+    }
     if (shut && (action === 'update' || action === 'delete') && shut.has(action)) {
       return modifiers.single
         ? { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } }
