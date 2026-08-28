@@ -101,6 +101,12 @@ export class FakeStore {
       // way a definer-rights function runs with the owner's rights rather than
       // the caller's.
       ['question_history', new Set(['insert', 'update', 'delete'])],
+      // Migration 057. Anyone could remove any player from any live game,
+      // mid-round, with their score, in one request. INSERT and UPDATE stay
+      // open: joining, the ready flag, the heartbeat and host promotion are all
+      // still browser writes, and revoking UPDATE here would stop every
+      // heartbeat — far worse than the hole it would close.
+      ['players', new Set(['delete'])],
     ]);
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions
@@ -1145,6 +1151,51 @@ export class FakeStore {
     }
 
     if (name === 'op_server_now') return new Date().toISOString();
+
+    // ---- migration 057: only the rules remove a player --------------------
+    //
+    // `players` had FOR DELETE USING (true), so anyone reaching the site could
+    // remove any player from any live game in one request. Mirrored here so the
+    // scenarios take the path the app now takes, and written to REFUSE for the
+    // same reasons the real one does — a fake that always removed would let a
+    // scenario pass on a delete the live server rejects.
+    if (name === 'op_remove_player') {
+      const rows = this.table('players');
+      const target = rows.find(p => String(p.id) === String(args?.p_target_id)
+        && String(p.room_id) === String(args?.p_room_id));
+      if (!target) return 'already gone';
+      const caller = rows.find(p => String(p.id) === String(args?.p_caller_id)
+        && String(p.room_id) === String(args?.p_room_id));
+
+      const isHost = !!(caller && caller.is_host);
+      const seenAt = new Date(target.last_seen_at || target.joined_at || 0).getTime();
+      const hasStamp = !!(target.last_seen_at || target.joined_at);
+      const silence = Date.now() - seenAt;
+      const threshold = target.disconnected_at ? 45000 : 120000;
+
+      let allowed = false;
+      if (String(args.p_caller_id) === String(args.p_target_id)) {
+        allowed = true;                                   // leaving
+      } else if (target.is_bot && isHost) {
+        allowed = true;                                   // the host's bot
+      } else if (caller?.user_id && target.user_id
+                 && String(caller.user_id) === String(target.user_id)) {
+        allowed = true;                                   // a duplicate of your own seat
+      } else if (caller) {
+        // The stale sweep. A BOT IS NEVER SWEPT — it sends no heartbeat, so by
+        // the timestamp rule it is stale from the moment it is added, and
+        // anybody in the room could delete the host's bot mid-game.
+        // CANNOT TELL MEANS HERE: a row with no timestamp at all is protected.
+        allowed = !target.is_bot && hasStamp && silence >= threshold;
+      }
+      if (!allowed) return 'not allowed';
+
+      const at = rows.findIndex(p => String(p.id) === String(target.id));
+      if (at === -1) return 'already gone';
+      const [gone] = rows.splice(at, 1);
+      this._broadcast('DELETE', 'players', gone, null);
+      return 'removed';
+    }
 
     // ---- migration 056: the game advances without the host -----------------
     //

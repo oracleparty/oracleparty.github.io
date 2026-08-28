@@ -1408,7 +1408,7 @@ async function handleQuitGame() {
     } else if (state.players.length <= 1) {
       await deleteRoom(state.room?.id);
     } else {
-      await removePlayer(state.room?.playerId);
+      await removePlayer(state.room?.playerId, state.room?.id, state.room?.playerId);
     }
   } catch (err) {
     logger.error('Game', 'handleQuitGame DB cleanup failed', err);

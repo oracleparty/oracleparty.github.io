@@ -1087,5 +1087,120 @@ BEGIN
     ('the final question ends on the clock too', verdict, 'question -> reveal');
 END $$;
 
+-- ============================================
+-- MIGRATION 057 — ONLY THE RULES REMOVE A PLAYER
+--
+-- `players` had FOR DELETE USING (true), so anyone who could reach the site
+-- could remove any player from any live game, mid-round, with their score, in
+-- one request.
+--
+-- Both halves are pinned. A check for only the refusals would go green on a
+-- version where nobody can leave a room at all, and a check for only the
+-- allowances would go green on the open door this replaces.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  hostP uuid; aliceP uuid; bobP uuid; botP uuid; ghostP uuid; twinP uuid;
+  strangerRoom uuid; strangerP uuid;
+  sharedUser uuid := gen_random_uuid();
+  verdict text;
+  n int;
+BEGIN
+  INSERT INTO rooms (code, host_name) VALUES ('057900', 'Hosty') RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now()) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, last_seen_at, user_id)
+    VALUES (rid, 'Alice', now(), sharedUser) RETURNING id INTO aliceP;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Bob', now()) RETURNING id INTO bobP;
+  INSERT INTO players (room_id, display_name, is_bot, last_seen_at)
+    VALUES (rid, 'Practice Bot', true, NULL) RETURNING id INTO botP;
+
+  -- THE HOLE ITSELF: a live player, present a moment ago, removed by somebody
+  -- else in the room. This is what the open policy allowed in one request.
+  SELECT op_remove_player(rid, aliceP, bobP) INTO verdict;
+  SELECT count(*) INTO n FROM players WHERE id = bobP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a live player cannot be removed by another player', verdict, 'not allowed'),
+    ('and Bob is still in the room', n::text, '1');
+
+  -- A STRANGER WITH THE ROOM CODE, who is not in the room at all.
+  INSERT INTO rooms (code, host_name) VALUES ('057901', 'Elsewhere')
+    RETURNING id INTO strangerRoom;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (strangerRoom, 'Stranger', now()) RETURNING id INTO strangerP;
+  SELECT op_remove_player(rid, strangerP, bobP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a stranger cannot remove anybody', verdict, 'not allowed');
+
+  -- LEAVING MUST STILL WORK. Without this half the lock would strand every
+  -- player in every room forever, which is far worse than the hole.
+  SELECT op_remove_player(rid, bobP, bobP) INTO verdict;
+  SELECT count(*) INTO n FROM players WHERE id = bobP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('you can always leave', verdict, 'removed'),
+    ('and the seat really goes', n::text, '0');
+
+  -- A BOT IS THE HOST'S TO REMOVE, and ONLY the host's.
+  SELECT op_remove_player(rid, aliceP, botP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a non-host cannot remove the bot', verdict, 'not allowed');
+  SELECT op_remove_player(rid, hostP, botP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host can remove the bot', verdict, 'removed');
+
+  -- A BOT IS NEVER SWEPT AS STALE. It sends no heartbeat, so by the timestamp
+  -- rule it is stale the moment it is added — without this guard anybody in the
+  -- room could delete the host's bot mid-game by calling the sweep path.
+  INSERT INTO players (room_id, display_name, is_bot, last_seen_at)
+    VALUES (rid, 'Practice Bot', true, now() - interval '10 minutes')
+    RETURNING id INTO botP;
+  SELECT op_remove_player(rid, aliceP, botP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a long-silent bot is still not sweepable', verdict, 'not allowed');
+
+  -- THE STALE SWEEP MUST STILL WORK, or every abandoned seat stays forever and
+  -- the room never empties.
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Ghost', now() - interval '10 minutes') RETURNING id INTO ghostP;
+  SELECT op_remove_player(rid, aliceP, ghostP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a seat that has gone quiet can be swept', verdict, 'removed');
+
+  -- CANNOT TELL MEANS HERE. A row with no timestamps at all is protected --
+  -- treating absence of evidence as evidence of absence once had hosts kicking
+  -- every player in the room seconds after they joined.
+  INSERT INTO players (room_id, display_name, last_seen_at, joined_at)
+    VALUES (rid, 'Unknown', NULL, NULL) RETURNING id INTO ghostP;
+  SELECT op_remove_player(rid, aliceP, ghostP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a seat with no timestamp at all is protected', verdict, 'not allowed');
+
+  -- A DUPLICATE OF YOUR OWN SEAT. claimSeat clears these, and since invisible
+  -- accounts a guest carries a user id too, so it covers them.
+  INSERT INTO players (room_id, display_name, last_seen_at, user_id)
+    VALUES (rid, 'Alice', now(), sharedUser) RETURNING id INTO twinP;
+  SELECT op_remove_player(rid, aliceP, twinP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('you can clear a duplicate of your own seat', verdict, 'removed');
+
+  -- ...AND TWO GUESTS WITH NO ID ARE NOT "THE SAME PERSON". If a null user_id
+  -- matched a null user_id, every guest could remove every other guest and this
+  -- migration would have closed nothing at all.
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Carol', now()) RETURNING id INTO twinP;
+  SELECT op_remove_player(rid, bobP, twinP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('two players with no account are not the same person', verdict, 'not allowed');
+
+  -- Removing somebody already gone is not an error: Realtime re-delivers, and
+  -- both sweeps can fire for the same row.
+  SELECT op_remove_player(rid, aliceP, gen_random_uuid()) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('removing a seat that is already gone is harmless', verdict, 'already gone');
+END $$;
+
 
 SELECT check_name, got, want FROM result ORDER BY ord;

@@ -258,6 +258,50 @@ try {
     problems.push(`tapping a guest showed a real-member card instead of "Guest player": ${JSON.stringify(guestCard.text)}`);
   }
 
+  // ============================================================
+  // SHUTTING THE DELETE DOOR DID NOT BREAK LEAVING (migration 057)
+  // ============================================================
+  //
+  // `players` no longer has a DELETE policy for clients. This checks the thing
+  // migration 049 failed to: that closing a door did not silently break a
+  // legitimate write. 049 was written about the writes that were dangerous, and
+  // broke three that were not — Play Again, rejoining and practice bots —
+  // with every test still green, because a refused delete returns no error and
+  // zero rows.
+  //
+  // BE PRECISE ABOUT WHAT THIS EXERCISES. Leaving goes through op_leave_room
+  // (migration 048), not op_remove_player: handleLeave calls the server first
+  // and only falls back to removePlayer when that function is missing. So this
+  // does NOT test 057's rules — it tests that 057 did not break the commonest
+  // seat removal in the game, which is the failure that would strand every
+  // player in every room they had ever joined.
+  //
+  // 057's own rules are pinned in tests/sql/game-rules.sql against a real
+  // Postgres, and its client path by scenario-bots, which reports "the host
+  // pressed remove on the bot and it stayed" when the direct delete is put back.
+  // An earlier version of this comment claimed it covered op_remove_player; it
+  // does not, and the break test that proved so is why it now says which.
+  console.log('\n=== leaving a lobby ===');
+  {
+    const leaver = joiners[joiners.length - 1];
+    const before = table.store.table('players').length;
+    const seatId = await leaver.page
+      .evaluate(() => JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId)
+      .catch(() => null);
+    await leaver.page.locator('#btn-leave').click().catch(() => {});
+    await leaver.page.waitForTimeout(2500);
+    const after = table.store.table('players').length;
+    const stillSeated = seatId
+      ? table.store.table('players').some(p => String(p.id) === String(seatId))
+      : null;
+    console.log(`   · players ${before} -> ${after}; the leaver's row still there: ${stillSeated}`);
+    if (stillSeated === true) {
+      problems.push('a player pressed Leave and their seat stayed in the room — nobody can leave, and the lobby will keep listing them forever');
+    } else if (after >= before) {
+      problems.push(`pressing Leave removed nobody (${before} -> ${after})`);
+    }
+  }
+
   for (const r of [host, ...joiners]) {
     if (r.consoleErrors.length) {
       problems.push(`${r.name} had ${r.consoleErrors.length} console error(s): ${r.consoleErrors[0].slice(0, 120)}`);

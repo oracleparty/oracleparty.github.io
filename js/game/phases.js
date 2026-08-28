@@ -904,11 +904,11 @@ export async function checkStalePresence() {
         })
         .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
       if (connected[0] && String(connected[0].id) === String(state.room.playerId)) {
-        removePlayer(id);
+        removePlayer(id, state.room.id, state.room.playerId);
       }
     } else if (state.room.isHost) {
       // Stale non-host: host kicks them
-      removePlayer(id);
+      removePlayer(id, state.room.id, state.room.playerId);
     }
   }
 

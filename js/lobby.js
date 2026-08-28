@@ -678,7 +678,7 @@ async function handleAddBot() {
 
 async function handleRemoveBot(botId) {
   if (!room.isHost) return;
-  const { error } = await removePlayer(botId);
+  const { error } = await removePlayer(botId, room.id, room.playerId);
   if (error) {
     showToast("Couldn't remove the bot", 'error');
     return;
@@ -1689,7 +1689,7 @@ function checkStalePresence() {
         })
         .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
       if (connected[0] && String(connected[0].id) === String(room.playerId)) {
-        removePlayer(id);
+        removePlayer(id, room.id, room.playerId);
       }
     } else if (room.isHost || (liveHosts().length === 0 && iAmTheCaretaker())) {
       // Stale non-host: the host clears them — or, when no host is reachable,
@@ -1697,7 +1697,7 @@ function checkStalePresence() {
       // depended on a host to run and the host was the thing that had gone, so
       // a room full of abandoned rows had nobody left with the authority to
       // tidy them and simply stayed broken.
-      removePlayer(id);
+      removePlayer(id, room.id, room.playerId);
     }
   }
 }
@@ -1733,7 +1733,7 @@ async function handleLeave() {
   } else if (humanPlayers().length <= 1) {
     await deleteRoom(room.id);
   } else {
-    await removePlayer(room.playerId);
+    await removePlayer(room.playerId, room.id, room.playerId);
   }
   sessionStorage.removeItem('oracle_party_room');
   // Non-host goes to join page (find another game), host goes home

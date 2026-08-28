@@ -63,6 +63,7 @@ const MIGRATIONS = [
   '054_host_reputation.sql',
   '055_history_is_written_by_the_server.sql',
   '056_the_game_advances_without_the_host.sql',
+  '057_only_the_rules_remove_a_player.sql',
 ];
 
 // 046 touches rooms, players and answers, none of which any migration in this

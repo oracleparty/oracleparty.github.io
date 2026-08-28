@@ -2215,7 +2215,7 @@ Three things become impossible that were reachable by anyone willing to edit a
 request: answering a question that is not on screen, answering after the timer,
 and spending a wager twice.
 
-`tests/sql/game-rules.sql` states 122 rules as `check | got | want` data and
+`tests/sql/game-rules.sql` states 135 rules as `check | got | want` data and
 `verify-sql.mjs` fails on any row where the two differ, naming the rule — and
 on any line that is not exactly three fields, because a line the script cannot
 read counted as a rule whose `got` and `want` were both `undefined` and
@@ -2600,6 +2600,68 @@ what found it this time.
 this was for. The server can tell an invisible account from a real one via
 `auth.users.is_anonymous`, so that distinction survives into SQL rather than
 depending on anyone remembering it.
+
+### Slice 9 — only the rules remove a player (migration 057)
+
+**The hole:** `players` had `FOR DELETE USING (true)`, and every browser carries
+the publishable key because guests play. So anyone who could reach the site
+could remove any player from any live game — mid-round, with their score, in one
+request. Room codes are six digits and public games are listed, so finding a
+room to do it to was not a barrier.
+
+**Why this could be closed while CLAUDE.md #2 says `players` cannot be.** That
+entry is about "remove me" and "remove them" being the same request from
+somebody with no identity, and that is still true — the server cannot always
+tell WHO is asking. What it CAN do is ask whether the removal is one the rules
+allow at all, and every legitimate delete in `js/` reduces to a rule about the
+room's own state:
+
+| Rule | |
+|---|---|
+| you are leaving | target IS the caller |
+| the host removes a bot | `is_bot` AND caller is host — there is no kick feature, and "the host removes a live human" is a product decision nobody has made |
+| the stale sweep | the target has genuinely gone quiet, measured on the DATABASE's clock rather than taken on the caller's word |
+| a duplicate seat | target carries the caller's own `user_id` |
+
+**Two guards that look like details and are not.** A BOT IS NEVER SWEPT — it
+sends no heartbeat, so by the timestamp rule it is stale the moment it is added,
+and without that guard anybody in the room could delete the host's bot mid-game.
+And **two null `user_id`s are not a match**: written as `IS NOT DISTINCT FROM`,
+every guest would have been "the same person" as every other guest and the
+migration would have closed nothing. Verified by breaking each — the second
+fails three rules including *"a stranger cannot remove anybody"*.
+
+**WHAT THIS DOES NOT DO.** `players` UPDATE stays open — the ready flag, the
+heartbeat and host promotion are all still browser writes. So somebody
+determined can still backdate another player's `last_seen_at` and have them
+swept. That is two deliberate steps instead of one request: a real reduction,
+not a closed door. Say it that way.
+
+**Every delete was enumerated first** (`phases.js` and `lobby.js` sweeps,
+`lobby.js` bot removal, two leave paths, the unload beacon, `claimSeat`'s
+duplicate clear), because 049 was written about the writes that were dangerous
+and broke three that were not.
+
+**The beacons needed no change, and the reason is worth keeping.** Both unload
+paths reach `removePlayerBeacon` only when `serverFunctionsMissing()` is TRUE —
+and in that world 057 is not applied either, so the direct delete still works.
+The fallback and the policy are tied to the same condition by construction.
+
+`removePlayer` takes `roomId` and `callerId` as **required** parameters, not
+optional ones: an optional parameter a call site forgets fails silently, which
+is exactly how `amendQuestionHistory` stopped correcting anybody's history.
+`scripts/check-arity.mjs` fails the build on a caller that drops either.
+
+**MY OWN FIRST BREAK TEST PASSED, and I nearly read that as "no coverage".**
+Forcing the old direct delete changed nothing in `scenario-nasty` or
+`scenario-lobby` — but I had simply run the wrong scenarios. `scenario-bots`
+fails by name: *"the host pressed remove on the bot and it stayed."* Then the
+leave check I added to `scenario-lobby` passed even with EVERY removal refused,
+because leaving goes through `op_leave_room` (048) and never reaches
+`op_remove_player` at all. It is kept — it pins that shutting the door did not
+break the commonest seat removal in the game, which is precisely what 049 failed
+to check — but its comment now says which of the two it tests. **A check that
+passes for a reason you did not intend is not coverage.**
 
 ### Shutting a door shut three things nobody was watching (migration 051)
 

@@ -107,8 +107,18 @@ export async function claimSeat({ roomId, displayName, userId = null, isHost = f
   mine.sort((a, b) => seenAt(b) - seenAt(a));
   const [keep, ...duplicates] = mine;
 
+  // Through op_remove_player (migration 057), not a direct delete — `players`
+  // has no DELETE policy for clients once that is applied, and a refused delete
+  // returns no error and zero rows, so this would have gone on reporting that
+  // it had tidied up.
+  //
+  // The caller is the seat being KEPT, which is what makes this legitimate
+  // server-side: a duplicate carries the same user_id (rule 3), and for a guest
+  // with no id at all the rows reaching this loop were already filtered to ones
+  // that have gone quiet, which rule 4 covers. Either way it is never "remove an
+  // arbitrary live stranger".
   for (const dup of duplicates) {
-    const { error } = await supabase.from('players').delete().eq('id', dup.id);
+    const { error } = await removePlayer(dup.id, roomId, keep.id);
     if (error) logger.warn('Supabase', 'claimSeat could not clear a duplicate seat', error);
   }
   if (duplicates.length) {
@@ -208,9 +218,48 @@ export async function demoteCohost(playerId) {
 }
 
 /**
- * Remove a player from a room.
+ * Remove a player from a room. Needs migration 057.
+ *
+ * `roomId` and `callerId` are REQUIRED, and deliberately not optional. Without
+ * them the server cannot tell a player leaving from a stranger removing
+ * somebody mid-game, and an optional parameter that a call site forgets fails
+ * SILENTLY — which is how `amendQuestionHistory` quietly stopped correcting
+ * anybody's history when it gained a required roomId and one caller was missed.
+ * `scripts/check-arity.mjs` fails the build on a call that drops either.
+ *
+ * op_remove_player allows exactly four things, checked against the room's own
+ * state rather than the caller's word: you are leaving, the host is removing a
+ * BOT, the seat has genuinely gone quiet (measured on the database's clock), or
+ * it is a duplicate carrying your own user id.
+ *
+ * FALLS BACK to the direct delete when the function is missing, so this is safe
+ * to deploy before the SQL is run — the direction this project has repeatedly
+ * got wrong. Once 057 IS applied the fallback is refused by RLS, silently and
+ * correctly, and the RPC is the only path.
  */
-export async function removePlayer(playerId) {
+export async function removePlayer(playerId, roomId, callerId) {
+  if (playerId && roomId && callerId) {
+    const { data, error } = await supabase.rpc('op_remove_player', {
+      p_room_id: roomId,
+      p_caller_id: callerId,
+      p_target_id: playerId,
+    });
+    if (!error) {
+      // 'not allowed' is the guard working, not a fault: both stale sweeps run
+      // on every client and race each other, and the server re-checks silence
+      // against its own clock. A toast here would fire constantly.
+      if (data === 'not allowed') {
+        logger.debug('Supabase', 'op_remove_player declined — the rules do not allow this removal', { playerId });
+      }
+      return { error: null, outcome: data };
+    }
+    if (!functionMissing(error)) {
+      logger.error('Supabase', 'op_remove_player failed', error);
+      return { error };
+    }
+    noteServerFunctions(false);
+  }
+
   const { error } = await supabase
     .from('players')
     .delete()
