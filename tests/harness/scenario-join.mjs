@@ -243,7 +243,20 @@ try {
       // A refresh must not wipe what she is entitled to. The obvious reading of
       // "fresh on entry" is per page load, and that would lose the whole
       // conversation every time somebody's phone reloaded.
-      await stranger.page.reload();
+      // waitUntil: 'domcontentloaded', NOT the default 'load'.
+      //
+      // This reload timed out after 30s about one run in five under load, and
+      // once in CI. What the check needs is the app re-initialised, which the
+      // wait below covers separately; waiting for 'load' additionally waits for
+      // every subresource, and the lobby fires a keepalive disconnect beacon on
+      // unload which Playwright intercepts and which can outlive the page.
+      //
+      // BE HONEST ABOUT WHAT IS ESTABLISHED: that mechanism fits the symptom —
+      // intermittent, load-dependent, on reload only — but it is not proven.
+      // What IS certain is that this check never needed 'load', so the
+      // dependency was accidental. The assertions below are untouched and still
+      // fail if the chat cut-off breaks.
+      await stranger.page.reload({ waitUntil: 'domcontentloaded' });
       await stranger.page.waitForTimeout(3500);
       erinChat = await readChat(stranger);
       note(`after a refresh, recent still there: ${erinChat.includes(RECENT)}, backlog still hidden: ${!erinChat.includes(BACKLOG)}`);
@@ -269,7 +282,7 @@ try {
       const erinRow = table.store.table('players').find(p => p.display_name === 'Erin');
       if (erinRow) erinRow.joined_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-      await stranger.page.reload();
+      await stranger.page.reload({ waitUntil: 'domcontentloaded' });
       await stranger.page.waitForTimeout(3500);
       erinChat = await readChat(stranger);
       note(`after a rejoin restamped her seat, she still sees what was said while she was here: ${erinChat.includes(DURING)}`);

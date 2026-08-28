@@ -3615,6 +3615,28 @@ calling the host's blank-fill *after* the player's answer was already stored.
 Break the fix, watch the test go red, then put it back. Anything less and you
 have written a test that agrees with you.
 
+**A SESSION SURVIVES A RELOAD IN THE HARNESS, and until 2026-08-28 it did
+not.** `window.__fakeSession` was a plain window variable, destroyed on
+navigation, while the real supabase-js persists its session in localStorage by
+default. So every page load minted a BRAND NEW anonymous identity — the #10 gap
+in its most dangerous direction, the harness behaving differently from the live
+client with no scenario able to see it. It matters since invisible accounts: a
+guest's id is what `claimSeat` matches on, so an id that changed on every
+refresh meant the robots were silently exercising "different person, same name"
+— the case the guest heuristic exists for — instead of the ordinary refresh it
+looked like.
+
+**Found while chasing a flaky `page.reload` timeout, and NOT proven to be its
+cause.** `scenario-join` failed about one run in five under load, and once in
+CI, with `page.reload: Timeout 30000ms exceeded`. Both reloads are on the lobby,
+which fires a keepalive disconnect beacon on unload that Playwright intercepts
+and which can outlive the page; waiting for `load` waits for that, and the check
+never needed it — it separately waits for the app to re-initialise. Both reloads
+use `waitUntil: 'domcontentloaded'` now. **The mechanism fits the symptom and is
+not established**, which is worth saying plainly rather than claiming a fix: what
+IS certain is that the dependency on `load` was accidental, and the assertions
+after it are untouched.
+
 **Robots can sign in now** — `table.seatSignedIn(name, { tier, title, isAdmin })`.
 It writes a `profiles` row and injects a session the shim serves from
 `window.__fakeSession`, which is what `initAuth()` reads, so the app cannot tell

@@ -211,8 +211,20 @@ export function createClient(_url, _key) {
     removeChannel: (ch) => (ch && ch.unsubscribe ? ch.unsubscribe() : Promise.resolve('ok')),
     getChannels: () => channels,
     auth: {
-      getSession: async () => ({ data: { session: window.__fakeSession || null }, error: null }),
-      getUser:    async () => ({ data: { user: window.__fakeSession?.user || null }, error: null }),
+      // A SESSION SURVIVES A RELOAD, exactly as the real client's does.
+      //
+      // This was a plain window variable, which is destroyed on navigation — so
+      // every page load minted a BRAND NEW anonymous identity, while the real
+      // supabase-js persists its session in localStorage by default. That is the
+      // CLAUDE.md #10 gap in its most dangerous direction: the harness behaving
+      // differently from the live database in a way no scenario could see.
+      //
+      // It matters since invisible accounts. A guest's id is what claimSeat
+      // matches on, so an id that changed on every refresh meant the harness was
+      // silently exercising "different person, same name" — the case the guest
+      // heuristic exists for — instead of the ordinary refresh it looked like.
+      getSession: async () => ({ data: { session: readSession() }, error: null }),
+      getUser:    async () => ({ data: { user: readSession()?.user || null }, error: null }),
       signUp:     async () => ({ data: { user: null, session: null }, error: { message: 'not supported in tests' } }),
       signInWithPassword: async () => ({ data: { user: null, session: null }, error: { message: 'not supported in tests' } }),
       // Real OAuth leaves the page for Google, which a robot cannot follow.
@@ -235,17 +247,42 @@ export function createClient(_url, _key) {
         const id = 'anon-' + Math.random().toString(36).slice(2, 10);
         // is_anonymous is the flag the app reads to keep these strictly apart
         // from real accounts. Supabase sets it on the user and in the JWT.
-        window.__fakeSession = { user: { id, is_anonymous: true }, access_token: 'fake-anon' };
+        writeSession({ user: { id, is_anonymous: true }, access_token: 'fake-anon' });
         return { data: { user: window.__fakeSession.user, session: window.__fakeSession }, error: null };
       },
       // Clears the session, like the real client does. A no-op here was not a
       // harmless shortcut: it left a session alive after sign-out, so the next
       // page load looked like "signed in with no profile" and initAuth's
       // partial-signup heal recreated the profile a test had just deleted.
-      signOut:    async () => { window.__fakeSession = null; return { error: null }; },
+      signOut:    async () => { writeSession(null); return { error: null }; },
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     },
   };
+}
+
+/**
+ * Read the session, preferring what this page already has in memory and falling
+ * back to what a previous page load stored — which is how supabase-js behaves
+ * with its default persistSession.
+ */
+function readSession() {
+  if (window.__fakeSession) return window.__fakeSession;
+  try {
+    const raw = localStorage.getItem('__fake_session');
+    if (raw) {
+      window.__fakeSession = JSON.parse(raw);
+      return window.__fakeSession;
+    }
+  } catch { /* private mode, cleared storage — same as no session */ }
+  return null;
+}
+
+function writeSession(session) {
+  window.__fakeSession = session;
+  try {
+    if (session) localStorage.setItem('__fake_session', JSON.stringify(session));
+    else localStorage.removeItem('__fake_session');
+  } catch { /* keep it in memory only */ }
 }
 
 export default { createClient };
