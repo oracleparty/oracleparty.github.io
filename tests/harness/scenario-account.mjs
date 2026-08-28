@@ -958,6 +958,52 @@ try {
         [...document.querySelectorAll('[class*="toast"]')]
           .map(t => (t.textContent || '').trim()).filter(Boolean).join(' | ')).catch(() => '');
       note(`toast after refusal: ${JSON.stringify(toastText.slice(0, 80))}`);
+
+      // ---- A REFUSED NAME SAVE MUST NOT BECOME YOUR NAME ----
+      //
+      // The name editor puts its own ERROR MESSAGE into the input as the value
+      // ("Could not update name" / "Name taken with your #tag") and restores
+      // the real name two seconds later. It also cleared its re-entry guard
+      // immediately, so a blur inside that window ran the save again — reading
+      // the error text as what the player had typed and sending it as their
+      // display name.
+      //
+      // Blurring right after a failed save is the natural thing to do, which is
+      // what makes this reachable rather than theoretical.
+      const nameEl = alice.page.locator('#profile-name').first();
+      if (await nameEl.isVisible().catch(() => false)) {
+        await nameEl.click().catch(() => {});
+        await alice.page.waitForTimeout(500);
+        const nameInput = alice.page.locator('#edit-display-name');
+        if (await nameInput.isVisible().catch(() => false)) {
+          await nameInput.fill('Renamed').catch(() => {});
+          await nameInput.press('Enter').catch(() => {});
+          await alice.page.waitForTimeout(600);   // inside the 2s error window
+          const shown = await nameInput.inputValue().catch(() => '(gone)');
+          note(`input shows after a refused rename: ${JSON.stringify(shown)}`);
+          // Tap back into the field and away again, which is the actual user
+          // action. A plain blur() proves nothing here: setting `disabled =
+          // true` before the write already blurred the input, so by then it is
+          // not focused and blur() is a no-op that fires no event. The check
+          // has to re-focus first or it passes whatever the code does.
+          await alice.page.evaluate(() => {
+            const el = document.querySelector('#edit-display-name');
+            if (!el) return;
+            el.focus();
+            el.blur();
+          });
+          await alice.page.waitForTimeout(1200);
+
+          const attempted = table.store.log
+            .filter(e => e.table === 'profiles' && e.action === 'update')
+            .map(e => e.payload?.display_name).filter(Boolean);
+          note(`display_name values the app tried to save: ${JSON.stringify(attempted)}`);
+          const junk = attempted.filter(v => /could not|name taken/i.test(String(v)));
+          if (junk.length) {
+            problems.push(`a failed rename tried to save its own error message as the display name: ${JSON.stringify(junk)}`);
+          }
+        }
+      }
       if (!toastText) {
         problems.push('a refused profile save told the player nothing at all');
       }

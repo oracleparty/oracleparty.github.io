@@ -505,15 +505,35 @@ export async function initProfilePage() {
       input.disabled = true;
       const { error } = await updateProfile(userId, { display_name: newName });
       if (error) {
-        input.disabled = false;
-        _saving = false;
-        // Show user-friendly error for duplicate name+discriminator
+        // THE ERROR MESSAGE GOES IN THE INPUT'S VALUE, so for the next two
+        // seconds `input.value` is not what the player typed — it is
+        // "Could not update name". This function reads input.value and saves
+        // it, and it runs on blur.
+        //
+        // So the guard must stay CLOSED for the whole window the message is on
+        // screen. It used to be cleared here, immediately, and the field
+        // re-enabled: tap back into it and away again inside those two seconds
+        // and the app sent its own error text as your display name. Reproduced
+        // in scenario-account, which now drives exactly that.
+        //
+        // A plain blur could not reach it, which is why this survived —
+        // `input.disabled = true` above already blurred the input, so by this
+        // point it is not focused and no blur event is coming. It needs a
+        // deliberate re-focus, which is an ordinary tap.
+        //
+        // The field stays disabled until the real name is restored, so there is
+        // nothing to type over and nothing to submit in the meantime.
         const msg = (error.code === '23505') ? 'Name taken with your #tag' : 'Could not update name';
         input.value = msg;
         input.style.borderColor = 'var(--color-danger)';
         input.style.color = 'var(--color-danger)';
         input.style.fontSize = '12px';
-        setTimeout(() => { input.value = currentName; input.style.cssText = ''; _saving = false; }, 2000);
+        setTimeout(() => {
+          input.value = currentName;
+          input.style.cssText = '';
+          input.disabled = false;
+          _saving = false;
+        }, 2000);
         return;
       }
       profile.display_name = newName;

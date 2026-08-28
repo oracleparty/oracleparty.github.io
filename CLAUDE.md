@@ -577,7 +577,7 @@ logged and returned `[]`:
 
 | Read | What the player sees |
 |---|---|
-| `fetchAllPlayerStatsForLeaderboard` | global leaderboard empty (that board is gone as of 2026-08-26; this is the fallback path now) |
+| `fetchAllPlayerStatsForLeaderboard` | nothing — **DEAD CODE as of 2026-08-26**, see below |
 | `fetchCategoryLeaderboard` | every category leaderboard empty (superseded by `get_leaderboard`, migration 053) |
 | `fetchPlayerStats` | profile shows no stats — **and no title ever unlocks** |
 | `fetchPlayerStatsBatch` | no tier badge in any lobby |
@@ -1807,6 +1807,16 @@ down their own score" above.** It was always independent of this decision, and
 acting on it does not reopen the question: the board stays friends-only, on the
 owner's reasoning, which was never about the mechanism.
 
+**THREE EXPORTED READERS ARE NOW DEAD, and this file said otherwise until
+2026-08-28.** `fetchAllPlayerStatsForLeaderboard`, `fetchPlayerTotalsForLeaderboard`
+and `fetchCategoryLeaderboard` have **zero call sites** anywhere in `js/` —
+measured by grep, not assumed. The live path is `fetchLeaderboard`, whose
+fallback is `_leaderboardFallback`, and that one correctly uses `select('*')`.
+They are left in place rather than deleted on a hunch, but **do not wire one up
+without reading its comment first**: `fetchCategoryLeaderboard` carries a long
+note about why it must select `*`, and the other two rank on ATTEMPT counters,
+which is the measure the 2026-08-26 rebuild set out to remove.
+
 **Points are gone.** The old global board ranked on `correct_answers`, a count
 of ATTEMPTS: answer the same question ten times and it counted ten times, so the
 measure rewarded re-grinding a handful of questions over learning new ones, and
@@ -2990,6 +3000,38 @@ shipped had one existed.
 `tests/utils.test.js` pins `pickProfileByTag` and fails four ways when it is
 reduced to "first match", which is what `.limit(1)` on the old query would have
 done.
+
+## A failed rename tried to save its own error message as your name
+
+Found 2026-08-28, and the way it was found is the reusable part: I read
+`saveName` in `js/profile.js` looking for a DIFFERENT fault (a save that updates
+the screen without checking the write landed, the shape #5 is about) and was
+wrong about that one — `updateProfile` uses `.single()`, which turns the
+zero-row RLS refusal into a real error, so checking `error` really is enough.
+**Checking before claiming is what turned up the real bug next to it.**
+
+The name editor puts its own error text into the input's VALUE —
+`"Could not update name"`, or `"Name taken with your #tag"` — and restores the
+real name two seconds later. `saveName` reads `input.value` and saves it, and it
+runs on blur. The error branch cleared the re-entry guard immediately and
+re-enabled the field, so tapping back into it and away again inside those two
+seconds sent the app's own error message as the player's display name.
+
+**It was unreachable by a plain blur, which is why it survived.**
+`input.disabled = true` runs before the write, and disabling a focused input
+blurs it — so by the time the error is shown the field is not focused and no
+blur event is coming. It needs a deliberate re-focus, which is an ordinary tap.
+
+**The first version of the check could not fail, and said so.** It called
+`el.blur()` on an element that was already blurred: a no-op that fires no event,
+so it passed whatever the code did. Re-focusing first is what made it real —
+`scenario-account` then reported `["Renamed","Could not update name"]` as the
+values the app tried to save. Same rule as everywhere else here: **a check that
+agrees with you whatever you do is worse than none.**
+
+The fix keeps the guard CLOSED and the field DISABLED for the whole window the
+message is on screen, so there is nothing to type over and nothing to submit
+until the real name is back.
 
 ## Chat showed the FIRST hundred messages, not the last
 
