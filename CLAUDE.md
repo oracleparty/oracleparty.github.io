@@ -3033,6 +3033,40 @@ The fix keeps the guard CLOSED and the field DISABLED for the whole window the
 message is on screen, so there is nothing to type over and nothing to submit
 until the real name is back.
 
+## Three timers outlived cleanup(), and one could restart a game the host had ended
+
+Found 2026-08-28 by listing every `state.<name> = setInterval(...)` in
+`js/game/` and diffing it against what `cleanup()` clears. Three were missing:
+`autoProceedTimerId`, `finalWagerTimerId` and `feedbackFadeTimer`.
+
+**Why it did not matter until it did.** Every `cleanup()` call site navigates
+immediately, so a leaked timer dies with the page — which is why this survived.
+**`executeReturnToLobby` is the exception**: the host ending the game from the
+settings gear calls `cleanup()` and then **awaits three database round trips**
+(`deleteAnswersByRoom`, `updateGameState`, `updateRoomStatus`) before
+navigating. That is seconds on a phone, and a leaked timer is live for all of
+it.
+
+| Leaked | What it does in that window |
+|---|---|
+| `autoProceedTimerId` | fires `actionFn()` and ADVANCES THE GAME — writing `game_phase='question'` after the same function has written `'lobby'` and emptied `question_ids`. Every phone in the room lands on a question screen with no questions in it. |
+| `finalWagerTimerId` | fires `lockInFinalWager()`, which WRITES AN ANSWER — into the room whose answers that same function is in the middle of deleting |
+| `feedbackFadeTimer` | touches the DOM only; tidiness, not a fault |
+
+The auto-proceed one is the reachable one: the gear is available on the scores
+screen, which is exactly where the between-rounds countdown runs, and ending a
+game takes two taps well inside it.
+
+**The fix is a lint, not just three more lines.** `tests/phase-guards.test.js`
+now reads every timer assignment in `js/game/` and fails naming any that
+`cleanup()` does not clear — because "a rule stated twice and fixed once" is the
+single most repeated failure in this file, and spotting an ABSENCE by reading a
+function is exactly what people do not do. It carries a guard on itself as well:
+if the pattern ever stops matching, the check would pass over an empty set and
+report a clean bill of health for any amount of leakage, so it asserts it found
+the timers it is meant to be checking. Verified by deleting one clear: it
+reports `timers started but never cleared in cleanup(): autoProceedTimerId`.
+
 ## Chat showed the FIRST hundred messages, not the last
 
 `fetchMessages` ordered `created_at` ASCENDING and limited to

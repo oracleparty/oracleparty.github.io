@@ -956,6 +956,42 @@ function cleanup() {
     clearInterval(state._advancePollId);
     state._advancePollId = null;
   }
+  // THESE THREE SURVIVED cleanup() UNTIL 2026-08-28, and one of them could put
+  // the room back into a game the host had just ended.
+  //
+  // Every other cleanup call site navigates immediately, so a leaked timer dies
+  // with the page. `executeReturnToLobby` does not: it calls cleanup() and then
+  // AWAITS THREE DATABASE ROUND TRIPS before navigating — easily seconds on a
+  // phone. The host can open the gear and end the game from the scores screen,
+  // which is exactly where the auto-proceed countdown runs.
+  //
+  //   autoProceedTimerId  fires actionFn() and advances the game — writing
+  //                       game_phase='question' AFTER executeReturnToLobby has
+  //                       written 'lobby' and emptied question_ids. Every phone
+  //                       in the room lands on a question screen with no
+  //                       questions in it.
+  //   finalWagerTimerId   fires lockInFinalWager(), which WRITES AN ANSWER —
+  //                       into the room whose answers the same function is in
+  //                       the middle of deleting.
+  //   feedbackFadeTimer   touches the DOM only, so this one is tidiness rather
+  //                       than a fault. It is here because leaving it out is
+  //                       how the list drifts back apart.
+  //
+  // tests/phase-guards.test.js now fails if any state-held timer is created and
+  // not cleared here, so the next one is caught by a lint rather than by
+  // somebody happening to read this function.
+  if (state.autoProceedTimerId) {
+    clearInterval(state.autoProceedTimerId);
+    state.autoProceedTimerId = null;
+  }
+  if (state.finalWagerTimerId) {
+    clearInterval(state.finalWagerTimerId);
+    state.finalWagerTimerId = null;
+  }
+  if (state.feedbackFadeTimer) {
+    clearTimeout(state.feedbackFadeTimer);
+    state.feedbackFadeTimer = null;
+  }
   if (state.stalePollId) {
     clearInterval(state.stalePollId);
     state.stalePollId = null;
