@@ -60,6 +60,13 @@ Read these before proposing any change to gameplay.
 
 ### 1. There is no game logic on the server
 
+**Partly false since migration 056 — see "Slice 7" below.** The TIME-BASED
+transitions (`countdown -> question`, `question -> reveal`, and repairing a
+question whose clock never started) are decided by the database now, and any
+player in the room can ask for them. Everything a person decides — the host
+pressing "Reveal Results", "Next Question", Play Again — is still a write from
+one phone, and that is what the rest of this section describes.
+
 The host's browser writes `game_phase`, `current_question` and
 `question_started_at` into the `rooms` row. Every other client reacts to those
 writes over Realtime. **Answer judging, scoring and timers all run
@@ -2196,7 +2203,7 @@ Three things become impossible that were reachable by anyone willing to edit a
 request: answering a question that is not on screen, answering after the timer,
 and spending a wager twice.
 
-`tests/sql/game-rules.sql` states 105 rules as `check | got | want` data and
+`tests/sql/game-rules.sql` states 122 rules as `check | got | want` data and
 `verify-sql.mjs` fails on any row where the two differ, naming the rule — and
 on any line that is not exactly three fields, because a line the script cannot
 read counted as a rule whose `got` and `want` were both `undefined` and
@@ -2384,6 +2391,90 @@ phone has seen rather than as an inference from scores. **A rule that is only
 Disqualifying is now ONE call rather than a loop of per-answer writes: a loop
 can half-succeed and leave a round that was thrown out still paying points to
 whoever's write landed.
+
+### Slice 7 — a round ends without the host (migration 056)
+
+Built 2026-08-28, at the owner's instruction, as the piece that actually ends
+the stalls. **This is the one a player can feel.**
+
+**The stall, precisely.** Every phase change in this game is a write from one
+phone, and `handleTimerExpired` in `js/game/question.js` — which fills the
+blanks and sets `game_phase = 'reveal'` — is entirely behind
+`canControlGame()`. So when the host's screen locks mid-round, the timer runs
+out on every phone in the room and **nothing happens at all**. The deputy
+mechanism (`HOST_HANDOVER_MS`, 30s) softens it, but it needs presence to
+notice, needs somebody else to be there, and needs *their* phone awake. It is a
+mitigation, not a fix — and the break test below shows a deputy being granted
+while the round still never ended.
+
+`op_advance_phase(room, caller)` decides from the database's own clock, so
+**any player in the room may call it** and everyone gets the same answer. The
+only guard on who may ask is that you are sitting in the room: it cannot be
+"you are the host", because the host is the one who has gone, and it cannot be
+an identity check, because a guest has no `auth.uid()`. Somebody already in the
+room gains nothing by asking early — the clock still has to have run out.
+
+**ONLY THE TIME-BASED TRANSITIONS MOVED, and that boundary is the design.**
+`countdown -> question` and `question -> reveal` need no human judgement; the
+clock already decided and every phone is merely reporting it. The host pressing
+"Reveal Results" or "Next Question" is a person deciding the room is ready, and
+putting that on a timer would change the game rather than repair it.
+
+**The server is a BACKSTOP, and the deadline says so.** `op_submit_answer`
+accepts an answer until `started + timer + 3s`, deliberately generous because
+that clock belongs to a person on a phone with a bad connection. If the advance
+fired at the same instant, an answer the same database would have accepted
+becomes a blank, and no screen anywhere says so. So it waits `timer + 8s`:
+
+| | ends the round at |
+|---|---|
+| host present | `timer + 0.5s`, exactly as before |
+| host absent | `timer + 8s`, from any phone |
+
+The rule for that is stated **behaviourally**, not as arithmetic:
+`tests/sql/game-rules.sql` picks a moment, submits an answer and requires it to
+land, then requires the advance to refuse at that same moment. Asserting
+`advance_deadline > started + timer + 3s` would pass just as happily if 046
+changed its own allowance — a check that cannot fail.
+
+**THE SCENARIO FOUND A WORSE STALL THAN THE ONE IT WAS WRITTEN FOR.**
+Announcing the question and stamping its clock are two separate writes from the
+host's phone: `handlePhaseTransition` broadcasts the phase, and the stamp is
+written afterwards from inside `showQuestionScreen`. Die in the few hundred
+milliseconds between — which is exactly where `scenario-nasty`'s kill landed —
+and `question_started_at` stays null. `getServerTimeLeft` **returns the full
+duration for a null stamp**, so the bar never moves on any phone and nothing
+ever expires. The room hangs on a live question forever, and waiting cannot
+help, because no clock is running to wait on.
+
+**The repair is to START it, never to end it.** A round with no stamp has not
+begun, so ending it takes a question away from people who never saw the timer
+move; stamping hands everybody a full, fair round from now, which is what the
+host would have done had it lived. It cannot shorten anyone's time, which is
+what makes it safe for any phone to ask for. Both halves are pinned, and the
+"not ended" half is the one that matters.
+
+**The client side is a POLL, and two separate debugging rounds say why.**
+The first version armed a single timer at expiry. It fired once, landed a few
+milliseconds early, got a correct `not due` — and **nothing ever asked again**:
+the stall, reintroduced by its own fix. And a one-shot armed at expiry can
+never cover the no-clock case at all, because a timer that never starts never
+fires anything. `startPhaseBackstop` in `question.js` runs every
+`PHASE_BACKSTOP_POLL_MS` (3s) while a question is on screen, and is deliberately
+**not** started for the controller: a second path racing the first is how a fix
+for a stall becomes a fix that ends rounds early.
+
+Verified by disabling `startPhaseBackstop`: `scenario-nasty` reports both by
+name — *"a question announced without a clock never started one — every phone
+shows a full timer that never moves, forever"* and *"the round never ended after
+the host's phone died"*. Both checks report whether anybody had been deputised
+by the time they looked, and say **INCONCLUSIVE** rather than passing if so — a
+scenario that cannot tell which of two mechanisms saved it is not evidence about
+either.
+
+**Still open after this:** `rooms` UPDATE stays wide open, because the rest of
+the phase machine is still browser-side. Locking it is the next slice and must
+wait for that.
 
 ### Shutting a door shut three things nobody was watching (migration 051)
 

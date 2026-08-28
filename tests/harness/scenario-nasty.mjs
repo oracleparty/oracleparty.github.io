@@ -49,7 +49,7 @@ const activeScreen = r => r.page
   .catch(() => '(gone)');
 
 /** Host a room and return { host, code }. */
-async function openRoom(table, hostName = 'Alice') {
+async function openRoom(table, hostName = 'Alice', opts = {}) {
   const host = await seatWithName(table, hostName);
   await host.goto('host.html');
   await host.page.waitForSelector('.category-card', { timeout: 20000 });
@@ -58,6 +58,9 @@ async function openRoom(table, hostName = 'Alice') {
   await host.page.click('text=/^All /');
   await host.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
   await host.page.click('[data-setting="questionsPerGame"] [data-value="5"]').catch(() => {});
+  if (opts.timer) {
+    await host.page.click(`[data-setting="questionTimer"] [data-value="${opts.timer}"]`).catch(() => {});
+  }
   await host.page.waitForTimeout(300);
   await host.page.click('#btn-host-game');
   await host.page.waitForURL('**/lobby.html*', { timeout: 20000 });
@@ -632,7 +635,174 @@ async function awayIsVisible() {
   }
 }
 
+// ============================================================
+// A ROOM NOBODY IS DRIVING (migration 056)
+// ============================================================
+//
+// Two separate stalls, checked separately because they have different causes
+// and different repairs, and one check covering both could not say which
+// mechanism saved it.
+//
+// Both deliberately look INSIDE the deputy window (HOST_HANDOVER_MS, 30s). The
+// deputy is the pre-existing mitigation; if it has already been granted by the
+// time a check looks, the check says so rather than claiming a pass it did not
+// earn — a scenario that cannot tell which of two mechanisms saved it is not
+// evidence about either.
+
+/** Set up a live question with a short timer, and return the room's cast. */
+async function roomOnAQuestion(table) {
+  seedQuestions(table.store);
+  // 15s is the shortest timer the host screen offers, and every wait below is
+  // built from it plus PHASE_ADVANCE_GRACE_MS (8s). Both are read from the app
+  // rather than guessed, so a change to either fails here loudly instead of
+  // turning these into checks that wait too little and always pass.
+  const { host, code } = await openRoom(table, 'Alice', { timer: '15' });
+  const bob = await joinRoom(table, 'Bob', code);
+  const carol = await joinRoom(table, 'Carol', code);
+  await host.page.waitForTimeout(1500);
+  await host.page.click('#btn-start-game').catch(() => {});
+  for (const r of [bob, carol]) {
+    await r.page.waitForURL('**/game.html*', { timeout: 25000 }).catch(() => {});
+  }
+  await bob.page.waitForSelector('#question-screen.active', { timeout: 25000 });
+  return { host, bob, carol };
+}
+
+const roomRow = table => table.store.table('rooms')[0];
+
+/** Poll a predicate against the store, returning how long it took, or null. */
+async function waitForRoom(table, page, predicate, budgetMs) {
+  const from = Date.now();
+  while (Date.now() - from < budgetMs) {
+    if (predicate(roomRow(table))) return Date.now() - from;
+    await page.waitForTimeout(500);
+  }
+  return null;
+}
+
+async function deputisedAmong(...robots) {
+  const found = [];
+  for (const r of robots) {
+    const is = await r.page.evaluate(() => window.__state?.isDeputy === true).catch(() => false);
+    if (is) found.push(r.name);
+  }
+  return found;
+}
+
+// ------------------------------------------------------------
+// 1. The host died between announcing the question and starting its clock.
+//
+// THE WORSE STALL, and it was found by writing check 2 below rather than by
+// anyone predicting it. Those are two separate writes from the host's phone,
+// a few hundred milliseconds apart. Die in between and `question_started_at`
+// stays null — at which point getServerTimeLeft returns the FULL duration on
+// every phone, no bar ever moves, and nothing expires. The room hangs on a
+// live question forever, and waiting cannot help because no clock is running.
+//
+// The repair is to START the clock, never to end the round.
+// ------------------------------------------------------------
+async function aQuestionWhoseClockNeverStarted() {
+  heading('the host died before the question clock started');
+  const table = await PlaytestTable.open();
+  try {
+    const { host, bob, carol } = await roomOnAQuestion(table);
+
+    // Force the exact window rather than hoping to land in it. Killing the host
+    // and blanking the stamp reproduces "announced, never stamped" every run —
+    // a race you have to be lucky to hit is a check people learn to re-run.
+    await host.killAbruptly();
+    const room = roomRow(table);
+    room.question_started_at = null;
+    note('host killed and the round left with no clock at all');
+
+    const took = await waitForRoom(table, bob.page, r => !!r?.question_started_at, 30000);
+    const deputies = await deputisedAmong(bob, carol);
+    note(`clock started after ${took === null ? 'never' : Math.round(took / 1000) + 's'}`);
+    note(`deputised by then: ${deputies.join(', ') || 'nobody'}`);
+
+    if (took === null) {
+      problems.push('a question announced without a clock never started one — every phone shows a full timer that never moves, forever');
+    } else if (deputies.length > 0) {
+      note(`INCONCLUSIVE: ${deputies.join(', ')} was deputised, so the old path could have done this`);
+    } else {
+      note('nobody was in control and the clock started anyway');
+    }
+
+    // AND THE ROUND WAS NOT ENDED. Ending an unstamped round takes a question
+    // away from people who never saw the timer move; the whole point is that it
+    // is repaired rather than abandoned.
+    const phase = roomRow(table)?.game_phase;
+    if (phase && phase !== 'question') {
+      problems.push(`a round with no clock was ENDED (now ${phase}) instead of started — nobody got to answer it`);
+    }
+  } catch (err) {
+    problems.push(`no-clock scenario threw: ${err.message.split('\n')[0]}`);
+  } finally {
+    await table.close();
+  }
+}
+
+// ------------------------------------------------------------
+// 2. The host died mid-question, with the clock running.
+//
+// Everything that ends a round is behind canControlGame(), so the timer runs
+// out on every phone and nothing happens at all.
+// ------------------------------------------------------------
+async function theRoundEndsWithoutTheHost() {
+  heading("the round ends even though the host's phone died");
+  const table = await PlaytestTable.open();
+  try {
+    const { host, bob, carol } = await roomOnAQuestion(table);
+
+    // Wait for the clock to actually be running before killing anybody —
+    // otherwise this silently becomes check 1 again, which is exactly how the
+    // first version of it spent a debugging round measuring the wrong thing.
+    const stamped = await waitForRoom(table, bob.page, r => !!r?.question_started_at, 15000);
+    if (stamped === null) {
+      problems.push('the question clock never started, so the round-ends check could not run');
+      return;
+    }
+    await host.killAbruptly();
+    note('host killed mid-question with the clock running — no beacon, no cleanup');
+
+    // 15s timer + 8s grace + poll granularity. The budget stays under
+    // HOST_HANDOVER_MS + the stale sweep so a deputy is unlikely to beat it.
+    const took = await waitForRoom(table, bob.page,
+      r => r?.game_phase && r.game_phase !== 'question' && r.game_phase !== 'final_question',
+      28000);
+    const deputies = await deputisedAmong(bob, carol);
+    const phase = roomRow(table)?.game_phase;
+
+    note(`room phase after ${took === null ? 'never' : Math.round(took / 1000) + 's'}: ${phase}`);
+    note(`deputised by then: ${deputies.join(', ') || 'nobody'}`);
+
+    if (took === null) {
+      problems.push(`the round never ended after the host's phone died — the room is still on ${phase}`);
+    } else if (deputies.length > 0) {
+      note(`INCONCLUSIVE: ${deputies.join(', ')} was deputised, so the old path could have done this`);
+    } else {
+      note('nobody was in control and the round ended anyway');
+    }
+
+    // AND EVERYBODY WAS CLOSED OUT FIRST. Moving the phase without filling the
+    // blanks lands the room on a reveal that renders "No answer" for people
+    // whose rows were never written — and the reveal is exactly where a blank
+    // stops meaning "still typing" and starts meaning "never answered".
+    const rows = table.store.table('answers').filter(a => a.question_number === 0);
+    note(`answer rows for the round: ${rows.length} of 3`);
+    if (took !== null && rows.length < 3) {
+      problems.push(`the round ended with only ${rows.length} of 3 answer rows — somebody will be shown a verdict on an answer that was never recorded`);
+    }
+  } catch (err) {
+    problems.push(`round-ends-without-host scenario threw: ${err.message.split('\n')[0]}`);
+  } finally {
+    await table.close();
+  }
+}
+
 await awayIsVisible();
+await aQuestionWhoseClockNeverStarted();
+await theRoundEndsWithoutTheHost();
 await hostDisappearsMidQuestion();
 await rejoinAfterSeatReleased();
 await playerDropsAndRejoins();

@@ -952,6 +952,10 @@ function cleanup() {
     clearTimeout(state._timerGraceId);
     state._timerGraceId = null;
   }
+  if (state._advancePollId) {
+    clearInterval(state._advancePollId);
+    state._advancePollId = null;
+  }
   if (state.stalePollId) {
     clearInterval(state.stalePollId);
     state.stalePollId = null;

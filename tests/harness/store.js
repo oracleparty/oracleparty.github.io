@@ -1146,6 +1146,71 @@ export class FakeStore {
 
     if (name === 'op_server_now') return new Date().toISOString();
 
+    // ---- migration 056: the game advances without the host -----------------
+    //
+    // A mirror of op_advance_phase. Only the TIME-BASED transitions live here,
+    // which is the same boundary the SQL draws: a clock decided them, so any
+    // phone may report it. The host pressing "Reveal Results" is a person
+    // deciding, and stays where it is.
+    //
+    // Written to REFUSE for the same reasons the real one does, not just to
+    // succeed — a fake that always advances would let a scenario pass on a
+    // round the live server would have left alone, which is the shape of every
+    // "worked in the harness" bug in CLAUDE.md.
+    if (name === 'op_advance_phase') {
+      const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
+      if (!room) return 'no such room';
+      const inRoom = this.table('players').some(p =>
+        String(p.room_id) === String(room.id) && String(p.id) === String(args?.p_caller_id));
+      if (!inRoom) return 'not in this room';
+
+      const moveTo = (phase, extra = {}) => {
+        const before = { ...room };
+        room.game_phase = phase;
+        Object.assign(room, extra);
+        // AND TELL EVERYBODY — an UPDATE inside a Postgres function reaches
+        // Realtime like any other. A fake that mutated the row silently leaves
+        // every other phone waiting forever, which is what made scenario-nasty
+        // report "the room is stuck" when the clock stamp moved server-side.
+        this._broadcast('UPDATE', 'rooms', { ...room }, before);
+      };
+
+      if (room.game_phase === 'countdown') {
+        if (!room.countdown_started_at) return 'not due';
+        if (Date.now() - new Date(room.countdown_started_at).getTime() < 10000) return 'not due';
+        moveTo('question', { current_question: 0, question_started_at: new Date().toISOString() });
+        return 'countdown -> question';
+      }
+
+      // A question announced but never stamped. Two separate writes from the
+      // host's phone; die in between and no phone's timer EVER starts, so the
+      // room hangs on a live question forever. The repair is to start the
+      // clock, never to end the round — ending it takes a question away from
+      // people who never saw the timer move.
+      if ((room.game_phase === 'question' || room.game_phase === 'final_question')
+          && !room.question_started_at) {
+        moveTo(room.game_phase, { question_started_at: new Date().toISOString() });
+        return 'clock started';
+      }
+
+      if (room.game_phase === 'question' || room.game_phase === 'final_question') {
+        const deadline = new Date(room.question_started_at).getTime()
+          + ((room.question_timer ?? 30) * 1000) + 8000;
+        if (Date.now() < deadline) return 'not due';
+        // Close everybody out BEFORE the phase moves, exactly as the SQL does —
+        // otherwise a client reaches the reveal and renders "No answer" for
+        // people whose rows have not been written, and the reveal is where a
+        // blank stops meaning "still typing".
+        this._rpc('op_fill_blank_answers', {
+          p_room_id: room.id, p_question_number: room.current_question,
+        });
+        moveTo('reveal');
+        return 'question -> reveal';
+      }
+
+      return 'nothing to do';
+    }
+
     // ---- migration 046: the server judges and records ----------------------
     //
     // A mirror of op_submit_answer / op_fill_blank_answers. The point of having

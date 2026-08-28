@@ -75,6 +75,9 @@ export const state = {
   _lastProcessedQuestion: -1,
   stalePollId: null,
   _timerGraceId: null,
+  // The migration-056 backstop poll: asks the server to move a round on when
+  // nobody in the room is driving it. Lives here so cleanup() can clear it.
+  _advancePollId: null,
   presenceHeartbeatId: null,
   shownQuestionIndices: [],
   wagerExplicitlySelected: false,

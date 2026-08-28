@@ -4,11 +4,11 @@
 // ============================================
 
 import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
-         _screenTransitioning, setScreenTransitioning } from './state.js';
+         _screenTransitioning, setScreenTransitioning, _isLeaving } from './state.js';
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
-import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS } from '../constants.js';
-import { updateGameState, startClockOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
+import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS } from '../constants.js';
+import { updateGameState, startClockOnServer, advancePhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -335,7 +335,77 @@ function updateTimerDisplay(timeLeft) {
   }
 }
 
+/**
+ * THE BACKSTOP FOR A ROOM NOBODY IS DRIVING (migration 056).
+ *
+ * Everything that moves a round on is behind `canControlGame()`, so a host
+ * whose screen has locked mid-question leaves the whole table sitting on a
+ * dead question. This asks the server to decide instead. It is a POLL rather
+ * than a single timer fired at expiry, for two reasons that each cost a
+ * debugging round to find:
+ *
+ *  - A one-shot fires once. If it lands a few milliseconds early the server
+ *    correctly answers "not due" and NOTHING EVER ASKS AGAIN — the stall it
+ *    was written to fix, reintroduced by the fix.
+ *  - It has to cover the case where the timer never started at all, and a
+ *    timer that never starts never fires anything. See below.
+ *
+ * THE SECOND CASE IS THE WORSE STALL, and scenario-nasty found it while being
+ * written for the first. Announcing the question and stamping its clock are two
+ * separate writes from the host's phone. Die in between — a window of a few
+ * hundred milliseconds — and `question_started_at` stays null, at which point
+ * `getServerTimeLeft` returns the FULL duration on every phone, the bar never
+ * moves, and nothing ever expires. The room hangs on a live question forever,
+ * and no amount of waiting fixes it because no clock is running to wait on.
+ *
+ * The server's repair there is to START the clock, never to end the round: a
+ * round with no stamp has not begun, so ending it takes a question away from
+ * people who never saw the timer move. It cannot shorten anybody's time.
+ */
+function stopPhaseBackstop() {
+  if (state._advancePollId) {
+    clearInterval(state._advancePollId);
+    state._advancePollId = null;
+  }
+}
+
+function startPhaseBackstop() {
+  stopPhaseBackstop();
+  const armedFor = state.currentQuestion;
+  const armedAt = Date.now();
+
+  state._advancePollId = setInterval(() => {
+    if (_isLeaving || !state.room) return stopPhaseBackstop();
+    // The controller ends its own rounds, and a second path racing the first is
+    // how a fix for a stall becomes a fix that ends rounds early.
+    if (canControlGame()) return;
+    if (state.gamePhase !== 'question' && state.gamePhase !== 'final_question') return stopPhaseBackstop();
+    // Armed for THIS round only. By the time it runs the room may legitimately
+    // have moved on, and asking about a round that has been over for a while is
+    // how a backstop starts ending the wrong one.
+    if (state.currentQuestion !== armedFor) return stopPhaseBackstop();
+
+    const waited = Date.now() - armedAt;
+    const noClock = !state.questionStartedAt;
+    // Wait the same grace before asking about a missing stamp as about an
+    // expired one. A healthy host stamps within a second, so this never fires
+    // for a room that is merely slow — and if it somehow did, the server would
+    // hand everybody a FULL round, which is the harmless direction.
+    const stuckWithNoClock = noClock && waited >= PHASE_ADVANCE_GRACE_MS;
+    const overdue = !noClock && getServerTimeLeft() <= 0
+      && waited >= PHASE_ADVANCE_GRACE_MS;
+    if (!stuckWithNoClock && !overdue) return;
+
+    advancePhaseOnServer(state.room.id, state.room.playerId).then(did => {
+      if (did && did !== 'not due' && did !== 'nothing to do' && did !== 'already moved') {
+        logger.warn('Game', `nobody was driving the round, so this phone asked the server: ${did}`);
+      }
+    });
+  }, PHASE_BACKSTOP_POLL_MS);
+}
+
 export function startTimer() {
+  startPhaseBackstop();
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;
@@ -377,6 +447,12 @@ async function handleTimerExpired() {
   if (!state.room || state.gamePhase === 'loading') return;
 
   state.timerExpired = true;
+
+  // Pinned before anything awaits. The late backstop below must only fire for
+  // the round it was armed for — by the time it runs, eight seconds later, the
+  // room may legitimately have moved on, and asking about a round that has been
+  // over for a while is how a backstop starts ending the WRONG one.
+  const questionAtExpiry = state.currentQuestion;
 
   // Hide the reveal screen timer (round is over)
   const revealTimer = $('#reveal-timer');

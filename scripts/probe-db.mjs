@@ -589,6 +589,9 @@ const CONSEQUENCES = [
       'no tier badge appears in any lobby',
       'NO TITLE EVER UNLOCKS — the check runs against nothing and reports success',
     ] },
+  { object: 'op_advance_phase', kind: 'rpc',
+    fix: 'run migrations/056_the_game_advances_without_the_host.sql',
+    breaks: ['a round only ends if the host\'s phone is awake — a locked screen mid-question strands the whole room, and a host who dies before the clock is stamped strands it forever'] },
   { object: 'get_leaderboard', kind: 'rpc',
     fix: 'run migrations/053_leaderboard_by_what_you_know.sql',
     breaks: [

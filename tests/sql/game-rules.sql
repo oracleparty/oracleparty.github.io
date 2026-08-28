@@ -918,4 +918,174 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', '', true);
 END $$;
 
+
+-- ============================================
+-- MIGRATION 056 — A ROUND ENDS WITHOUT THE HOST
+--
+-- The stall this fixes: every phase change is a write from one phone, and the
+-- timer-expiry path is behind canControlGame(). Host's screen locks mid-round
+-- and the question never ends for anybody.
+--
+-- The dangerous half is NOT "does it advance" — it is "does it advance TOO
+-- EARLY". op_submit_answer accepts an answer until started + timer + 3s. If
+-- this closed the round inside that window it would turn an answer the same
+-- database would have accepted into a blank, and no screen anywhere would say
+-- so. Both directions are pinned, and the early one first.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  q uuid[] := ARRAY[]::uuid[];
+  qid uuid;
+  hostP uuid; aliceP uuid; strangerP uuid;
+  other_room uuid;
+  verdict text;
+  ph text;
+  n int;
+  late_ok boolean;
+BEGIN
+  FOR i IN 1..3 LOOP
+    qid := gen_random_uuid();
+    INSERT INTO questions (id, question, correct_answer, format)
+      VALUES (qid, 'Q' || i, 'yes', 'open');
+    q := q || qid;
+  END LOOP;
+
+  INSERT INTO rooms (code, host_name, question_ids, questions_per_game,
+                     question_timer, current_question, game_phase,
+                     question_started_at)
+    VALUES ('056900', 'Hosty', q, 2, 30, 0, 'question', now())
+    RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host)
+    VALUES (rid, 'Hosty', true) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name) VALUES (rid, 'Alice')
+    RETURNING id INTO aliceP;
+
+  -- NOT DUE: the round has only just started. The most important rule here.
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a fresh round is not advanced', verdict, 'not due');
+
+  -- THE RULE THAT MATTERS MOST, and it is stated BEHAVIOURALLY rather than by
+  -- comparing two numbers.
+  --
+  -- op_submit_answer accepts an answer until started + timer + 3s, deliberately
+  -- generous because that clock belongs to a person on a phone with a bad
+  -- connection. If op_advance_phase ever closed a round INSIDE that window, an
+  -- answer the same database would have accepted becomes a blank, and no screen
+  -- anywhere says so.
+  --
+  -- So the check picks a moment when the server DEMONSTRABLY still takes an
+  -- answer — it submits one and requires it to land — and then requires the
+  -- advance to refuse at that same moment. Both real implementations, not a
+  -- restatement of either one's arithmetic: asserting `advance_deadline >
+  -- started + timer + 3s` would pass just as happily if 046 changed its own
+  -- allowance, which is the shape of a check that cannot fail.
+  UPDATE rooms SET question_started_at = now() - interval '32 seconds' WHERE id = rid;
+  -- `rejected` is null when the answer landed; it names the reason when it did
+  -- not. A rejection is not an error here, deliberately — the app has to tell
+  -- "the timer beat you" from "the network died".
+  SELECT (rejected IS NULL) INTO late_ok
+    FROM op_submit_answer(rid, aliceP, 0, 'yes') LIMIT 1;
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the server still takes an answer at this moment', late_ok::text, 'true'),
+    ('and refuses to end the round in that same window', verdict, 'not due');
+
+  -- A STRANGER CANNOT POKE SOMEBODY ELSE'S GAME. Checked while the room IS due,
+  -- so a refusal here is about the caller and not about the clock — with the
+  -- room not yet due this rule would pass for the wrong reason.
+  UPDATE rooms SET question_started_at = now() - interval '60 seconds' WHERE id = rid;
+  INSERT INTO rooms (code, host_name) VALUES ('056901', 'Elsewhere')
+    RETURNING id INTO other_room;
+  INSERT INTO players (room_id, display_name) VALUES (other_room, 'Stranger')
+    RETURNING id INTO strangerP;
+  SELECT op_advance_phase(rid, strangerP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a stranger cannot advance a game they are not in', verdict, 'not in this room');
+
+  -- DUE, AND ANYBODY IN THE ROOM MAY DO IT — Alice is not the host.
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  SELECT game_phase INTO ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a non-host can end a round the host slept through', verdict, 'question -> reveal'),
+    ('and the room really moved', ph, 'reveal');
+
+  -- EVERYBODY WAS CLOSED OUT BEFORE THE PHASE MOVED. Without this the reveal
+  -- renders "No answer" for people whose rows had not been written yet — and
+  -- the reveal is exactly where a blank stops meaning "still typing".
+  SELECT count(*) INTO n FROM answers
+   WHERE room_id = rid AND question_number = 0;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('every player was given a row before the reveal', n::text, '2');
+
+  -- IDEMPOTENT. Every phone polls, so two at once is the normal case.
+  SELECT op_advance_phase(rid, hostP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a second caller changes nothing', verdict, 'nothing to do');
+
+  -- A HUMAN DECISION IS NOT A CLOCK'S. The reveal -> scores -> next question
+  -- steps are somebody deciding the room is ready, and moving them onto a timer
+  -- would change the game rather than repair it.
+  UPDATE rooms SET game_phase = 'reveal' WHERE id = rid;
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the reveal is never advanced by the clock', verdict, 'nothing to do');
+
+  -- THE COUNTDOWN, which strands a whole room before anybody has played a note.
+  UPDATE rooms SET game_phase = 'countdown',
+                   countdown_started_at = now() - interval '2 seconds'
+   WHERE id = rid;
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a countdown still running is left alone', verdict, 'not due');
+
+  UPDATE rooms SET countdown_started_at = now() - interval '30 seconds' WHERE id = rid;
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  SELECT game_phase INTO ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a stranded countdown starts the game', verdict, 'countdown -> question'),
+    ('and lands on the first question', ph, 'question');
+
+  -- A QUESTION ANNOUNCED BUT NEVER STAMPED — the worse stall, found by the
+  -- scenario written for the one above. Announcing the question and stamping
+  -- its clock are two separate writes from the host's phone; die in the few
+  -- hundred milliseconds between them and getServerTimeLeft returns the FULL
+  -- duration on every phone, so no bar moves and nothing ever expires. Forever.
+  --
+  -- BOTH HALVES ARE PINNED, and the first is the one that matters: the round
+  -- must NOT be ended. A round with no stamp has not begun, so ending it takes
+  -- a question away from people who never saw the clock move. Starting it hands
+  -- everybody a full, fair round and cannot shorten anyone's time, which is what
+  -- makes it safe for any phone to ask for.
+  UPDATE rooms SET game_phase = 'question', question_started_at = NULL,
+                   current_question = 1
+   WHERE id = rid;
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  SELECT game_phase INTO ph FROM rooms WHERE id = rid;
+  SELECT count(*) INTO n FROM answers WHERE room_id = rid AND question_number = 1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('an unstamped round is started, not ended', verdict, 'clock started'),
+    ('and the question is still being asked', ph, 'question'),
+    ('with nobody closed out of it', n::text, '0');
+
+  -- And it really is running now, so the ordinary expiry path can reach it.
+  UPDATE rooms SET question_started_at = now() - interval '60 seconds' WHERE id = rid;
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a repaired round then ends on the clock like any other', verdict, 'question -> reveal');
+
+  -- THE FINAL QUESTION IS A QUESTION. Its phase is `final_question`, not
+  -- `question` — the client passed the wrong one to op_start_clock once and the
+  -- last round of every game would have opened with its clock already spent.
+  UPDATE rooms SET game_phase = 'final_question', current_question = 2,
+                   question_started_at = now() - interval '60 seconds'
+   WHERE id = rid;
+  SELECT op_advance_phase(rid, aliceP) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the final question ends on the clock too', verdict, 'question -> reveal');
+END $$;
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

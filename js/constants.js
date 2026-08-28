@@ -7,6 +7,23 @@
 export const COUNTDOWN_DELAY_MS = 500;
 export const COUNTDOWN_STEP_MS = 900;
 export const TIMER_GRACE_MS = 500;
+// How long past the clock before a NON-CONTROLLING phone asks the server to end
+// the round itself (migration 056). The host still ends its own rounds at
+// TIMER_GRACE_MS above, exactly as before; this is the backstop for a host whose
+// screen has locked, and being late costs nothing against a round that would
+// otherwise never end.
+//
+// THE SAME NUMBER IS IN migrations/056 (`op_advance_deadline`), and the server's
+// copy is the one that decides — this only governs when it is worth asking. It
+// must stay well clear of op_submit_answer's 3-second allowance in migration
+// 046: the moment those two meet, ending a round can turn an answer the same
+// database would have accepted into a blank, with nothing on screen to say so.
+export const PHASE_ADVANCE_GRACE_MS = 8000;
+// How often a non-controlling phone re-checks whether the room is stuck. It is
+// a POLL and not a single timer fired at expiry: a one-shot that lands a few
+// milliseconds early gets a correct "not due" and then NOTHING EVER ASKS AGAIN
+// — the stall, reintroduced by its own fix.
+export const PHASE_BACKSTOP_POLL_MS = 3000;
 export const TOAST_DURATION_MS = 3000;
 export const TRANSITION_MS = 260;
 export const FADE_MS = 500;

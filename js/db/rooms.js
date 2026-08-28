@@ -474,6 +474,55 @@ export async function startClockOnServer(roomId, phase, questionNumber = null) {
   return data || null;
 }
 
+/**
+ * Ask the server to move a stalled round on. Needs migration 056.
+ *
+ * THE STALL THIS EXISTS FOR. Every phase change in this game is a write from
+ * one phone, and the timer-expiry path in `handleTimerExpired` is behind
+ * `canControlGame()`. When the host's screen locks mid-round, or they take a
+ * call, or their signal drops, the timer runs out on every phone in the room
+ * and nothing happens at all. Everyone sits on a dead question screen.
+ *
+ * AUTHORITY IS NOT INITIATIVE. Postgres cannot wake itself on a timer, so a
+ * client still has to ask — what changes is that the ANSWER no longer comes
+ * from the asker. `op_advance_phase` decides from the database's own clock and
+ * every caller gets the same decision, which is what makes it safe for ANY
+ * player in the room to call rather than only the host.
+ *
+ * It refuses unless the clock really has run out, and it waits well past the
+ * point where `op_submit_answer` would still accept an answer — so a phone with
+ * a fast clock cannot close a round early and turn somebody's answer into a
+ * blank. Calling it too often costs nothing but a round trip.
+ *
+ * → the text of what the server did ('question -> reveal', 'not due', …), or
+ *   null when the function is not installed. Null means "carry on exactly as
+ *   before": the host's own path still ends rounds, and this is a backstop.
+ */
+export async function advancePhaseOnServer(roomId, callerPlayerId) {
+  if (!roomId || !callerPlayerId) return null;
+  const { data, error } = await supabase.rpc('op_advance_phase', {
+    p_room_id: roomId,
+    p_caller_id: callerPlayerId,
+  });
+  if (error) {
+    // PGRST202 only. A function that exists under different argument names
+    // answers the same way and is just as dead to us (CLAUDE.md #6), but
+    // anything else is a real failure and must not be read as "not installed".
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      logger.debug('Supabase', 'op_advance_phase not installed — the host still ends rounds');
+      noteServerFunctions(false);
+    } else {
+      // Logged, never toasted. This runs on a timer on every phone in the room,
+      // and the player has lost nothing when it fails — the host's own path is
+      // still there. A toast per phone per round is the noise that teaches
+      // people to ignore real warnings (CLAUDE.md #4).
+      logger.warn('Supabase', 'op_advance_phase failed', error);
+    }
+    return null;
+  }
+  return data ?? null;
+}
+
 export async function updateGameState(roomId, updates) {
   const { error } = await supabase
     .from('rooms')
