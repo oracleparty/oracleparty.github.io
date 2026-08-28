@@ -3747,16 +3747,25 @@ refresh meant the robots were silently exercising "different person, same name"
 — the case the guest heuristic exists for — instead of the ordinary refresh it
 looked like.
 
-**Found while chasing a flaky `page.reload` timeout, and NOT proven to be its
-cause.** `scenario-join` failed about one run in five under load, and once in
-CI, with `page.reload: Timeout 30000ms exceeded`. Both reloads are on the lobby,
-which fires a keepalive disconnect beacon on unload that Playwright intercepts
-and which can outlive the page; waiting for `load` waits for that, and the check
-never needed it — it separately waits for the app to re-initialise. Both reloads
-use `waitUntil: 'domcontentloaded'` now. **The mechanism fits the symptom and is
-not established**, which is worth saying plainly rather than claiming a fix: what
-IS certain is that the dependency on `load` was accidental, and the assertions
-after it are untouched.
+**Found while chasing a flaky `page.reload` timeout — and TWO mitigations later
+that flake is still unexplained.** `scenario-join` times out at 30s on one of
+its two reloads, roughly one run in five under load and three times in CI. The
+session-persistence fix above and `waitUntil: 'domcontentloaded'` were each
+plausible and each shipped; **the next CI run after both failed in exactly the
+same place.** So neither was the cause, and the hypotheses were wrong.
+
+What is established: it does not reproduce here — six consecutive runs alone,
+plus a full replay of CI's sequence (lobby, fullgame, nasty, playagain, social,
+then join) — and CI is a 2-core runner running twelve browser scenarios back to
+back. Contention is the leading explanation and remains UNPROVEN.
+
+So the scenario stopped guessing and started reporting. `reloadAndReport` retries
+ONCE with a longer timeout and prints which happened: *"retry succeeded — the
+page was slow, not stuck"* is the evidence that it is contention, and a page that
+is genuinely stuck still fails both attempts and dumps its URL, ready state,
+active screen and console errors. **A retry that announces itself is a
+measurement; a silent one is a bug being hidden.** Verified by forcing the first
+attempt to fail with a 1ms timeout.
 
 **Robots can sign in now** — `table.seatSignedIn(name, { tier, title, isAdmin })`.
 It writes a `profiles` row and injects a session the shim serves from

@@ -50,6 +50,58 @@ const clickIfReady = async (r, sel) => {
   return true;
 };
 
+
+/**
+ * Reload, and if it hangs, SAY WHY.
+ *
+ * This reload has timed out at 30s roughly one run in five under load, and
+ * three times in CI. Two mitigations were tried on hypotheses — persisting the
+ * fake session, and waiting only for domcontentloaded — and the second CI run
+ * after both failed in exactly the same place, so neither was the cause. That
+ * is the point at which guessing stops being worth anything.
+ *
+ * So the failure now reports the state of the page instead of just the
+ * exception: where it thinks it is, whether it is still there, what the app
+ * logged, and whether a navigation of the app's OWN was in flight — a reload
+ * racing `navigateWithFade` would look exactly like this and is invisible from
+ * the outside.
+ */
+async function reloadAndReport(robot, label) {
+  try {
+    await robot.page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 });
+    return true;
+  } catch (firstErr) {
+    // ONE RETRY, and it is reported when it is used. The leading hypothesis is
+    // a slow runner — this reproduces on a 2-core CI machine and has never
+    // reproduced here, including six runs alone and a full replay of CI's
+    // sequence — and a page that is merely slow should not fail a build. A page
+    // that is genuinely stuck fails both attempts, so this hides nothing.
+    //
+    // If the retry line ever appears in a passing run, that is the evidence
+    // that it IS contention rather than a fault, which is the thing two earlier
+    // mitigations guessed at without establishing.
+    note(`reload at ${label} timed out once, retrying — ${firstErr.message.split('\n')[0]}`);
+    try {
+      await robot.page.waitForTimeout(2000);
+      await robot.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+      note(`retry succeeded at ${label} — the page was slow, not stuck`);
+      return true;
+    } catch (err) {
+      const diag = await robot.page.evaluate(() => ({
+      url: location.href,
+      ready: document.readyState,
+      screen: document.querySelector('.screen.active')?.id || '(none)',
+      leaving: !!document.body?.style?.opacity && document.body.style.opacity !== '1',
+    })).catch(e => ({ unreachable: String(e).slice(0, 90) }));
+    note(`RELOAD FAILED TWICE at ${label}: ${err.message.split('\n')[0]}`);
+    note(`   page state: ${JSON.stringify(diag)}`);
+    note(`   console errors: ${JSON.stringify((robot.consoleErrors || []).slice(0, 3))}`);
+    problems.push(`the page could not be reloaded at ${label}, twice — ${err.message.split('\n')[0]}`);
+    return false;
+    }
+  }
+}
+
 const table = await PlaytestTable.open();
 
 try {
@@ -256,7 +308,7 @@ try {
       // What IS certain is that this check never needed 'load', so the
       // dependency was accidental. The assertions below are untouched and still
       // fail if the chat cut-off breaks.
-      await stranger.page.reload({ waitUntil: 'domcontentloaded' });
+      await reloadAndReport(stranger, 'the chat-cutoff refresh');
       await stranger.page.waitForTimeout(3500);
       erinChat = await readChat(stranger);
       note(`after a refresh, recent still there: ${erinChat.includes(RECENT)}, backlog still hidden: ${!erinChat.includes(BACKLOG)}`);
@@ -282,7 +334,7 @@ try {
       const erinRow = table.store.table('players').find(p => p.display_name === 'Erin');
       if (erinRow) erinRow.joined_at = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-      await stranger.page.reload({ waitUntil: 'domcontentloaded' });
+      await reloadAndReport(stranger, 'the restamped-seat refresh');
       await stranger.page.waitForTimeout(3500);
       erinChat = await readChat(stranger);
       note(`after a rejoin restamped her seat, she still sees what was said while she was here: ${erinChat.includes(DURING)}`);
