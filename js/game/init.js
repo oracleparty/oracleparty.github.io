@@ -331,7 +331,8 @@ async function init() {
   // Profile card on player tap (scores + results containers)
   for (const sel of ['#scores-animated-list', '#results-list', '#fw-player-list']) {
     const el = document.querySelector(sel);
-    if (el) attachProfileCardHandler(el, () => state.players, state.room.id);
+    if (el) attachProfileCardHandler(el, () => state.players, state.room.id,
+      () => state.room?.playerId);
   }
 
   // Reclaim a previous seat in this room, whatever route brought us back.

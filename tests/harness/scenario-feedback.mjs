@@ -436,11 +436,15 @@ try {
       return !!el && el.style.display !== 'none' && el.offsetParent !== null;
     }).catch(() => false);
 
+    // MID-GAME THE ROW IS NOT THERE AT ALL. The thumbs need the whole game
+    // (059) and the flag moved to the profile card, so before the final round
+    // there is nothing left for this row to offer — and a labelled row with no
+    // working control in it is worse than no row.
     const bobSees = await reviewVisible(bob);
     const hostSees = await reviewVisible(host);
-    note(`host-review row — Bob: ${bobSees}, the host themselves: ${hostSees}`);
-    if (!bobSees) {
-      problems.push('a player is never offered the chance to rate a signed-in host');
+    note(`host-review row mid-game — Bob: ${bobSees}, the host themselves: ${hostSees}`);
+    if (bobSees) {
+      problems.push('the host-review row is on screen mid-game, when nothing in it can be used yet');
     }
     if (hostSees) {
       problems.push('the host is offered the chance to rate themselves');
@@ -462,20 +466,43 @@ try {
         const el = document.querySelector(sel);
         return !!el && el.style.display !== 'none' && el.offsetParent !== null;
       };
-      const label = document.querySelector('#reveal-host-review .host-review__label');
       return {
         up: vis('[data-host-vote="up"]'),
-        flag: vis('[data-host-vote="flag"]'),
-        label: (label?.textContent || '').trim(),
+        // The flag must be GONE from the reveal entirely — it moved to the
+        // profile card. Left here it would sit inches from the QUESTION
+        // feedback wearing the same glyphs, which is what made tapping the
+        // wrong pair silently wrong.
+        flagStillOnReveal: !!document.querySelector('#reveal-host-review [data-host-vote="flag"]'),
       };
     }).catch(e => ({ err: String(e).slice(0, 100) }));
     note(`mid-game host review: ${JSON.stringify(thumbsShown)}`);
     if (thumbsShown.up) {
       problems.push('the thumbs are offered mid-game — a tap would be refused, so they would light up and record nothing');
     }
-    if (!thumbsShown.flag) {
-      problems.push('the flag is hidden mid-game — somebody leaving because the host is improper has no way to report it');
+    if (thumbsShown.flagStillOnReveal) {
+      problems.push('the report flag is still on the reveal, next to the question feedback it is confusable with');
     }
+
+    // AND IT IS REACHABLE WHERE IT MOVED TO. A control that only moved OUT of
+    // somewhere is a control that was deleted.
+    const reportOnCard = await bob.page.evaluate(async () => {
+      const row = document.querySelector('#reveal-answers [data-profile-user-id]')
+        || document.querySelector('[data-profile-user-id]');
+      if (!row) return { tappable: false };
+      row.click();
+      await new Promise(r => setTimeout(r, 1500));
+      return {
+        tappable: true,
+        report: !!document.querySelector('#profile-card-report'),
+        reasons: document.querySelectorAll('#profile-card-report-menu [data-report-reason]').length,
+      };
+    }).catch(e => ({ err: String(e).slice(0, 120) }));
+    note(`report control on the host's card: ${JSON.stringify(reportOnCard)}`);
+    if (reportOnCard.tappable && !reportOnCard.report) {
+      problems.push('the report control is not on the host profile card either — reporting a host has simply disappeared');
+    }
+    await bob.page.evaluate(() =>
+      document.querySelector('#profile-card-sheet')?.classList.remove('active')).catch(() => {});
 
     // The vote MECHANICS are then driven against a SEPARATE, FINISHED room —
     // not the live one. Jumping the real room to its final round to satisfy the

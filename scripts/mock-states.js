@@ -636,10 +636,15 @@ export const STATES = {
     },
   },
 
-  // The host-review row, which exists on no other reveal state. It carries the
-  // same three icons as the question feedback above it and means something
+  // The host-review row, which exists on no other reveal state and appears only
+  // on the FINAL round. It sits under the question feedback and means something
   // completely different, so the two have to be looked at together — that is
   // the whole reason it is labelled and ruled off.
+  //
+  // The FLAG is no longer here: reporting a host moved to the profile card
+  // (mock state `profile-card-report`), because a third icon inches from the
+  // question feedback, wearing the same glyphs, made tapping the wrong pair
+  // silently wrong.
   'reveal-host-review': {
     page: 'game',
     screen: 'reveal-screen',
@@ -650,8 +655,46 @@ export const STATES = {
       row.style.display = '';
       const down = row.querySelector('[data-host-vote="down"]');
       if (down) down.classList.add('feedback-btn--active');
-      const menu = row.querySelector('.host-review__menu');
-      if (menu) menu.style.display = '';
+    },
+  },
+
+  // REPORTING A HOST, on the profile card, with the reason menu open. A page
+  // with no mock is a page nobody is checking — the flagged-queue row shipped
+  // months of unstyled markup for exactly that reason — and this control is
+  // brand new, so it has never been rendered by the sweep at any width.
+  'profile-card-report': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const sheet = document.createElement('div');
+      sheet.id = 'profile-card-sheet';
+      sheet.className = 'modal-overlay active';
+      sheet.innerHTML = `
+        <div class="modal profile-card">
+          <div id="profile-card-content">
+            <div class="profile-card__header">
+              <div class="profile-card__avatar"></div>
+              <div class="profile-card__name">Alexandra<span class="profile-card__tag">#4821</span></div>
+              <div class="profile-card__title">Ancient Chronicler</div>
+            </div>
+            <p class="host-rep">As host: 71% would play again \u00b7 14 ratings</p>
+            <div class="profile-card__report">
+              <button class="profile-card__report-btn">Report this host</button>
+              <div class="profile-card__report-menu">
+                <button data-report-reason="unfair_judging">Unfair judging</button>
+                <button data-report-reason="abusive">Abusive</button>
+                <button data-report-reason="ended_early">Ended the game early</button>
+                <button data-report-reason="other">Other</button>
+              </div>
+              <p class="profile-card__report-done"></p>
+            </div>
+            <div class="profile-card__actions">
+              <button class="btn btn-secondary btn-block">Add Friend</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(sheet);
     },
   },
 

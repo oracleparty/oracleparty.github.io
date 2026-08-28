@@ -29,9 +29,10 @@ import {
   fetchQuestionCount,
   fetchProfileByTag,
   fetchHostReputations,
-  describeHostReputation
+  describeHostReputation,
+  rateHost
 } from './supabase.js';
-import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut, markAccountDeleted } from './auth.js';
+import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSignInModal, signOut, markAccountDeleted, getVoterId } from './auth.js';
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
@@ -209,7 +210,8 @@ let _profileCardInjected = false;
  * @param {string|null} opts.title
  * @param {string|null} opts.roomId - If viewing from a shared room (enables instant-add)
  */
-export async function showProfileCard({ userId, displayName, avatarColor, avatarEmoji, title, roomId }) {
+export async function showProfileCard({ userId, displayName, avatarColor, avatarEmoji, title, roomId,
+                                        viewerPlayerId = null, isRoomHost = false }) {
   if (!_profileCardInjected) {
     _injectProfileCard();
     _profileCardInjected = true;
@@ -225,6 +227,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
   let profileTitle = title || 'Novice';
   let statsHtml = '';
   let actionsHtml = '';
+  let reportHtml = '';
 
   if (userId) {
     // Fetch profile + stats
@@ -313,6 +316,38 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
         <p class="profile-card__guest-hint">Create an account to add friends</p>
       `;
     }
+
+    // REPORTING A HOST LIVES HERE, not on the reveal (moved 2026-08-28).
+    //
+    // It used to be a third icon in the reveal's host-review row, inches from the
+    // QUESTION feedback and wearing the same three glyphs — CLAUDE.md already
+    // recorded that as a risk, because tapping the wrong pair is silently wrong
+    // and nothing says so. It got worse once the thumbs moved to the final round
+    // only: for most of a game that row would have been a lone flag, which reads
+    // as neither.
+    //
+    // A report is rare, serious and deliberate, so it belongs behind a tap rather
+    // than sitting on screen every round. This card is where you already look to
+    // judge a host — it shows their standing directly above — and it opens from
+    // the lobby, the reveal, the scoreboard and the results, so a report can be
+    // made at ANY point rather than only during one screen.
+    //
+    // The thumbs deliberately did NOT move: they now appear once per game, and a
+    // score that is both rare AND hidden is a feature nobody uses.
+    if (roomId && viewerPlayerId && isRoomHost
+        && String(viewerPlayerId) !== String(userId)) {
+      reportHtml = `
+        <div class="profile-card__report">
+          <button class="profile-card__report-btn" id="profile-card-report">Report this host</button>
+          <div class="profile-card__report-menu" id="profile-card-report-menu" style="display:none;">
+            <button data-report-reason="unfair_judging">Unfair judging</button>
+            <button data-report-reason="abusive">Abusive</button>
+            <button data-report-reason="ended_early">Ended the game early</button>
+            <button data-report-reason="other">Other</button>
+          </div>
+          <p class="profile-card__report-done" id="profile-card-report-done"></p>
+        </div>`;
+    }
   } else {
     // Guest player
     statsHtml = `<p class="profile-card__guest-hint">Guest player</p>`;
@@ -325,10 +360,43 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       <div class="profile-card__title">${escapeHtml(profileTitle)}</div>
     </div>
     ${statsHtml}
+    ${reportHtml}
     <div class="profile-card__actions">${actionsHtml}</div>
   `;
 
   sheet.classList.add('active');
+
+  const reportBtn = document.getElementById('profile-card-report');
+  if (reportBtn) {
+    const menu = document.getElementById('profile-card-report-menu');
+    reportBtn.onclick = () => {
+      if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+    };
+    document.querySelectorAll('#profile-card-report-menu [data-report-reason]').forEach(b => {
+      b.onclick = async () => {
+        if (menu) menu.style.display = 'none';
+        const done = document.getElementById('profile-card-report-done');
+        // Said BEFORE the round trip, and left said. A report is not something
+        // to leave somebody guessing about, and rateHost only ever adds a
+        // reason — it cannot be withdrawn by tapping again, so there is nothing
+        // to take back if the write is slow.
+        if (done) { done.textContent = 'Reported \u2713'; done.classList.add('show'); }
+        reportBtn.disabled = true;
+        const res = await rateHost({
+          roomId,
+          playerId: viewerPlayerId,
+          voterId: getVoterId(),
+          flagReason: b.dataset.reportReason,
+        });
+        if (!res.ok && res.reason === 'you have not played a round yet' && done) {
+          // The one refusal that is about THEM rather than the system: you
+          // cannot report a host whose judging you have not yet seen.
+          done.textContent = 'Play a round first';
+          reportBtn.disabled = false;
+        }
+      };
+    });
+  }
 
   // Wire friend action buttons
   const addFriendBtn = $('#profile-card-add-friend');
@@ -2100,7 +2168,7 @@ async function updateTitleUniqueness(selectedWords) {
  * Also handles clicks on player-item or answer-row elements
  * by finding the player data from the provided players array.
  */
-export function attachProfileCardHandler(container, getPlayers, roomId = null) {
+export function attachProfileCardHandler(container, getPlayers, roomId = null, getViewerPlayerId = null) {
   container.addEventListener('click', async (e) => {
     // Don't trigger on honk/toggle button clicks
     if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle') || e.target.closest('.transfer-host-btn') || e.target.closest('.cohost-btn')) return;
@@ -2118,7 +2186,13 @@ export function attachProfileCardHandler(container, getPlayers, roomId = null) {
       avatarColor: player?.avatar_color || null,
       avatarEmoji: player?.avatar_emoji || null,
       title: player?.title || null,
-      roomId
+      roomId,
+      // Reporting a host needs to know WHICH SEAT is doing the reporting, so the
+      // server can check they were actually in the room and had played a round.
+      viewerPlayerId: typeof getViewerPlayerId === 'function' ? getViewerPlayerId() : null,
+      // Is the person being looked at the host of this room? The report control
+      // only makes sense for them, and only from inside their game.
+      isRoomHost: !!(player && player.is_host && !player.is_bot),
     });
   });
 }

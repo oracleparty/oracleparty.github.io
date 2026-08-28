@@ -328,7 +328,8 @@ export function renderRevealAnswers(answers) {
   }
 
   // Profile card on player tap
-  attachProfileCardHandler(newContainer, () => state.players, state.room.id);
+  attachProfileCardHandler(newContainer, () => state.players, state.room.id,
+    () => state.room?.playerId);
 }
 
 export function enableNextQuestion() {
@@ -927,24 +928,33 @@ function showHostReviewUI() {
   // they rated somebody when they did not.
   const onFinalRound = state.currentQuestion >= state.totalQuestions;
   const canRate = onFinalRound && !state._hostReviewRefused;
+  // Nothing to show before the final round now that the flag has moved out:
+  // an empty labelled row would be a control that does nothing.
+  if (!onFinalRound) {
+    row.style.display = 'none';
+    return;
+  }
   row.querySelectorAll('[data-host-vote="up"], [data-host-vote="down"]').forEach(b => {
     b.style.display = canRate ? '' : 'none';
   });
   const labelEl = row.querySelector('.host-review__label');
   if (labelEl) {
-    labelEl.textContent = canRate ? 'Play with this host again?'
-      : state._hostReviewRefused ? 'Play the whole game to rate this host'
-      : 'Report a problem with this host';
+    labelEl.textContent = state._hostReviewRefused
+      ? 'Play the whole game to rate this host'
+      : 'Play with this host again?';
   }
 
   row.style.display = '';
   row.querySelectorAll('[data-host-vote]').forEach(b => {
     b.classList.toggle('feedback-btn--active', b.dataset.hostVote === state.hostVote);
   });
+  // The "Reported" line went with the flag. Nothing else writes to it, and a
+  // confirmation for an action this row no longer offers would be a message
+  // about something that did not happen here.
   const confirmEl = document.getElementById('host-review-confirm');
   if (confirmEl) {
-    confirmEl.textContent = state.hostFlagReason ? 'Reported \u2713' : '';
-    confirmEl.classList.toggle('show', !!state.hostFlagReason);
+    confirmEl.textContent = '';
+    confirmEl.classList.remove('show');
   }
 }
 
@@ -1009,16 +1019,15 @@ function initHostReviewListeners() {
   const row = $('#reveal-host-review');
   if (!row) return;
 
+  // THE FLAG IS NO LONGER HERE (moved 2026-08-28). Reporting a host lives on
+  // the profile card — tap the host anywhere their row appears — because it is
+  // rare, serious and deliberate, and because sitting inches from the QUESTION
+  // feedback wearing the same glyphs made tapping the wrong pair silently
+  // wrong. This row is now only "would you play with them again", once, at the
+  // end of the game.
   row.querySelectorAll('[data-host-vote]').forEach(btn => {
     btn.addEventListener('click', () => {
       const vote = btn.dataset.hostVote;
-      const menu = row.querySelector('.host-review__menu');
-
-      if (vote === 'flag') {
-        if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
-        return;
-      }
-      if (menu) menu.style.display = 'none';
 
       // Tap again to take it back. There is no way to WITHDRAW a vote once
       // cast — op_rate_host only ever sets — so an un-tap flips to the other
@@ -1033,20 +1042,6 @@ function initHostReviewListeners() {
     });
   });
 
-  row.querySelectorAll('[data-host-reason]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const reason = btn.dataset.hostReason;
-      state.hostFlagReason = reason;
-      const menu = row.querySelector('.host-review__menu');
-      if (menu) menu.style.display = 'none';
-      const confirmEl = document.getElementById('host-review-confirm');
-      if (confirmEl) {
-        confirmEl.textContent = 'Reported \u2713';
-        confirmEl.classList.add('show');
-      }
-      sendHostVote({ flagReason: reason });
-    });
-  });
 }
 
 export function initFeedbackListeners() {

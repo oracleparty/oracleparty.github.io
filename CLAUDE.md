@@ -1907,11 +1907,31 @@ original idea and the owner spotted its flaw first — it skews toward short
 games. It has a worse one: one person in a ten-round game would outweigh four
 people in a five-round one.
 
-**The row is deliberately NOT styled like the question feedback above it.** They
-carry the same three icons and mean completely different things; a player
-tapping the wrong pair would be silently wrong and nothing would say so. Hence
-the label, the rule above it, and separate listeners — a shared handler is how
-one would quietly start writing the other's rows.
+**THE TWO ACTIONS NOW LIVE IN DIFFERENT PLACES, and that is the real fix for a
+confusion this file only ever mitigated.** They used to be one row of three
+icons under the question feedback, wearing the same glyphs and meaning something
+completely different — labelled and ruled off, with separate listeners, which
+helped but did not remove the hazard. Migration 059 made it worse: with the
+thumbs moved to the final round only, that row would have been a lone flag for
+most of a game, reading as neither thing.
+
+| | Where | When | Why |
+|---|---|---|---|
+| 👍👎 | the reveal, final round | once per game | routine, so make it easy — a score that is rare AND hidden is a feature nobody uses |
+| 🚩 report | the profile card, behind a tap on the host | any time | rare and serious, so make it deliberate — and it sits directly under the standing you are judging them by |
+
+The card opens from the lobby, the reveal, the scoreboard and the results, so a
+report can be made at ANY point rather than during one screen. It is an outlined
+button, not a red one: a control that shouts invites the tap it is trying to
+make considered.
+
+**Two bugs in one, caught by the check written for the move.** The report block
+referenced `profile`, which is scoped inside `if (userId)`, so it threw
+`profile is not defined` and the control never rendered at all — and the
+scenario reported both the missing control and the console error. The lesson is
+the one this file keeps recording: **a control that only moved OUT of somewhere
+is a control that was deleted**, so the check asserts it is reachable where it
+went, not merely absent from where it was.
 
 **A GUEST HOST CANNOT HAVE A REPUTATION**, and this is a real limitation to
 state rather than work around. It attaches to a user id and a guest has none.

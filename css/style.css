@@ -3558,13 +3558,61 @@ body::after {
   opacity: 1;
 }
 
-/* The reason menu. It carries .feedback-flag-menu too, for the look and the
-   absolute positioning, and .host-review is position: relative so it anchors to
-   this row rather than to the question feedback above it. This rule exists so
-   the menu can be nudged independently — and so the class is not reported as
-   markup the stylesheet has never heard of. */
-.host-review__menu {
-  z-index: 2;
+/* REPORTING A HOST, on the profile card (moved 2026-08-28).
+   It used to be a third icon on the reveal, inches from the QUESTION feedback
+   and wearing the same glyphs — tapping the wrong pair was silently wrong.
+   Reporting is rare, serious and deliberate, so it lives behind a tap on the
+   host, next to the standing you are judging them by, and can be done from the
+   lobby, mid-game or the results rather than during one screen only.
+   Deliberately quiet: an outlined button, not a red one. A control that shouts
+   invites the tap it is trying to make considered. */
+.profile-card__report {
+  margin-top: var(--space-md);
+  position: relative;
+}
+
+.profile-card__report-btn {
+  width: 100%;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.profile-card__report-btn:disabled {
+  opacity: 0.5;
+}
+
+.profile-card__report-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.profile-card__report-menu button {
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.profile-card__report-done {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  min-height: 1em;
 }
 
 /* A host's standing, wherever it is shown: the join list, the lobby, a profile.

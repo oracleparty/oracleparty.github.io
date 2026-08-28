@@ -240,8 +240,8 @@ async function init() {
   hostListEl.addEventListener('click', handlePlayerListClick);
 
   // Profile card on player tap (pass roomId for instant-add)
-  attachProfileCardHandler(playerListEl, () => players, room.id);
-  attachProfileCardHandler(hostListEl, () => players, room.id);
+  attachProfileCardHandler(playerListEl, () => players, room.id, () => room.playerId);
+  attachProfileCardHandler(hostListEl, () => players, room.id, () => room.playerId);
 
   // Track presence as "in lobby"
   updatePresence({ activity: 'lobby', roomId: room.id, roomCode: room.code, category: room.category });
