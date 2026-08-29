@@ -3784,6 +3784,111 @@ fixed-height flex containers that scroll internally, so `--full` cannot reach
 anything below the fold — on profile.html that is most of the page, and a
 section nobody can photograph is a section nobody is reviewing.
 
+## The agreed shape of titles (designed 2026-08-29, NOT BUILT)
+
+**This is a design the owner and I settled in conversation. None of it is in the
+code.** It is written down because it took a long argument to reach and because
+the reasoning matters more than the numbers. Do not treat any of it as
+implemented; `js/titles.js` still works the way the sections below describe.
+
+### The problem it fixes
+
+A rank — Apprentice, Scholar, Master, Oracle — is
+`(questions you get right / questions met) x log2(questions met)` against fixed
+thresholds. **Measured, not estimated:** "Scholar in Ancient History" is anywhere
+between 23 questions and 512 depending on accuracy.
+
+| accuracy | Apprentice | Scholar | Master | Oracle |
+|---|---|---|---|---|
+| 100% | 20 | 23 | 46 | 91 |
+| 80% | 20 | 50 | 118 | 280 |
+| 60% | 32 | 182 | 575 | 1825 |
+| 50% | 64 | 512 | 2048 | 8192 |
+
+**No wording of that is honest**, which is why every attempt to label the Title
+Builder read as vague. The owner said repeatedly they could not understand their
+own system; the system was the problem, not the screen.
+
+**And the blend punishes curiosity.** 46 right of 46 met is a Master. Meet ONE
+new question, get it wrong — still 46 right — and you are demoted. Verified by
+computation, not asserted.
+
+### The rule
+
+**One measure everywhere: questions you currently get right.** A count, never a
+percentage. Proficiency unlocks nothing and stays a profile stat.
+
+| | Requirement | Topic must hold |
+|---|---|---|
+| ⬜ common | 10 right in a subject | — |
+| 🟩 uncommon | 25% of one topic | 60+ |
+| 🟦 rare | 25% of EVERY topic in a subject, and 100+ right in it | — |
+| 🟪 epic | 75% of one topic | 80+ |
+| 🟨 legendary | 100% of one topic | 100+ |
+| 🟥 mythic | 100% of an entire subject; plus secrets | — |
+
+**Measured against the live bank on 2026-08-29** — 42 topics, smallest 5,
+average 114, largest 339: **29 topics clear 60, 23 clear 80, 18 clear 100.** So
+the floors genuinely separate. That is 12 + 12 + 12 subject words and
+29 + 23 + 18 topic words = **106**, plus secrets.
+
+**I claimed twice that these floors "exclude almost nothing", inferring it from
+the 114 average. The owner pushed back — an average says nothing about how many
+clear 100 — and they were right.** 20/20/20/400 averages 115 and only one clears
+it. Do not reason about a distribution from its mean.
+
+### Why each piece is the way it is
+
+- **Counts, not proficiency.** Meeting a new question and failing it leaves a
+  count untouched but drops a percentage, so a percentage-based title is taken
+  away for exploring.
+- **Proficiency is forced anyway at the top, without being a rule.** A topic is
+  finite, so getting 75% of it right means being right about at least 75% of it;
+  100% is perfect accuracy by definition. This is why no second condition is
+  needed, and why adding one buys nothing.
+- **Once earned, kept forever.** Otherwise a legendary evaporates when you forget
+  one question.
+- **Targets are frozen** — computed once from the topic's size and stored as a
+  number. A percentage recomputed live means adding questions moves somebody's
+  goal backwards, which is the worst feeling in a collection.
+- **Fixed floors, not positional ones.** "The largest quarter of topics" was my
+  proposal and it is wrong: it shifts as the bank grows, so a topic could lose
+  its gold word because OTHER topics grew — breaking the freeze rule above.
+- **Rare needs its 100-right floor** or a subject with two small topics gives a
+  rare for 20 right, ranking it below uncommon and breaking the ladder.
+- **Six tiers is right at ~106 words**, though it would be silly at 37. I argued
+  against it from the wrong number.
+
+### What must be built alongside it
+
+- **The admin page must list every topic, its size, which tiers it qualifies for,
+  and which have no word written.** Targets are frozen, so nothing tells you when
+  a growing bank makes a topic newly eligible. Without this the collection
+  silently stops growing.
+- **No placeholder words, ever.** A player must never see a slot they cannot
+  fill: hitting a requirement and receiving nothing is a promise broken. A topic
+  with no word written simply offers none. The gaps are the owner's view, not the
+  player's.
+- **The words are the owner's to write.** All 34 existing hints were
+  model-written and are being dropped; the owner has said the words themselves
+  must be theirs or approved by them. **Do not generate them.**
+
+### The screen
+
+Settled by prototype rather than argument, after two failed attempts — a static
+mockup the owner could not read, and a honeycomb that hid the words behind a tap.
+
+- **The title is the menu.** Three words at the top; tap one to change that part.
+- **An earned word says what you did** ("earned at 28 right in Ancient History").
+  A locked one says what to do ("you get 19 right, 9 more to go") and **hides the
+  word itself**. Only secrets stay mysterious.
+- **Slot 2 is rows, not a honeycomb.** A hexagon holds an emoji and a number; it
+  cannot hold a WORD, so the one column actually about words was the only one
+  unreadable without tapping. The Map keeps the honeycomb — showing question
+  progress at a glance is genuinely its job.
+- **Slot 3 splits** into "how far you have come" and "things you pulled off",
+  because four of its eight words are the rank ladder showing through.
+
 ## The title system is 37 words, and one of them did not exist
 
 Counted 2026-08-29, from the code, because the owner asked what the system
