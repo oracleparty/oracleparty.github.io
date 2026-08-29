@@ -1390,8 +1390,9 @@ export async function handlePlayAgain() {
     try {
       await Promise.all([
         deleteAnswersByRoom(state.room.id, state.room.playerId),
+        // current_question is carried by the op_set_phase call below, and
+        // since 061 it is not a column a client may write.
         updateGameState(state.room.id, {
-          current_question: 0,
           question_ids: [],
           question_started_at: null,
           countdown_started_at: null

@@ -556,7 +556,13 @@ export async function advancePhaseOnServer(roomId, callerPlayerId) {
  *   missing, so this is safe to deploy before the SQL is run.
  */
 export async function setPhaseOnServer(roomId, callerId, expectedPhase, toPhase, question = null) {
-  if (!roomId || !callerId || !toPhase) return false;
+  // `toPhase` may legitimately be NULL — clearing the phase is a real operation
+  // (the lobby's pre-start reset), and migration 061 taught op_set_phase to
+  // express it. Rejecting a null here sent that one caller down the direct-write
+  // fallback, which 061 had just revoked: "permission denied for column
+  // game_phase". The room still reset, because the fallback is not what does the
+  // work — but every start of every game logged a refusal.
+  if (!roomId || !callerId || toPhase === undefined) return false;
   const { data, error } = await supabase.rpc('op_set_phase', {
     p_room_id: roomId,
     p_caller_id: callerId,

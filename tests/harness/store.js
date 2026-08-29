@@ -113,6 +113,10 @@ export class FakeStore {
     // question_history of every player it touches.
     this._lockedColumns = new Map([
       ['players', new Set(['is_host', 'is_cohost'])],
+      // Migration 061: the two most damaging columns in the database. Anyone
+      // could shove a live game to results, back to lobby, or on to a question
+      // nobody had been asked.
+      ['rooms', new Set(['game_phase', 'current_question'])],
     ]);
     this.subscribers = [];         // { id, table, filter, events, deliver }
     this.log = [];                 // every operation, for assertions

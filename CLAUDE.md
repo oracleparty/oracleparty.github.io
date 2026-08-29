@@ -80,7 +80,30 @@ Consequences that show up as "random" bugs:
 **Migrating this to server authority (Postgres functions owning phase, timer,
 judging and scoring) is the main open work item.**
 
-### 2. Database permissions are effectively wide open
+### 2. Database permissions WERE effectively wide open
+
+**Substantially closed as of 2026-08-29.** This section's history is kept below
+because the reasoning still applies to what is left, but the headline has
+changed. Six doors were shut in one day, each measured against a real Postgres
+and each verified by breaking it:
+
+| Was open to anyone | Closed by |
+|---|---|
+| delete any room mid-game | 048 |
+| mark any answer right or wrong, or delete them | 049 / 051 |
+| write your own stats for the whole question bank | 055 |
+| forge or read a host rating | 054 |
+| remove any player from any live game | 057 |
+| make yourself host of any live game | 058 |
+| end, rewind or skip a live game | **061** |
+
+**What is still open, deliberately:** `players.last_seen_at` (so somebody could
+make you look absent and have you swept — narrowed from any column to one), and
+`rooms.question_started_at` (a round's clock can be reset). Both are nuisances
+rather than takeovers, and both need their own enumeration rather than being
+tacked onto a slice that was about something else.
+
+### 2b. The original entry, kept for its reasoning
 
 RLS is *enabled*, which makes the Supabase dashboard look secure — but the
 gameplay policies are `USING (true)` / `WITH CHECK (true)`. See

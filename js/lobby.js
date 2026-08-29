@@ -33,6 +33,7 @@ import {
   toggleReady,
   updateRoomStatus,
   updateGameState,
+  setPhaseOnServer,
   fetchRoom,
   subscribeToPlayers,
   subscribeToMessages,
@@ -1319,13 +1320,19 @@ async function handleStartGame() {
     // playing, so the room is never simultaneously "playing" and phase
     // "lobby". The host's game init writes question_ids and the countdown
     // immediately after this.
+    // The phase and the question number go through the server (060/061); the
+    // rest is ordinary room data. NULL is not interchangeable with 'lobby'
+    // here — syncToCurrentState returns early on a falsy phase and
+    // handleRoomChange skips the transition entirely — so the function was
+    // taught to CLEAR a phase rather than the app quietly substituting one.
     await updateGameState(room.id, {
-      game_phase: null,
-      current_question: 0,
       question_ids: [],
       question_started_at: null,
       countdown_started_at: null
     });
+    if (!await setPhaseOnServer(room.id, room.playerId, null, null, 0)) {
+      await updateGameState(room.id, { game_phase: null, current_question: 0 });
+    }
     await updateRoomStatus(room.id, 'playing');
     // Realtime subscription triggers navigation for everyone including host.
     // Safety fallback: if Realtime doesn't fire within 5s, navigate directly.

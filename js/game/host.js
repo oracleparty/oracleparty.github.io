@@ -155,8 +155,9 @@ async function executeReturnToLobby() {
     // The room is cleared out first and the PHASE said last: the phase is what
     // sends every phone back to the lobby, so it must not arrive before the
     // clear-out it announces.
+    // current_question is carried by the op_set_phase call below, and since
+    // migration 061 it is not a column a client may write.
     await updateGameState(state.room.id, {
-      current_question: 0,
       question_ids: [],
       question_started_at: null,
       countdown_started_at: null

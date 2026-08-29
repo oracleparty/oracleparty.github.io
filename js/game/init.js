@@ -478,9 +478,10 @@ async function initHostGame() {
   // be there before anybody is told to start. The same ordering the final
   // question needs, and for the same reason: a player who got the phase without
   // the list would be asked a question nobody else was.
+  // current_question is NOT written here: the op_set_phase call below carries
+  // it, and since migration 061 it is not a column a client may write at all.
   await updateGameState(state.room.id, {
     question_ids: questionIds,
-    current_question: 0,
     countdown_started_at: countdownStartedAt
   });
   if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'countdown', 0)) {

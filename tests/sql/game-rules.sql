@@ -1517,5 +1517,78 @@ BEGIN
     ('a live host cannot be overridden by a bystander', verdict, 'not allowed');
 END $$;
 
+-- ============================================
+-- MIGRATION 061 — ONLY THE RULES CHANGE THE ROOM
+--
+-- game_phase and current_question are the two most damaging columns in this
+-- database: anyone could shove a live game to `results`, back to `lobby`, or on
+-- to a question nobody has been asked. RLS is NOT what stops it — the UPDATE
+-- policy is still USING (true) — so these assert column privilege, and a check
+-- on the policy would prove nothing.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  hostP uuid;
+  verdict text; ph text; qn int;
+BEGIN
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the game phase is not a column a client may write',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'game_phase', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'refused'),
+    ('nor the question number',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'current_question', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'refused');
+
+  -- AND THE ONES THAT MUST STAY. Revoking any of these breaks the game far
+  -- worse than the hole being closed: no questions could be chosen, no timer
+  -- could start, no game could be started or ended, no host setting saved.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('question selection still works',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'question_ids', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable'),
+    ('the round clock still works',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'question_started_at', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable'),
+    ('the countdown still works',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'countdown_started_at', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable'),
+    ('lobby / playing still works',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'status', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable'),
+    ('host settings still work',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'question_timer', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable'),
+    ('the room tally still works',
+      CASE WHEN has_column_privilege('anon', 'public.rooms', 'room_scores', 'UPDATE')
+           THEN 'writable' ELSE 'refused' END, 'writable');
+
+  -- A PHASE CAN BE CLEARED, which is a real state this app uses: the lobby's
+  -- pre-start reset writes NULL so the room is never simultaneously "playing"
+  -- and phase "lobby". NULL is not interchangeable with 'lobby' —
+  -- syncToCurrentState returns early on a falsy phase — so the function has to
+  -- be able to say it rather than the app substituting something.
+  INSERT INTO rooms (code, host_name, game_phase, current_question)
+    VALUES ('061900', 'Hosty', 'results', 7) RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now()) RETURNING id INTO hostP;
+
+  SELECT op_set_phase(rid, hostP, NULL, NULL, 0) INTO verdict;
+  SELECT game_phase, current_question INTO ph, qn FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the phase can be cleared', verdict, 'ok'),
+    ('and it really is null', COALESCE(ph, '(null)'), '(null)'),
+    ('with the question number reset alongside it', qn::text, '0');
+
+  -- Clearing is still a privileged move: it is how a game is reset.
+  UPDATE rooms SET game_phase = 'question' WHERE id = rid;
+  INSERT INTO players (room_id, display_name, last_seen_at) VALUES (rid, 'Alice', now());
+  SELECT op_set_phase(rid, (SELECT id FROM players WHERE room_id = rid AND display_name = 'Alice'),
+                      NULL, NULL, 0) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('an ordinary player cannot clear the phase', verdict, 'not allowed');
+END $$;
+
 
 SELECT check_name, got, want FROM result ORDER BY ord;
