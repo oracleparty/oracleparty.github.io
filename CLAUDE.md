@@ -306,6 +306,31 @@ proves it with `store.denyWrites('profiles')`.
 **When you write a save handler, the question is not "did it error" but "is
 the screen now telling the truth".**
 
+**A THIRD ONE ON THE SAME PAGE, found 2026-08-29: the error log's "Clear 7d+".**
+A bare `delete()` whose result was thrown away, followed by a redraw. Found by
+listing every write in `js/admin.js` and asking of each one what the screen says
+when it is refused — the same sweep that found the End button, which had shipped
+broken and stayed that way because nothing had ever pressed it.
+
+**AND `writeSucceeded()` IS THE WRONG TOOL HERE, which is worth knowing before
+reaching for it.** Its rule is *zero rows means refused*, and that only holds
+when the write is aimed at something known to exist. This delete is filtered
+`WHERE timestamp < cutoff`, so zero rows is genuinely ambiguous: a refusal and
+"there is nothing older than seven days" are the same silence. Wrapping it in
+`writeSucceeded` would report a permission error every time the window happened
+to be empty — a confident lie in the other direction.
+
+Counting the old rows FIRST is what separates them, and it costs one query:
+`0 old` is "nothing to do", `N old and 0 deleted` is a refusal, anything else
+worked. **When a write's filter can legitimately match nothing, establish
+whether there was anything to write before reading zero as failure.**
+
+Nothing has established that the delete IS refused — migration 019 grants it and
+its predicate is right (`profiles.user_id`, not the `.id` mistake above), but
+migrations here are hand-applied and nothing records which ran. **This is a
+diagnostic, not a diagnosis**, the same call as `upsertQuestionFeedback`: what
+was wrong is that nobody could tell either way, and now one press says so.
+
 ### 6. A measurement can lie, and a confident one lies hardest
 
 `scripts/probe-db.mjs` is the tool this file tells you to trust over
