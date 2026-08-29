@@ -1538,10 +1538,64 @@ function attachListeners() {
     appendErrorLogs(logs);
     $('#btn-load-more-errors').style.display = logs.length >= PAGE_SIZE ? '' : 'none';
   };
+  // CLEAR 7d+ DISCARDED ITS OWN RESULT AND REDREW AS THOUGH IT HAD WORKED.
+  //
+  // The #5 pattern, and the same one the End button on a stuck room had: an RLS
+  // refusal returns no error and affects nothing, so a delete that checks
+  // neither reports success while deleting nothing. Migration 019 grants admins
+  // DELETE on error_logs and its predicate is right (profiles.user_id, not
+  // profiles.id — the mistake that made 024's admin policy grant nothing), but
+  // migrations here are applied by hand and nothing records which were run.
+  //
+  // So this is a DIAGNOSTIC, not a diagnosis: nothing has established that the
+  // delete is refused. What was wrong is that nobody could tell either way.
+  // Press it once and the screen now says which world we are in.
+  //
+  // NOT writeSucceeded(), deliberately. Its rule is "zero rows means refused",
+  // and here zero rows is genuinely ambiguous — a refusal and "there is nothing
+  // older than seven days" are the same silence. Counting first is what
+  // separates them, and without that the honest-looking version would report a
+  // permission error every time the window happened to be empty.
   $('#btn-clear-old-errors').onclick = async () => {
+    const btn = $('#btn-clear-old-errors');
+    const statusEl = $('#error-clear-status');
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from('error_logs').delete().lt('timestamp', cutoff);
-    loadErrorLogs();
+    btn.disabled = true;
+    setStatus(statusEl, 'Clearing...', { sticky: true });
+    try {
+      const { count: oldCount, error: countErr } = await supabase
+        .from('error_logs')
+        .select('id', { count: 'exact', head: true })
+        .lt('timestamp', cutoff);
+      if (countErr) {
+        logger.error('Admin', 'could not count old error logs', countErr);
+        setStatus(statusEl, `Couldn't read the logs: ${countErr.message}`, { sticky: true });
+        return;
+      }
+      if (!oldCount) { setStatus(statusEl, 'Nothing older than 7 days.'); return; }
+
+      const { data, error } = await supabase
+        .from('error_logs').delete().lt('timestamp', cutoff).select('id');
+      if (error) {
+        logger.error('Admin', 'clear old error logs failed', error);
+        setStatus(statusEl, `Error: ${error.message}`, { sticky: true });
+        return;
+      }
+      const removed = data?.length || 0;
+      if (removed === 0) {
+        // The rows are there and none moved. That is a refusal, which is the
+        // one outcome the old version rendered as success.
+        setStatus(statusEl,
+          `Not cleared — permission denied on ${oldCount} old ${oldCount === 1 ? 'entry' : 'entries'}. Is migration 019 applied?`,
+          { sticky: true });
+        return;
+      }
+      setStatus(statusEl, `Cleared ${removed} old ${removed === 1 ? 'entry' : 'entries'}.`);
+      _errorOffset = 0;
+      await loadErrorLogs();
+    } finally {
+      btn.disabled = false;
+    }
   };
 }
 

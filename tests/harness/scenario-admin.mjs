@@ -123,6 +123,17 @@ try {
       played_at: new Date(now - 3600000).toISOString() },
   ]);
 
+  // ONE OLD ENTRY AND ONE RECENT ONE. With only old ones, a Clear button that
+  // wiped the whole table would pass; with only recent ones, "nothing older
+  // than 7 days" would pass whatever the button did. The pair is what makes
+  // both halves of the outcome checkable.
+  table.store.seed('error_logs', [
+    { id: 1, timestamp: new Date(now - 30 * 86400000).toISOString(),
+      type: 'onerror', message: 'ancient failure', severity: 'error' },
+    { id: 2, timestamp: new Date(now - 3600000).toISOString(),
+      type: 'onerror', message: 'from an hour ago', severity: 'error' },
+  ]);
+
   table.store.seed('rooms', [
     { id: 'room-live-1', code: 'AAAA', host_name: 'Roman', category: 'history', status: 'playing',
       who_can_join: 'anyone', questions_per_game: 5, question_timer: 30, created_at: new Date().toISOString() },
@@ -427,6 +438,59 @@ try {
     note(`rooms ${before} -> ${table.store.table('rooms').length}; button now "${label}"`);
     if (stillThere) {
       problems.push('the admin ended a room and the room is still running');
+    }
+  }
+
+  // ---- Clear 7d+ says what it actually did -------------------------------
+  //
+  // It was a bare delete whose result was thrown away, followed by a redraw:
+  // an RLS refusal returns no error and removes nothing, so a denied clear and
+  // a successful one looked identical. Nothing had ever pressed it.
+  //
+  // BOTH HALVES ARE CHECKED, because either alone passes on a broken button.
+  // The recent entry must survive (a Clear that wiped everything would pass a
+  // check that only counted removals), and the outcome must be REPORTED (the
+  // silent version deletes correctly and still tells the admin nothing, which
+  // is the fault being fixed).
+  heading('clearing old error logs');
+  await admin.page.locator('[data-panel="errors"]').click().catch(() => {});
+  await admin.page.waitForTimeout(800);
+  const clearBtn = admin.page.locator('#btn-clear-old-errors');
+  if (!await clearBtn.isVisible().catch(() => false)) {
+    problems.push('the error log panel has no Clear button');
+  } else {
+    // THE REFUSAL FIRST, because that is the bug. denyWrites reproduces exactly
+    // what a missing migration-019 policy does: the count still reads (admins
+    // can SELECT), the delete removes nothing, and no error comes back.
+    table.store.denyWrites('error_logs');
+    await clearBtn.click().catch(() => {});
+    await admin.page.waitForTimeout(1500);
+    const refusedSaid = (await admin.page.locator('#error-clear-status').textContent().catch(() => '') || '').trim();
+    const survived = table.store.table('error_logs').length;
+    note(`refused clear: ${survived} entries left; screen says "${refusedSaid}"`);
+    if (survived !== 2) {
+      problems.push(`a refused clear removed ${2 - survived} entries — denyWrites should have stopped all of them`);
+    }
+    if (!/permission denied/i.test(refusedSaid)) {
+      problems.push(`the clear was refused and the screen said "${refusedSaid || '(nothing)'}" — an admin cannot tell a denied clear from a done one`);
+    }
+
+    // ...then the same button working, which is the half a refusal-only check
+    // would pass while the feature was completely broken.
+    table.store.allowWrites('error_logs');
+    await clearBtn.click().catch(() => {});
+    await admin.page.waitForTimeout(1500);
+    const left = table.store.table('error_logs');
+    const said = (await admin.page.locator('#error-clear-status').textContent().catch(() => '') || '').trim();
+    note(`error_logs left: ${left.length} (${left.map(l => l.message).join(', ') || 'none'}); screen says "${said}"`);
+    if (left.some(l => l.message === 'ancient failure')) {
+      problems.push('Clear 7d+ left the 30-day-old entry behind');
+    }
+    if (!left.some(l => l.message === 'from an hour ago')) {
+      problems.push('Clear 7d+ deleted an entry from an hour ago — it should only take 7d+');
+    }
+    if (!said) {
+      problems.push('Clear 7d+ deleted entries and told the admin nothing — a refusal would have looked exactly the same');
     }
   }
 
