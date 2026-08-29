@@ -11,7 +11,7 @@ import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
-         disqualifyRoundOnServer, updateGameState,
+         disqualifyRoundOnServer, updateGameState, setPhaseOnServer,
          upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
          upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
   rateHost, fetchHostReputations, hostRatingsAvailable,
@@ -596,7 +596,13 @@ async function handleRevealResults() {
   }
 
   // Broadcast phase change so non-hosts transition to reveal
-  updateGameState(state.room.id, { game_phase: 'answer_reveal' })
+  // Through the server (migration 060): a person still presses the button, the
+  // database decides whether they may. Falls back to the direct write when the
+  // function is not installed, so this is safe to deploy before the SQL is run.
+  setPhaseOnServer(state.room.id, state.room.playerId, null, 'answer_reveal')
+    .then(served => {
+      if (!served) return updateGameState(state.room.id, { game_phase: 'answer_reveal' });
+    })
     .catch(err => logger.error('Game', 'Failed to broadcast answer_reveal phase', err));
   doReveal();
 }
@@ -782,19 +788,31 @@ export async function handleNextQuestion() {
 
   const isLastQuestion = state.currentQuestion >= state.totalQuestions - 1;
 
+  // CAPTURED BEFORE THE LOCAL UPDATE. op_set_phase compares against the phase
+  // the caller believes the room is on, and this function applies the change
+  // locally first so the screen does not wait on Realtime — so reading
+  // state.gamePhase afterwards would send the DESTINATION as the expectation
+  // and the compare-and-set would never match. Written wrong the first time,
+  // and the kind of mistake that shows up as "the button does nothing" rather
+  // than as an error.
+  const fromPhase = state.gamePhase;
+
   if (isLastQuestion) {
-    // Apply locally first — don't depend on Realtime echo
     state.gamePhase = 'results';
     if (_showResultsScreen) _showResultsScreen();
-    await updateGameState(state.room.id, { game_phase: 'results' });
+    if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'results')) {
+      await updateGameState(state.room.id, { game_phase: 'results' });
+    }
   } else {
-    // Apply locally first
     state.currentQuestion = state.currentQuestion + 1;
     if (_handlePhaseTransition) _handlePhaseTransition('question');
-    await updateGameState(state.room.id, {
-      game_phase: 'question',
-      current_question: state.currentQuestion
-    });
+    if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
+                                'question', state.currentQuestion)) {
+      await updateGameState(state.room.id, {
+        game_phase: 'question',
+        current_question: state.currentQuestion
+      });
+    }
   }
 }
 

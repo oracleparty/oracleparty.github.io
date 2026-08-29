@@ -1179,6 +1179,51 @@ export class FakeStore {
 
     if (name === 'op_server_now') return new Date().toISOString();
 
+    // ---- migration 060: the server moves the game on ----------------------
+    //
+    // The phase is the most damaging column on `rooms`: with UPDATE open,
+    // anyone could shove a live game to `results`, back to `lobby`, or on to a
+    // question nobody has been asked. Mirrored here so the scenarios take the
+    // path the app now takes, and written to REFUSE for the same reasons —
+    // a fake that always advanced would let a scenario pass on a move the live
+    // server rejects.
+    if (name === 'op_set_phase') {
+      const PHASES = ['lobby', 'countdown', 'question', 'reveal', 'answer_reveal',
+                      'scores_reveal', 'final_wager', 'final_question', 'results'];
+      if (!PHASES.includes(args?.p_to_phase)) return 'not a phase';
+      const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
+      if (!room) return 'already moved';
+      const caller = this.table('players').find(p =>
+        String(p.id) === String(args?.p_caller_id) && String(p.room_id) === String(room.id));
+      if (!caller || caller.is_bot) return 'not allowed';
+
+      // CANNOT TELL MEANS HERE — a host row with no timestamps counts as
+      // present, so a room is not declared leaderless just because nobody has
+      // heartbeated yet.
+      const liveHost = this.table('players').some(p => String(p.room_id) === String(room.id)
+        && p.is_host && !p.is_bot
+        && (!(p.last_seen_at || p.joined_at)
+            || Date.now() - new Date(p.last_seen_at || p.joined_at).getTime() < 120000));
+      if (!(caller.is_host || caller.is_cohost || !liveHost)) return 'not allowed';
+
+      // COMPARE-AND-SET: a stale click cannot rewind a game, and two phones
+      // pressing at once move it exactly one step.
+      const expected = args?.p_expected_phase ?? null;
+      if (expected !== null && (room.game_phase ?? null) !== expected) return 'already moved';
+
+      const before = { ...room };
+      room.game_phase = args.p_to_phase;
+      if (args.p_question !== null && args.p_question !== undefined) {
+        room.current_question = args.p_question;
+      }
+      // AND TELL EVERYBODY — an UPDATE inside a Postgres function reaches
+      // Realtime like any other. A fake that mutated silently leaves every
+      // other phone waiting forever, which is what made scenario-nasty report
+      // "the room is stuck" when the clock stamp first moved server-side.
+      this._broadcast('UPDATE', 'rooms', { ...room }, before);
+      return 'ok';
+    }
+
     // ---- migration 058: only the rules make you host ----------------------
     //
     // `players` no longer grants a client UPDATE on is_host / is_cohost, so a

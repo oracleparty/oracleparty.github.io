@@ -7,7 +7,7 @@ import { state, _isLeaving, setIsLeaving, _hostSettingsConfirmTimer, setHostSett
 import { $, navigateWithFadeReplace } from '../utils.js';
 import { logger } from '../logger.js';
 import { RETURN_HOME_DELAY_MS } from '../constants.js';
-import { updateGameState, updateRoomStatus, deleteAnswersByRoom } from '../supabase.js';
+import { updateGameState, updateRoomStatus, deleteAnswersByRoom, setPhaseOnServer } from '../supabase.js';
 
 // Cleanup callback — registered by init.js to avoid circular imports
 let _cleanup = null;
@@ -152,14 +152,19 @@ async function executeReturnToLobby() {
 
   try {
     await deleteAnswersByRoom(state.room.id, state.room.playerId);
+    // The room is cleared out first and the PHASE said last: the phase is what
+    // sends every phone back to the lobby, so it must not arrive before the
+    // clear-out it announces.
     await updateGameState(state.room.id, {
-      game_phase: 'lobby',
       current_question: 0,
       question_ids: [],
       question_started_at: null,
       countdown_started_at: null
     });
     await updateRoomStatus(state.room.id, 'lobby');
+    if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'lobby', 0)) {
+      await updateGameState(state.room.id, { game_phase: 'lobby' });
+    }
   } catch (err) {
     logger.error('Game', 'executeReturnToLobby cleanup failed', err);
   }

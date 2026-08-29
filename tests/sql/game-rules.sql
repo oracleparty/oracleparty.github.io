@@ -1414,5 +1414,108 @@ BEGIN
     ('nobody can rate before the final round', verdict, 'you did not play the whole game');
 END $$;
 
+-- ============================================
+-- MIGRATION 060 — THE SERVER MOVES THE GAME ON
+--
+-- The phase is the most damaging column on `rooms`: with UPDATE open, anyone
+-- could shove a live game to `results`, back to `lobby`, or on to a question
+-- nobody has been asked. This is the guard that makes locking it possible.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  ghostRoom uuid;
+  hostP uuid; aliceP uuid; botP uuid; strangerP uuid; ghostHost uuid; bystander uuid;
+  verdict text; ph text; qn int;
+BEGIN
+  INSERT INTO rooms (code, host_name, game_phase, current_question)
+    VALUES ('060900', 'Hosty', 'reveal', 2) RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now()) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Alice', now()) RETURNING id INTO aliceP;
+  INSERT INTO players (room_id, display_name, is_bot, last_seen_at)
+    VALUES (rid, 'Practice Bot', true, now()) RETURNING id INTO botP;
+
+  -- THE HOLE: an ordinary player ends somebody else's game.
+  SELECT op_set_phase(rid, aliceP, 'reveal', 'results') INTO verdict;
+  SELECT game_phase INTO ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('an ordinary player cannot end the game', verdict, 'not allowed'),
+    ('and the room is still on the reveal', ph, 'reveal');
+
+  -- A STRANGER WITH THE ROOM CODE, who is not in the room at all.
+  INSERT INTO rooms (code, host_name) VALUES ('060901', 'Elsewhere') RETURNING id INTO ghostRoom;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (ghostRoom, 'Stranger', now()) RETURNING id INTO strangerP;
+  SELECT op_set_phase(rid, strangerP, 'reveal', 'lobby') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a stranger cannot move a game they are not in', verdict, 'not allowed');
+
+  -- A BOT NEVER DRIVES. It cannot press anything, but it is a row in `players`
+  -- like any other and would otherwise satisfy "present in the room".
+  SELECT op_set_phase(rid, botP, 'reveal', 'results') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a bot cannot move the game on', verdict, 'not allowed');
+
+  -- THE HOST CAN, which is the half that must not be broken by the half above.
+  SELECT op_set_phase(rid, hostP, 'reveal', 'answer_reveal') INTO verdict;
+  SELECT game_phase INTO ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host can move the game on', verdict, 'ok'),
+    ('and the room really moved', ph, 'answer_reveal');
+
+  -- A CO-HOST CAN TOO. That is the entire point of the role.
+  UPDATE players SET is_cohost = true WHERE id = aliceP;
+  SELECT op_set_phase(rid, aliceP, 'answer_reveal', 'scores_reveal') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a co-host can move the game on', verdict, 'ok');
+  UPDATE players SET is_cohost = false WHERE id = aliceP;
+
+  -- COMPARE-AND-SET. A stale click must not rewind a game, and two phones
+  -- pressing at once must move it exactly one step.
+  SELECT op_set_phase(rid, hostP, 'reveal', 'results') INTO verdict;
+  SELECT game_phase INTO ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a click from a phase the room has left does nothing', verdict, 'already moved'),
+    ('and it did not rewind the game', ph, 'scores_reveal');
+
+  -- THE QUESTION NUMBER MOVES WITH THE PHASE, and only when asked. Passing
+  -- null must leave it alone rather than blanking it.
+  SELECT op_set_phase(rid, hostP, 'scores_reveal', 'question', 3) INTO verdict;
+  SELECT current_question INTO qn FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the next question number is set with the phase', qn::text, '3');
+  SELECT op_set_phase(rid, hostP, 'question', 'reveal') INTO verdict;
+  SELECT current_question INTO qn FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and is left alone when none is given', qn::text, '3');
+
+  -- NOT A PHASE AT ALL.
+  SELECT op_set_phase(rid, hostP, 'reveal', 'wherever') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('an unknown phase is refused', verdict, 'not a phase');
+
+  -- A LEADERLESS ROOM IS NOT FROZEN. The game must not sit stuck behind one
+  -- phone: with no live host, anybody still here may move it on. This is the
+  -- deputy rule, and without it every abandoned-host room is unplayable.
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (ghostRoom, 'Ghosty', true, now() - interval '10 minutes') RETURNING id INTO ghostHost;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (ghostRoom, 'Bystander', now()) RETURNING id INTO bystander;
+  UPDATE rooms SET game_phase = 'reveal' WHERE id = ghostRoom;
+  SELECT op_set_phase(ghostRoom, bystander, 'reveal', 'answer_reveal') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a room whose host has gone is not frozen', verdict, 'ok');
+
+  -- ...BUT ONLY WHEN THE HOST HAS REALLY GONE. A host who is simply present
+  -- must not be overridable by anybody in the room, or the guard means nothing.
+  UPDATE players SET last_seen_at = now() WHERE id = ghostHost;
+  SELECT op_set_phase(ghostRoom, bystander, 'answer_reveal', 'results') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a live host cannot be overridden by a bystander', verdict, 'not allowed');
+END $$;
+
 
 SELECT check_name, got, want FROM result ORDER BY ord;

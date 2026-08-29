@@ -9,6 +9,7 @@ import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, A
 import {
   supabase,
   updateGameState,
+  setPhaseOnServer,
   startClockOnServer,
   addRoomScores,
   insertAnswersIfAbsent,
@@ -71,12 +72,19 @@ export function registerHandleNextQuestion(fn) { _handleNextQuestion = fn; }
 // ============================================
 
 export async function handleShowScores() {
-  // Apply locally first so the host doesn't depend on Realtime echo
+  // CAPTURED BEFORE the local update. op_set_phase compares against the phase
+  // the caller believes the room is on, and every one of these applies the
+  // change locally first so the screen does not wait on Realtime — reading
+  // state.gamePhase afterwards would send the DESTINATION as the expectation
+  // and the compare-and-set could never match. That shows up as "the button
+  // does nothing", not as an error.
+  const fromPhase = state.gamePhase;
   state.gamePhase = 'scores_reveal';
   state.onRevealScreen = false;
   showScoresScreen();
-  // Broadcast to other clients
-  await updateGameState(state.room.id, { game_phase: 'scores_reveal' });
+  if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'scores_reveal')) {
+    await updateGameState(state.room.id, { game_phase: 'scores_reveal' });
+  }
 }
 
 export async function showScoresScreen() {
@@ -346,13 +354,16 @@ export function clearAutoProceed() {
 
 
 async function handleFinalWager() {
+  const fromPhaseFW = state.gamePhase;
   state.gamePhase = 'final_wager';
   state.isFinalWagerRound = true;
   // Drop the last question's stamp before the screen reads it, or the 20-second
   // clock would open already expired.
   state.questionStartedAt = null;
   showFinalWagerScreen();
-  await updateGameState(state.room.id, { game_phase: 'final_wager' });
+  if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'final_wager')) {
+    await updateGameState(state.room.id, { game_phase: 'final_wager' });
+  }
 
   // Stamp the clock as a SEPARATE write, after the phase. Every other client
   // clears the previous question's stamp when the phase lands, so a stamp sent
@@ -368,9 +379,12 @@ async function handleFinalWager() {
 }
 
 async function handleShowResults() {
+  const fromPhase = state.gamePhase;
   state.gamePhase = 'results';
   showResultsScreen();
-  await updateGameState(state.room.id, { game_phase: 'results' });
+  if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'results')) {
+    await updateGameState(state.room.id, { game_phase: 'results' });
+  }
 }
 
 // ============================================
@@ -793,7 +807,14 @@ export async function handleRevealFinalQuestion() {
   // Clean up vote channel
   if (state.difficultyVoteChannel) { try { supabase.removeChannel(state.difficultyVoteChannel); } catch (e) {} state.difficultyVoteChannel = null; }
 
-  // Advance to final question — apply locally first
+  // Advance to final question — apply locally first.
+  //
+  // CAPTURED HERE, above every local mutation. I wrote this capture below them
+  // the first time, which made the expected phase 'final_question' — the
+  // DESTINATION — so the compare-and-set could never match, the room would
+  // never advance, and the last question of every game would simply never start
+  // for anybody else. It fails as "the button does nothing", never as an error.
+  const fromPhaseFQ = state.gamePhase;
   state.isFinalWagerRound = true;
   state.currentQuestion = state.totalQuestions;
   state.gamePhase = 'final_question';
@@ -812,13 +833,23 @@ export async function handleRevealFinalQuestion() {
 
   _showQuestionScreen();
 
-  // Broadcast to other players — include question_ids so non-host gets the updated question
+  // TWO WRITES, and the order matters. The question LIST is not a phase, so it
+  // goes through the ordinary room update — and it must land FIRST: every
+  // client re-reads the list when the phase arrives, and a player who got the
+  // phase without the swapped final question would answer a question nobody
+  // else was asked (the bug "the screen must show the question the room is
+  // asking" records, which migration 046 made far worse by judging against the
+  // ROOM's question rather than the one on screen).
   const questionIds = state.questions.map(qn => qn.id);
-  await updateGameState(state.room.id, {
-    game_phase: 'final_question',
-    current_question: state.totalQuestions,
-    question_ids: questionIds
-  });
+  await updateGameState(state.room.id, { question_ids: questionIds });
+
+  if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
+                              'final_question', state.totalQuestions)) {
+    await updateGameState(state.room.id, {
+      game_phase: 'final_question',
+      current_question: state.totalQuestions,
+    });
+  }
 }
 
 /**
@@ -1360,7 +1391,6 @@ export async function handlePlayAgain() {
       await Promise.all([
         deleteAnswersByRoom(state.room.id, state.room.playerId),
         updateGameState(state.room.id, {
-          game_phase: 'lobby',
           current_question: 0,
           question_ids: [],
           question_started_at: null,
@@ -1368,6 +1398,12 @@ export async function handlePlayAgain() {
         }),
         updateRoomStatus(state.room.id, 'lobby')
       ]);
+      // The phase LAST, and through the server. Everything above is the room
+      // being cleared out; this is the signal that sends every phone back to
+      // the lobby, so it must not arrive before the clear-out it announces.
+      if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'lobby', 0)) {
+        await updateGameState(state.room.id, { game_phase: 'lobby' });
+      }
     } catch (err) {
       logger.error('Game', 'handlePlayAgain host cleanup failed', err);
       showToast('Error resetting room — retrying...', 'error');

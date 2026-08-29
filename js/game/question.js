@@ -8,7 +8,7 @@ import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestio
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS } from '../constants.js';
-import { updateGameState, startClockOnServer, advancePhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
+import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -560,7 +560,13 @@ async function handleTimerExpired() {
       }
     }
     // Broadcast reveal phase so all clients transition
-    updateGameState(state.room.id, { game_phase: 'reveal' })
+    // The host's OWN timer path. op_advance_phase (056) is the backstop for
+    // when nobody is driving; this is the ordinary case, and it goes through
+    // the server too so that `rooms` can be locked without it breaking.
+    setPhaseOnServer(state.room.id, state.room.playerId, null, 'reveal')
+      .then(served => {
+        if (!served) return updateGameState(state.room.id, { game_phase: 'reveal' });
+      })
       .catch(err => logger.error('Game', 'Failed to broadcast reveal phase', err));
   }
 

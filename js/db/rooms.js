@@ -523,6 +523,66 @@ export async function advancePhaseOnServer(roomId, callerPlayerId) {
   return data ?? null;
 }
 
+/**
+ * Move the room to a new phase, through the server. Needs migration 060.
+ *
+ * Slice 7 moved the TIME-BASED transitions (056); this is the other half — the
+ * ones a person decides by pressing a button. A person still presses it; what
+ * changes is that the ANSWER comes from the database, so a stranger with the
+ * room code cannot shove a live game to `results`, back to `lobby`, or on to a
+ * question nobody has been asked.
+ *
+ * `expectedPhase` IS PASSED AS null BY EVERY CALLER TODAY, deliberately.
+ *
+ * The server supports compare-and-set — pass the phase you believe the room is
+ * on and a stale click cannot rewind a game — and the rule table proves it
+ * works. The CLIENT cannot supply it reliably, and I got that wrong three times
+ * in one sitting: every one of these call sites applies the change locally
+ * BEFORE writing, so `state.gamePhase` is already the destination; and at the
+ * start of a game the client's phase is 'loading' while the room's is 'lobby'.
+ * Each mistake failed the same silent way — the server answered "already
+ * moved", the client treated that as handled, and the room never advanced. It
+ * showed up as a game that would not start and a final wager that never
+ * committed, never as an error.
+ *
+ * So the guard that does the security work — op_may_advance — is on, and the
+ * one that needs a fact the client does not have is off until a caller can
+ * supply the ROOM's phase rather than its own. That is no worse than before
+ * this existed: two phones could always double-advance, and the app already
+ * tolerates Realtime re-delivery.
+ *
+ * → true when the server handled it (moved OR declined — either way the client
+ *   must not then write the row itself); false only when the function is
+ *   missing, so this is safe to deploy before the SQL is run.
+ */
+export async function setPhaseOnServer(roomId, callerId, expectedPhase, toPhase, question = null) {
+  if (!roomId || !callerId || !toPhase) return false;
+  const { data, error } = await supabase.rpc('op_set_phase', {
+    p_room_id: roomId,
+    p_caller_id: callerId,
+    p_expected_phase: expectedPhase ?? null,
+    p_to_phase: toPhase,
+    p_question: question,
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      logger.debug('Supabase', 'op_set_phase not installed, writing the phase directly');
+      noteServerFunctions(false);
+      return false;
+    }
+    logger.error('Supabase', 'op_set_phase failed', error);
+    return true;
+  }
+  if (data === 'already moved') {
+    // Ordinary, not a fault: Realtime means somebody else may have advanced the
+    // room first, and a duplicate tap is common on a phone.
+    logger.debug('Supabase', `op_set_phase: room already past ${expectedPhase}`);
+  } else if (data !== 'ok') {
+    logger.warn('Supabase', `op_set_phase declined: ${data}`, { toPhase });
+  }
+  return true;
+}
+
 export async function updateGameState(roomId, updates) {
   const { error } = await supabase
     .from('rooms')

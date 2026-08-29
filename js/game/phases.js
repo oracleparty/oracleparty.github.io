@@ -23,6 +23,7 @@ import {
   insertGamePlay,
   demoteCohost,
   demoteHost,
+  setPhaseOnServer,
 } from '../supabase.js';
 import { getDisplayName } from '../auth.js';
 import {
@@ -622,10 +623,11 @@ export function showCountdownScreen() {
 
     // Host advances to first question
     if (state.room.isHost) {
-      updateGameState(state.room.id, {
-        game_phase: 'question',
-        current_question: 0
-      });
+      setPhaseOnServer(state.room.id, state.room.playerId, null, 'question', 0)
+        .then(served => {
+          if (!served) return updateGameState(state.room.id, { game_phase: 'question', current_question: 0 });
+        })
+        .catch(e => logger.warn('Game', 'countdown finish failed', e));
     } else if (_deferredPhase) {
       // Non-host: process any phase transition that arrived during countdown
       const deferred = _deferredPhase;
@@ -643,7 +645,15 @@ export function showCountdownScreen() {
       try {
         const { data: r } = await fetchRoom(state.room.id);
         if (r && r.game_phase === 'countdown') {
-          updateGameState(state.room.id, { game_phase: 'question', current_question: 0 })
+          // ANY client, not just the host — this is the self-heal for a host
+          // who quit mid-countdown, so gating it on being the host would leave
+          // the room stuck forever, which is the fault it exists to fix.
+          // op_set_phase's own rule allows it: a room with no live host may be
+          // moved on by anybody still in it.
+          setPhaseOnServer(state.room.id, state.room.playerId, null, 'question', 0)
+            .then(served => {
+              if (!served) return updateGameState(state.room.id, { game_phase: 'question', current_question: 0 });
+            })
             .catch(e => logger.warn('Game', 'countdown self-heal failed', e));
         }
       } catch (_) {}

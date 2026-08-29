@@ -8,6 +8,7 @@ import { logger } from '../logger.js';
 import { presenceNeedsRebuild } from '../presence-health.js';
 import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS } from '../constants.js';
 import {
+  setPhaseOnServer,
   claimSeat,
   fetchPlayers,
   fetchQuestionsByCategory,
@@ -406,7 +407,9 @@ async function initHostGame() {
 
     // If reconnecting to countdown, skip straight to question
     if (roomData.game_phase === 'countdown') {
-      await updateGameState(state.room.id, { game_phase: 'question', current_question: 0 });
+      if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'question', 0)) {
+        await updateGameState(state.room.id, { game_phase: 'question', current_question: 0 });
+      }
       handlePhaseTransition('question');
     } else {
       handlePhaseTransition(roomData.game_phase);
@@ -470,12 +473,19 @@ async function initHostGame() {
   appendUsedQuestionIds(state.room.id, questionIds);
   const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
   state.countdownStartedAt = countdownStartedAt;
+  // DATA FIRST, PHASE SECOND. Clients act on the phase — they re-read the
+  // question list when it arrives — so the list and the countdown stamp have to
+  // be there before anybody is told to start. The same ordering the final
+  // question needs, and for the same reason: a player who got the phase without
+  // the list would be asked a question nobody else was.
   await updateGameState(state.room.id, {
     question_ids: questionIds,
-    game_phase: 'countdown',
     current_question: 0,
     countdown_started_at: countdownStartedAt
   });
+  if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'countdown', 0)) {
+    await updateGameState(state.room.id, { game_phase: 'countdown' });
+  }
 
   state.gamePhase = 'countdown';
   showCountdownScreen();

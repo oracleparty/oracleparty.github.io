@@ -66,6 +66,7 @@ const MIGRATIONS = [
   '057_only_the_rules_remove_a_player.sql',
   '058_only_the_rules_make_you_host.sql',
   '059_rate_the_host_only_if_you_played_it_all.sql',
+  '060_the_server_moves_the_game_on.sql',
 ];
 
 // 046 touches rooms, players and answers, none of which any migration in this

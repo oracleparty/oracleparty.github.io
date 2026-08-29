@@ -2278,7 +2278,7 @@ Three things become impossible that were reachable by anyone willing to edit a
 request: answering a question that is not on screen, answering after the timer,
 and spending a wager twice.
 
-`tests/sql/game-rules.sql` states 158 rules as `check | got | want` data and
+`tests/sql/game-rules.sql` states 172 rules as `check | got | want` data and
 `verify-sql.mjs` fails on any row where the two differ, naming the rule — and
 on any line that is not exactly three fields, because a line the script cannot
 read counted as a rule whose `got` and `want` were both `undefined` and
@@ -2783,6 +2783,69 @@ forcing the old direct writes, which `scenario-cohost` reports as *"promoting to
 co-host did not persist"* and `scenario-nasty` as *"the only person in the lobby
 was never made host, because abandoned rows still held the crown"* — the
 photographed ghost-host bug, caught by the conversion's own coverage.
+
+### Slice 11 — the server moves the game on (migration 060)
+
+Slice 7 (056) moved the TIME-BASED transitions: a round ends on the clock, and a
+countdown finishes, whether or not the host's phone is awake. **This is the
+other half — the transitions a PERSON decides**, by pressing Reveal Results,
+Next Question, Play Again, Return to Lobby, Start Game.
+
+**It buys nothing on its own, and that is worth saying plainly.** `rooms` still
+has `FOR UPDATE USING (true)`, so every one of these is still writable directly
+by anybody. This is GROUNDWORK: the phase cannot be locked while the phase
+machine is a browser write, which is exactly why 048, 051, 057 and 058 all left
+`rooms` alone.
+
+`op_set_phase(room, caller, expected, to, question)` enforces three things:
+
+1. **`op_may_advance`** — the caller is in the room and is the host, the
+   co-host, or is present in a room with no live host. That third case is
+   deputising, and without it a room whose host has gone is frozen forever.
+   A **bot never drives**: it cannot press anything, but it is a row in
+   `players` like any other and would otherwise satisfy "present".
+2. **Compare-and-set** on the phase the caller believes the room is on.
+3. The destination is a phase this game actually has.
+
+**DELIBERATELY NOT A TRANSITION WHITELIST.** The obvious design is a table of
+allowed from→to pairs, and I am not confident enough in the full graph to write
+one — a wrong entry does not fail loudly, it makes a game unplayable at one
+specific moment. This project has been burned exactly that way twice (049's
+three broken writes; the disqualification heuristic ported into a permission).
+The graph can be tightened later against real games rather than guessed at now.
+
+**EVERY CALLER PASSES `null` FOR THE EXPECTED PHASE, AND I GOT THAT WRONG THREE
+TIMES BEFORE ADMITTING IT.** Compare-and-set works — the rule table proves a
+stale click cannot rewind a game — but the CLIENT cannot supply the fact it
+needs. Every call site applies the change locally BEFORE writing, so
+`state.gamePhase` is already the DESTINATION; and at the start of a game the
+client's phase is `loading` while the room's is `lobby`. Each mistake failed the
+same silent way: the server answered `already moved`, the client treated that as
+handled, and the room never advanced. It surfaced as **a game that would not
+start** and **a final wager that never committed** — never as an error.
+
+So the guard that does the security work is on, and the one that needs a fact
+the client does not have is off until a caller can supply the ROOM's phase
+rather than its own. That is no worse than before this existed: two phones could
+always double-advance, and the app already tolerates Realtime re-delivery.
+
+**DATA FIRST, PHASE SECOND**, everywhere a transition also writes other columns.
+Clients act on the phase — they re-read the question list when it arrives — so
+the list, the countdown stamp and the room clear-out all land before the phase
+that announces them. Getting that backwards is the bug "the screen must show the
+question the room is asking" records, which 046 made far worse by judging
+against the ROOM's question rather than the one on screen.
+
+Verified by breaking `op_may_advance`: 11 SQL rules fail, and `scenario-fullgame`
+reports *"game never reached results (stuck on phase null, question 0)"*.
+Verified by breaking compare-and-set: a stale click sends a room from the
+scoreboard back to results.
+
+**Still open, and the next slice:** locking `rooms` itself. Every phase write in
+`js/` now goes through this function with a direct-write fallback, which is what
+that lock needs — and the fallbacks are what it will have to remove, so
+enumerate them rather than rediscovering them (049's lesson, stated in advance
+for once).
 
 ### Shutting a door shut three things nobody was watching (migration 051)
 
