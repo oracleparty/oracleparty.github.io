@@ -56,6 +56,39 @@ function _logToSupabase(payload) {
   } catch (_) { /* fail silently */ }
 }
 
+/**
+ * Write a fault to `error_logs` so it can be read on the admin page later.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM logger.error. Until now the ONLY things that
+ * reached the database were an uncaught `window.onerror` and an unhandled
+ * rejection. Every deliberate `logger.error(...)` in the app — including the one
+ * that fires when sign-in never answers — went to the phone's console and
+ * nowhere else. So a fault on somebody ELSE'S phone left no trace anybody could
+ * read, and the admin page's Error Logs panel showed a confident empty list.
+ *
+ * That is CLAUDE.md #4 one level up: the tool built to make failures visible was
+ * itself only catching the crashes, not the failures the app had handled and
+ * described. A handled failure is exactly the kind you cannot see over someone's
+ * shoulder.
+ *
+ * Use it for faults a person on another device would otherwise have to describe
+ * to you. NOT for routine chatter — it shares the same ten-per-minute limit as
+ * the crash handlers, and filling that with noise is how a real one gets dropped.
+ */
+export function recordFault(type, message, detail) {
+  logger.error(type, message, detail);
+  if (_isRateLimited()) return;
+  let extra = '';
+  try {
+    extra = typeof detail === 'string' ? detail : JSON.stringify(detail);
+  } catch (_) { extra = String(detail); }
+  _logToSupabase({
+    type: 'handled',
+    message: `[${type}] ${message}`,
+    source: extra ? String(extra).slice(0, 500) : null,
+  });
+}
+
 function _showErrorToast(message) {
   if (currentLevel < LOG_LEVELS.debug) return; // suppress in production
   import('./utils.js').then(({ showToast }) => {

@@ -8,7 +8,7 @@ import { supabase, createProfile, fetchProfile, updateProfile, generateDiscrimin
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle, planCelebration } from './titles.js';
 import { showCelebration } from './celebration.js';
-import { logger } from './logger.js';
+import { logger, recordFault } from './logger.js';
 
 const STORAGE_KEY = 'oracle_party_display_name';
 const PROFILE_CACHE_KEY = 'oracle_party_auth_profile';
@@ -393,7 +393,7 @@ function withAuthTimeout(promise, what, ms = AUTH_TIMEOUT_MS) {
       resolve(value);
     };
     const timer = setTimeout(() => {
-      logger.error('Auth', `${what} never came back`, { afterMs: ms });
+      recordFault('Auth', `${what} never came back`, { afterMs: ms });
       done({ data: null, error: {
         message: "Couldn't reach the sign-in server — check your connection and try again",
         code: 'AUTH_TIMEOUT',
@@ -405,7 +405,7 @@ function withAuthTimeout(promise, what, ms = AUTH_TIMEOUT_MS) {
       // than throwing, so anything that lands here is unusual — a network layer
       // failure, or a bug — and is worth logging loudly even though the player
       // gets the same calm sentence.
-      logger.error('Auth', `${what} threw instead of answering`, err);
+      recordFault('Auth', `${what} threw instead of answering`, err?.message || String(err));
       done({ data: null, error: {
         message: err?.message || 'Something went wrong signing in. Try again.',
         code: 'AUTH_THREW',
@@ -521,7 +521,12 @@ export async function signIn(email, password) {
   const { data, error } = await withAuthTimeout(
     supabase.auth.signInWithPassword({ email, password }), 'sign-in');
   if (error) {
-    logger.error('Auth', 'signIn failed', error);
+    // RECORDED, NOT JUST LOGGED. This is the one line that would actually name
+    // the cause when sign-in fails on somebody else's phone — Supabase's own
+    // words, which nobody can read over their shoulder.
+    recordFault('Auth', 'sign-in failed', {
+      message: error.message, code: error.code || error.status || null,
+    });
     return { user: null, profile: null, error };
   }
   if (!data?.user) {
