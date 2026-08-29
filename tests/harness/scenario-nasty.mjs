@@ -192,6 +192,44 @@ async function hostDisappearsMidQuestion() {
       } else {
         note(`${newHostRobot.name} has working controls`);
       }
+
+      // A VISIBLE BUTTON IS NOT A WORKING BUTTON, and everything above this
+      // only ever established that one was on screen.
+      //
+      // Between HOST_HANDOVER_MS (30s) and STALE_TIMEOUT_MS (120s) the client
+      // deputised somebody, lit their controls and announced it in the chat,
+      // while op_may_advance still counted the host as live and refused every
+      // press — for ninety seconds, with nothing shown anywhere, because
+      // setPhaseOnServer treats "not allowed" as "the server was reached" and
+      // does not fall back. Migration 062 splits the two windows.
+      //
+      // The check has to PRESS it. This is the same lesson as scenario-admin's
+      // panels: "it opened" is not "it works", and a control that renders
+      // perfectly and does nothing renders exactly as happily.
+      const advanceControls = ['#btn-next-question', '#btn-scores-action', '#btn-fw-reveal'];
+      const before = roomRow(table);
+      const phaseBefore = before?.game_phase ?? null;
+      const questionBefore = before?.current_question ?? null;
+      let pressed = null;
+      for (const sel of advanceControls) {
+        if (await newHostRobot.page.locator(sel).isVisible().catch(() => false)) {
+          await newHostRobot.page.locator(sel).click().catch(() => {});
+          pressed = sel;
+          break;
+        }
+      }
+      if (!pressed) {
+        note('no advance control on screen to press — deputy press not tested this run');
+      } else {
+        await newHostRobot.page.waitForTimeout(2500);
+        const after = roomRow(table);
+        const moved = (after?.game_phase ?? null) !== phaseBefore
+                   || (after?.current_question ?? null) !== questionBefore;
+        note(`${newHostRobot.name} pressed ${pressed}: ${phaseBefore}/${questionBefore} -> ${after?.game_phase}/${after?.current_question}`);
+        if (!moved) {
+          problems.push(`the deputy pressed ${pressed} and the game did not move — the server refused a deputy the client had already deputised, and nothing on any screen said so`);
+        }
+      }
     }
   } catch (err) {
     problems.push(`host-death scenario threw: ${err.message.split('\n')[0]}`);

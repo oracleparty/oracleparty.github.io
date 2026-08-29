@@ -2926,6 +2926,90 @@ that lock needs — and the fallbacks are what it will have to remove, so
 enumerate them rather than rediscovering them (049's lesson, stated in advance
 for once).
 
+### Slice 11a — the deputy could not actually advance (migration 062)
+
+**Found 2026-08-29, and it made the whole deputy mechanism dead for exactly the
+window it exists for.** This app asks two different questions about an absent
+host and gives them two deliberately different answers:
+
+| Question | Window | Why |
+|---|---|---|
+| may I take the crown? | `STALE_TIMEOUT_MS`, 120s | hard to undo |
+| may I move the game on? | `HOST_HANDOVER_MS`, 30s | the game must not stall |
+
+"Presence, Away and Host Handover" has stated that for months, under
+**Deputising, not replacement**. `op_may_advance` (060) reached for the only
+liveness function that existed — `op_room_has_live_host`, written for the crown
+— and silently inherited **120 seconds**.
+
+What a player saw:
+
+| | |
+|---|---|
+| 0s | the host's screen locks |
+| 30s | every phone deputises the next in line, **activates their buttons**, and posts *"X can advance while the host is away"* into the chat |
+| 30–120s | they press Reveal Results. The server refuses. `setPhaseOnServer` counts `'not allowed'` as *the server was reached*, so no fallback runs and **nothing is shown anywhere**. Ninety seconds of a live, announced, useless button |
+| 120s | the seat is swept, promotion runs properly, and it starts working |
+
+**It was invisible until slice 12 shipped.** Until 061 the client's fallback
+direct write to `rooms` still worked, so the refusal cost nothing. **Revoking
+the column is what turned a redundant guard into a dead button** — the same
+shape as 055 making `record_round_history` load-bearing, and worth expecting
+every time a door is shut: *what was harmlessly redundant a moment ago is now
+the only path.*
+
+**The fix splits the question rather than picking a winning number.** Lowering
+`op_room_has_live_host` to 30s would let somebody take the crown from a host
+whose phone blipped, which is worse than the bug; raising the client to 120s
+would delete deputising. `op_room_host_seen_within(room, interval)` is the one
+implementation and **both callers name their own window at the call site**,
+which is the point — the next person to read either cannot mistake it for the
+other.
+
+**25 seconds, not 30, and the five seconds are load-bearing.** The invariant is
+*the server must never refuse a deputy the client has already deputised*, so the
+server's window has to be strictly SHORTER than `HOST_HANDOVER_MS`; equal puts
+the two on a boundary that clock skew decides. Nobody can ask earlier anyway —
+the button is not enabled until the client deputises.
+
+**A declined advance now reaches the player.** `'not allowed'` was logged and
+swallowed, which is #4 exactly. It is rare by design after 062 (a deputy whose
+view of the host is stale, or a host whose seat was swept), so a toast is
+appropriate rather than noise — *the fix was the window, not the wording.*
+
+**THE SCENARIO ONLY EVER CHECKED THAT A BUTTON WAS VISIBLE.**
+`scenario-nasty` confirmed the deputy had controls on screen and never pressed
+one. Same lesson as `scenario-admin`'s panels: **"it opened" is not "it works"**,
+and a control that renders perfectly and does nothing renders exactly as
+happily. It presses one now and requires the room's phase or question number to
+actually move.
+
+**The rules state the BEHAVIOUR, never the number.** Asserting "the window is
+25 seconds" would pass just as happily if `HOST_HANDOVER_MS` moved and the two
+drifted apart again, which is the whole fault. `tests/sql/game-rules.sql` uses a
+**45-second** host instead — every earlier rule about a leaderless room compared
+"10 minutes ago" against "now", so both sides sat far outside the window and the
+gap between them was never tested at all.
+
+**Two guards found by the same sweep, both cheap and both structural:**
+
+- `scripts/verify-sql.mjs` applies a **hand-written list** of migrations, so a
+  new one is untested by default with nothing saying so. 062's rules were
+  written, run, and reported a failure that was really *"the fix was never
+  applied"* — indistinguishable from the bug still being there. It now refuses
+  to run if any migration from 045 on is missing from the list.
+- The fake store had the 120-second number **copied into both** of its
+  liveness checks, so the harness agreed with the bug. One helper now, two
+  windows, mirroring the migration. It also rejected a NULL destination phase
+  that 061 explicitly allows, so the lobby's pre-start reset silently did
+  nothing there and the harness ran a subtly different game from the live site.
+
+**Every SQL interval in `migrations/` was compared against `js/constants.js`
+before writing any of this**, and that is the reusable part: six pairs, five
+matching (20 minutes, 2 hours, 8 seconds, 3 seconds deliberately generous, 10
+seconds documented), one wrong. **When the same quantity is written down in two
+languages, go and diff them — the mismatch will not announce itself.**
+
 ### Shutting a door shut three things nobody was watching (migration 051)
 
 **Slice 6 broke Play Again, rejoining, and practice bots, and every check in

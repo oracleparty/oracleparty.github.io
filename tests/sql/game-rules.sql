@@ -1591,4 +1591,73 @@ BEGIN
 END $$;
 
 
+-- ============================================
+-- MIGRATION 062 — A DEPUTY CAN ACTUALLY ADVANCE
+--
+-- Two questions about an absent host, two deliberately different answers, and
+-- 060 gave them one window:
+--
+--   may I take the crown?    120s (STALE_TIMEOUT_MS)   hard to undo
+--   may I move the game on?   30s (HOST_HANDOVER_MS)   the game must not stall
+--
+-- Between 30 and 120 seconds the client deputised somebody, activated their
+-- buttons and announced it in the chat, and the server refused every press
+-- without telling anyone.
+--
+-- THE RULES BELOW STATE THE BEHAVIOUR, NEVER THE NUMBER. Asserting
+-- "the window is 25 seconds" would pass just as happily if the client's
+-- HOST_HANDOVER_MS moved and the two drifted apart again — which is the whole
+-- fault. What has to hold is that a deputy the CLIENT would have deputised is
+-- allowed, and that a present host still cannot be overridden.
+--
+-- The 45-second sample is the point: every earlier rule about a leaderless room
+-- used "10 minutes ago" against "now", so both sides were far outside the
+-- window and the gap between them was never tested at all.
+-- ============================================
+DO $$
+DECLARE
+  rid uuid;
+  hostP uuid;
+  deputyP uuid;
+  verdict text;
+BEGIN
+  INSERT INTO rooms (code, host_name, category, status, game_phase, current_question)
+    VALUES ('062001', 'Hosty', 'history', 'playing', 'reveal', 2) RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now() - interval '45 seconds') RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Deputy', now()) RETURNING id INTO deputyP;
+
+  -- THE BUG ITSELF. 45 seconds is past HOST_HANDOVER_MS and short of
+  -- STALE_TIMEOUT_MS: the client has deputised, so the server must agree.
+  SELECT op_set_phase(rid, deputyP, NULL, 'answer_reveal') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a deputy may advance while the host is merely away', verdict, 'ok');
+
+  -- ...AND THE CROWN DOES NOT MOVE WITH IT. This is the half that makes the
+  -- split correct rather than just permissive: the host glanced at a
+  -- notification, and must not come back to find they no longer run their game.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('but the host still holds the crown at 45s',
+     CASE WHEN op_room_has_live_host(rid) THEN 'held' ELSE 'lost' END, 'held');
+  SELECT op_set_host_role(rid, deputyP, deputyP, 'host', true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('so a deputy cannot crown themselves at 45s', verdict, 'not allowed');
+
+  -- A PRESENT HOST IS STILL UNTOUCHABLE, or the guard means nothing. Removing
+  -- the liveness test entirely would pass every rule above this one.
+  UPDATE players SET last_seen_at = now() WHERE id = hostP;
+  SELECT op_set_phase(rid, deputyP, NULL, 'results') INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a present host cannot be overridden', verdict, 'not allowed');
+
+  -- The two windows must not be collapsed the other way either: a host really
+  -- gone stops holding the crown.
+  UPDATE players SET last_seen_at = now() - interval '10 minutes' WHERE id = hostP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a host gone ten minutes has lost the crown',
+     CASE WHEN op_room_has_live_host(rid) THEN 'held' ELSE 'lost' END, 'lost');
+END $$;
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

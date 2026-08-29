@@ -135,6 +135,11 @@ export const NIGHT_OWL_END_HOUR = 5;
 // A host who goes quiet for this long hands the role over. Deliberately far
 // shorter than STALE_TIMEOUT_MS: their row is kept so they can rejoin
 // seamlessly, but the game must not sit frozen waiting for one phone.
+//
+// THE SERVER HAS A MATCHING WINDOW — op_may_advance in migration 062, set to 25
+// seconds so it always agrees with a deputy this constant has already created.
+// If you change this, change that: they were 30 and 120 for a while, and the
+// deputy's buttons were live and refused for the whole ninety seconds between.
 export const HOST_HANDOVER_MS = 30000;
 export const STALE_TIMEOUT_MS = 120000;          // 2 minutes — seat released; rejoining restores score and history
 export const DISCONNECTED_TIMEOUT_MS = 45000;     // 45 seconds — faster cleanup after beacon (tab close)

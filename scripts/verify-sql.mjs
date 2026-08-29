@@ -68,7 +68,31 @@ const MIGRATIONS = [
   '059_rate_the_host_only_if_you_played_it_all.sql',
   '060_the_server_moves_the_game_on.sql',
   '061_only_the_rules_change_the_room.sql',
+  '062_a_deputy_can_actually_advance.sql',
 ];
+
+// EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.
+//
+// The list is hand-written, so a new migration is untested by DEFAULT and
+// nothing says so — the rules written for it run against the previous version
+// of the function and pass or fail for the wrong reason. That is not
+// hypothetical: 062's rules were written, run, and reported a failure that was
+// really "the fix was never applied", which looked exactly like the bug still
+// being there.
+//
+// 045 is the cut because the rebuild starts there; anything earlier is included
+// only when a later slice needs it, and those are listed above with a reason.
+const MIGRATION_FLOOR = 45;
+const notApplied = readdirSync(join(ROOT, 'migrations'))
+  .filter(f => f.endsWith('.sql'))
+  .filter(f => Number(f.slice(0, 3)) >= MIGRATION_FLOOR)
+  .filter(f => !MIGRATIONS.includes(f));
+if (notApplied.length) {
+  console.error('These migrations are not applied by this script, so any rule');
+  console.error('written for them tests the version of the world before them:');
+  for (const f of notApplied) console.error(`  ${f}`);
+  process.exit(2);
+}
 
 // 046 touches rooms, players and answers, none of which any migration in this
 // repo creates — they predate the folder (CLAUDE.md #7). tests/sql/scratch-schema.sql

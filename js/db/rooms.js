@@ -5,7 +5,7 @@
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions } from './client.js';
 import { logger, reportWriteFailure } from '../logger.js';
 import { PUBLIC_ROOMS_LIMIT, ABANDONED_ROOM_MS } from '../constants.js';
-import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
+import { notifyConnectionLost, notifyConnectionRestored, showToast } from '../utils.js';
 
 /**
  * Generate a random 4-letter room code (A-Z).
@@ -583,6 +583,23 @@ export async function setPhaseOnServer(roomId, callerId, expectedPhase, toPhase,
     // Ordinary, not a fault: Realtime means somebody else may have advanced the
     // room first, and a duplicate tap is common on a phone.
     logger.debug('Supabase', `op_set_phase: room already past ${expectedPhase}`);
+  } else if (data === 'not allowed') {
+    // THE PLAYER PRESSED A BUTTON AND THE GAME DID NOT MOVE. Silence here is
+    // the exact shape CLAUDE.md #4 is about: this returns true, so no fallback
+    // runs, and before this branch existed the tap simply did nothing forever.
+    //
+    // It reaches a real person in two ways, both of which mean the same thing —
+    // you are not the one driving right now. A deputy whose local view of the
+    // host is stale (the host came back between the poll and the tap), and a
+    // host whose seat was swept while they were away, so somebody else was
+    // promoted and their new row is not flagged host.
+    //
+    // Rare by design since migration 062: it used to fire for ninety seconds of
+    // every host absence, because the client deputised at 30s and the server
+    // did not agree until 120s. A toast on that would have been noise, which is
+    // how real warnings get ignored — the fix was the window, not the wording.
+    logger.warn('Supabase', 'op_set_phase: this client may not advance the room', { toPhase });
+    showToast("The host is running the game — you can't advance it", 'error');
   } else if (data !== 'ok') {
     logger.warn('Supabase', `op_set_phase declined: ${data}`, { toPhase });
   }

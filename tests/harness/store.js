@@ -732,6 +732,27 @@ export class FakeStore {
     }
   }
 
+  /**
+   * Has this room's host been heard from within `ms`? The stand-in for
+   * op_room_host_seen_within (migration 062).
+   *
+   * ONE IMPLEMENTATION, TWO CALLERS, EACH NAMING ITS OWN WINDOW — which is the
+   * whole point of the migration. Advancing the game uses the deputy's window
+   * and taking the crown uses the stale-seat one, and this file previously had
+   * the longer number copied into both, so the harness agreed with the bug.
+   *
+   * CANNOT TELL MEANS HERE: a host row with no timestamps at all counts as
+   * present, so a room is not declared leaderless just because nobody has
+   * heartbeated yet. Same rule as everywhere else in this project.
+   */
+  _hostSeenWithin(roomId, ms) {
+    return this.table('players').some(p =>
+      String(p.room_id) === String(roomId)
+      && p.is_host && !p.is_bot
+      && (!(p.last_seen_at || p.joined_at)
+          || Date.now() - new Date(p.last_seen_at || p.joined_at).getTime() < ms));
+  }
+
   _rpc(name, args) {
     if (name === 'increment_questions_answered') {
       const row = this.table('game_plays').find(r =>
@@ -1194,21 +1215,25 @@ export class FakeStore {
     if (name === 'op_set_phase') {
       const PHASES = ['lobby', 'countdown', 'question', 'reveal', 'answer_reveal',
                       'scores_reveal', 'final_wager', 'final_question', 'results'];
-      if (!PHASES.includes(args?.p_to_phase)) return 'not a phase';
+      // NULL MEANS "CLEAR THE PHASE", which migration 061 taught the real
+      // function to express and this stand-in used to reject as 'not a phase'.
+      // The lobby's pre-start reset is the one caller that sends it, and a room
+      // sitting on 'lobby' instead of null behaves differently — syncToCurrentState
+      // returns early on a falsy phase — so the harness was quietly running a
+      // different game from the live site at exactly that moment.
+      if (args?.p_to_phase != null && !PHASES.includes(args.p_to_phase)) return 'not a phase';
       const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
       if (!room) return 'already moved';
       const caller = this.table('players').find(p =>
         String(p.id) === String(args?.p_caller_id) && String(p.room_id) === String(room.id));
       if (!caller || caller.is_bot) return 'not allowed';
 
-      // CANNOT TELL MEANS HERE — a host row with no timestamps counts as
-      // present, so a room is not declared leaderless just because nobody has
-      // heartbeated yet.
-      const liveHost = this.table('players').some(p => String(p.room_id) === String(room.id)
-        && p.is_host && !p.is_bot
-        && (!(p.last_seen_at || p.joined_at)
-            || Date.now() - new Date(p.last_seen_at || p.joined_at).getTime() < 120000));
-      if (!(caller.is_host || caller.is_cohost || !liveHost)) return 'not allowed';
+      // ADVANCING USES THE DEPUTY'S WINDOW, NOT THE CROWN'S (migration 062).
+      // These are two different questions with two different answers, and this
+      // file had the 120-second one copied into both — the same conflation the
+      // migration fixes server-side.
+      if (!(caller.is_host || caller.is_cohost
+            || !this._hostSeenWithin(room.id, 25000))) return 'not allowed';
 
       // COMPARE-AND-SET: a stale click cannot rewind a game, and two phones
       // pressing at once move it exactly one step.
@@ -1247,15 +1272,12 @@ export class FakeStore {
       // nobody can start, advance or judge.
       if (args.p_value && target.is_bot) return 'not allowed';
 
-      // CANNOT TELL MEANS HERE — a host row with no timestamps counts as
-      // present, so a room is not declared leaderless just because nobody has
-      // heartbeated yet.
-      const liveHost = rows.some(p => String(p.room_id) === String(args.p_room_id)
-        && p.is_host && !p.is_bot
-        && (!(p.last_seen_at || p.joined_at)
-            || Date.now() - new Date(p.last_seen_at || p.joined_at).getTime() < 120000));
+      // THE CROWN KEEPS THE FULL TWO MINUTES. Taking the role is hard to undo —
+      // a host who glanced at a notification must not come back to find they no
+      // longer run their game — where advancing is not, which is why 062 gives
+      // the two different windows.
       const callerIsHost = !!caller.is_host;
-      if (!(callerIsHost || !liveHost)) return 'not allowed';
+      if (!(callerIsHost || !this._hostSeenWithin(args.p_room_id, 120000))) return 'not allowed';
 
       const touch = (row, patch) => {
         const before = { ...row };
