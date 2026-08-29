@@ -5,7 +5,15 @@
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-28.
+> Last verified against the code: 2026-08-29.
+>
+> **THE LOCKDOWN IS APPLIED. Migrations 048 through 061 are all live —
+> measured on the live database from the owner's SQL Editor, each by its own
+> verification report, on 2026-08-28 and 2026-08-29.** 061's eight rules came
+> back ok: nobody can write `rooms.game_phase` or `current_question` directly,
+> and every other room write a client legitimately makes still works. See
+> fact #2 for the table of what is closed and the two nuisances left open
+> deliberately.
 >
 > The live database was verified directly on 2026-08-18 via
 > `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
@@ -84,8 +92,9 @@ judging and scoring) is the main open work item.**
 
 **Substantially closed as of 2026-08-29.** This section's history is kept below
 because the reasoning still applies to what is left, but the headline has
-changed. Six doors were shut in one day, each measured against a real Postgres
-and each verified by breaking it:
+changed. Seven doors were shut, each measured against a real Postgres, each
+verified by breaking it, **and every one of them applied to the live database
+and confirmed there by its own report**:
 
 | Was open to anyone | Closed by |
 |---|---|
@@ -389,6 +398,53 @@ place".**
   categories counted twice.** 11% of the bank carries more than one, so the
   people who play the broadest categories rank highest and nothing anywhere
   says why. It is on the list and in WHAT THIS MEANS FOR A PLAYER now.
+
+**A SIXTH, found 2026-08-29, and it is the mirror image of the other five.**
+Those all reported an ABSENCE that was really a bad question. This one reported
+**HEALTH for a thing it had never looked at.**
+
+The probe ends with a WHAT THIS MEANS FOR A PLAYER section that maps a missing
+database object to the features it takes down. `op_advance_phase` had an entry
+there from the day migration 056 shipped — and was never added to the list of
+functions the script actually calls. The consequence list is filtered against
+the functions that came back missing, so an unprobed name **can never appear in
+it**. Every run printed `Nothing on the watch list is missing` about a function
+nobody had asked after.
+
+**Nine of them, not one.** `op_leave_room`, `op_set_judgement`,
+`op_disqualify_round`, `op_advance_phase`, `op_remove_player`,
+`op_set_host_role`, `op_set_phase`, `op_sweep_rooms` and `delete_my_account`
+were all called by `js/` and watched by nothing.
+
+**And the lockdown made that far worse than it was when it started.** The
+045-047 block in the probe says these functions "fall back" when missing, which
+was true then. Since 048-061 revoked the matching client rights, a missing
+function is not a slower path but a REFUSED one — and for `op_set_phase` the
+refusal is a hard `permission denied for column game_phase`, so **no game
+starts or advances at all**. That is the 055 lesson arriving a second time: a
+dependency that was a fallback becomes load-bearing the moment you shut the
+door beside it, and the monitoring has to be re-read in that light or it goes
+on describing the old world confidently.
+
+The fix that matters is not the nine entries, it is the **guard**: the script
+now fails if any object named in the consequence list is not actually probed,
+or is named twice. Verified by breaking both — un-probing `op_advance_phase`
+reports it by name and exits 1, and the duplicate check caught a duplicate
+entry **I introduced while writing it**.
+
+**Two functions are deliberately NOT probed and say so on every run.**
+`op_sweep_rooms` and `delete_my_account` take no arguments, so there is no
+unparseable uuid to stop the body running — the trick every other entry
+depends on — and calling them would sweep real rooms and delete a real account.
+They print `NOT PROBED — takes no arguments and its body deletes …`, which is
+the same honest gap this script already leaves for DELETE permissions.
+
+`scripts/check-rpc-args.mjs` now reads the probe's argument names too, because
+PostgREST resolves by name and a typo there makes an installed function answer
+404 — printed as `*** NOT INSTALLED ***` and turned into a confident paragraph
+about a broken game. **A measurement lying in the alarming direction is still a
+lying measurement.** Verified by misspelling `p_caller_id`: it names the file,
+the line and the real signature.
 
 The lesson generalises past this script: **when a check reports that everything
 is fine, or that everything is broken, suspect the check.** Both are shapes a

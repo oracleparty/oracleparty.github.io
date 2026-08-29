@@ -65,9 +65,25 @@ const problems = [];
 let checked = 0;
 let skipped = 0;
 
-for (const file of collect(path.join(ROOT, 'js'), '.js')) {
+// Two shapes, two places. The second is scripts/probe-db.mjs, whose RPC_PROBES
+// entries are `['name', { p_x: ... }]` rather than `.rpc('name', { ... })`.
+//
+// IT NEEDS CHECKING FOR THE SAME REASON THE CLIENT DOES, AND THE FAILURE IS
+// NASTIER. PostgREST resolves by argument name, so a typo in the probe makes an
+// installed function answer 404 — which the probe prints as
+// "*** NOT INSTALLED ***" and the WHAT-THIS-MEANS section then turns into a
+// confident paragraph about a broken game. That is a measurement lying in the
+// alarming direction, and CLAUDE.md #6 is a list of times this script's own
+// subject did exactly that. The tuple shape appears nowhere else in that file.
+const CALL_SITES = [
+  ...collect(path.join(ROOT, 'js'), '.js')
+      .map(file => [file, /\.rpc\(\s*'([a-z_][\w]*)'\s*,\s*\{/g]),
+  [path.join(ROOT, 'scripts', 'probe-db.mjs'), /\[\s*'([a-z_][\w]*)'\s*,\s*\{/g],
+];
+
+for (const [file, pattern] of CALL_SITES) {
   const src = fs.readFileSync(file, 'utf8');
-  for (const m of src.matchAll(/\.rpc\(\s*'([a-z_][\w]*)'\s*,\s*\{/g)) {
+  for (const m of src.matchAll(pattern)) {
     const name = m[1];
     const spec = declared.get(name);
     if (!spec) { skipped++; continue; }   // declared in a migration this repo does not hold

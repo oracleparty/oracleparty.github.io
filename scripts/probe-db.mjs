@@ -536,7 +536,64 @@ const RPC_PROBES = [
   ['op_rate_host', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID,
                      p_voter_id: 'probe', p_rating: 1,
                      p_flag_reason: null, p_flag_note: null }],
+
+  // ------------------------------------------------------------------
+  // Migrations 048, 049, 056, 057, 058, 060, 061 — THE LOCKDOWN.
+  //
+  // READ THE CONSEQUENCE FOR THESE DIFFERENTLY FROM EVERYTHING ABOVE IT.
+  // The 045-047 block says the app "falls back" when a function is missing,
+  // and that was true when it was written. It is not true of these, and it
+  // stopped being true of some of the ones above them on 2026-08-29.
+  //
+  // Each of these migrations REVOKED the client's right to do the thing the
+  // function replaces. So a missing function here is not a slower path, it is
+  // a REFUSED one — and for the two `rooms` columns 061 took away, the refusal
+  // is a hard `permission denied for column game_phase` that stops the game
+  // dead. That is the 055 lesson stated in advance: a dependency that was a
+  // fallback becomes load-bearing the moment you shut the door beside it, and
+  // the monitoring has to be re-read in that light or it goes on describing
+  // the old world confidently.
+  //
+  // op_advance_phase had a WHAT-THIS-MEANS entry from the day it shipped and
+  // was never in this list, so the entry could never fire and the probe
+  // printed "Nothing on the watch list is missing" without ever having looked.
+  // The guard below this array is what stops that recurring.
+  ['op_leave_room', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID }],
+  ['op_set_judgement', { p_answer_id: NOT_A_UUID, p_is_correct: true,
+                         p_caller_id: NOT_A_UUID }],
+  ['op_disqualify_round', { p_room_id: NOT_A_UUID, p_question_number: 0,
+                            p_caller_id: NOT_A_UUID }],
+  ['op_advance_phase', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID }],
+  ['op_remove_player', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID,
+                         p_target_id: NOT_A_UUID }],
+  ['op_set_host_role', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID,
+                         p_target_id: NOT_A_UUID, p_role: 'cohost',
+                         p_value: true }],
+  ['op_set_phase', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID,
+                     p_expected_phase: null, p_to_phase: 'lobby',
+                     p_question: 0 }],
+  // Granted to `authenticated` only. An anonymous probe therefore gets 42501,
+  // which this script reports as installed — measured, not assumed: the same
+  // shape already answers `admin_account_details  installed — HTTP 401 / 42501`
+  // on every CI run. The unparseable uuid is the second guard, so the delete
+  // could not run even if the grant were wrong.
+  ['admin_delete_account', { p_user_id: NOT_A_UUID }],
 ];
+
+// FUNCTIONS THAT CANNOT BE PROBED WITHOUT DOING THE THING THEY DO.
+//
+// Both take NO arguments, so there is no unparseable value to stop the body
+// running — the trick every entry above depends on. Calling them would sweep
+// real rooms and delete a real account. An honest gap beats a guess, which is
+// the same call this script already makes about DELETE permissions.
+//
+// They are listed rather than merely omitted so the guard below can tell
+// "deliberately not probed" from "forgotten", and so a reader can see that the
+// blind spot was chosen.
+const UNPROBEABLE_RPCS = new Map([
+  ['op_sweep_rooms', 'takes no arguments and its body deletes abandoned rooms'],
+  ['delete_my_account', 'takes no arguments and its body deletes an account'],
+]);
 
 console.log('\n--- RPC FUNCTIONS (probed by signature; no function body runs) ---');
 const missingRpcs = [];
@@ -557,6 +614,9 @@ for (const [fn, args] of RPC_PROBES) {
     state = `installed — HTTP ${r.status}${code ? ` / ${code}` : ''}`;
   }
   console.log(`  ${fn.padEnd(34)} ${state}`);
+}
+for (const [fn, why] of UNPROBEABLE_RPCS) {
+  console.log(`  ${fn.padEnd(34)} NOT PROBED — ${why}`);
 }
 
 console.log('\n' + '='.repeat(70));
@@ -693,7 +753,81 @@ const CONSEQUENCES = [
   { object: 'op_admin_end_room', kind: 'rpc',
     fix: 'run migrations/051_the_three_writes_049_took_away.sql',
     breaks: ["the admin dashboard's End button on a stuck room does nothing and says it worked"] },
+
+  // THE LOCKDOWN (048, 049, 056, 057, 058, 060, 061). Each of these replaces a
+  // right the client no longer has, so "missing" means REFUSED, not "slower".
+  // The last two are the loud ones: 061 revoked the column itself, so the
+  // fallback raises `permission denied for column game_phase` and the game
+  // stops rather than quietly disagreeing with itself.
+  { object: 'op_leave_room', kind: 'rpc',
+    fix: 'run migrations/048_only_the_rules_delete_a_room.sql',
+    breaks: [
+      'nobody can delete a room they have emptied, so finished games stay listed as live',
+      'and the Join page offers real players rooms nobody is in',
+    ] },
+  { object: 'op_set_judgement', kind: 'rpc',
+    fix: 'run migrations/049_only_a_host_changes_a_verdict.sql',
+    breaks: ["a host cannot override the machine's verdict — the button moves and the score does not, silently, because a refused UPDATE returns no error"] },
+  { object: 'op_disqualify_round', kind: 'rpc',
+    fix: 'run migrations/049_only_a_host_changes_a_verdict.sql',
+    breaks: ['a host cannot throw out a round; it reports success and the points stand'] },
+  // op_advance_phase's entry is up with player_stats_computed, where it has
+  // been since 056 shipped — unprobed, and therefore unable to fire, until now.
+  { object: 'op_remove_player', kind: 'rpc',
+    fix: 'run migrations/057_only_the_rules_remove_a_player.sql',
+    breaks: [
+      'the stale sweep cannot release an abandoned seat, so ghosts accumulate in every lobby',
+      'and the host cannot remove a practice bot',
+    ] },
+  { object: 'op_set_host_role', kind: 'rpc',
+    fix: 'run migrations/058_only_the_rules_make_you_host.sql',
+    breaks: [
+      'NOBODY CAN BE MADE HOST — a room whose host leaves is frozen for everybody still in it',
+      'and co-host cannot be granted or taken away',
+    ] },
+  { object: 'op_set_phase', kind: 'rpc',
+    fix: 'run migrations/060_the_server_moves_the_game_on.sql (and 061)',
+    breaks: [
+      'NO GAME CAN START OR ADVANCE AT ALL — 061 revoked the column, so the fallback',
+      'raises "permission denied for column game_phase" and every phone shows',
+      "\"Couldn't move the game on\" on every button in the game",
+    ] },
 ];
+
+// EVERY RPC NAMED HERE MUST ACTUALLY BE PROBED.
+//
+// op_advance_phase had an entry above from the day it shipped and was never in
+// RPC_PROBES, so `broken` could never contain it and this script reported
+// "Nothing on the watch list is missing" for a function it had not looked at —
+// the single most reassuring output for a completely unknown state, which is
+// CLAUDE.md #6 in one line. A watch list that watches nothing is worse than no
+// watch list, because it is believed.
+const unwatched = CONSEQUENCES
+  .filter(c => c.kind === 'rpc')
+  .map(c => c.object)
+  .filter(name => !RPC_PROBES.some(([fn]) => fn === name)
+                  && !UNPROBEABLE_RPCS.has(name));
+// And no object may appear twice, or a reader gets the same paragraph twice and
+// has to work out whether it is one fault or two. Caught while writing the
+// check above: the lockdown block restated op_advance_phase, which already had
+// an entry, and the unwatched list printed the name twice — which is what made
+// the duplicate visible at all.
+const seen = new Set();
+const duplicated = CONSEQUENCES.map(c => c.object).filter(o => seen.size === seen.add(o).size);
+
+if (unwatched.length || duplicated.length) {
+  console.log('\n*** THIS SCRIPT IS BROKEN ***');
+  if (unwatched.length) {
+    console.log('  These have a "what this means" entry but are never probed, so');
+    console.log('  their consequence can never fire and their absence reads as health:');
+    for (const name of unwatched) console.log(`      ${name}`);
+  }
+  if (duplicated.length) {
+    console.log('  These are named by more than one entry, so a reader is told twice:');
+    for (const name of duplicated) console.log(`      ${name}`);
+  }
+  process.exitCode = 1;
+}
 
 console.log('\n--- WHAT THIS MEANS FOR A PLAYER ---');
 const broken = CONSEQUENCES.filter(c =>
