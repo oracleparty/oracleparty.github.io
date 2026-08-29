@@ -2768,6 +2768,103 @@ this was for. The server can tell an invisible account from a real one via
 `auth.users.is_anonymous`, so that distinction survives into SQL rather than
 depending on anyone remembering it.
 
+### Slice 8c — turning it on stopped anybody creating a room
+
+**Reported from a live game on 2026-08-29: `new row violates row-level security
+policy for table "rooms"`. Nobody could start a game at all.** It had been that
+way since the owner flipped the switch the day before, and was found only
+because somebody finally tried to host.
+
+**Measured, after two wrong guesses:**
+
+```
+tablename | cmd    | policyname                  | roles
+rooms     | INSERT | Allow anon insert on rooms   | {anon}
+rooms     | SELECT | Allow anon select on rooms   | {anon}
+rooms     | UPDATE | Allow anon update on rooms   | {anon}
+players   | ...    | ...                          | {public}
+```
+
+**A Postgres policy can be restricted to a ROLE, and `rooms` was — to `anon`.**
+Supabase gives a signed-out visitor the `anon` role and everybody else
+`authenticated`. **An anonymous sign-in issues a real session, so every guest
+became `authenticated`** — and the rules admitting `anon` stopped matching
+anyone at all. Nothing about `rooms` changed; the meaning of "visitor" changed
+underneath it.
+
+**THE ENUMERATION MISSED A WHOLE LANGUAGE.** Slice 8a says it changed nothing
+else and lists roughly thirty places in `js/` that ask "do they have a user id".
+Every one of those was checked. **Not one database policy was**, and the policies
+are where the assumption actually lived. A sweep of the code cannot see a role
+written in SQL.
+
+`WHERE roles <> '{public}'` over `pg_policies` is the whole audit, and it takes
+one query. **Run it before changing anything about who a user IS.** It also
+found `profiles` INSERT restricted to `{authenticated}`, which is correct and
+harmless, so the query distinguishes fine.
+
+**MY FIRST FIX DID NOT FIX IT, and the reason is worth more than the bug.** It
+asked whether an INSERT policy EXISTED and created one only if not. A policy
+existed — it simply admitted nobody. **Existence is not applicability**, and a
+guard that checks the first while meaning the second reports success and changes
+nothing. That is the same shape as #6's whole catalogue, arriving in a repair
+rather than in a measurement.
+
+It did repair something real by accident: `players` SELECT and UPDATE were also
+missing, and the report shows them created under this fix's own names. 058's drop
+loop takes `cmd IN ('INSERT','ALL')`, and **a `FOR ALL` policy covers every
+command**, so closing the host hole took reading the lobby and heartbeating with
+it. 051 had guarded against exactly this for `rooms` by recreating before
+dropping; 058 did not, for `players`.
+
+### Slice 8d — an auth call that never answers freezes everything behind it
+
+**Two game-breaking reports the same evening, one cause.** A player stuck on
+"Signing in..." for ever, and another stuck on "Loading game..." while the room
+started without them — appearing AFK to everybody else, because `init()` never
+finished so their heartbeat never started.
+
+`js/game/init.js` opens with `await Promise.all([ensureDisplayName(), initAuth()])`,
+and `initAuth` awaits Supabase auth. Every caller of `signIn` / `signUp` /
+`signInWithGoogle` checks `result.error` and restores its button, so an error is
+handled everywhere — **and none of that code can be reached by a promise that
+never settles.** A `try/catch` was not enough and never could be: a promise that
+hangs does not throw.
+
+The screen is then left asserting the one thing that is certainly false: that it
+is still working on it. **That is #4 in the loudest place in the app**, and it is
+why the cause could not be established from outside — the failure produced no
+error to read, on a device nobody could inspect.
+
+`withAuthTimeout` converts both a hang and a rejection into the ordinary
+`{ error }` shape every call site already handles, so all of them are fixed
+without touching one of them. **Two windows, deliberately different:**
+
+| | | |
+|---|---|---|
+| a deliberate press of Sign In | `AUTH_TIMEOUT_MS`, 20s | a false timeout is the worse outcome |
+| page load | `AUTH_BOOT_TIMEOUT_MS`, 8s | nobody chose to wait, and playing as a guest is recoverable where a frozen page is not |
+
+A timed-out session lookup deliberately does NOT fall through to an invisible
+sign-in — asking auth a second question when it has just failed to answer only
+doubles the wait.
+
+**WHAT FIXED IT IS NOT ESTABLISHED.** Sign-in worked afterwards; whether that was
+the boot timeout, the version refresh, or something transient at Supabase is
+unknown, and this file is not going to claim otherwise. What IS established is
+that the freeze was real, and that it is now impossible: the button ends up
+either gone or pressable, always.
+
+**AND THE REASON IT TOOK ALL EVENING IS ITS OWN FAULT.** `logger.error(...)` only
+ever reached the console. **Only `window.onerror` and `unhandledrejection` were
+written to `error_logs`** — so every deliberately handled failure in the app was
+invisible to the admin page, which showed a confident empty list while somebody
+on another phone could not sign in. Handled failures are precisely the ones you
+cannot see over somebody's shoulder. `recordFault()` in `logger.js` logs AND
+persists, sharing the crash handlers' ten-per-minute limit so it cannot crowd out
+a real one, and is wired to the three auth faults that name a cause — including
+Supabase's own message when it refuses a sign-in.
+
 ### Slice 9 — only the rules remove a player (migration 057)
 
 **The hole:** `players` had `FOR DELETE USING (true)`, and every browser carries
@@ -3686,6 +3783,56 @@ reports three failures by name.
 fixed-height flex containers that scroll internally, so `--full` cannot reach
 anything below the fold — on profile.html that is most of the page, and a
 section nobody can photograph is a section nobody is reviewing.
+
+## The title system is 37 words, and one of them did not exist
+
+Counted 2026-08-29, from the code, because the owner asked what the system
+actually contains and could not tell from any screen — which is itself the
+finding. **Nothing in the app states the structure**, so the person who designed
+it could not remember it.
+
+| Slot | Shown as | Words | What it is |
+|---|---|---|---|
+| 1 | The Adjective | 10 | how you play — wins, streaks, loyalty, hosting, 2 secrets |
+| 2 | The Calling | 19 | what you know |
+| 3 | The Rank | 8 | 4 echoes of the profile ladder, 4 unrelated feats |
+
+**Slot 2 has two layers and only the first is finished.** Twelve words, one per
+category, earned at Apprentice — complete. Then a DEEP layer: a Scholar word and
+an Oracle word for each SUBCATEGORY (ancient history at Scholar is Chronicles, at
+Oracle it is Antiquity). **That layer exists for History and for nothing else.**
+Seven words where the pattern implies 84, across 42 subcategories.
+
+So "is it complete?" has a number: **37 of roughly 114**, and the missing part is
+exactly the part the owner described wanting — *if they are good at science, the
+title is science-related*. It was started once, for one category.
+
+**A LEGENDARY WORD DID NOT EXIST AT ALL.** `eternal` was defined twice in
+`TITLE_WORDS` — slot 2 (Oracle in modern history) and slot 3 (Oracle in three
+categories). It is a plain object literal, so **the second silently replaced the
+first**: no error, no warning, one fewer card in the gallery than the file
+describes, and the top reward for a whole branch unearnable by anybody. Every
+other era has both its Scholar and its Oracle word; modern had Atomic and then
+nothing, which is only visible once they are lined up.
+
+The key is `eternalModern` now and the word is unchanged — restoring the author's
+intent rather than inventing a rename. **It does mean a title could read
+"Eternal Eternal", which is the owner's call, not a decision to make quietly
+inside a bug fix.**
+
+**The check has to read the SOURCE.** By the time the module is imported the
+duplicate is gone — the object holds one entry and looks perfectly healthy — so
+nothing asserted against `TITLE_WORDS` could ever see it, which is why this
+survived. `tests/titles.test.js` parses the file, and carries a guard on itself:
+if the pattern stops matching it would pass over an empty list and report a clean
+bill of health. Verified by restoring the duplicate — three checks fail, the
+self-guard among them.
+
+**Two overloaded names, both raised by the owner and neither settled:**
+"The Calling" for a column that is really "what you know" (their instinct was
+Style / Mastery), and **"Rank"**, which is both a word in slot 3 and the
+Apprentice→Oracle ladder on the profile, measured per category. Those are the
+same four words meaning two different things on two different screens.
 
 ## The forty titles nobody could see
 

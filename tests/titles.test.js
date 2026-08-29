@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   TITLE_WORDS,
   RARITY_CELEBRATION,
@@ -746,5 +749,47 @@ describe('planCelebration', () => {
     const plan = planCelebration([u('Brave', 'common', { isNew: false, isUpgrade: true, level: 3 })]);
     expect(plan.lead.isUpgrade).toBe(true);
     expect(plan.lead.level).toBe(3);
+  });
+});
+
+// ============================================
+// NO WORD MAY BE DEFINED TWICE
+//
+// TITLE_WORDS is a plain object literal, so two entries sharing a key is not an
+// error — the later one silently REPLACES the earlier, and the earlier word
+// ceases to exist. That happened: `eternal` was defined in slot 2 and again in
+// slot 3, and the slot 2 version (a legendary, the top reward for modern
+// history) could never be earned by anyone. Nothing failed, nothing logged, and
+// the gallery simply showed one fewer card than the file describes.
+//
+// THIS HAS TO READ THE SOURCE. By the time the module is imported the duplicate
+// is already gone — the object holds one entry and looks perfectly healthy — so
+// no check against TITLE_WORDS could ever see it. Same reason
+// tests/phase-guards.test.js reads js/game/ as text.
+// ============================================
+describe('the word list itself', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'js', 'titles.js'), 'utf8');
+  const keys = [...src.matchAll(/^ {2}([a-zA-Z_][\w]*):\s*\{\s*$/gm)].map(m => m[1]);
+
+  it('found the entries it is meant to be checking', () => {
+    // A GUARD ON THE GUARD. If the file is reformatted and this pattern stops
+    // matching, every assertion below would pass over an empty list and report a
+    // clean bill of health for any amount of duplication.
+    expect(keys.length).toBeGreaterThanOrEqual(30);
+    expect(keys).toContain('eternalModern');
+  });
+
+  it('defines no key twice', () => {
+    const seen = new Set();
+    const duplicated = keys.filter(k => seen.size === seen.add(k).size);
+    expect(duplicated, 'these silently overwrite an earlier word, which then cannot be earned').toEqual([]);
+  });
+
+  it('every key in the source survives into the exported object', () => {
+    // The other half of the same fault: a key present in the file but missing
+    // from TITLE_WORDS means something ate it.
+    const missing = keys.filter(k => !TITLE_WORDS[k]);
+    expect(missing).toEqual([]);
+    expect(Object.keys(TITLE_WORDS).length).toBe(keys.length);
   });
 });

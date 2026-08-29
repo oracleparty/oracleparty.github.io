@@ -203,7 +203,21 @@ export const TITLE_WORDS = {
     unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'modern', tier: 'Scholar' } },
     levelMultiplier: 1
   },
-  eternal: {
+  // KEY RENAMED, WORD UNCHANGED. This was `eternal`, exactly like the slot 3
+  // entry near the bottom of this file — and TITLE_WORDS is a plain object, so
+  // the later one silently replaced this one. It has never existed: the top
+  // reward for modern history, a legendary, could not be earned by anybody, and
+  // nothing anywhere would ever have said so.
+  //
+  // Every other era has both a Scholar word and an Oracle word (Chronicles /
+  // Antiquity, Crusade / Dynasty, Renaissance / Revolution). Modern had Atomic
+  // and then nothing, which is what makes the loss visible once you line them up.
+  //
+  // The two words are still both "Eternal" on screen. That is the author's
+  // intent restored rather than a rename invented here — but it does mean a
+  // title could read "Eternal Eternal", which is a decision for the owner, not
+  // one to make quietly in a bug fix.
+  eternalModern: {
     slot: 2, word: 'Eternal', rarity: 'legendary',
     hint: 'All of time bends to your knowledge',
     unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'modern', tier: 'Oracle' } },
