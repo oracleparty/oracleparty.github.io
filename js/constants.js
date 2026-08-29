@@ -31,6 +31,25 @@ export const SCORE_ANIMATE_MS = 1000;
 export const SCORE_REORDER_DELAY_MS = 300;
 export const FEEDBACK_FADE_MS = 4000;
 export const FRIEND_REQUEST_TOAST_MS = 10000;
+
+// How long to wait for Supabase's auth server before giving up and saying so.
+//
+// A sign-in that never answers used to leave the button reading "Signing in..."
+// for ever: every caller handles an error, and none of them can handle a promise
+// that never settles. Generous on purpose — auth on a bad phone connection is
+// genuinely slow, and a false timeout is worse than a slow success — but finite,
+// because "still working on it" is a lie after twenty seconds.
+export const AUTH_TIMEOUT_MS = 20000;
+
+// The same, on PAGE LOAD rather than on a button press. Deliberately shorter.
+//
+// Every page awaits initAuth() before it renders, so this is the ceiling on how
+// long somebody can stare at "Loading game..." while auth fails to answer. A
+// player waiting to be let into a game has not chosen to wait, and carrying on
+// as a guest is recoverable where a frozen page is not — the opposite trade-off
+// from AUTH_TIMEOUT_MS, where the player deliberately pressed Sign In and a
+// false timeout would be the worse outcome.
+export const AUTH_BOOT_TIMEOUT_MS = 8000;
 export const ADMIN_STATUS_FADE_MS = 2000;
 export const REVEAL_ANSWER_DELAY_MS = 1500;
 export const SCORE_PRE_ANIMATE_DELAY_MS = 800;

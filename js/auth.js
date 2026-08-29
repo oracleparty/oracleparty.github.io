@@ -3,7 +3,7 @@
 // ============================================
 
 import { $, calculateTitle, escapeHtml } from './utils.js';
-import { FRIEND_REQUEST_TOAST_MS, CHAT_HISTORY_GRACE_MS } from './constants.js';
+import { FRIEND_REQUEST_TOAST_MS, CHAT_HISTORY_GRACE_MS, AUTH_TIMEOUT_MS, AUTH_BOOT_TIMEOUT_MS } from './constants.js';
 import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest, unsubscribe } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle, planCelebration } from './titles.js';
@@ -165,7 +165,8 @@ export function isAnonymousSession() {
  */
 async function ensureAnonymousSession() {
   try {
-    const { data, error } = await supabase.auth.signInAnonymously();
+    const { data, error } = await withAuthTimeout(
+      supabase.auth.signInAnonymously(), 'invisible account', AUTH_BOOT_TIMEOUT_MS);
     if (error) {
       // Not an error the player can act on, and not one worth a toast: they can
       // still play. Logged at debug so a future session reading a console does
@@ -185,15 +186,29 @@ async function ensureAnonymousSession() {
  * Call on every page load. Non-blocking for guests.
  */
 export async function initAuth() {
-  // Step 1: Get session — this is critical, so we fail loudly
-  let session;
-  try {
-    const result = await supabase.auth.getSession();
-    session = result.data?.session;
-  } catch (err) {
-    logger.warn('Auth', 'getSession failed', err);
+  // Step 1: Get session.
+  //
+  // THIS MUST NEVER HANG, AND IT DID. Every page awaits initAuth() before it
+  // renders — game.html does `await Promise.all([ensureDisplayName(), initAuth()])`
+  // — so an auth call that never answers leaves a player on "Loading game..."
+  // for ever. Reported from a real game: one player stuck on that screen while
+  // the room started without them, and because init never finished, their
+  // heartbeat never started either, so to everybody else they were simply AFK.
+  //
+  // A try/catch was not enough and never could be: a promise that never settles
+  // does not throw. It times out now, and the timeout is SHORTER than the one on
+  // a deliberate button press — somebody waiting to be let into a game should not
+  // watch a spinner for twenty seconds, and carrying on as a guest is a
+  // recoverable degradation where a frozen page is not.
+  const { data: sessionData, error: sessionErr } = await withAuthTimeout(
+    supabase.auth.getSession(), 'session lookup', AUTH_BOOT_TIMEOUT_MS);
+  if (sessionErr) {
+    // Deliberately does NOT fall through to an invisible sign-in: auth has just
+    // failed to answer, so asking it a second question only doubles the wait.
+    logger.warn('Auth', 'could not read the session — carrying on as a guest', sessionErr);
     return;
   }
+  let session = sessionData?.session;
 
   // No session at all? Ask for an invisible one. This is what gives a guest an
   // identity the database can check, without anything changing on screen.
@@ -349,12 +364,62 @@ export async function initAuth() {
  * Supabase dashboard has to allow these URLs; a wildcard on the site covers
  * every page at once.
  */
+/**
+ * Never let an auth call hang or throw — turn both into an ordinary { error }.
+ *
+ * REPORTED FROM A REAL SIGN-IN: the button said "Signing in..." and stayed
+ * there. Every caller of these functions checks `result.error` and restores the
+ * button, so an error is handled everywhere — but a promise that NEVER SETTLES
+ * reaches none of that code, and neither does one that rejects, because nothing
+ * here was inside a try. The screen then says the one thing that is certainly
+ * false: that it is still working on it.
+ *
+ * That is CLAUDE.md #4 in the loudest possible place. A player cannot retry, and
+ * whoever is debugging it has no error to go on — which is exactly why the
+ * cause could not be established from the outside. Converting both failures into
+ * the shape every call site already handles fixes all of them at once, without
+ * touching a single caller.
+ *
+ * The message says what to do rather than what broke, because a timeout does not
+ * know which of a dozen things went wrong.
+ */
+function withAuthTimeout(promise, what, ms = AUTH_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      logger.error('Auth', `${what} never came back`, { afterMs: ms });
+      done({ data: null, error: {
+        message: "Couldn't reach the sign-in server — check your connection and try again",
+        code: 'AUTH_TIMEOUT',
+      } });
+    }, ms);
+
+    promise.then(done, (err) => {
+      // A REJECTION IS NOT A RESULT. supabase-js normally returns errors rather
+      // than throwing, so anything that lands here is unusual — a network layer
+      // failure, or a bug — and is worth logging loudly even though the player
+      // gets the same calm sentence.
+      logger.error('Auth', `${what} threw instead of answering`, err);
+      done({ data: null, error: {
+        message: err?.message || 'Something went wrong signing in. Try again.',
+        code: 'AUTH_THREW',
+      } });
+    });
+  });
+}
+
 export async function signInWithGoogle() {
   const redirectTo = window.location.href.split('#')[0];
-  const { error } = await supabase.auth.signInWithOAuth({
+  const { error } = await withAuthTimeout(supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo },
-  });
+  }), 'Google sign-in');
   if (error) {
     logger.error('Auth', 'signInWithGoogle failed', error);
     return { error, notConfigured: isProviderNotEnabled(error) };
@@ -394,13 +459,13 @@ export async function signUp(email, password, displayName) {
     return { user: null, profile: null, error: { message: 'This name is too popular. Try a different name.' } };
   }
 
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await withAuthTimeout(supabase.auth.signUp({
     email,
     password,
     options: {
       data: { display_name: displayName, discriminator }
     }
-  });
+  }), 'sign-up');
   if (error) {
     logger.error('Auth', 'signUp failed', error);
     return { user: null, profile: null, error };
@@ -453,18 +518,35 @@ export async function signUp(email, password, displayName) {
  * Returns { user, profile, error }.
  */
 export async function signIn(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await withAuthTimeout(
+    supabase.auth.signInWithPassword({ email, password }), 'sign-in');
   if (error) {
     logger.error('Auth', 'signIn failed', error);
     return { user: null, profile: null, error };
   }
+  if (!data?.user) {
+    // Neither an error nor a user. Nothing downstream can proceed, and saying
+    // so beats returning a success that leaves every caller reading null.
+    logger.error('Auth', 'signIn returned no user and no error', data);
+    return { user: null, profile: null, error: { message: 'Sign-in did not complete. Try again.' } };
+  }
 
   _currentUser = data.user;
-  const { data: profile } = await fetchProfile(data.user.id);
-  _currentProfile = profile;
-  if (profile) {
-    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
-    setDisplayName(profile.display_name);
+
+  // THE SIGN-IN ITSELF HAS ALREADY WORKED BY HERE. Everything below is
+  // decoration — the profile, the cached copy, the display name — so a failure
+  // in it must not turn a successful sign-in into a failed one, and must
+  // certainly not throw out of a function whose caller has no try around it.
+  let profile = null;
+  try {
+    ({ data: profile } = await fetchProfile(data.user.id));
+    _currentProfile = profile;
+    if (profile) {
+      localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+      setDisplayName(profile.display_name);
+    }
+  } catch (err) {
+    logger.error('Auth', 'signed in but could not load the profile', err);
   }
 
   return { user: data.user, profile, error: null };
@@ -748,10 +830,20 @@ export function showSignInModal() {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Signing in...';
 
-      const result = await signIn(email, password);
+      // BELT AND BRACES ON TOP OF withAuthTimeout. That helper stops the auth
+      // call itself hanging or throwing; this stops anything ELSE in here from
+      // leaving the button stuck on "Signing in..." with no way to retry. The
+      // rule is that this button must always end up either gone or pressable.
+      let result;
+      try {
+        result = await signIn(email, password);
+      } catch (err) {
+        logger.error('Auth', 'sign-in handler threw', err);
+        result = { error: { message: 'Something went wrong signing in. Try again.' } };
+      }
 
-      if (result.error) {
-        errorEl.textContent = result.error.message;
+      if (!result || result.error) {
+        errorEl.textContent = result?.error?.message || 'Sign-in failed. Try again.';
         submitBtn.disabled = false;
         submitBtn.textContent = 'Sign In';
         return;
