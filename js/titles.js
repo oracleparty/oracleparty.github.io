@@ -748,6 +748,64 @@ export function rightIn(stats, category, subcategory = null) {
   return total;
 }
 
+/**
+ * What a word requires, in words a player can act on.
+ *
+ * THE FIX FOR THE COMPLAINT THAT STARTED THE REBUILD: the gallery showed a
+ * riddle and nothing else, so nobody — including the owner — could tell where
+ * any word came from or how to get the next one. A riddle is right for a
+ * secret and wrong for everything else.
+ *
+ * Returns null for a genuine secret, which the caller should render as such
+ * rather than as a blank.
+ */
+export function describeRequirement(wordDef, labelFor = k => k) {
+  if (!wordDef?.unlock) return null;
+  const { type, condition = {} } = wordDef.unlock;
+  if (type === 'hidden') return null;
+
+  const where = condition.subcategory
+    ? labelFor(condition.subcategory)
+    : condition.category ? labelFor(condition.category) : null;
+
+  switch (type) {
+    case 'count':
+      return where
+        ? `Get ${condition.right} questions right in ${where}`
+        : `Get ${condition.right} questions right`;
+
+    case 'mastery':
+      // LEGACY, and it reads as vague because it IS vague — "Scholar" is
+      // between 23 and 512 questions depending on accuracy. Said plainly here
+      // rather than dressed up; these words move to `count` as targets are set.
+      if (condition.anyCategory) return `Reach ${condition.anyCategory} in any subject`;
+      if (condition.oracleCategories) return `Reach Oracle in ${condition.oracleCategories} subjects`;
+      if (condition.tier && where) return `Reach ${condition.tier} in ${where}`;
+      return null;
+
+    case 'milestone':
+    case 'loyalty':
+    case 'social':
+    case 'contribution': {
+      const n = condition.value;
+      const what = {
+        wins: 'Win %n games',
+        winStreak: 'Win %n games in a row',
+        gamesPlayed: 'Play %n games',
+        gamesHosted: 'Host %n games',
+        accountAgeDays: 'Keep an account for %n days',
+        consecutiveDays: 'Play on %n days running',
+        honksReceived: 'Receive %n honks',
+        questionsFlagged: 'Report %n bad questions',
+      }[condition.stat];
+      return what ? what.replace('%n', n) : null;
+    }
+
+    default:
+      return null;
+  }
+}
+
 export function evaluateUnlocks(stats, profile, currentUnlocks, context) {
   const categoryTiers = computeCategoryTiers(stats);
   const aggStats = computeAggregateStats(stats);

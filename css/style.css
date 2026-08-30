@@ -7513,3 +7513,23 @@ body[style*="opacity: 0"] {
   font-style: italic;
   padding-left: var(--space-sm);
 }
+
+/* What a title word requires, on its card. Replaces the riddle line: a riddle
+   is right for a secret and wrong for everything else, and showing one on every
+   locked word made the whole collection unreadable. */
+.title-card__how {
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--color-text-dim);
+  margin-top: 2px;
+}
+.title-card--secret .title-card__how { font-style: italic; }
+
+.title-gallery__group {
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  margin: var(--space-md) 0 var(--space-xs);
+}

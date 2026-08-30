@@ -36,8 +36,8 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress } from './titles.js';
-import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon } from './categories.js';
+import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress, describeRequirement } from './titles.js';
+import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
 import { hexLayout, hexPoints, hexFill, hexFillRect } from './honeycomb.js';
 
@@ -1928,33 +1928,67 @@ async function openMapCategory(cat) {
 // ============================================
 
 const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
+// NAMED FOR WHAT THEY ARE. "The Calling" described a column that is really
+// "what you know", and "The Rank" collided with the Apprentice-to-Oracle ladder
+// on this same page — the same four words meaning two different things on two
+// screens, which is half of why nobody could follow it.
 const SLOT_NAMES = {
-  1: { name: 'The Adjective', blurb: 'How you play — persistence, loyalty, luck.' },
-  2: { name: 'The Calling', blurb: 'What you know. Earned by mastering a category.' },
-  3: { name: 'The Rank', blurb: 'How far you have come.' },
+  1: { name: 'Playstyle', blurb: 'How you play — winning, streaks, showing up, hosting.' },
+  2: { name: 'Knowledge', blurb: 'What you know. Earned by getting questions right in a subject.' },
+  3: { name: 'Standing',  blurb: 'Two different things, so they are shown apart.' },
 };
+
+// SLOT 3 IS TWO PILES, NOT ONE. Four of its words are the profile's rank ladder
+// showing through and four are unrelated feats; mixed together they read as one
+// jumbled set, which is the other half of why this column felt vague.
+const STANDING_GROUPS = [
+  { name: 'How far you have come', ids: ['apprentice', 'scholar', 'master', 'oracle'] },
+  { name: 'Things you pulled off', ids: null },
+];
+
+// A LABEL A PLAYER RECOGNISES, not the key the database stores. "ancient" is
+// not a thing anybody has heard of; "Ancient History" is.
+function titleLabelFor(key) {
+  if (!key) return key;
+  if (CATEGORY_META[key]) return CATEGORY_META[key].label || key;
+  for (const cat of Object.keys(CATEGORY_META)) {
+    const hit = flattenSubcategories(cat).find(s => s.key === key);
+    if (hit) return hit.label;
+  }
+  return key;
+}
 
 function galleryCard(word, level) {
   const earned = level > 0;
   const secret = !word.hint;
   const rarity = word.rarity || 'common';
+  // EVERY CARD SAYS WHERE THE WORD COMES FROM. The gallery used to show a
+  // riddle and nothing else, so nobody — the owner included — could tell what
+  // any word was for or how to get the next one. A riddle is right for a
+  // secret and wrong for everything else.
+  const requirement = describeRequirement(word, titleLabelFor);
 
   if (earned) {
     return `<div class="title-card title-card--earned" data-rarity="${rarity}">
       <div class="title-card__word">${escapeHtml(word.word)}</div>
+      ${requirement ? `<div class="title-card__how">${escapeHtml(requirement)}</div>` : ''}
       <div class="title-card__meta">${escapeHtml(rarity)}${level > 1 ? ` \u00b7 level ${level}` : ''}</div>
     </div>`;
   }
   if (secret) {
     return `<div class="title-card title-card--secret" data-rarity="${rarity}">
       <div class="title-card__word">&#x2753;</div>
+      <div class="title-card__how">Find it yourself</div>
       <div class="title-card__meta">${escapeHtml(rarity)} \u00b7 secret</div>
     </div>`;
   }
+  // THE WORD ITSELF STAYS HIDDEN — the owner's call, and it still holds. What
+  // changed is that you can now see what to DO. Knowing the requirement makes
+  // the collection a ladder; not knowing the word keeps earning it a moment.
   return `<div class="title-card title-card--locked" data-rarity="${rarity}">
     <div class="title-card__word">&#x2013;&#x2013;&#x2013;</div>
-    <div class="title-card__hint">${escapeHtml(word.hint)}</div>
-    <div class="title-card__meta">${escapeHtml(rarity)}</div>
+    <div class="title-card__how">${escapeHtml(requirement || word.hint)}</div>
+    <div class="title-card__meta">${escapeHtml(rarity)} \u00b7 locked</div>
   </div>`;
 }
 
@@ -1976,8 +2010,8 @@ async function renderTitleGallery(userId) {
 
   if (summary) {
     summary.textContent = userId
-      ? `${earned} of ${all.length} earned. Locked ones show a clue, not the word.`
-      : `${all.length} titles to earn. Sign up to start collecting — locked ones show a clue, not the word.`;
+      ? `${earned} of ${all.length} earned. A locked one shows what to do, not the word.`
+      : `${all.length} titles to earn. Sign up to start collecting — a locked one shows what to do, not the word.`;
   }
 
   body.innerHTML = [1, 2, 3].map(slot => {
@@ -1990,13 +2024,23 @@ async function renderTitleGallery(userId) {
         || a.word.localeCompare(b.word));
     const got = words.filter(w => w.level > 0).length;
     const meta = SLOT_NAMES[slot];
+    const inner = slot === 3
+      ? STANDING_GROUPS.map(g => {
+          const mine = g.ids
+            ? words.filter(w => g.ids.includes(w.id))
+            : words.filter(w => !STANDING_GROUPS[0].ids.includes(w.id));
+          if (!mine.length) return '';
+          return `<p class="title-gallery__group">${escapeHtml(g.name)}</p>
+            <div class="title-cards">${mine.map(w => galleryCard(w, w.level)).join('')}</div>`;
+        }).join('')
+      : `<div class="title-cards">${words.map(w => galleryCard(w, w.level)).join('')}</div>`;
     return `<section class="title-gallery__slot">
       <div class="title-gallery__slot-head">
         <span class="title-gallery__slot-name">${escapeHtml(meta.name)}</span>
         <span class="title-gallery__slot-count">${got} / ${words.length}</span>
       </div>
       <p class="title-gallery__slot-blurb">${escapeHtml(meta.blurb)}</p>
-      <div class="title-cards">${words.map(w => galleryCard(w, w.level)).join('')}</div>
+      ${inner}
     </section>`;
   }).join('');
 }

@@ -1225,47 +1225,59 @@ export const STATES = {
       gallery.hidden = false;
 
       const summary = document.getElementById('title-gallery-summary');
-      if (summary) summary.textContent = '6 of 40 earned. Locked ones show a clue, not the word.';
+      if (summary) summary.textContent = '6 of 40 earned. A locked one shows what to do, not the word.';
 
+      // MIRRORS galleryCard IN js/profile.js. Every card carries a "how" line
+      // now — a riddle is right for a secret and wrong for everything else —
+      // and Standing is two groups rather than one pile. If that renderer
+      // changes, change this in the same commit or the sweep reviews a screen
+      // that no longer ships.
       const slots = [
-        ['The Adjective', 'How you play — persistence, loyalty, luck.', 2, 10, [
-          ['earned', 'Seasoned', 'common', ''],
-          ['earned', 'Relentless', 'rare', ''],
-          ['locked', '———', 'rare', 'Those who never stop, never lose'],
-          ['locked', '———', 'common', 'The crowd knows your name'],
-          ['locked', '———', 'rare', 'A leader of many expeditions'],
-          ['secret', '?', 'legendary', ''],
-        ]],
-        ['The Calling', 'What you know. Earned by mastering a category.', 3, 20, [
-          ['earned', 'History', 'common', ''],
-          ['locked', '———', 'common', 'Truth found through careful observation'],
-          ['locked', '———', 'epic', 'Before written memory, there was you'],
-          ['locked', '———', 'legendary', 'All of time bends to your knowledge'],
-        ]],
-        ['The Rank', 'How far you have come.', 1, 8, [
-          ['earned', 'Apprentice', 'common', ''],
-          ['locked', '———', 'rare', 'Knowledge earned through dedication'],
-          ['locked', '———', 'legendary', 'The rarest of minds'],
-          ['secret', '?', 'legendary', ''],
-        ]],
+        ['Playstyle', 'How you play — winning, streaks, showing up, hosting.', 2, 10, [
+          ['earned', 'Seasoned', 'common', 'Play 50 games'],
+          ['earned', 'Relentless', 'rare', 'Win 10 games in a row'],
+          ['locked', '———', 'rare', 'Play on 7 days running'],
+          ['locked', '———', 'common', 'Receive 100 honks'],
+          ['locked', '———', 'rare', 'Host 20 games'],
+          ['secret', '?', 'legendary', 'Find it yourself'],
+        ], null],
+        ['Knowledge', 'What you know. Earned by getting questions right in a subject.', 3, 20, [
+          ['earned', 'History', 'common', 'Get 10 questions right in History'],
+          ['locked', '———', 'uncommon', 'Get 82 questions right in Modern History'],
+          ['locked', '———', 'epic', 'Get 246 questions right in Modern History'],
+          ['locked', '———', 'legendary', 'Get 327 questions right in Modern History'],
+        ], null],
+        ['Standing', 'Two different things, so they are shown apart.', 1, 8, [
+          ['earned', 'Apprentice', 'common', 'Reach Apprentice in any subject'],
+          ['locked', '———', 'rare', 'Reach Scholar in any subject'],
+        ], 'How far you have come'],
+        [null, null, 0, 0, [
+          ['locked', '———', 'rare', 'Win 25 games'],
+          ['locked', '———', 'rare', 'Report 10 bad questions'],
+          ['secret', '?', 'legendary', 'Find it yourself'],
+        ], 'Things you pulled off'],
       ];
 
       const body = document.getElementById('title-gallery-body');
       if (!body) return;
-      body.innerHTML = slots.map(([name, blurb, got, total, cards]) => `
-        <section class="title-gallery__slot">
+      const cardsOf = cards => `<div class="title-cards">${cards.map(([state, word, rarity, how]) => `
+        <div class="title-card title-card--${state}" data-rarity="${rarity}">
+          <div class="title-card__word">${word}</div>
+          ${how ? `<div class="title-card__how">${how}</div>` : ''}
+          <div class="title-card__meta">${rarity}${state === 'secret' ? ' · secret' : state === 'locked' ? ' · locked' : ''}</div>
+        </div>`).join('')}</div>`;
+      body.innerHTML = slots.map(([name, blurb, got, total, cards, group]) => {
+        const head = name ? `
           <div class="title-gallery__slot-head">
             <span class="title-gallery__slot-name">${name}</span>
             <span class="title-gallery__slot-count">${got} / ${total}</span>
           </div>
-          <p class="title-gallery__slot-blurb">${blurb}</p>
-          <div class="title-cards">${cards.map(([state, word, rarity, hint]) => `
-            <div class="title-card title-card--${state}" data-rarity="${rarity}">
-              <div class="title-card__word">${word}</div>
-              ${hint ? `<div class="title-card__hint">${hint}</div>` : ''}
-              <div class="title-card__meta">${rarity}${state === 'secret' ? ' · secret' : ''}</div>
-            </div>`).join('')}</div>
-        </section>`).join('');
+          <p class="title-gallery__slot-blurb">${blurb}</p>` : '';
+        const groupLine = group ? `<p class="title-gallery__group">${group}</p>` : '';
+        return name
+          ? `<section class="title-gallery__slot">${head}${groupLine}${cardsOf(cards)}</section>`
+          : `${groupLine}${cardsOf(cards)}`;
+      }).join('');
     },
   },
 

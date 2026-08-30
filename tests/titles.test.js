@@ -9,7 +9,7 @@ import {
   evaluateUnlocks,
   hasReachedApprentice,
   buildDisplayTitle,
-  categoryRollupRows, rowProficiency, sumProficiency, rightIn,
+  categoryRollupRows, rowProficiency, sumProficiency, rightIn, describeRequirement,
   mergedCategoryRows,
   tierProgress,
   TIER_ORDER,
@@ -874,5 +874,43 @@ describe('count-based unlocks', () => {
     } finally {
       delete TITLE_WORDS.__test_keep;
     }
+  });
+});
+
+describe('describing what a word requires', () => {
+  const label = k => ({ ancient: 'Ancient History', history: 'History' }[k] || k);
+
+  it('states a count plainly', () => {
+    expect(describeRequirement({
+      unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 28 } },
+    }, label)).toBe('Get 28 questions right in Ancient History');
+  });
+
+  it('handles the milestone family', () => {
+    expect(describeRequirement({ unlock: { type: 'milestone', condition: { stat: 'wins', value: 5 } } }))
+      .toBe('Win 5 games');
+    expect(describeRequirement({ unlock: { type: 'contribution', condition: { stat: 'questionsFlagged', value: 10 } } }))
+      .toBe('Report 10 bad questions');
+  });
+
+  // A SECRET STAYS SECRET. Returning a blank string here would render an empty
+  // line that reads as a bug; null lets the caller say "secret" instead.
+  it('says nothing about a secret', () => {
+    expect(describeRequirement({ unlock: { type: 'hidden', condition: { stat: 'nightOwl' } } })).toBeNull();
+  });
+
+  it('describes the legacy rank words without pretending they are clear', () => {
+    expect(describeRequirement({
+      unlock: { type: 'mastery', condition: { anyCategory: 'Scholar' } },
+    })).toBe('Reach Scholar in any subject');
+  });
+
+  // EVERY REAL WORD MUST SAY SOMETHING, or the gallery goes back to being a
+  // wall of blanks. The only exceptions are the three deliberate secrets.
+  it('covers every word in the game', () => {
+    const silent = Object.entries(TITLE_WORDS)
+      .filter(([, w]) => w.hint !== null && describeRequirement(w) === null)
+      .map(([id]) => id);
+    expect(silent).toEqual([]);
   });
 });
