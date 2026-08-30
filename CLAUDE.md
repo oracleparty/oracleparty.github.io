@@ -3852,6 +3852,35 @@ for; the probe now watches that column by name.
 dozen places import it synchronously, and turning all of them async to await a
 fetch would be far larger a change than this earns.
 
+### A new table arrives already granted to everybody
+
+Migration 063's own verification came back FAIL on its third rule the first time
+it was run live: *a visitor cannot write one* → **anyone could invent a title.**
+
+**Supabase carries `ALTER DEFAULT PRIVILEGES` granting new tables in `public` to
+`anon` and `authenticated`.** So the table was created with INSERT, UPDATE and
+DELETE already granted to a signed-out visitor, and the migration's careful
+`GRANT SELECT ON title_words TO anon` did nothing about it — **a GRANT adds and
+never subtracts.** Only `REVOKE ALL ... FROM anon` removes what nobody asked
+for.
+
+**NOTHING WAS EVER OPEN, and that had to be measured rather than assumed.**
+Against a real Postgres in exactly that state — the grant present, the policies
+as written — an anonymous visitor and a signed-in non-admin were both refused
+with 42501 and zero rows written. The policy was doing the work. Reporting this
+as "anybody could write a title" would have been a false alarm about a live
+game, and *"the privilege is there"* and *"anybody can use it"* are different
+claims. The revoke ships anyway: a privilege nothing needs is one more thing
+standing between a future policy mistake and a public table.
+
+**This is slice 8c's blind spot in a new place.** That one was a policy
+restricted to a ROLE; this is a privilege granted to a role by a project-wide
+default. Both are facts written in SQL that no sweep of `js/` can see, and both
+were found only because a verification block asked the question out loud.
+**Every new table needs `REVOKE ALL FROM anon` before its grants**, and the
+verification has to check the privilege rather than the policy — a policy that
+looks right sits happily on top of a privilege that should not exist.
+
 ### The rarity ladder had four copies and three were stale
 
 Found 2026-08-30 while fixing the tests for the above. The rebuild added

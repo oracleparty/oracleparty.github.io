@@ -107,6 +107,27 @@ CREATE POLICY "Title words: admins can delete"
     SELECT 1 FROM profiles p WHERE p.user_id = auth.uid() AND p.is_admin = true
   ));
 
+-- REVOKE FIRST, AND THIS IS NOT BELT AND BRACES.
+--
+-- Supabase carries ALTER DEFAULT PRIVILEGES granting new tables in `public` to
+-- anon and authenticated, so this table arrived with INSERT, UPDATE and DELETE
+-- already granted to a signed-out visitor. Naming only the grants we want does
+-- not remove the ones we did not ask for: a GRANT adds, it never subtracts, so
+-- the block below without this line reported FAIL on its own third rule the
+-- first time it was run live.
+--
+-- MEASURED, before writing this, against a real Postgres in exactly that state:
+-- RLS still refused both an anonymous visitor and a signed-in non-admin, with
+-- 42501 and zero rows written. So nothing was ever open — the policy was doing
+-- the work. That is precisely why it had to be measured rather than assumed:
+-- "the privilege is there" and "anybody could write one" are different claims,
+-- and reporting the second would have been a false alarm about a live game.
+--
+-- It comes out anyway. A privilege nothing needs is one more thing standing
+-- between a future policy mistake and a public table.
+REVOKE ALL ON title_words FROM anon;
+REVOKE ALL ON title_words FROM authenticated;
+
 GRANT SELECT ON title_words TO anon, authenticated;
 GRANT INSERT, UPDATE, DELETE ON title_words TO authenticated;
 
