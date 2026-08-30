@@ -1224,7 +1224,7 @@ export async function fetchTitleWords() {
     // silently drops every word the owner has ever written, with no error
     // anywhere. Exactly the fault that had the category leaderboard ranking on
     // the wrong measure for weeks because its select forgot two columns.
-    .select('id, slot, category, subcategory, tier, word, target_right');
+    .select('id, slot, category, subcategory, tier, word, target_right, is_placeholder');
   if (error) {
     // Not an error at warn-and-continue level: until 063 is applied this table
     // does not exist, and the app is expected to run exactly as before.
@@ -1242,7 +1242,7 @@ export async function fetchTitleWords() {
  * shipped three separate saves that said "Saved!" while saving nothing, and
  * this is the check that stops a fourth.
  */
-export async function saveTitleWord({ slot = 2, category, subcategory = null, tier, word, targetRight }) {
+export async function saveTitleWord({ slot = 2, category, subcategory = null, tier, word, targetRight, isPlaceholder = false }) {
   const text = String(word || '').trim();
   const target = Number(targetRight);
   if (!category || !tier || !text) return { error: new Error('missing category, tier or word') };
@@ -1267,7 +1267,7 @@ export async function saveTitleWord({ slot = 2, category, subcategory = null, ti
 
   const { data, error } = await supabase
     .from('title_words')
-    .insert({ slot, category, subcategory: subcategory || null, tier, word: text, target_right: target })
+    .insert({ slot, category, subcategory: subcategory || null, tier, word: text, target_right: target, is_placeholder: !!isPlaceholder })
     .select('id');
   if (error) return { error };
   if (!data || data.length === 0) {

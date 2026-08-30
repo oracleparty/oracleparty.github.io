@@ -1003,6 +1003,63 @@ try {
         problems.push(`saving one word re-counted the bank ${countsAfterSave - countsBefore2} times — writing 86 words would take thousands of queries`);
       }
 
+      // --- FILLING THE EMPTY SLOTS WITH PLACEHOLDERS.
+      //
+      // The owner's call, reversing their own "no placeholders" rule. The
+      // reasoning that rule rested on was that a player must never hit a
+      // requirement and receive NOTHING — and a placeholder is not nothing, so
+      // it does not apply. What it buys is a visible framework: eleven of
+      // twelve subjects were showing almost no slots at all.
+      const emptyBefore = await admin.page.locator('#title-words .tw-slot--empty').count().catch(() => 0);
+      const fillBtn = admin.page.locator('#tw-fill');
+      if (!await fillBtn.count().catch(() => 0)) {
+        problems.push('no control to fill the empty slots — 86 of them means a per-row button would never be used');
+      } else {
+        await fillBtn.click().catch(() => {});
+        await admin.page.waitForTimeout(6000);
+
+        const rows = table.store.table('title_words');
+        const placeholders = rows.filter(r => r.is_placeholder);
+        note(`empty slots before: ${emptyBefore}; placeholder rows written: ${placeholders.length}`);
+        if (placeholders.length === 0) {
+          problems.push('the fill button wrote no placeholders at all');
+        }
+        // EVERY ONE MUST BE EARNABLE. A row saved without a real target is a
+        // slot nobody can ever reach, which is the exact promise this system
+        // must never make.
+        const unearnable = placeholders.filter(r => !(Number(r.target_right) >= 1));
+        if (unearnable.length) {
+          problems.push(`${unearnable.length} placeholder(s) were saved with no usable target — nobody could ever earn them`);
+        }
+        // AND THE TEXT IS GENERATED, NOT INVENTED.
+        const odd = placeholders.filter(r => !/^(Common|Uncommon|Rare|Epic|Legendary|Mythic)\b/.test(r.word || ''));
+        if (odd.length) {
+          problems.push(`${odd.length} placeholder(s) do not follow the tier-plus-subject rule, e.g. ${JSON.stringify(odd[0].word)}`);
+        }
+        const tooLong = placeholders.filter(r => (r.word || '').length > 24);
+        if (tooLong.length) {
+          problems.push(`${tooLong.length} placeholder(s) exceed the 24-character limit and would be refused live`);
+        }
+        note(`sample placeholders: ${placeholders.slice(0, 3).map(r => r.word).join(', ')}`);
+
+        // TYPING OVER ONE MAKES IT THE OWNER'S WORD, or the count would go on
+        // claiming there is work left on a slot that is finished.
+        const ph = admin.page.locator('#title-words .tw-slot--placeholder').first();
+        if (await ph.count().catch(() => 0)) {
+          const where = await ph.evaluate(el => ({ cat: el.dataset.cat, sub: el.dataset.sub || null, tier: el.dataset.tier }));
+          await ph.locator('.tw-slot__input').fill('Written');
+          await ph.locator('.tw-slot__save').click().catch(() => {});
+          await admin.page.waitForTimeout(2500);
+          const row = table.store.table('title_words').find(r =>
+            String(r.category) === String(where.cat) && String(r.tier) === String(where.tier)
+            && String(r.subcategory || '') === String(where.sub || ''));
+          note(`after typing over a placeholder: ${JSON.stringify({ word: row?.word, placeholder: row?.is_placeholder })}`);
+          if (row?.is_placeholder) {
+            problems.push('typing over a placeholder left it flagged as one — the "still to write" count would never reach zero');
+          }
+        }
+      }
+
       // --- AND IT REACHES A PLAYER. A word written on this page that never
       // appears in anybody's collection is the whole feature failing quietly.
       const seen = await admin.page.evaluate(async () => {

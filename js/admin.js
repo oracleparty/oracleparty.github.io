@@ -9,7 +9,7 @@ import { CATEGORY_META, flattenSubcategories } from './categories.js';
 import { findAnswersNeedingReview } from './answer-health.js';
 import { TITLE_WORDS, overlayWordId, clearWordOverlay } from './titles.js';
 import { loadTitleWords, resetTitleWordCache } from './title-content.js';
-import { tiersForTopic, topicTarget, subjectTargets, TOPIC_FLOOR } from './title-tiers.js';
+import { tiersForTopic, topicTarget, subjectTargets, TOPIC_FLOOR, placeholderWord } from './title-tiers.js';
 
 // Chip order for the question editor. CATEGORY_META's own order is the order
 // the host screen shows, so the two agree.
@@ -2043,17 +2043,23 @@ async function loadTitleWordsPanel() {
   const subjects = [];
   let needWriting = 0;
   let written = 0;
+  let placeheld = 0;
 
   for (const [catKey, meta] of Object.entries(CATEGORY_META)) {
     const subs = flattenSubcategories(catKey);
     const { sizes, subjectSize } = measured[catKey];
     const st = subjectTargets(subjectSize, sizes);
 
-    const slot = (tier, sub, target, need) => {
+    const slot = (tier, sub, target, need, label) => {
       const found = titleWordFor(2, catKey, sub, tier);
-      if (found) written++; else needWriting++;
+      if (!found) needWriting++;
+      else if (found[1].isPlaceholder) placeheld++;
+      else written++;
       return {
         tier, sub, target, need,
+        // What a placeholder for this slot would be NAMED after — the subject
+        // for a subject word, the topic for a topic word.
+        label,
         word: found ? found[1].word : null,
         // Only a word that came from the database can be edited from here. One
         // defined in code needs a deploy, and offering a Remove button that
@@ -2066,6 +2072,10 @@ async function loadTitleWordsPanel() {
         // available. It is never applied automatically: a goal that recedes on
         // its own is the worst thing a collection can do.
         frozen: found ? (found[1].unlock?.condition?.right ?? null) : null,
+        // Scaffolding, not a written word. Counted apart at the top and marked
+        // on the row, because "how much is left to do" is the only number on
+        // this page the owner actually needs.
+        placeholder: found ? !!found[1].isPlaceholder : false,
       };
     };
 
@@ -2077,17 +2087,17 @@ async function loadTitleWordsPanel() {
     // because a control that lights up and cannot work is the fault CLAUDE.md
     // #4 is about.
     const subjectSlots = [
-      slot('common', null, st.common, `${st.common} right in the whole subject`),
+      slot('common', null, st.common, `${st.common} right in the whole subject`, meta.label || catKey),
       slot('rare', null, st.rare.atLeast,
-        `a quarter of every topic, ${st.rare.atLeast}+ overall`),
-      slot('mythic', null, st.mythic, `all ${st.mythic}`),
+        `a quarter of every topic, ${st.rare.atLeast}+ overall`, meta.label || catKey),
+      slot('mythic', null, st.mythic, `all ${st.mythic}`, meta.label || catKey),
     ].filter(sl => Number.isFinite(sl.target) && sl.target >= 1);
 
     const topics = subs.map(sub => {
       const size = sizes[sub.key] || 0;
       const tiers = tiersForTopic(size, sub.key).map(tier => {
         const target = topicTarget(size, tier);
-        return slot(tier, sub.key, target, `${target} right`);
+        return slot(tier, sub.key, target, `${target} right`, sub.label);
       });
       return { key: sub.key, label: sub.label, size, tiers };
     });
@@ -2103,9 +2113,10 @@ async function loadTitleWordsPanel() {
     // never acted on — saving again is what re-freezes it.
     const drifted = sl.word && sl.frozen != null && sl.target != null && sl.frozen !== sl.target;
     return `
-    <div class="tw-slot${sl.word ? '' : ' tw-slot--empty'}"
+    <div class="tw-slot${sl.word ? '' : ' tw-slot--empty'}${sl.placeholder ? ' tw-slot--placeholder' : ''}"
          data-cat="${escapeHtml(catKey)}" data-sub="${escapeHtml(sl.sub || '')}"
-         data-tier="${escapeHtml(sl.tier)}" data-target="${sl.target}">
+         data-tier="${escapeHtml(sl.tier)}" data-target="${sl.target}"
+         data-label="${escapeHtml(sl.label || '')}">
       <span class="tw-slot__tier" data-r="${sl.tier}">${sl.tier}</span>
       ${sl.editable
         ? `<input class="input tw-slot__input" type="text" maxlength="24"
@@ -2115,7 +2126,7 @@ async function loadTitleWordsPanel() {
            ${sl.word ? '<button class="btn btn-secondary btn-danger-text tw-slot__remove" type="button">Remove</button>' : ''}`
         : `<span class="tw-slot__word">${escapeHtml(sl.word)}</span>
            <span class="tw-slot__need">in code</span>`}
-      <span class="tw-slot__need">${escapeHtml(String(sl.need))}${
+      <span class="tw-slot__need">${sl.placeholder ? '<b>placeholder</b> &middot; ' : ''}${escapeHtml(String(sl.need))}${
         drifted ? ` &middot; set at ${sl.frozen}` : ''}</span>
       <span class="tw-slot__status" role="status"></span>
     </div>`;
@@ -2123,7 +2134,9 @@ async function loadTitleWordsPanel() {
 
   box.innerHTML = `
     <p class="admin-empty" style="margin-bottom:var(--space-md);">
-      <b>${written}</b> written, <b>${needWriting}</b> still to write.
+      <b>${written}</b> written, <b>${placeheld}</b> placeholder,
+      <b>${needWriting}</b> empty.
+      ${needWriting ? '<button type="button" class="btn btn-secondary btn-block" id="tw-fill" style="margin-top:var(--space-sm);">Fill the ' + needWriting + ' empty slots with placeholders</button>' : ''}
       ${qualifying} of ${totalTopics} topics are big enough for words of their own
       (${TOPIC_FLOOR.uncommon}+ questions).
       A slot with no word does not exist for players.
@@ -2158,6 +2171,41 @@ async function loadTitleWordsPanel() {
  * and zero rows, which this page has three times rendered as "Saved!".
  */
 function attachTitleWordEditors(box) {
+  // FILL EVERY EMPTY SLOT AT ONCE.
+  //
+  // There are roughly eighty-six of them, so a per-row "add placeholder" button
+  // would be eighty-six taps and nobody would use it. This is what makes the
+  // framework visible to players in one action.
+  //
+  // The TEXT IS GENERATED BY RULE — tier plus subject, "Epic Science" — and
+  // never invented. The real words are the owner's to write, and two earlier
+  // attempts at model-written title text were deleted at their instruction. A
+  // placeholder must read as scaffolding.
+  const fill = box.querySelector('#tw-fill');
+  if (fill) fill.onclick = async () => {
+    const empties = [...box.querySelectorAll('.tw-slot--empty')]
+      .filter(el => el.querySelector('.tw-slot__save'));
+    if (!empties.length) return;
+    fill.disabled = true;
+    let done = 0, failed = 0;
+    for (const el of empties) {
+      const { cat, sub, tier, target, label } = el.dataset;
+      fill.textContent = `Filling ${done + failed + 1} of ${empties.length}\u2026`;
+      const { error } = await saveTitleWord({
+        slot: 2, category: cat, subcategory: sub || null, tier,
+        word: placeholderWord(tier, label), targetRight: Number(target),
+        isPlaceholder: true,
+      });
+      if (error) failed++; else done++;
+    }
+    fill.textContent = failed
+      ? `Added ${done}, ${failed} refused`
+      : `Added ${done} placeholders`;
+    resetTitleWordCache();
+    clearWordOverlay();
+    await loadTitleWordsPanel();
+  };
+
   box.onclick = async (e) => {
     const saveBtn = e.target.closest('.tw-slot__save');
     const removeBtn = e.target.closest('.tw-slot__remove');
@@ -2185,6 +2233,11 @@ function attachTitleWordEditors(box) {
           ? await saveTitleWord({
               slot: 2, category: cat, subcategory: sub || null, tier, word,
               targetRight: Number(target),
+              // TYPING OVER A PLACEHOLDER MAKES IT THE OWNER'S WORD. Keeping the
+              // flag would leave the count saying there is still work to do on a
+              // slot that is finished, which is the one number this page exists
+              // to get right.
+              isPlaceholder: false,
             })
           : await deleteTitleWord({ slot: 2, category: cat, subcategory: sub || null, tier });
       }

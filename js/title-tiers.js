@@ -131,3 +131,35 @@ export function meetsTopic(rightInTopic, target) {
 export function rarityForTopicTier(tier) {
   return tier;
 }
+
+
+/**
+ * A PLACEHOLDER'S TEXT, BY RULE — never invented.
+ *
+ * The owner's format: the tier, then what it is about. "Epic Science",
+ * "Legendary Ancient". That is deliberately mechanical: the real words are the
+ * owner's to write, and two earlier attempts at model-written title text were
+ * deleted at their instruction. A placeholder must read as scaffolding, not as
+ * somebody's idea of a good word.
+ *
+ * CAPPED AT 24 CHARACTERS, because that is what the table allows
+ * (title_words_word_check). Truncation happens on a word boundary where one
+ * exists, so "Legendary Ancient & Classical" becomes "Legendary Ancient" rather
+ * than "Legendary Ancient & Clas".
+ */
+export const PLACEHOLDER_MAX = 24;
+
+export function placeholderWord(tier, label) {
+  const tidy = String(label || '').replace(/\s*&.*$/, '').trim();
+  const tierWord = String(tier || '').charAt(0).toUpperCase() + String(tier || '').slice(1);
+  const full = `${tierWord} ${tidy}`.trim();
+  if (full.length <= PLACEHOLDER_MAX) return full;
+
+  // Drop whole words off the end until it fits; if even the tier alone is too
+  // long something is very wrong, so fall back to a hard cut rather than an
+  // empty string — a slot with a blank word cannot be saved at all.
+  const parts = full.split(/\s+/);
+  while (parts.length > 1 && parts.join(' ').length > PLACEHOLDER_MAX) parts.pop();
+  const out = parts.join(' ');
+  return out.length <= PLACEHOLDER_MAX ? out : full.slice(0, PLACEHOLDER_MAX).trim();
+}

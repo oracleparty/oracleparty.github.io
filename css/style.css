@@ -7622,6 +7622,12 @@ body[style*="opacity: 0"] {
   font-weight: 600;
 }
 .tw-slot__status:empty { display: none; }
+/* Scaffolding, not a written word. Amber like the admin's other "needs your
+   attention" chips, and only ever on the ADMIN page — a player is never told
+   their title is temporary. */
+.tw-slot--placeholder .tw-slot__need b { color: var(--color-warning, #C68A2E); }
+.tw-slot--placeholder { border-left: 2px solid var(--color-warning, #C68A2E); padding-left: 6px; }
+
 .tw-slot--none {
   font-size: var(--text-xs);
   color: var(--color-text-muted);

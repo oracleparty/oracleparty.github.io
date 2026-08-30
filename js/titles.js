@@ -827,6 +827,10 @@ export function applyWordOverlay(rows) {
       } },
       levelMultiplier: 1,
       fromOverlay: true,
+      // Players are never told a word is temporary — it is a real word they
+      // really earn. The flag exists so the ADMIN page can say how much is
+      // still scaffolding, which is the owner's view and not the player's.
+      isPlaceholder: !!r.is_placeholder,
     };
     applied++;
   }

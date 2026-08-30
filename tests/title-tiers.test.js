@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   TOPIC_FLOOR, TOPIC_SHARE, SUBJECT_RULE,
   tiersForTopic, topicTarget, subjectTargets, meetsTopic, isMiscTopic,
+  placeholderWord, PLACEHOLDER_MAX,
 } from '../js/title-tiers.js';
 
 describe('which tiers a topic offers', () => {
@@ -126,5 +127,37 @@ describe('misc topics', () => {
 
   it('is unchanged when no key is given', () => {
     expect(tiersForTopic(148)).toEqual(['uncommon', 'epic', 'legendary']);
+  });
+});
+
+// A PLACEHOLDER IS NAMED BY RULE, NEVER INVENTED. The real words are the
+// owner's to write — two earlier attempts at model-written title text were
+// deleted at their instruction — so scaffolding has to read as scaffolding.
+describe('placeholder words', () => {
+  it('is the tier and what it is about', () => {
+    expect(placeholderWord('epic', 'Science')).toBe('Epic Science');
+    expect(placeholderWord('mythic', 'History')).toBe('Mythic History');
+  });
+
+  // The table refuses anything over 24 characters, so a long topic name would
+  // make the save fail — silently turning "fill every empty slot" into "fill
+  // most of them".
+  it('never exceeds what the database allows', () => {
+    const longest = [
+      'Ancient & Classical Civilisations', 'Entertainment Movies',
+      'Human Countries & States', 'Brands & Restaurants', 'Athletics Events',
+    ];
+    for (const label of longest) {
+      for (const tier of ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic']) {
+        const w = placeholderWord(tier, label);
+        expect(w.length, `${tier} ${label} -> "${w}"`).toBeLessThanOrEqual(PLACEHOLDER_MAX);
+        expect(w.length, `${tier} ${label} came out empty`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('trims on a word boundary rather than mid-word', () => {
+    expect(placeholderWord('legendary', 'Ancient & Classical Civilisations')).toBe('Legendary Ancient');
+    expect(placeholderWord('uncommon', 'Entertainment Movies')).not.toMatch(/\s$/);
   });
 });
