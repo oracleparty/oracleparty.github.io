@@ -1927,7 +1927,7 @@ async function openMapCategory(cat) {
 // owner's call, and it is what the hints were plainly written for.
 // ============================================
 
-const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
+const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
 // NAMED FOR WHAT THEY ARE. "The Calling" described a column that is really
 // "what you know", and "The Rank" collided with the Apprentice-to-Oracle ladder
 // on this same page — the same four words meaning two different things on two
@@ -2019,12 +2019,45 @@ async function renderTitleGallery(userId) {
       .filter(w => w.slot === slot)
       // Earned first so progress reads at a glance, then by how rare it is:
       // the interesting locked ones should not be buried under twelve commons.
-      .sort((a, b) => (b.level > 0) - (a.level > 0)
-        || (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0)
-        || a.word.localeCompare(b.word));
+      // Knowledge sorts by DIFFICULTY within its subject — the subject's own
+      // word, then its topics from easiest up — because that is the order you
+      // would earn them in. Everywhere else, earned first so progress reads at
+      // a glance, then by rarity so the interesting locked ones are not buried.
+      .sort((a, b) => slot === 2
+        ? (!!a.unlock?.condition?.subcategory) - (!!b.unlock?.condition?.subcategory)
+          || (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0)
+          || a.word.localeCompare(b.word)
+        : (b.level > 0) - (a.level > 0)
+          || (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0)
+          || a.word.localeCompare(b.word));
     const got = words.filter(w => w.level > 0).length;
     const meta = SLOT_NAMES[slot];
-    const inner = slot === 3
+    // KNOWLEDGE IS GROUPED BY SUBJECT. A flat list of twenty words gives no clue
+    // where any of them comes from — and with locked words hiding their own
+    // text, PLACEMENT is the only thing left that can say it. Chronicles under
+    // "History" tells you where to look without giving the word away.
+    const inner = slot === 2
+      ? (() => {
+          const bySubject = new Map();
+          for (const w of words) {
+            const cat = w.unlock?.condition?.category || null;
+            if (!bySubject.has(cat)) bySubject.set(cat, []);
+            bySubject.get(cat).push(w);
+          }
+          // Subjects in the app's own order, so the collection reads the same
+          // way as the category grid and the Map do.
+          const order = [...Object.keys(CATEGORY_META), null];
+          return order.filter(c => bySubject.has(c)).map(cat => {
+            const mine = bySubject.get(cat);
+            const meta = cat ? CATEGORY_META[cat] : null;
+            const name = meta ? `${meta.emoji || ''} ${meta.label || cat}`.trim() : 'Anywhere';
+            const got = mine.filter(w => w.level > 0).length;
+            return `<p class="title-gallery__group">${escapeHtml(name)}
+                <span class="title-gallery__group-count">${got} / ${mine.length}</span></p>
+              <div class="title-cards">${mine.map(w => galleryCard(w, w.level)).join('')}</div>`;
+          }).join('');
+        })()
+      : slot === 3
       ? STANDING_GROUPS.map(g => {
           const mine = g.ids
             ? words.filter(w => g.ids.includes(w.id))

@@ -7533,3 +7533,11 @@ body[style*="opacity: 0"] {
   color: var(--color-primary);
   margin: var(--space-md) 0 var(--space-xs);
 }
+
+.title-gallery__group-count {
+  float: right;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}

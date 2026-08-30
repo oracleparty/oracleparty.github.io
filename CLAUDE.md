@@ -3906,6 +3906,30 @@ the way the app counts.
   model-written and are being dropped; the owner has said the words themselves
   must be theirs or approved by them. **Do not generate them.**
 
+### What is built as of 2026-08-30
+
+The RULES and the SCREENS are in; the WORDS are not, and that is the owner's
+half. Do not generate them.
+
+| | |
+|---|---|
+| `js/title-tiers.js` | the floors, shares and subject rules, no imports, 18 unit tests |
+| `unlock: { type: 'count' }` | a word is earned at N questions right in a subject or topic |
+| `rightIn()` in `titles.js` | the one reader, and it takes the ROLLUP for a subject so nothing is counted twice |
+| `describeRequirement()` | turns any unlock into a sentence a player can act on |
+| admin → Title Words | every topic, its size, which tiers it offers, its target, and what is unwritten |
+| the probe | prints the same table on every CI run, so a growing bank cannot silently make a topic newly eligible without anybody noticing |
+
+**All 20 Knowledge words are converted to counts**, with targets frozen from the
+sizes measured on 2026-08-30. The four for Ancient and Medieval History were
+converted even though those topics are under the 60 floor: those words ALREADY
+EXIST, and leaving them on a rank rule nobody can read is worse than a target
+that is slightly cheap. **The floor governs which topics get NEW words**, not
+whether an existing one is earnable.
+
+**Still to do:** the remaining ~86 words, and Ancient and Medieval need about a
+dozen questions each before they properly clear the floor.
+
 ### The screen
 
 Settled by prototype rather than argument, after two failed attempts — a static

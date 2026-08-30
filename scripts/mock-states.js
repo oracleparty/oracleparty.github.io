@@ -1243,10 +1243,13 @@ export const STATES = {
         ], null],
         ['Knowledge', 'What you know. Earned by getting questions right in a subject.', 3, 20, [
           ['earned', 'History', 'common', 'Get 10 questions right in History'],
+          ['earned', 'Chronicles', 'uncommon', 'Get 15 questions right in Ancient History'],
           ['locked', '———', 'uncommon', 'Get 82 questions right in Modern History'],
-          ['locked', '———', 'epic', 'Get 246 questions right in Modern History'],
           ['locked', '———', 'legendary', 'Get 327 questions right in Modern History'],
-        ], null],
+        ], '🏛️ History<span class="title-gallery__group-count">2 / 4</span>'],
+        [null, null, 0, 0, [
+          ['locked', '———', 'common', 'Get 10 questions right in Science'],
+        ], '🔬 Science<span class="title-gallery__group-count">0 / 1</span>'],
         ['Standing', 'Two different things, so they are shown apart.', 1, 8, [
           ['earned', 'Apprentice', 'common', 'Reach Apprentice in any subject'],
           ['locked', '———', 'rare', 'Reach Scholar in any subject'],

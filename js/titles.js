@@ -90,117 +90,117 @@ export const TITLE_WORDS = {
   history: {
     slot: 2, word: 'History', rarity: 'common',
     hint: 'The past whispers to those who listen',
-    unlock: { type: 'mastery', condition: { category: 'history', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'history', right: 10 } },
     levelMultiplier: 1 // Levels tied to tier progression, not multiplier
   },
   science: {
     slot: 2, word: 'Science', rarity: 'common',
     hint: 'Truth found through careful observation',
-    unlock: { type: 'mastery', condition: { category: 'science', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'science', right: 10 } },
     levelMultiplier: 1
   },
   nature: {
     slot: 2, word: 'Nature', rarity: 'common',
     hint: 'The wild reveals its secrets slowly',
-    unlock: { type: 'mastery', condition: { category: 'nature', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'nature', right: 10 } },
     levelMultiplier: 1
   },
   arts: {
     slot: 2, word: 'Arts', rarity: 'common',
     hint: 'Beauty recognized by a trained eye',
-    unlock: { type: 'mastery', condition: { category: 'arts-literature', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'arts-literature', right: 10 } },
     levelMultiplier: 1
   },
   culture: {
     slot: 2, word: 'Culture', rarity: 'common',
     hint: 'Understanding begins with curiosity',
-    unlock: { type: 'mastery', condition: { category: 'culture-society', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'culture-society', right: 10 } },
     levelMultiplier: 1
   },
   pop: {
     slot: 2, word: 'Pop', rarity: 'common',
     hint: 'The pulse of the modern world',
-    unlock: { type: 'mastery', condition: { category: 'pop-culture', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'pop-culture', right: 10 } },
     levelMultiplier: 1
   },
   world: {
     slot: 2, word: 'World', rarity: 'common',
     hint: 'Every map tells a story',
-    unlock: { type: 'mastery', condition: { category: 'world-geography', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'world-geography', right: 10 } },
     levelMultiplier: 1
   },
   tech: {
     slot: 2, word: 'Tech', rarity: 'common',
     hint: 'The future belongs to the curious',
-    unlock: { type: 'mastery', condition: { category: 'technology', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'technology', right: 10 } },
     levelMultiplier: 1
   },
   sport: {
     slot: 2, word: 'Sport', rarity: 'common',
     hint: 'Strength measured beyond the field',
-    unlock: { type: 'mastery', condition: { category: 'sports', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'sports', right: 10 } },
     levelMultiplier: 1
   },
   food: {
     slot: 2, word: 'Food', rarity: 'common',
     hint: 'Taste is a form of knowledge',
-    unlock: { type: 'mastery', condition: { category: 'food', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'food', right: 10 } },
     levelMultiplier: 1
   },
   logic: {
     slot: 2, word: 'Logic', rarity: 'common',
     hint: 'Patterns hide in plain sight',
-    unlock: { type: 'mastery', condition: { category: 'logic', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'logic', right: 10 } },
     levelMultiplier: 1
   },
   chaos: {
     slot: 2, word: 'Chaos', rarity: 'common',
     hint: 'Order emerges from the unpredictable',
-    unlock: { type: 'mastery', condition: { category: 'wild-card', tier: 'Apprentice' } },
+    unlock: { type: 'count', condition: { category: 'wild-card', right: 10 } },
     levelMultiplier: 1
   },
 
   // --- History subcategory words (Slot 2, unlock at deeper tiers) ---
   chronicles: {
-    slot: 2, word: 'Chronicles', rarity: 'rare',
+    slot: 2, word: 'Chronicles', rarity: 'uncommon',
     hint: 'Temples and empires lost to sand',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'ancient', tier: 'Scholar' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 15 } },
     levelMultiplier: 1
   },
   antiquity: {
-    slot: 2, word: 'Antiquity', rarity: 'epic',
+    slot: 2, word: 'Antiquity', rarity: 'legendary',
     hint: 'Before written memory, there was you',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'ancient', tier: 'Oracle' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 58 } },
     levelMultiplier: 1
   },
   crusade: {
-    slot: 2, word: 'Crusade', rarity: 'rare',
+    slot: 2, word: 'Crusade', rarity: 'uncommon',
     hint: 'Swords and shields in distant lands',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'medieval', tier: 'Scholar' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'medieval', right: 13 } },
     levelMultiplier: 1
   },
   dynasty: {
-    slot: 2, word: 'Dynasty', rarity: 'epic',
+    slot: 2, word: 'Dynasty', rarity: 'legendary',
     hint: 'Crowns pass but the bloodline endures',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'medieval', tier: 'Oracle' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'medieval', right: 52 } },
     levelMultiplier: 1
   },
   renaissance: {
-    slot: 2, word: 'Renaissance', rarity: 'rare',
+    slot: 2, word: 'Renaissance', rarity: 'uncommon',
     hint: 'The world reborn through curious minds',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'early-modern', tier: 'Scholar' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'early-modern', right: 60 } },
     levelMultiplier: 1
   },
   revolution: {
     slot: 2, word: 'Revolution', rarity: 'epic',
     hint: 'When the old order crumbles',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'early-modern', tier: 'Oracle' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'early-modern', right: 180 } },
     levelMultiplier: 1
   },
   atomic: {
-    slot: 2, word: 'Atomic', rarity: 'rare',
+    slot: 2, word: 'Atomic', rarity: 'uncommon',
     hint: 'The century that split the atom and the world',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'modern', tier: 'Scholar' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'modern', right: 82 } },
     levelMultiplier: 1
   },
   // KEY RENAMED, WORD UNCHANGED. This was `eternal`, exactly like the slot 3
@@ -220,7 +220,7 @@ export const TITLE_WORDS = {
   eternalModern: {
     slot: 2, word: 'Eternal', rarity: 'legendary',
     hint: 'All of time bends to your knowledge',
-    unlock: { type: 'mastery', condition: { category: 'history', subcategory: 'modern', tier: 'Oracle' } },
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'modern', right: 327 } },
     levelMultiplier: 1
   },
 
