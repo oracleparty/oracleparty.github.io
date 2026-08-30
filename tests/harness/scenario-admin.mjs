@@ -936,11 +936,49 @@ try {
       }
       table.store.allowWrites('title_words');
 
-      // --- NOW THE REAL ONE.
-      const again = admin.page.locator('#title-words .tw-slot:has(.tw-slot__save)').first();
+      // --- NOW THE REAL ONE, WITH BOTH COSTS OF A SAVE MEASURED: how far it
+      // moves the reader, and how much of the bank it re-counts. Neither is
+      // visible from the screen and the feature works perfectly either way,
+      // which is exactly why they need counting.
+      // AND THE READER MUST NOT BE THROWN BACK TO THE TOP. The panel is
+      // thousands of pixels long and the redraw replaces all of it, so without
+      // restoring the position somebody writing the ~86 outstanding words
+      // loses their place after every single one.
+      //
+      // THE FIRST VERSION OF THIS MEASURED ITS OWN ARTIFACT. It scrolled the
+      // page deliberately, then read the position — but Playwright scrolls an
+      // element into view before typing into it or clicking it, so by the time
+      // Save was pressed the page had moved back to wherever that row was. It
+      // reported a 3475px jump that no person could ever experience.
+      //
+      // So: pick a row DEEP in the panel, let the fill scroll to it, and read
+      // the position that the click will actually happen from.
+      const scrollSel = '.screen--scrollable';
+      const readScroll = () => admin.page.evaluate(
+        sel => document.querySelector(sel)?.scrollTop || 0, scrollSel);
+
+      const again = admin.page.locator('#title-words .tw-slot:has(.tw-slot__save)').last();
+      const deep = await again.evaluate(el => ({
+        cat: el.dataset.cat, sub: el.dataset.sub || null,
+        tier: el.dataset.tier, target: Number(el.dataset.target),
+      }));
+      note(`deep slot: ${JSON.stringify(deep)}`);
       await again.locator('.tw-slot__input').fill('Starbound');
+      const savedFrom = await readScroll();
+      if (savedFrom < 200) {
+        problems.push(`the save happened at ${savedFrom}px, too near the top to tell whether the redraw moves the reader`);
+      }
+
+      const countsBefore2 = table.store.countsTaken || 0;
       await again.locator('.tw-slot__save').click().catch(() => {});
       await admin.page.waitForTimeout(2500);
+
+      note(`row said: ${JSON.stringify((await again.textContent().catch(() => '')) || '')}`);
+      const restedAt = await readScroll();
+      note(`scroll: saved from ${savedFrom}px, left at ${restedAt}px`);
+      if (savedFrom >= 200 && Math.abs(restedAt - savedFrom) > 300) {
+        problems.push(`saving a word moved the reader from ${savedFrom}px to ${restedAt}px — writing 86 words means losing your place 86 times`);
+      }
 
       const rows = table.store.table('title_words');
       const saved = rows.find(r => r.word === 'Starbound');
@@ -948,15 +986,21 @@ try {
       if (!saved) {
         problems.push('the admin typed a title word, pressed Save, and nothing was written');
       } else {
-        if (Number(saved.target_right) !== where.target) {
-          problems.push(`the word was saved against target ${saved.target_right}, not the ${where.target} the slot asks for`);
+        if (Number(saved.target_right) !== deep.target) {
+          problems.push(`the word was saved against target ${saved.target_right}, not the ${deep.target} the slot asks for`);
         }
-        if (String(saved.category) !== String(where.cat) || String(saved.tier) !== String(where.tier)) {
+        if (String(saved.category) !== String(deep.cat) || String(saved.tier) !== String(deep.tier)) {
           problems.push('the word was saved against a different slot from the one it was typed into');
         }
       }
       if (rows.length !== 1) {
         problems.push(`writing one word left ${rows.length} rows — the same slot must never hold two`);
+      }
+
+      const countsAfterSave = table.store.countsTaken || 0;
+      note(`question counts taken by one save: ${countsAfterSave - countsBefore2}`);
+      if (countsAfterSave - countsBefore2 > 5) {
+        problems.push(`saving one word re-counted the bank ${countsAfterSave - countsBefore2} times — writing 86 words would take thousands of queries`);
       }
 
       // --- AND IT REACHES A PLAYER. A word written on this page that never

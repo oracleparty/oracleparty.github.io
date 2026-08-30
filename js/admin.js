@@ -1999,9 +1999,42 @@ function titleWordFor(slot, cat, sub, rarity) {
  * that a growing topic has become eligible for a tier it could not offer
  * before. Without this page the collection silently stops growing.
  */
+// HOW BIG EVERY TOPIC IS, MEASURED ONCE.
+//
+// About sixty counting queries against the whole bank. The panel redraws after
+// every single save — it has to, because the word, the counts at the top and
+// the frozen-target note all move together — and re-measuring each time would
+// have made writing the ~86 outstanding words cost roughly five thousand
+// queries, each slow enough to notice.
+//
+// Safe to hold for the life of the page: the bank only changes if the owner
+// edits it in another panel, and closing and reopening this one re-measures.
+// THE SIZES ARE NOT WHAT A SAVE CHANGES — a save changes the words, and those
+// are re-read from the database on every redraw.
+let _topicSizes = null;
+
+async function measureTopicSizes() {
+  if (_topicSizes) return _topicSizes;
+  const out = {};
+  for (const catKey of Object.keys(CATEGORY_META)) {
+    const sizes = {};
+    for (const sub of flattenSubcategories(catKey)) {
+      sizes[sub.key] = await fetchQuestionCount(catKey, sub.key);
+    }
+    out[catKey] = { sizes, subjectSize: await fetchQuestionCount(catKey) };
+  }
+  _topicSizes = out;
+  return out;
+}
+
 async function loadTitleWordsPanel() {
   const box = $('#title-words');
-  box.innerHTML = '<p class="admin-empty">Counting the bank…</p>';
+  // Only on the FIRST draw. On a redraw after a save this would collapse a very
+  // long panel to one line and back, throwing the reader to the top of it —
+  // eighty-six times over, for somebody writing the outstanding words.
+  if (!_topicSizes) box.innerHTML = '<p class="admin-empty">Counting the bank…</p>';
+
+  const measured = await measureTopicSizes();
 
   // What is already written. This panel is the only screen that shows unwritten
   // slots, so it needs the same words a player would see.
@@ -2013,9 +2046,7 @@ async function loadTitleWordsPanel() {
 
   for (const [catKey, meta] of Object.entries(CATEGORY_META)) {
     const subs = flattenSubcategories(catKey);
-    const sizes = {};
-    for (const sub of subs) sizes[sub.key] = await fetchQuestionCount(catKey, sub.key);
-    const subjectSize = await fetchQuestionCount(catKey);
+    const { sizes, subjectSize } = measured[catKey];
     const st = subjectTargets(subjectSize, sizes);
 
     const slot = (tier, sub, target, need) => {
@@ -2038,12 +2069,19 @@ async function loadTitleWordsPanel() {
       };
     };
 
+    // A SLOT WHOSE TARGET IS NOT A REAL COUNT IS NOT OFFERED. `mythic` asks for
+    // the whole subject, so a subject with no askable questions yet produces a
+    // target of 0 — a word that would be earned by answering nothing, which is
+    // both meaningless and the one promise this system must never make. The
+    // save refuses it too; this stops the box being drawn in the first place,
+    // because a control that lights up and cannot work is the fault CLAUDE.md
+    // #4 is about.
     const subjectSlots = [
       slot('common', null, st.common, `${st.common} right in the whole subject`),
       slot('rare', null, st.rare.atLeast,
         `a quarter of every topic, ${st.rare.atLeast}+ overall`),
       slot('mythic', null, st.mythic, `all ${st.mythic}`),
-    ];
+    ].filter(sl => Number.isFinite(sl.target) && sl.target >= 1);
 
     const topics = subs.map(sub => {
       const size = sizes[sub.key] || 0;
@@ -2165,11 +2203,19 @@ function attachTitleWordEditors(box) {
       // Redraw from the database rather than patching the row: the overlay,
       // the counts at the top and the frozen-target note all move together,
       // and keeping three of them in step by hand is how they drift apart.
+      //
+      // KEEP THE READER WHERE THEY WERE. This panel is thousands of pixels
+      // long and the owner has ~86 words to write, so being thrown back to
+      // History after every save would make the tool unusable for the one job
+      // it exists for. Captured from whichever ancestor actually scrolls,
+      // because that differs between this page's layout and a plain document.
+      const scroller = box.closest('.screen--scrollable, .admin-scroll') || document.scrollingElement;
+      const keepAt = scroller ? scroller.scrollTop : 0;
+
       resetTitleWordCache();
       clearWordOverlay();
-      _panelLoaded.delete('titlewords');
-      _panelLoaded.add('titlewords');
       await loadTitleWordsPanel();
+      if (scroller) scroller.scrollTop = keepAt;
     } catch (err) {
       logger.error('Admin', 'title word write failed', err);
       setStatus(slot.querySelector('.tw-slot__status'),

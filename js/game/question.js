@@ -7,7 +7,7 @@ import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestio
          _screenTransitioning, setScreenTransitioning, _isLeaving } from './state.js';
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
-import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS } from '../constants.js';
+import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
 import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
@@ -170,6 +170,28 @@ export function showQuestionScreen() {
       // refused as late; a fast one would stop the timer ever expiring. One
       // clock, by construction. Falls back to the estimate when the function is
       // not installed, which is exactly the old behaviour.
+      // NOTHING THE PLAYER SEES WAITS ON A NETWORK CALL.
+      //
+      // The clock stamp below used to come FIRST, and everything here was
+      // behind it — on the HOST's phone only, because it is the one that
+      // stamps. So a slow request left the host looking at a blank question
+      // screen with no card, no wager grid, no answer box and no timer, while
+      // every other player already had theirs. Reported from a live game as
+      // the bot not showing its answer, which is the same await: answerForBots
+      // was last in that queue.
+      //
+      // Worse, startPhaseBackstop lives inside startTimer, so a host stuck
+      // here had no rescue either — the one phone that most needs one.
+      $('.question-card').style.visibility = '';
+      $('#wager-grid').style.visibility = '';
+      $('#answer-form').style.visibility = '';
+      $('#wager-error').style.visibility = '';
+      $('.timer').style.visibility = '';
+
+      // Bots answer the moment the question is live — nobody waits for one,
+      // and a bot has never needed the clock to decide anything.
+      answerForBots();
+
       if (state.room.isHost) {
         // THE FINAL ROUND'S PHASE IS 'final_question', NOT 'question'. This
         // screen renders both, and op_start_clock checks the phase it is given
@@ -178,24 +200,26 @@ export function showQuestionScreen() {
         // the PREVIOUS round's timestamp as this one's start. The last question
         // of every game would have opened with its timer nearly gone.
         const phase = state.isFinalWagerRound ? 'final_question' : 'question';
-        const served = await startClockOnServer(state.room.id, phase, state.currentQuestion);
+        // BOUNDED. A promise that never settles cannot be caught by try/catch,
+        // and this one gates the timer for the whole room. Timing out lands on
+        // the local estimate, which is exactly what a missing op_start_clock
+        // already does — a slightly worse clock, never a stopped game.
+        const served = await Promise.race([
+          startClockOnServer(state.room.id, phase, state.currentQuestion),
+          new Promise(resolve => setTimeout(() => resolve(null), CLOCK_STAMP_TIMEOUT_MS)),
+        ]);
         const startedAt = served || new Date(Date.now() + state.serverTimeOffset).toISOString();
         state.questionStartedAt = startedAt;
-        if (!served) await updateGameState(state.room.id, { question_started_at: startedAt });
+        // Fire-and-forget: the stamp is what starts everyone ELSE's clock, and
+        // waiting on it here is what this whole block exists to stop doing.
+        if (!served) {
+          updateGameState(state.room.id, { question_started_at: startedAt })
+            .catch(err => logger.warn('Game', 'Could not stamp the round clock', err));
+        }
       }
-
-      // Reveal everything
-      $('.question-card').style.visibility = '';
-      $('#wager-grid').style.visibility = '';
-      $('#answer-form').style.visibility = '';
-      $('#wager-error').style.visibility = '';
-      $('.timer').style.visibility = '';
 
       // Start timer from server timestamp
       startTimer();
-
-      // Bots answer the moment the question is live — nobody waits for one.
-      answerForBots();
 
       // Focus the answer input for quick typing
       $('#answer-input').focus({ preventScroll: true });
@@ -376,9 +400,22 @@ function startPhaseBackstop() {
 
   state._advancePollId = setInterval(() => {
     if (_isLeaving || !state.room) return stopPhaseBackstop();
-    // The controller ends its own rounds, and a second path racing the first is
-    // how a fix for a stall becomes a fix that ends rounds early.
-    if (canControlGame()) return;
+    // THE CONTROLLER RUNS THIS TOO, and it used to be exempted.
+    //
+    // The host ends a round in handleTimerExpired: a chain of network calls,
+    // with no timeout and no retry, fired ONCE from a setTimeout half a second
+    // after the clock runs out. One failed or hanging request anywhere in that
+    // chain and the round never ends — and the exemption here meant nothing was
+    // allowed to try again. Reported from a live game: the timer ran out, no
+    // answer was auto-submitted, and "Reveal early" sat there.
+    //
+    // The exemption was guarding against a race the DATABASE already prevents.
+    // op_advance_phase refuses anything before `started + timer + 8s`, so a
+    // second caller cannot end a round early however eager it is — and the two
+    // paths are 7.5 seconds apart in any case (TIMER_GRACE_MS 500ms against
+    // PHASE_ADVANCE_GRACE_MS 8s). When the host's own path works the room is
+    // already on `reveal` long before this fires, and the phase check below
+    // stops it. When it does not, this is the only thing left.
     if (state.gamePhase !== 'question' && state.gamePhase !== 'final_question') return stopPhaseBackstop();
     // Armed for THIS round only. By the time it runs the room may legitimately
     // have moved on, and asking about a round that has been over for a while is

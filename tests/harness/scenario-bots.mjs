@@ -190,6 +190,19 @@ try {
   note(`host alone with a bot can start: ${canStartSolo}`);
   if (!canStartSolo) problems.push('a host alone with a bot cannot start a game — solo play is impossible');
 
+  // THE ROUND MUST NOT HIDE BEHIND A NETWORK CALL.
+  //
+  // The host is the phone that stamps the round's clock, and everything it
+  // shows — question card, wager grid, answer box, timer — plus the bot's
+  // answer used to sit BEHIND that await. A slow stamp left the host looking at
+  // a blank question screen while everyone else had theirs, and reported from a
+  // live game as the bot not showing its answer.
+  //
+  // slowFunction, not hideFunction: "not installed" answers instantly and takes
+  // the fallback, which is not the failure being reproduced. This is a request
+  // that has not come back yet — the thing no try/catch can rescue.
+  table.store.slowFunction('op_start_clock', 90000);
+
   for (let i = 0; i < 12; i++) {
     await clickIfReady(host, '#btn-start-game');
     await host.page.waitForTimeout(700);
@@ -207,12 +220,104 @@ try {
   // needs a wait added to pass, the bot has stopped answering immediately.
   // ============================================================
   heading('the bot answers without being waited for');
+  {
+    const visible = await host.page.evaluate(() => {
+      const card = document.querySelector('.question-card');
+      const box = document.querySelector('#answer-form');
+      return {
+        card: !!card && getComputedStyle(card).visibility !== 'hidden',
+        answerBox: !!box && getComputedStyle(box).visibility !== 'hidden',
+      };
+    }).catch(() => ({ card: false, answerBox: false }));
+    note(`host's own question visible while the clock stamp hangs: ${JSON.stringify(visible)}`);
+    if (!visible.card || !visible.answerBox) {
+      problems.push("the host's question screen was still hidden behind the clock stamp — a slow request blanks the round for the one phone that drives it");
+    }
+    // DELIBERATELY LEFT HANGING through the stall check below. startTimer — and
+    // startPhaseBackstop inside it — runs only after this call returns, so
+    // without the bounded wait the host gets no timer AND no backstop, and the
+    // round can never end. Clearing it here would let the stamp land and hide
+    // exactly that.
+  }
   if (botRow) {
     const early = table.store.table('answers')
       .filter(a => String(a.player_id) === String(botRow.id) && a.question_number === 0);
     note(`bot answers on the board before the human answered anything: ${early.length}`);
     if (early.length === 0) {
       problems.push('the bot had not answered by the time the question was live — somebody is waiting for it');
+    }
+  }
+
+  // ============================================================
+  // A SOLO GAME HAD NO BACKSTOP AT ALL
+  //
+  // Reported from a live game: the timer ran out, nothing was auto-submitted,
+  // and "Reveal early" sat on screen. The host ends a round in
+  // handleTimerExpired — a chain of network calls, no timeout, no retry, fired
+  // ONCE half a second after the clock stops. One failed request anywhere in it
+  // and the round never ends.
+  //
+  // startPhaseBackstop is what exists to catch that, and it used to return
+  // immediately for anyone who could control the game. In a room like this one
+  // — one human, one bot — the host IS the only human, so nothing was left to
+  // rescue the round. A bot does not run a browser.
+  //
+  // The exemption was guarding a race the DATABASE already prevents:
+  // op_advance_phase refuses before `started + timer + 8s`, so a second caller
+  // cannot end a round early however eager it is.
+  //
+  // SIMULATED THE WAY IT ACTUALLY FAILED: a request that never comes back.
+  // handleTimerExpired re-fetches the round's answers before it can fill blanks
+  // or broadcast, and a phone on a bad connection can hang there indefinitely —
+  // a promise that never settles cannot be caught by try/catch, which is the
+  // same shape as the sign-in freeze. Hiding op_set_phase would also stall the
+  // host, but it is a failure the live database does not have, and it fires the
+  // dead direct-write fallback on the way past.
+  // ============================================================
+  heading('a stalled round ends even when the only human is the host');
+  {
+    // WAIT FOR THE CLOCK RATHER THAN DEMANDING IT INSTANTLY. When the stamp is
+    // slow the host falls back to its own estimate after CLOCK_STAMP_TIMEOUT_MS,
+    // so the room legitimately has no question_started_at for a few seconds —
+    // and a check that read it once reported "the clock never started" for a
+    // round that was about to start one perfectly well.
+    let roomBefore = table.store.table('rooms')[0];
+    for (let i = 0; i < 30 && !roomBefore?.question_started_at; i++) {
+      await host.page.waitForTimeout(500);
+      roomBefore = table.store.table('rooms')[0];
+    }
+    const timerSecs = roomBefore?.question_timer ?? 30;
+    const startedAt = roomBefore?.question_started_at;
+    note(`round ${roomBefore?.current_question} live, ${timerSecs}s clock, host will not answer`);
+
+    if (!startedAt) {
+      problems.push('the round never got a clock while the stamp hung — the host waits on that call before starting its timer, so with no bound there is no timer, no backstop, and the round can never end');
+    } else {
+      // The host's own path to ending the round, hung where it really hangs.
+      table.store.slowReads('answers', 60000);
+
+      const deadline = Date.now() + (timerSecs * 1000) + 20000;
+      let endedAfter = null;
+      while (Date.now() < deadline) {
+        const r = table.store.table('rooms')[0];
+        if (r?.game_phase && r.game_phase !== 'question' && r.game_phase !== 'final_question') {
+          endedAfter = Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
+          break;
+        }
+        await host.page.waitForTimeout(500);
+      }
+
+      table.store.normalReads('answers');
+
+      const phase = table.store.table('rooms')[0]?.game_phase;
+      note(`round ended after ${endedAfter === null ? 'never' : endedAfter + 's'} (phase now ${phase})`);
+      if (endedAfter === null) {
+        problems.push(`the host's own path to ending the round failed and nothing rescued it — the room is still on ${phase}, exactly as reported from the live game`);
+      }
+
+      table.store.normalFunction('op_start_clock');
+      // Let the room settle back onto a normal screen before the game loop.
+      await host.page.waitForTimeout(2500);
     }
   }
 

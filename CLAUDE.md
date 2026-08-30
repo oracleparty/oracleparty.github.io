@@ -3050,6 +3050,108 @@ that lock needs — and the fallbacks are what it will have to remove, so
 enumerate them rather than rediscovering them (049's lesson, stated in advance
 for once).
 
+### A round that nobody was allowed to rescue (2026-08-30 playtest)
+
+**Reported from a live game, and the owner was right that it was broken:** a
+friend could not submit at times, the bot did not show its answer immediately,
+and the timer ran out with nothing auto-submitted while "Reveal early" sat on
+screen. **Two independent faults, both single points of failure on the HOST's
+phone, and both invisible to twelve passing scenarios.**
+
+**Neither was new code.** The game engine had not changed in either respect for
+weeks. What changed was the DATABASE underneath it — the 048-062 lockdown — and
+before that these were merely fragile rather than fatal. That is the pattern
+this file keeps recording: *what was harmlessly redundant a moment ago is now
+the only path.*
+
+#### 1. The one phone that most needed the backstop was exempt from it
+
+The host ends a round in `handleTimerExpired`: a chain of network calls, no
+timeout, no retry, fired **once** from a `setTimeout` half a second after the
+clock stops. One failed or hanging request anywhere in it and the round never
+ends.
+
+`startPhaseBackstop` exists to catch exactly that — and its first line was
+`if (canControlGame()) return;`. So the host and co-host never ran it.
+
+**In a solo game with a bot the host is the ONLY human, so there was no backstop
+at all.** A bot does not run a browser. Measured, by hanging the answers read
+that `handleTimerExpired` waits on: `round ended after never (phase now
+question)`. With the exemption removed: `round ended after 39s` — 30s clock plus
+the 8s grace.
+
+**The exemption was guarding a race the database already prevents.**
+`op_advance_phase` refuses before `started + timer + 8s`, so a second caller
+cannot end a round early however eager it is, and the two paths are 7.5 seconds
+apart in any case (`TIMER_GRACE_MS` 500ms against `PHASE_ADVANCE_GRACE_MS` 8s).
+When the host's own path works the room is on `reveal` long before the backstop
+fires and the phase check stops it.
+
+**This also explains the other two symptoms**, because `op_advance_phase` fills
+blank answers server-side before moving the phase (056). A round stuck past the
+server's deadline means every later submission is refused as *time is up*, falls
+back to a direct write, and — since 049 revoked UPDATE on `answers` — is refused
+again if a blank already exists. **The player is told their answer did not
+save.** That is "my friend couldn't submit".
+
+#### 2. The host's whole round was hidden behind a network call
+
+`showQuestionScreen`'s normal path stamped the clock FIRST and revealed
+everything after it:
+
+```js
+if (state.room.isHost) { await startClockOnServer(...); }   // ← only the host
+$('.question-card').style.visibility = '';                   // card
+$('#answer-form').style.visibility = '';                     // answer box
+startTimer();                                                // timer + backstop
+answerForBots();                                             // the bot
+```
+
+Only the host stamps, so only the host waited. A slow request left the host
+looking at a blank question screen — no card, no wager grid, no answer box, no
+timer — while every other player already had theirs, **and the bot had not
+answered, because `answerForBots` was last in that queue.** That is the reported
+"the bot didn't show its answer immediately".
+
+And `startPhaseBackstop` lives inside `startTimer`, so a host stuck here had no
+rescue either — fault 2 disabled the fix for fault 1.
+
+The UI and the bot now go first, and the stamp is bounded by
+`CLOCK_STAMP_TIMEOUT_MS` (4s), landing on the local estimate exactly as a
+missing `op_start_clock` already does: a slightly worse clock, never a stopped
+game.
+
+#### An adjacent risk, noted rather than changed
+
+The COUNTDOWN's self-heal (`phases.js`) is a one-shot `setTimeout` at 3s. It is
+not host-gated, so several clients each attempt it — but in a solo game with a
+bot there is only one, and a single failed attempt leaves the room on
+`countdown`. Same fault class as the two above. **Not changed here**: nothing
+reported it, the countdown demonstrably works, and shipping a speculative third
+change alongside two proven ones is how a fix commit introduces a regression.
+
+#### What let both of these through
+
+**The fake store could not see column grants.** 058 and 061 revoked UPDATE on
+`players` and `rooms` and re-granted a named column list, so a client update
+touching anything else is refused outright with 42501. The harness allowed every
+one of them — CLAUDE.md #10 in its usual direction. `_columnGrants` in
+`tests/harness/store.js` now models it, and every scenario still passes, which is
+the useful half of that result: **the client code really is routed correctly, so
+the lockdown was not the cause and could be ruled out by measurement rather than
+by argument.**
+
+**`store.slowFunction(name, ms)` is new and is the knob that mattered.**
+`hideFunction` models "not installed", which answers instantly and takes the
+fallback — a completely different failure from the one being reported. A request
+that has not come back YET is the thing no `try/catch` can rescue, and nothing
+in the harness could produce it.
+
+**A scenario that plays a healthy game proves nothing about a sick one.** Both
+faults need a slow or failed request to appear at all, and every scenario ran
+against an instant in-memory store. The fix for that is not more scenarios, it
+is the two knobs above.
+
 ### Slice 11a — the deputy could not actually advance (migration 062)
 
 **Found 2026-08-29, and it made the whole deputy mechanism dead for exactly the

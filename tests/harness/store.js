@@ -61,6 +61,7 @@ export class FakeStore {
     this._dropEvents = new Map();  // table -> how many realtime events to swallow
     this._missing = new Set();     // tables that answer as if they do not exist
     this._hiddenFunctions = new Set();  // RPCs that answer PGRST202
+    this._slowFunctions = new Map();    // RPC -> ms before it answers
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     // Doors the LIVE database has shut, so the fake refuses what it refuses.
     // See _shutDoor below — this is not a scenario knob, it is the schema.
@@ -80,6 +81,30 @@ export class FakeStore {
       ['answers',           [['room_id', 'player_id', 'question_number']]],
       ['question_feedback', [['question_id', 'voter_id']]],
       ['game_plays',        [['room_id', 'player_id']]],
+    ]);
+    // COLUMN GRANTS, the other half of the lockdown and the half this store
+    // could not see. Migrations 058 and 061 revoked UPDATE on `players` and
+    // `rooms` and re-granted a named list of columns, so an update touching
+    // anything else is refused OUTRIGHT with 42501 — not filtered, not silent.
+    //
+    // Until this existed the harness allowed every one of those writes, which
+    // is CLAUDE.md #10 in its usual direction: the fake database permitting
+    // what the real one had just forbidden. Twelve scenarios passed while the
+    // live game could not advance.
+    //
+    // A column NOT in the list here is one only a SECURITY DEFINER function may
+    // write, and those mutate the table array directly rather than going
+    // through _execute — the same way definer rights are modelled everywhere
+    // else in this file, structurally rather than by a flag.
+    this._columnGrants = new Map([
+      ['players', new Set(['last_seen_at', 'disconnected_at', 'is_ready'])],
+      ['rooms', new Set([
+        'question_ids', 'used_question_ids',
+        'question_started_at', 'countdown_started_at',
+        'room_scores', 'host_name', 'status',
+        'category', 'subcategory', 'who_can_join',
+        'questions_per_game', 'question_timer', 'auto_proceed',
+      ])],
     ]);
     this._shutDoors = new Map([
       ['answers',      new Set(['update', 'delete'])],   // migrations 049 + 050
@@ -308,6 +333,16 @@ export class FakeStore {
   hideFunction(name) { this._hiddenFunctions.add(name); }
   /** Undo hideFunction. */
   showFunction(name) { this._hiddenFunctions.delete(name); }
+  /**
+   * Make one RPC take a long time WITHOUT failing — the shape a phone on a bad
+   * connection actually produces. hideFunction models "not installed", which
+   * returns instantly and takes the fallback; this models a request that has
+   * not come back yet, which is what freezes a screen. A promise that never
+   * settles cannot be caught by try/catch, so only a bounded wait survives it.
+   */
+  slowFunction(name, ms) { this._slowFunctions.set(name, ms); }
+  /** Undo slowFunction. */
+  normalFunction(name) { this._slowFunctions.delete(name); }
 
   seed(name, rows) {
     this.table(name).push(...rows.map(r => ({ ...r })));
@@ -456,6 +491,15 @@ export class FakeStore {
     const slow = this._slowReads.get(table);
     if (slow && action === 'select') await new Promise(r => setTimeout(r, slow));
 
+    // COUNTING QUERIES ARE COUNTED. A screen that re-measures the whole
+    // question bank on every interaction works perfectly and is unusable, and
+    // that is invisible from the outside — the admin's Title Words panel
+    // shipped exactly that way, ~60 counts per saved word against ~86 words to
+    // write. Nothing but a tally can see it.
+    if (action === 'select' && modifiers?.count) {
+      this.countsTaken = (this.countsTaken || 0) + 1;
+    }
+
     // Simulate an RLS refusal, which is the single most misleading thing this
     // database does: a policy that denies a write does NOT return an error. The
     // statement succeeds and affects zero rows, so `if (error)` is false and the
@@ -464,6 +508,24 @@ export class FakeStore {
     //
     // denyWrites('questions') makes this store behave the same way, so the code
     // paths that are supposed to notice can actually be tested.
+    // An UPDATE naming a column the client was never granted is refused whole,
+    // before any row is touched. Postgres checks column privileges independently
+    // of RLS, which is why 058 and 061 could lock the host flag and the game
+    // phase without a function per write.
+    if (action === 'update' && this._columnGrants.has(table)) {
+      const granted = this._columnGrants.get(table);
+      const ungranted = Object.keys(payload || {}).filter(c => !granted.has(c));
+      if (ungranted.length) {
+        return {
+          data: null, error: {
+            code: '42501',
+            message: `permission denied for column ${ungranted[0]} of relation ${table}`,
+            details: `client may not write: ${ungranted.join(', ')}`,
+          },
+        };
+      }
+    }
+
     if (this._denied.has(table) && action !== 'select') {
       return modifiers.single
         ? { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } }
@@ -699,6 +761,10 @@ export class FakeStore {
             },
           };
         }
+        // A request that has not come back YET, which is not the same as one
+        // that failed. Only a bounded wait on the caller's side survives it.
+        const rpcDelay = this._slowFunctions.get(table);
+        if (rpcDelay) await new Promise(r => setTimeout(r, rpcDelay));
         return { data: this._rpc(table, payload), error: null };
       }
 

@@ -24,6 +24,18 @@ export const PHASE_ADVANCE_GRACE_MS = 8000;
 // milliseconds early gets a correct "not due" and then NOTHING EVER ASKS AGAIN
 // — the stall, reintroduced by its own fix.
 export const PHASE_BACKSTOP_POLL_MS = 3000;
+
+// How long the host waits for the database to stamp a round's clock before
+// falling back to its own estimate of server time.
+//
+// This gates the timer for the WHOLE ROOM — every other phone derives its clock
+// from that stamp — so an unbounded wait is a stopped game, and a promise that
+// never settles cannot be caught by try/catch. Timing out lands exactly where a
+// missing op_start_clock already lands: a slightly worse clock, never a stall.
+//
+// Generous, because a false timeout costs accuracy on a number the server is
+// better at, and because the stamp normally lands in well under a second.
+export const CLOCK_STAMP_TIMEOUT_MS = 4000;
 export const TOAST_DURATION_MS = 3000;
 export const TRANSITION_MS = 260;
 export const FADE_MS = 500;
