@@ -14,7 +14,7 @@ const CATEGORY_KEYS = Object.keys(CATEGORY_META);
 import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
   fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts, endRoomAsAdmin,
   fetchHostReputations, describeHostReputation } from './supabase.js';
-import { ensureDisplayName, initAuth, getCurrentUser } from './auth.js';
+import { initAuth, getCurrentUser } from './auth.js';
 import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS, ABANDONED_ROOM_MS, MIN_HOST_RATINGS } from './constants.js';
 
 // ============================================
@@ -26,7 +26,11 @@ async function init() {
   window.__appReady = true;
   if (window.__appBootGuard) clearTimeout(window.__appBootGuard);
   document.body.style.opacity = '1';
-  await Promise.all([ensureDisplayName(), initAuth()]);
+  // NO ensureDisplayName HERE. The admin page never reads a display name, and
+  // asking for one raced initAuth: on a fresh device the modal could open
+  // before the profile loaded, so a signed-in admin was asked to invent a name
+  // they already had.
+  await initAuth();
 
   const user = getCurrentUser();
   if (!user?.profile?.is_admin) {
