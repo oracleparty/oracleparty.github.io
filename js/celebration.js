@@ -18,6 +18,8 @@
 
 import { escapeHtml } from './utils.js';
 import { CELEBRATION_FULLSCREEN_MS, CELEBRATION_CARD_MS } from './constants.js';
+import { TITLE_WORDS, describeRequirement } from './titles.js';
+import { labelForKey } from './categories.js';
 
 let _hideTimer = null;
 
@@ -70,6 +72,27 @@ export function showCelebration(plan) {
   // a new word, and saying "new title" about it would be wrong.
   const kicker = lead.isUpgrade ? `Level ${lead.level}` : rarity;
 
+  // WHAT EARNED IT. This card used to say only the word, which is the fault the
+  // owner has raised about this system more than any other: they could not tell
+  // what any word was for. It matters most HERE, because the sign-in path fires
+  // on arrival with no game behind it — a word appearing on the front page out
+  // of nowhere is the least explicable moment in the app.
+  //
+  // A secret says nothing, deliberately: describeRequirement returns null for
+  // one, and spoiling it at the moment it lands would take the whole point of
+  // it away.
+  //
+  // AND NEITHER DOES AN UPGRADE. describeRequirement states the BASE
+  // requirement, and a level is a multiple of it — so "Win 10 games in a row"
+  // on a Level 2 card would be describing something the player passed a while
+  // ago, which is worse than saying nothing. The kicker already reads "Level 2".
+  const why = lead.isUpgrade
+    ? null
+    : describeRequirement(TITLE_WORDS[lead.wordId], labelForKey);
+  const reason = why
+    ? `<div class="celebration__why">${escapeHtml(why)}</div>`
+    : '';
+
   el.dataset.tier = tier;
   el.dataset.rarity = rarity;
   el.innerHTML = `
@@ -77,6 +100,7 @@ export function showCelebration(plan) {
       <div class="celebration__kicker">${escapeHtml(String(kicker))}</div>
       <div class="celebration__word">${escapeHtml(lead.word)}</div>
       ${lead.isUpgrade ? '' : '<div class="celebration__sub">added to your titles</div>'}
+      ${reason}
       ${more}
       <button type="button" class="celebration__dismiss">Nice</button>
     </div>`;

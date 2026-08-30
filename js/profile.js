@@ -37,7 +37,7 @@ import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from '.
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
 import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress, describeRequirement } from './titles.js';
-import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories } from './categories.js';
+import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories, labelForKey } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
 import { hexLayout, hexPoints, hexFill, hexFillRect } from './honeycomb.js';
 import { loadTitleWords } from './title-content.js';
@@ -1956,16 +1956,6 @@ const STANDING_GROUPS = [
 
 // A LABEL A PLAYER RECOGNISES, not the key the database stores. "ancient" is
 // not a thing anybody has heard of; "Ancient History" is.
-function titleLabelFor(key) {
-  if (!key) return key;
-  if (CATEGORY_META[key]) return CATEGORY_META[key].label || key;
-  for (const cat of Object.keys(CATEGORY_META)) {
-    const hit = flattenSubcategories(cat).find(s => s.key === key);
-    if (hit) return hit.label;
-  }
-  return key;
-}
-
 function galleryCard(word, level) {
   const earned = level > 0;
   const secret = !word.hint;
@@ -1974,7 +1964,7 @@ function galleryCard(word, level) {
   // riddle and nothing else, so nobody — the owner included — could tell what
   // any word was for or how to get the next one. A riddle is right for a
   // secret and wrong for everything else.
-  const requirement = describeRequirement(word, titleLabelFor);
+  const requirement = describeRequirement(word, labelForKey);
 
   if (earned) {
     return `<div class="title-card title-card--earned" data-rarity="${rarity}">

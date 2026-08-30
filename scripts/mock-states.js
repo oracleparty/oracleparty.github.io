@@ -1371,8 +1371,9 @@ export const STATES = {
       el.innerHTML = `
         <div class="celebration__card">
           <div class="celebration__kicker">legendary</div>
-          <div class="celebration__word">Phantom</div>
+          <div class="celebration__word">Antiquity</div>
           <div class="celebration__sub">added to your titles</div>
+          <div class="celebration__why">Get 58 questions right in Ancient &amp; Classical Civilisations</div>
           <div class="celebration__more">+2 more unlocked</div>
           <button type="button" class="celebration__dismiss">Nice</button>
         </div>`;

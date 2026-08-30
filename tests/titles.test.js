@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1017,5 +1017,59 @@ describe('owner-written words from the database', () => {
     ]);
     expect(TITLE_WORDS[overlayWordId('science', null, 'common')].word).toBe('Science');
     expect(TITLE_WORDS[overlayWordId('science', 'space', 'common')].word).toBe('Orbital');
+  });
+});
+
+// ============================================
+// WHAT THE CELEBRATION SAYS IT WAS FOR
+//
+// The card used to show only the word. That is the complaint the owner has
+// raised about this system more than any other — they could not tell what any
+// word was for — and it bites hardest on the SIGN-IN path, which fires on
+// arrival with no game behind it. A word appearing on the front page out of
+// nowhere is the least explicable moment in the app.
+//
+// Two things must NOT get a reason, and both are easy to break by widening the
+// line that adds one.
+// ============================================
+describe('the celebration explains itself', () => {
+  let showCelebration;
+  beforeAll(async () => {
+    ({ showCelebration } = await import('../js/celebration.js'));
+  });
+  afterEach(() => { document.getElementById('title-celebration')?.remove(); });
+
+  const show = u => {
+    showCelebration(planCelebration([u]));
+    return document.getElementById('title-celebration')?.textContent || '';
+  };
+
+  it('says what earned a first unlock', () => {
+    const text = show({ wordId: 'science', word: 'Science', rarity: 'common', level: 1, isNew: true });
+    expect(text).toContain('Science');
+    expect(text).toMatch(/10 questions right/i);
+  });
+
+  // A SECRET STAYS SECRET. Spoiling it at the moment it lands takes the whole
+  // point of it away, and describeRequirement returning null is what says so.
+  it('says nothing for a secret', () => {
+    const w = TITLE_WORDS.phantom;
+    expect(w.hint, 'phantom is meant to be a secret').toBeNull();
+    expect(describeRequirement(w)).toBeNull();
+    const text = show({ wordId: 'phantom', word: 'Phantom', rarity: w.rarity, level: 1, isNew: true });
+    expect(text).toContain('Phantom');
+    expect(text).not.toMatch(/midnight|between/i);
+  });
+
+  // AN UPGRADE MUST NOT SHOW THE BASE REQUIREMENT. describeRequirement states
+  // the level-1 condition, and a level is a multiple of it — so a Level 2 card
+  // reading "Win 10 games in a row" describes something the player passed a
+  // while ago. Saying nothing is better than saying something false.
+  it('says nothing for an upgrade, because the base requirement is not what happened', () => {
+    expect(describeRequirement(TITLE_WORDS.relentless)).toMatch(/10 games/i);
+    const text = show({ wordId: 'relentless', word: 'Relentless', rarity: 'rare', level: 2, isUpgrade: true });
+    expect(text).toContain('Relentless');
+    expect(text).toContain('Level 2');
+    expect(text).not.toMatch(/10 games/i);
   });
 });

@@ -3852,6 +3852,47 @@ for; the probe now watches that column by name.
 dozen places import it synchronously, and turning all of them async to await a
 fetch would be far larger a change than this earns.
 
+### A word appearing out of nowhere has to say what earned it
+
+**Reported 2026-08-30: the owner opened the FRONT PAGE and was told they had
+unlocked Science.** Their question was whether that is the right place for it.
+
+**It is, and the surprise was not the placement.** The sign-in path
+(`initAuth`) evaluates unlocks on arrival, deliberately — something earned while
+away, like a loyalty streak crossing a day boundary, has nowhere else to appear.
+And the rules had just changed underneath them: slot 2 moved from rank-based to
+COUNT-based, so words genuinely became newly earned. **Every existing player
+gets one retroactive batch on their next sign-in**, and `planCelebration` gives
+one celebration per batch rather than one per word, so it is a single card and
+not a queue.
+
+**What was actually wrong is that the card said only the word.** That is the
+complaint the owner has raised about this system more than any other — they
+could not tell what any word was for — and `describeRequirement` had been built
+for exactly it and wired only to the gallery. It bites hardest here, because the
+sign-in path fires with no game behind it: a word arriving on the front page is
+the least explicable moment in the app.
+
+**Two things must NOT get a reason, and widening the line breaks both.** A
+SECRET stays secret — `describeRequirement` returns null and spoiling it at the
+moment it lands removes the point of it. An UPGRADE gets nothing either, because
+that function states the LEVEL-1 condition and a level is a multiple of it, so a
+Level 2 card would read "Win 10 games in a row" about something the player
+passed a while ago. **Saying nothing beats saying something false**, and the
+kicker already reads "Level 2". Verified by widening it: two checks fail by name.
+
+`titleLabelFor` moved from `js/profile.js` into `categories.js` as `labelForKey`,
+because the celebration needed the same rule and a third copy is this project's
+signature fault. The failure would have been quiet — a raw key reads almost like
+a label, so "10 right in arts-literature" looks like a wording choice rather than
+a missing lookup.
+
+**Both celebration mocks were fiction and the screenshot showed it.** One
+rendered a reason line for Phantom, which is a secret and would never have one;
+the other quoted "Win 15 games in a row" for a word whose real requirement is 10.
+A mock that states things the code cannot produce reviews markup that never
+ships.
+
 ### A new table arrives already granted to everybody
 
 Migration 063's own verification came back FAIL on its third rule the first time

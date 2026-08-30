@@ -190,3 +190,27 @@ export function resolveSubcategoryIcon(category, subcategoryKey) {
   const node = findSubcategoryNode(meta, subcategoryKey);
   return node?.emoji || node?.icon || meta.emoji || meta.icon;
 }
+
+/**
+ * The human label for ANY key, whether it names a category or a topic.
+ *
+ * Different question from resolveCategoryLabel, which takes both and combines
+ * them. This one is given a single key and does not know which kind it is —
+ * which is what a title's unlock condition carries: `history` in one word and
+ * `ancient` in the next, with nothing distinguishing them.
+ *
+ * Lives here because it had been a private helper in profile.js and the
+ * celebration needed the same rule. A third copy of a rule is the single most
+ * repeated fault in this project, and the failure here would be quiet: the raw
+ * key reads almost like a label, so "10 right in arts-literature" looks like a
+ * wording choice rather than a missing lookup.
+ */
+export function labelForKey(key) {
+  if (!key) return key;
+  if (CATEGORY_META[key]) return CATEGORY_META[key].label || key;
+  for (const cat of Object.keys(CATEGORY_META)) {
+    const hit = flattenSubcategories(cat).find(s => s.key === key);
+    if (hit) return hit.label;
+  }
+  return key;
+}
