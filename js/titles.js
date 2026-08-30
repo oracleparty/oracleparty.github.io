@@ -584,6 +584,23 @@ function computeWordLevel(wordDef, categoryTiers, aggStats, profile, context) {
   let baseAchieved = 0; // How many times the base condition is met (for micro-levels)
 
   switch (type) {
+    // COUNT — the rule the title rebuild moves everything to. `condition` is
+    // { category, subcategory?, right }, where `right` is a FROZEN target
+    // worked out once from the topic's size (see js/title-tiers.js and the
+    // admin page's Title Words panel, which prints it).
+    //
+    // Frozen, not recomputed: a live percentage would move somebody's goal
+    // backwards every time the bank grew, and "13 more to go" becoming "31 more
+    // to go" is the worst feeling in a collection.
+    //
+    // NO MICRO-LEVELS. A count word is earned once and kept; levelMultiplier is
+    // ignored here deliberately rather than left to produce a silent level 2.
+    case 'count': {
+      if (!condition.right) return 0;
+      const have = rightIn(context?.stats || [], condition.category, condition.subcategory || null);
+      return have >= condition.right ? 1 : 0;
+    }
+
     case 'mastery': {
       if (condition.category && condition.tier) {
         // Subcategory-specific mastery: use "category:subcategory" key
@@ -703,6 +720,34 @@ function computeWordLevel(wordDef, categoryTiers, aggStats, profile, context) {
  * @param {Object} [context] — optional context for hidden conditions
  * @returns {Array} Array of { wordId, word, level, rarity, isNew, isUpgrade }
  */
+/**
+ * How many distinct questions this player CURRENTLY gets right in a category,
+ * or in one topic of it.
+ *
+ * THE ONE MEASURE THE NEW TITLE RULES USE (see "The agreed shape of titles" in
+ * CLAUDE.md). Never a percentage of what they have MET: that falls when they
+ * meet a new question and get it wrong, so a word built on it is taken away for
+ * being curious — which is exactly what the old rank formula did.
+ *
+ * Reads through rowProficiency so the fallback to the older attempt counters is
+ * stated once. And for a whole CATEGORY it takes the rollup rows only:
+ * player_stats_computed emits a row per subcategory AND a rollup that already
+ * contains their sum, so adding everything counts most things twice.
+ */
+export function rightIn(stats, category, subcategory = null) {
+  if (!category) return 0;
+  const rows = (stats || []).filter(s => s.category === category);
+  const wanted = subcategory
+    ? rows.filter(s => s.subcategory === subcategory)
+    : categoryRollupRows(rows);
+  let total = 0;
+  for (const row of wanted) {
+    const p = rowProficiency(row);
+    if (p) total += p.mastered;
+  }
+  return total;
+}
+
 export function evaluateUnlocks(stats, profile, currentUnlocks, context) {
   const categoryTiers = computeCategoryTiers(stats);
   const aggStats = computeAggregateStats(stats);
@@ -714,7 +759,12 @@ export function evaluateUnlocks(stats, profile, currentUnlocks, context) {
   const changes = [];
   for (const [id, wordDef] of Object.entries(TITLE_WORDS)) {
     const currentLevel = unlockMap[id] || 0;
-    const newLevel = computeWordLevel(wordDef, categoryTiers, aggStats, profile, context);
+    // The raw stat rows go through so a `count` word can ask how many
+    // questions this player currently gets right in one topic. Merged into
+    // context rather than added as a parameter: every other unlock type
+    // reads pre-computed summaries, and only this one needs the rows.
+    const newLevel = computeWordLevel(wordDef, categoryTiers, aggStats, profile,
+                                      { ...(context || {}), stats: stats || [] });
     if (newLevel > currentLevel) {
       changes.push({
         wordId: id,

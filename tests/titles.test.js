@@ -9,7 +9,7 @@ import {
   evaluateUnlocks,
   hasReachedApprentice,
   buildDisplayTitle,
-  categoryRollupRows, rowProficiency, sumProficiency,
+  categoryRollupRows, rowProficiency, sumProficiency, rightIn,
   mergedCategoryRows,
   tierProgress,
   TIER_ORDER,
@@ -791,5 +791,88 @@ describe('the word list itself', () => {
     const missing = keys.filter(k => !TITLE_WORDS[k]);
     expect(missing).toEqual([]);
     expect(Object.keys(TITLE_WORDS).length).toBe(keys.length);
+  });
+});
+
+// ============================================
+// COUNT-BASED UNLOCKS
+//
+// The rule the title rebuild moves to: questions you currently GET RIGHT in a
+// topic, against a frozen target. See "The agreed shape of titles" in CLAUDE.md.
+// ============================================
+describe('count-based unlocks', () => {
+  const stats = [
+    // A rollup row per category AND a row per subcategory — exactly what
+    // player_stats_computed emits, including the double-counting trap.
+    { category: 'history', subcategory: null,      questions_met: 140, questions_mastered: 73 },
+    { category: 'history', subcategory: 'ancient', questions_met: 60,  questions_mastered: 31 },
+    { category: 'history', subcategory: 'modern',  questions_met: 80,  questions_mastered: 42 },
+    { category: 'science', subcategory: null,      questions_met: 20,  questions_mastered: 8 },
+  ];
+
+  it('reads one topic', () => {
+    expect(rightIn(stats, 'history', 'ancient')).toBe(31);
+    expect(rightIn(stats, 'history', 'modern')).toBe(42);
+  });
+
+  // THE DOUBLE-COUNT TRAP. The rollup already contains the subcategories, so
+  // adding every row gives 73 + 31 + 42 = 146 for somebody who knows 73.
+  it('takes the rollup for a whole subject, never the sum of everything', () => {
+    expect(rightIn(stats, 'history')).toBe(73);
+  });
+
+  it('is zero for a subject never played', () => {
+    expect(rightIn(stats, 'food')).toBe(0);
+    expect(rightIn(stats, 'history', 'medieval')).toBe(0);
+  });
+
+  it('awards a word when the count reaches the frozen target', () => {
+    const word = {
+      slot: 2, word: 'Chronicles', rarity: 'uncommon', hint: null,
+      unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 28 } },
+    };
+    const before = { ...TITLE_WORDS };
+    try {
+      TITLE_WORDS.__test_count = word;
+      const got = evaluateUnlocks(stats, {}, [], {});
+      expect(got.find(c => c.wordId === '__test_count')?.level).toBe(1);
+    } finally {
+      delete TITLE_WORDS.__test_count;
+      Object.assign(TITLE_WORDS, before);
+    }
+  });
+
+  it('withholds it when the count falls short', () => {
+    const word = {
+      slot: 2, word: 'Antiquity', rarity: 'epic', hint: null,
+      unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 45 } },
+    };
+    try {
+      TITLE_WORDS.__test_short = word;
+      const got = evaluateUnlocks(stats, {}, [], {});
+      expect(got.find(c => c.wordId === '__test_short')).toBeUndefined();
+    } finally {
+      delete TITLE_WORDS.__test_short;
+    }
+  });
+
+  // ONCE EARNED, KEPT FOREVER. A count CAN fall — get wrong something you used
+  // to know — and a collectible that evaporates for forgetting one question is
+  // a bad collectible. evaluateUnlocks only ever reports INCREASES, so nothing
+  // downstream is ever told to take a word away.
+  it('never reports a word going backwards', () => {
+    const word = {
+      slot: 2, word: 'Chronicles', rarity: 'uncommon', hint: null,
+      unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 28 } },
+    };
+    try {
+      TITLE_WORDS.__test_keep = word;
+      const poorer = stats.map(s =>
+        s.subcategory === 'ancient' ? { ...s, questions_mastered: 2 } : s);
+      const got = evaluateUnlocks(poorer, {}, [{ word_id: '__test_keep', level: 1 }], {});
+      expect(got.find(c => c.wordId === '__test_keep')).toBeUndefined();
+    } finally {
+      delete TITLE_WORDS.__test_keep;
+    }
   });
 });
