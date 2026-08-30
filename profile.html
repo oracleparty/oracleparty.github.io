@@ -32,7 +32,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260830d">
+  <link rel="stylesheet" href="css/style.css?v=20260830e">
 </head>
 <body style="opacity:0">
 
@@ -63,12 +63,16 @@
         <span id="title-builder-locked__peek" class="title-builder-locked__peek">See what there is to earn &rsaquo;</span>
       </button>
       <div id="title-builder-wheel" class="title-builder-wheel" style="display:none;">
-        <div id="title-preview" class="title-builder__preview">Novice</div>
-        <div class="title-builder__columns">
-          <div id="wheel-slot1" class="title-wheel-column"></div>
-          <div id="wheel-slot2" class="title-wheel-column"></div>
-          <div id="wheel-slot3" class="title-wheel-column"></div>
+        <!-- THE TITLE IS THE MENU. Three columns of question marks gave no clue
+             which part of the title you were editing or what any locked entry
+             was for. Tapping a word here opens that part's list below. -->
+        <div id="title-preview" class="title-builder__preview" role="group" aria-label="Your title — tap a part to change it">
+          <button type="button" class="title-part" data-slot="1"></button>
+          <button type="button" class="title-part" data-slot="2"></button>
+          <button type="button" class="title-part" data-slot="3"></button>
         </div>
+        <p id="title-part-blurb" class="title-builder__blurb"></p>
+        <div id="title-picker" class="title-picker"></div>
         <p id="title-hint-toast" class="title-builder__hint"></p>
         <p id="title-uniqueness" class="title-builder__uniqueness"></p>
         <button id="btn-save-title" class="btn btn-primary">Save Title</button>
