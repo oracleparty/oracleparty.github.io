@@ -47,6 +47,11 @@ const TABLES = [
   // "readable rows=0" is the CORRECT output and not a table to investigate.
   // host_reputation is the aggregate, and that one really is public.
   'host_ratings', 'host_reputation',
+  // Migration 063 — the words the owner writes, as content rather than code.
+  // Reads as rows=0 until somebody has written one, which is correct output,
+  // not a fault: the collection ships empty by design and a slot with no word
+  // simply does not exist for players.
+  'title_words',
 ];
 
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
@@ -667,6 +672,13 @@ const CONSEQUENCES = [
       'every host reads as "new host" on the join list, however many games they have run',
       'and the admin page cannot show who has been reported, so a flag reaches nobody',
     ] },
+  { object: 'title_words', kind: 'table',
+    fix: 'run migrations/063_title_words_are_content.sql',
+    breaks: [
+      'the owner cannot write a title word at all — the admin panel saves nothing and says permission denied',
+      'so the collection is frozen at whatever is hard-coded, and the ~86 unwritten words can never be added',
+      'players see only the coded words, which is not an error state and looks exactly like a finished collection',
+    ] },
   { object: 'player_totals_computed', kind: 'table',
     fix: 'run migrations/032_totals_and_mastery.sql',
     breaks: [
@@ -933,6 +945,11 @@ const REQUIRED = {
                      'rating', 'flag_reason', 'flag_note'],
   host_reputation:  ['host_user_id', 'ratings', 'thumbs_up', 'thumbs_down',
                      'pct_positive', 'flags'],
+  // target_right IS THE ONE THAT WILL BITE. applyWordOverlay skips any row
+  // without a usable target, so a missing column does not error — it silently
+  // drops every word the owner has ever written, with nothing on any screen.
+  // That exact fault shipped once already in the fetch's own column list.
+  title_words:      ['slot', 'category', 'subcategory', 'tier', 'word', 'target_right'],
 };
 
 console.log('\n--- COLUMNS THE APP DEPENDS ON ---');

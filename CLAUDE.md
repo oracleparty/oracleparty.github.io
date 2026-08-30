@@ -805,7 +805,8 @@ not build it on `game_history.score`.
 │   ├── auth.js         Display name, optional accounts, session
 │   ├── host.js / join.js / lobby.js / profile.js / leaderboard.js / admin.js
 │   ├── categories.js   CATEGORY_META: icons, labels, subcategories
-│   ├── titles.js       Title unlock rules
+│   ├── titles.js       Title unlock rules, the rarity ladder, the word overlay
+│   ├── title-content.js  Loads the owner's written words (the ONLY fetcher)
 │   ├── utils.js        Fuzzy answer matching, DOM helpers, escaping
 │   ├── honk.js / typing.js / presence.js / theme.js / logger.js
 │   ├── celebration.js  Unlock overlays (planCelebration lives in titles.js)
@@ -817,6 +818,7 @@ not build it on `game_history.score`.
 │   │   ├── radar.js              the profile's twelve-axis chart
 │   │   ├── answer-health.js      which answer keys need a human (admin + probe)
 │   │   ├── presence-health.js    is the presence channel still joined
+│   │   ├── title-tiers.js        which tiers a topic offers, and at what count
 │   │   └── game/bot-logic.js     bot decisions
 │   └── constants.js    All timing + threshold values
 ├── migrations/         Hand-applied SQL (see #7 above)
@@ -3784,12 +3786,87 @@ fixed-height flex containers that scroll internally, so `--full` cannot reach
 anything below the fold — on profile.html that is most of the page, and a
 section nobody can photograph is a section nobody is reviewing.
 
-## The agreed shape of titles (designed 2026-08-29, NOT BUILT)
+## The agreed shape of titles (designed 2026-08-29, BUILT 2026-08-30)
 
-**This is a design the owner and I settled in conversation. None of it is in the
-code.** It is written down because it took a long argument to reach and because
-the reasoning matters more than the numbers. Do not treat any of it as
-implemented; `js/titles.js` still works the way the sections below describe.
+**This was a design the owner and I settled in conversation, and it is now in
+the code.** The reasoning is kept in full because it took a long argument to
+reach and because it explains numbers that would otherwise look arbitrary.
+
+What is built: `js/title-tiers.js` holds the rules (floors, shares, targets) with
+no imports and its own unit tests; `js/titles.js` carries `type: 'count'` unlocks
+and the overlay that merges owner-written words in; `migrations/063` stores the
+words; the admin page's Title Words panel writes them.
+
+**Still the owner's own work, and nothing can do it for them:** roughly 86 words
+to write, and about a dozen questions each to add to History's Ancient (58) and
+Medieval (52) topics so they clear the 60-question floor and can carry words at
+all. **Do not generate any of those words** — the owner has said the words must
+be theirs or approved by them, and two earlier drafts of model-written hints
+were deleted at their instruction.
+
+### Words are content, not code (migration 063)
+
+The rules live in code; the TEXT lives in the database and is edited from the
+admin page, the same as the question bank's answers and alternates. A trickle of
+two words a week must not need a deploy.
+
+**The TARGET is stored, and that is not the same as storing the rules.**
+`target_right` is frozen at the moment a word is saved. The rule ("a quarter of
+this topic") stays in `title-tiers.js`; the number it produced on the day lives
+in the row. That is the agreed design and not an optimisation — a share
+recomputed live means adding questions to the bank moves everybody's goal
+BACKWARDS, which is the worst thing a collection can do to the people filling
+it. The admin panel prints today's share beside the frozen one when they differ,
+so growth is visible and re-freezing is a deliberate act (saving the word again)
+rather than something that happens behind the owner.
+
+It also settles a real cost: recomputing shares in a player's browser needs a
+count per topic — about fifty requests on every profile load — for a number that
+is not allowed to change.
+
+**A SLOT WITH NO WORD DOES NOT EXIST FOR PLAYERS.** That is what makes "nobody
+ever sees a reward they cannot claim" true by construction rather than by care,
+and it is why the table can be completely empty and nothing breaks.
+
+**One loader, not three.** `loadTitleWords()` in `js/title-content.js` is the
+only place that fetches and merges. The profile, the leaderboard and both unlock
+paths (end of game, and sign-in) all call it. Three copies of "fetch and merge"
+would be this project's most repeated fault in new clothes, with the failure
+being a word that appears on one screen and not another. It carries its own
+6-second deadline: a promise that never settles cannot be caught by `try/catch`,
+and decorative content must never be able to hold a screen shut (slice 8d).
+
+**`fetchTitleWords` returns `null` on failure and `[]` when nothing is written**,
+and the two must not be conflated — the second is the ordinary state of a fresh
+install, the first means we do not know, and treating them alike would empty
+somebody's collection from the screen on one dropped request.
+
+**THE COLUMN LIST ALREADY BIT ONCE.** The fetch named its columns and omitted
+`target_right`, so `applyWordOverlay` skipped every row as having no target — no
+error, nothing on screen, the owner's whole collection simply absent. Same shape
+as the category leaderboard ranking on the wrong measure for weeks. It was
+caught in seconds only because the fake store returns just the columns you ask
+for; the probe now watches that column by name.
+
+`applyWordOverlay` MUTATES the exported `TITLE_WORDS` deliberately: about a
+dozen places import it synchronously, and turning all of them async to await a
+fetch would be far larger a change than this earns.
+
+### The rarity ladder had four copies and three were stale
+
+Found 2026-08-30 while fixing the tests for the above. The rebuild added
+`uncommon`, `epic` and `mythic`; the celebration table, the gallery's sort and
+the Title Builder's sort still listed the old three. **A missing key reads as
+rank 0 rather than as an error**, so in the Builder a mythic word — the whole of
+a subject, twelve in the game — sorted level with a common, and a mythic unlock
+would have celebrated as a toast you can ignore.
+
+One exported `RARITY_ORDER` in `titles.js` now, and all four readers take it
+from there. **The test that should have caught it was asserting the bug**: it
+used `'mythic'` as its example of "a rarity the table does not know", which was
+true and should have been alarming. Two checks now pin every rarity a word uses
+against both the ladder and the celebration table, so the next growth names the
+reader left behind.
 
 ### The problem it fixes
 
