@@ -3981,6 +3981,44 @@ for; the probe now watches that column by name.
 dozen places import it synchronously, and turning all of them async to await a
 fetch would be far larger a change than this earns.
 
+### The gallery was correct and it was not good
+
+**Reported 2026-08-30, and the owner was right on every count:** clunky, not
+compact, not aesthetically good, no visible framework, and *"only one title
+under each category?"*
+
+**That last one is TRUE and is not a display bug.** Counted from the code: slot
+2 holds 20 words, and **History has 9 of them while every other subject has
+exactly 1.** The deep layer — a word per topic at increasing depth — was only
+ever written for History. The framework is real, in `title-tiers.js` and on the
+admin page; there is simply almost nothing written into it yet. A screen can
+only draw words that exist, so the emptiness IS the collection.
+
+**The screen itself was genuinely bad, and that was mine.** It rendered a
+~200px card per word, two across, with the tier spelled out as text inside every
+one and the subject repeated in every requirement under a heading that already
+named it — *"Get 82 questions right in Modern History"* beneath a heading
+reading HISTORY, in a section blurbed "earned by getting questions right in a
+subject". At roughly a hundred words that is a scroll nobody finishes, and the
+padding hid the only thing worth seeing.
+
+**It is rows now**, about a sixth the height, so a whole subject fits on screen
+and the ladder is the picture. The tier is a colour on a left edge and the word
+"Uncommon" is not repeated twenty times. `shortRequirement` trims the leading
+verb and the subject the heading already states, and **always keeps the topic**,
+which is the part that distinguishes one row from the next.
+
+**The settled design said rows and I built cards.** "Slot 2 is rows, not a
+honeycomb" is written above, from the prototype session, and the first
+implementation ignored it. Re-read the agreed design before building, not after
+the owner sees it.
+
+**Dead `.title-card` CSS is still in the stylesheet.** Nothing renders it — the
+grep is clean across `js/`, the mocks and the HTML — but the block interleaves
+with rules that are still live and a first attempt at deleting it would have
+taken 14KB of unrelated stylesheet with it. Its own assertion caught that. Left
+deliberately; delete it precisely or not at all.
+
 ### A word appearing out of nowhere has to say what earned it
 
 **Reported 2026-08-30: the owner opened the FRONT PAGE and was told they had

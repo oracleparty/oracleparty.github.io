@@ -1954,39 +1954,69 @@ const STANDING_GROUPS = [
   { name: 'Things you pulled off', ids: null },
 ];
 
-// A LABEL A PLAYER RECOGNISES, not the key the database stores. "ancient" is
-// not a thing anybody has heard of; "Ancient History" is.
-function galleryCard(word, level) {
+/**
+ * SHORTEN A REQUIREMENT THAT SITS UNDER A HEADING THAT ALREADY SAYS HALF OF IT.
+ *
+ * "Get 82 questions right in Modern History", printed under a heading reading
+ * HISTORY, in a section blurbed "earned by getting questions right in a
+ * subject", spends four of its six words repeating its own context. Twenty of
+ * those stacked is why the collection read as a wall of text rather than as a
+ * ladder.
+ *
+ * Only the leading verb and the subject are trimmed. The TOPIC is what
+ * distinguishes one row from the next, so it always survives.
+ */
+function shortRequirement(sentence, subjectLabel) {
+  if (!sentence) return sentence;
+  let out = sentence;
+  if (subjectLabel) {
+    // "…right in Modern History" under HISTORY → "…right in Modern"
+    const tail = new RegExp(`\\s+${subjectLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    out = out.replace(tail, '');
+    // "Get 10 questions right in History" was the SUBJECT's own word, and the
+    // trim above leaves a dangling "in". Drop it rather than print half a
+    // preposition.
+    out = out.replace(/\s+in$/i, '');
+  }
+  // "Get 82 questions right" → "82 right". The heading says these are
+  // questions; repeating it on every row is what made them unreadable.
+  return out.replace(/^Get\s+(\d[\d,]*)\s+questions?\s+right/i, '$1 right');
+}
+
+/**
+ * ONE ROW PER WORD, NOT A CARD.
+ *
+ * The first version rendered a ~200px box per word with the tier spelled out as
+ * text inside every one. The owner's verdict on seeing it was the right one:
+ * clunky, not compact, and it showed no structure. At roughly a hundred words
+ * that is a scroll nobody finishes, and the shape of the collection — a subject,
+ * then its topics at increasing depth — was invisible underneath the padding.
+ *
+ * A row is about a sixth the height, so a whole subject fits on screen at once
+ * and the ladder is the thing you see. The tier is a COLOUR, on a bar, and the
+ * word "Uncommon" is not repeated twenty times.
+ */
+function galleryRow(word, level, subjectLabel = null) {
   const earned = level > 0;
   const secret = !word.hint;
   const rarity = word.rarity || 'common';
-  // EVERY CARD SAYS WHERE THE WORD COMES FROM. The gallery used to show a
-  // riddle and nothing else, so nobody — the owner included — could tell what
-  // any word was for or how to get the next one. A riddle is right for a
-  // secret and wrong for everything else.
-  const requirement = describeRequirement(word, labelForKey);
+  const requirement = shortRequirement(describeRequirement(word, labelForKey), subjectLabel);
 
   if (earned) {
-    return `<div class="title-card title-card--earned" data-rarity="${rarity}">
-      <div class="title-card__word">${escapeHtml(word.word)}</div>
-      ${requirement ? `<div class="title-card__how">${escapeHtml(requirement)}</div>` : ''}
-      <div class="title-card__meta">${escapeHtml(rarity)}${level > 1 ? ` \u00b7 level ${level}` : ''}</div>
-    </div>`;
-  }
-  if (secret) {
-    return `<div class="title-card title-card--secret" data-rarity="${rarity}">
-      <div class="title-card__word">&#x2753;</div>
-      <div class="title-card__how">Find it yourself</div>
-      <div class="title-card__meta">${escapeHtml(rarity)} \u00b7 secret</div>
+    return `<div class="title-row title-row--earned" data-rarity="${rarity}">
+      <span class="title-row__word">${escapeHtml(word.word)}</span>
+      <span class="title-row__how">${escapeHtml(requirement || '')}</span>
+      <span class="title-row__mark" aria-label="earned">&#x2713;${level > 1 ? ` <b>${level}</b>` : ''}</span>
     </div>`;
   }
   // THE WORD ITSELF STAYS HIDDEN — the owner's call, and it still holds. What
-  // changed is that you can now see what to DO. Knowing the requirement makes
-  // the collection a ladder; not knowing the word keeps earning it a moment.
-  return `<div class="title-card title-card--locked" data-rarity="${rarity}">
-    <div class="title-card__word">&#x2013;&#x2013;&#x2013;</div>
-    <div class="title-card__how">${escapeHtml(requirement || word.hint)}</div>
-    <div class="title-card__meta">${escapeHtml(rarity)} \u00b7 locked</div>
+  // you can see is what to DO. Knowing the requirement makes the collection a
+  // ladder; not knowing the word keeps earning it a moment.
+  const label = secret ? '&#x2753;' : '&#x2014;&#x2014;';
+  return `<div class="title-row title-row--locked" data-rarity="${rarity}">
+    <span class="title-row__word">${label}</span>
+    <span class="title-row__how">${escapeHtml(secret ? 'Find it yourself' : (requirement || word.hint || ''))}</span>
+    <span class="title-row__mark" aria-label="${secret ? 'secret' : 'locked'}">${secret ? '' : '&#x1F512;'}</span>
   </div>`;
 }
 
@@ -2050,9 +2080,10 @@ async function renderTitleGallery(userId) {
             const meta = cat ? CATEGORY_META[cat] : null;
             const name = meta ? `${meta.emoji || ''} ${meta.label || cat}`.trim() : 'Anywhere';
             const got = mine.filter(w => w.level > 0).length;
+            const subjectLabel = meta ? (meta.label || cat) : null;
             return `<p class="title-gallery__group">${escapeHtml(name)}
                 <span class="title-gallery__group-count">${got} / ${mine.length}</span></p>
-              <div class="title-cards">${mine.map(w => galleryCard(w, w.level)).join('')}</div>`;
+              <div class="title-rows">${mine.map(w => galleryRow(w, w.level, subjectLabel)).join('')}</div>`;
           }).join('');
         })()
       : slot === 3
@@ -2062,9 +2093,9 @@ async function renderTitleGallery(userId) {
             : words.filter(w => !STANDING_GROUPS[0].ids.includes(w.id));
           if (!mine.length) return '';
           return `<p class="title-gallery__group">${escapeHtml(g.name)}</p>
-            <div class="title-cards">${mine.map(w => galleryCard(w, w.level)).join('')}</div>`;
+            <div class="title-rows">${mine.map(w => galleryRow(w, w.level)).join('')}</div>`;
         }).join('')
-      : `<div class="title-cards">${words.map(w => galleryCard(w, w.level)).join('')}</div>`;
+      : `<div class="title-rows">${words.map(w => galleryRow(w, w.level)).join('')}</div>`;
     return `<section class="title-gallery__slot">
       <div class="title-gallery__slot-head">
         <span class="title-gallery__slot-name">${escapeHtml(meta.name)}</span>

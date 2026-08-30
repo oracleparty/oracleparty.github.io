@@ -7096,6 +7096,65 @@ body[style*="opacity: 0"] {
 
 /* Two columns at 375px. One is a list and reads as homework; three squeezes a
    hint to two words a line. */
+/* THE COLLECTION, AS ROWS.
+   Replaced a two-column grid of ~200px cards. At roughly a hundred words that
+   was a scroll nobody finishes, and the padding hid the only thing worth
+   seeing: the shape of a subject and its topics. A row is about a sixth the
+   height, so a whole subject fits on screen and the ladder IS the picture. */
+.title-rows {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.title-row {
+  display: grid;
+  /* The word column is fixed so every requirement starts at the same x — a
+     ragged left edge is what makes a list of twenty read as noise. minmax(0,1fr)
+     on the middle column, or a long requirement cannot shrink and pushes the
+     row past the phone. */
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-sm);
+  padding: 7px var(--space-sm) 7px 10px;
+  /* Rarity as a left edge, not a fill: a coloured row would put every label on
+     a background none of the three themes agree about. */
+  border-left: 3px solid var(--rarity-common);
+  border-bottom: 1px solid var(--color-surface-light);
+}
+.title-row:last-child { border-bottom: none; }
+.title-row[data-rarity="uncommon"]  { border-left-color: var(--rarity-uncommon); }
+.title-row[data-rarity="rare"]      { border-left-color: var(--rarity-rare); }
+.title-row[data-rarity="epic"]      { border-left-color: var(--rarity-epic); }
+.title-row[data-rarity="legendary"] { border-left-color: var(--rarity-legendary); }
+.title-row[data-rarity="mythic"]    { border-left-color: var(--rarity-mythic); }
+
+.title-row__word {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.title-row__how {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.title-row__mark {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  justify-self: end;
+}
+.title-row--earned .title-row__mark { color: var(--color-primary); font-weight: 700; }
+.title-row--locked .title-row__word { color: var(--color-text-muted); font-weight: 600; }
+
 .title-cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
