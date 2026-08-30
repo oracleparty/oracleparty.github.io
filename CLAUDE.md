@@ -3827,15 +3827,48 @@ percentage. Proficiency unlocks nothing and stays a profile stat.
 | 🟨 legendary | 100% of one topic | 100+ |
 | 🟥 mythic | 100% of an entire subject; plus secrets | — |
 
-**Measured against the live bank on 2026-08-29** — 42 topics, smallest 5,
-average 114, largest 339: **29 topics clear 60, 23 clear 80, 18 clear 100.** So
-the floors genuinely separate. That is 12 + 12 + 12 subject words and
-29 + 23 + 18 topic words = **106**, plus secrets.
+**RE-MEASURED 2026-08-30, AND THE FIRST NUMBERS WERE WRONG.** An earlier count
+said 42 topics averaging 114, and it was taken two ways that both mislead:
+grouped by `subcategory` alone, so a key shared by several categories summed
+across all of them, and without the `format = 'open'` filter, so it counted
+questions the game can never ask.
+
+Counted the way the app actually asks — `fetchQuestionCount(category, sub)`,
+which is `contains(categories, [cat])` AND `format = 'open'` — there are **48
+legitimate (category, topic) pairs and 28 carry words of their own.** The spread
+is far wider than either of us assumed:
+
+| | askable |
+|---|---|
+| arts-literature / literature | 338 |
+| pop-culture / entertainment-movies | 332 |
+| history / modern | 327 |
+| history / early-modern | 239 |
+| …median around 80… | |
+| history / ancient | **58** |
+| history / medieval | **52** |
+| nature / environment | 10 |
+| sports / misc | 3 |
+
+**History's own eras are mostly too small**, which matters because the four words
+that already exist for Ancient and Medieval — Chronicles, Antiquity, Crusade,
+Dynasty — have no qualifying topic. They are 2 and 8 questions short. The owner's
+call was to leave the floors and grow those topics rather than lower the bar.
+
+**The floors turn out to do a second job nobody designed:** they show where the
+bank is thin. Sports/misc holding 3 askable questions is worth knowing whether or
+not titles exist.
+
+**MISC TOPICS CARRY NO WORDS**, on the owner's decision. Several qualify by size
+— science/misc has 148 — but a word meaning "you have mastered Miscellaneous"
+says nothing about what somebody knows, which is the whole job of that column.
+Their questions still count towards their subject's words.
 
 **I claimed twice that these floors "exclude almost nothing", inferring it from
-the 114 average. The owner pushed back — an average says nothing about how many
-clear 100 — and they were right.** 20/20/20/400 averages 115 and only one clears
-it. Do not reason about a distribution from its mean.
+the average. The owner pushed back — an average says nothing about how many clear
+100 — and they were right.** 20/20/20/400 averages 115 and only one clears it.
+Do not reason about a distribution from its mean; and when you do count, count
+the way the app counts.
 
 ### Why each piece is the way it is
 

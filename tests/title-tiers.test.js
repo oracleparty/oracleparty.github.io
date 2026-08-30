@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   TOPIC_FLOOR, TOPIC_SHARE, SUBJECT_RULE,
-  tiersForTopic, topicTarget, subjectTargets, meetsTopic,
+  tiersForTopic, topicTarget, subjectTargets, meetsTopic, isMiscTopic,
 } from '../js/title-tiers.js';
 
 describe('which tiers a topic offers', () => {
@@ -105,5 +105,26 @@ describe('the agreed values', () => {
     expect(SUBJECT_RULE.rare.everyTopicShare).toBe(0.25);
     expect(SUBJECT_RULE.rare.floorRight).toBe(100);
     expect(SUBJECT_RULE.mythic.share).toBe(1.00);
+  });
+});
+
+// A "miscellaneous" topic is big enough to qualify in several subjects, but a
+// word meaning "you have mastered Miscellaneous" says nothing about what
+// somebody knows — which is the whole job of that column.
+describe('misc topics', () => {
+  it('offers no words of its own however big it is', () => {
+    expect(tiersForTopic(148, 'misc')).toEqual([]);
+    expect(tiersForTopic(58, 'human-misc')).toEqual([]);
+    expect(tiersForTopic(999, 'misc')).toEqual([]);
+  });
+
+  it('still lets ordinary topics through', () => {
+    expect(tiersForTopic(148, 'space')).toEqual(['uncommon', 'epic', 'legendary']);
+    // Not every key containing "misc" is one — only the topic itself.
+    expect(tiersForTopic(148, 'miscellany-of-arms')).toEqual(['uncommon', 'epic', 'legendary']);
+  });
+
+  it('is unchanged when no key is given', () => {
+    expect(tiersForTopic(148)).toEqual(['uncommon', 'epic', 'legendary']);
   });
 });

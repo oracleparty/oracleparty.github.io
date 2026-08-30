@@ -2013,7 +2013,7 @@ async function loadTitleWords() {
 
     const topics = subs.map(sub => {
       const size = sizes[sub.key] || 0;
-      const tiers = tiersForTopic(size).map(tier => {
+      const tiers = tiersForTopic(size, sub.key).map(tier => {
         const found = titleWordFor(2, catKey, sub.key, tier);
         if (!found) needWriting++;
         return { tier, target: topicTarget(size, tier), word: found ? found[1].word : null };

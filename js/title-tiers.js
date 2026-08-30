@@ -53,11 +53,27 @@ export const SUBJECT_RULE = {
 };
 
 /**
+ * A "miscellaneous" topic carries no words of its own.
+ *
+ * Several are big enough to qualify — science/misc has 148 askable questions,
+ * culture-society/misc has 101 — but a word meaning "you have mastered
+ * Miscellaneous" says nothing about what somebody knows, which is the entire
+ * job of this column. Their questions still count towards their SUBJECT's
+ * words, so nothing is wasted; they just cannot be the thing you wear.
+ */
+export function isMiscTopic(key) {
+  if (!key) return false;
+  return key === 'misc' || String(key).endsWith('-misc');
+}
+
+/**
  * Which tiers a topic of this size can offer.
  *
  * @param {number} size questions in the topic that the game can actually ASK.
+ * @param {string} [key] the topic's key, so a misc topic can be excluded.
  */
-export function tiersForTopic(size) {
+export function tiersForTopic(size, key = null) {
+  if (isMiscTopic(key)) return [];
   return ['uncommon', 'epic', 'legendary'].filter(t => size >= TOPIC_FLOOR[t]);
 }
 

@@ -1178,7 +1178,7 @@ try {
     const sized = [...topicSize].sort((a, b) => b[1] - a[1]);
     let offersAny = 0;
     for (const [key, n] of sized) {
-      const tiers = tiersForTopic(n);
+      const tiers = tiersForTopic(n, key.split(' / ')[1]);
       if (tiers.length) offersAny++;
       const targets = tiers.length
         ? tiers.map(t => `${t} ${topicTarget(n, t)}`).join(', ')
