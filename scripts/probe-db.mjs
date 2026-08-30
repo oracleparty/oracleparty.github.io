@@ -1102,10 +1102,16 @@ try {
   // Paged, because the bank is ~4,859 rows and PostgREST caps a page.
   const badCats = new Map();
   const badSubs = new Map();
+  // TOPIC SIZES, for the title tiers. Counted with format = 'open' because that
+  // is what every question-fetch path in js/db/questions.js filters on, so it is
+  // the set the game can actually ASK. A target measured against anything wider
+  // would make "100% of a topic" unreachable — the same shape as the legendary
+  // that was defined twice and could be earned by nobody.
+  const topicSize = new Map();   // "category / subcategory" -> count
   let seen = 0, page = 0, more = true;
   while (more && page < 12) {
     const from = page * 1000;
-    const res = await req(`questions?select=categories,subcategory&limit=1000&offset=${from}`);
+    const res = await req(`questions?select=categories,subcategory,format&limit=1000&offset=${from}`);
     if (res.status !== 200 && res.status !== 206) {
       console.log(`  (could not read questions: HTTP ${res.status})`);
       more = false;
@@ -1119,6 +1125,13 @@ try {
       }
       const s = r.subcategory;
       if (s && !knownSubs.has(s)) badSubs.set(s, (badSubs.get(s) || 0) + 1);
+      if (r.format === 'open') {
+        for (const c of r.categories || []) {
+          if (!known.has(c)) continue;
+          const key = `${c} / ${s || '(none)'}`;
+          topicSize.set(key, (topicSize.get(key) || 0) + 1);
+        }
+      }
     }
     more = rows.length === 1000;
     page++;
@@ -1140,6 +1153,25 @@ try {
     if (badCats.size || badSubs.size) {
       console.log('  Fix from admin.html -> Question Bank -> search the question -> tap it.');
     }
+
+    // --- what each topic is big enough to offer, and the frozen target ---
+    const { tiersForTopic, topicTarget } =
+      await import('../js/title-tiers.js').catch(() => import('./../js/title-tiers.js'));
+    console.log('\n--- TOPIC SIZES AND TITLE TARGETS (askable questions only) ---');
+    console.log('  Paste a target next to a word in js/titles.js as');
+    console.log("  unlock: { type: 'count', condition: { category, subcategory, right } }.");
+    console.log('  FROZEN once written: adding questions must never move a goal.\n');
+    const sized = [...topicSize].sort((a, b) => b[1] - a[1]);
+    let offersAny = 0;
+    for (const [key, n] of sized) {
+      const tiers = tiersForTopic(n);
+      if (tiers.length) offersAny++;
+      const targets = tiers.length
+        ? tiers.map(t => `${t} ${topicTarget(n, t)}`).join(', ')
+        : 'too small for words of its own';
+      console.log(`  ${key.padEnd(34)} ${String(n).padStart(4)}   ${targets}`);
+    }
+    console.log(`\n  ${offersAny} of ${sized.length} topics can carry words of their own.`);
   }
 } catch (err) {
   console.log(`  (could not check filings: ${err.message})`);
