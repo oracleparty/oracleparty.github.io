@@ -276,64 +276,6 @@ try {
   // page does, which is the "check that cannot fail" this project keeps
   // deleting.
   // ============================================================
-  // ============================================================
-  // THE TITLE BUILDER
-  //
-  // Until 2026-08-30 this screen had NO mock and NO robot check — the only part
-  // of the title system nobody had ever rendered or pressed, and predictably
-  // the one the owner said they could not understand. It was three columns of
-  // question marks with a hint that flashed for three seconds.
-  //
-  // "It rendered" is not "it works", which is the lesson the admin panels and
-  // the deputy's buttons both taught: a control that draws perfectly and does
-  // nothing draws exactly as happily. So this PRESSES one and requires the
-  // title to change.
-  // ============================================================
-  heading('building a title');
-  {
-    // The builder is gated on reaching Apprentice, so unlock it directly —
-    // this is a check about the screen, not about the gate.
-    const prof = table.store.table('profiles').find(p => p.display_name === 'Alice');
-    if (prof) prof.title_builder_unlocked = true;
-    table.store.table('title_unlocks').push(
-      { id: 9001, user_id: prof?.user_id, word_id: 'history', level: 1 },
-      { id: 9002, user_id: prof?.user_id, word_id: 'brave', level: 1 },
-    );
-    await alice.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-    await alice.page.waitForTimeout(2500);
-
-    const parts = await alice.page.locator('.title-part').count().catch(() => 0);
-    note(`title parts offered: ${parts}`);
-    if (parts !== 3) {
-      problems.push(`the builder shows ${parts} tappable parts of the title, not 3 — the title is meant to BE the menu`);
-    }
-
-    // Open the Knowledge part and pick the word that is actually earned.
-    await alice.page.locator('.title-part[data-slot="2"]').click().catch(() => {});
-    await alice.page.waitForTimeout(600);
-
-    const pickable = await alice.page.locator('.title-pick--open').count().catch(() => 0);
-    const rows = await alice.page.locator('#title-picker .title-row').count().catch(() => 0);
-    note(`knowledge rows listed: ${rows}, of which selectable: ${pickable}`);
-    if (rows === 0) {
-      problems.push('tapping a part of the title listed nothing to choose from');
-    }
-    // A LOCKED WORD MUST STILL BE LISTED. The collection is meant to show what
-    // there is to earn, not only what you hold — a picker of one row tells a
-    // new player nothing about where to go next.
-    if (rows > 0 && rows === pickable) {
-      problems.push('every row is selectable, so locked words are not being shown at all — the ladder is invisible');
-    }
-
-    await alice.page.locator('.title-pick--open').first().click().catch(() => {});
-    await alice.page.waitForTimeout(600);
-    const titleNow = await alice.page.locator('.title-part[data-slot="2"]').textContent().catch(() => '');
-    note(`the Knowledge part of the title now reads: ${JSON.stringify(titleNow)}`);
-    if (!titleNow || titleNow.trim() === '' || titleNow.trim() === '\u2014') {
-      problems.push('picking an earned word did not change that part of the title — the builder renders and does nothing');
-    }
-  }
-
   heading('leaderboard');
 
   const dave = await table.seatSignedIn('Dave', { tier: 'Oracle' });

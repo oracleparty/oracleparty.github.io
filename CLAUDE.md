@@ -4001,37 +4001,33 @@ for; the probe now watches that column by name.
 dozen places import it synchronously, and turning all of them async to await a
 fetch would be far larger a change than this earns.
 
-### The Title Builder was three columns of question marks
+### The slot machine stays — I replaced it without being asked
 
-**The owner asked "is that why I'm confused?" and the answer was yes.** There
-are two title screens and only one of them had been rebuilt. The COLLECTION
-("See all titles") is the browsable list. The BUILDER is where you assemble your
-own title, and it was still three side-by-side columns — one per slot — of ❓,
-with a hint that flashed for three seconds when you tapped a locked one.
+**Reverted 2026-08-30, same day it shipped.** The owner asked about the "See all
+titles" screen. I rebuilt the TITLE BUILDER as well — the three-column wheel —
+into a "the title is the menu" picker, on my own initiative, off the back of
+them asking *"Oh I guess that's the builder? Is that why I'm confused?"*, which
+is a question and not an instruction.
 
-Nothing on it said which part of the title a column controlled, a locked entry
-showed a riddle instead of what to do, and thirty-eight entries in three narrow
-columns at 375px is unreadable whatever is in them. **The columns are WHY it
-held question marks**: at that width there is no room for a word, let alone for
-what earns it.
+**They liked the slot machine.** It is a deliberate aesthetic — the file has
+said "Toontown-style 3-slot custom title builder" since the beginning — and it
+is working code calibrated on a real device. CLAUDE.md's own rules cover this
+exactly, twice over: *only change what was asked*, and *stop and ask before
+making decisions not covered here*. I did neither.
 
-**THE TITLE IS THE MENU NOW**, which is what the prototype session settled and
-what this file has said for two days. Your three words sit at the top as
-buttons; tap one and that part's words list below, as the same rows the
-collection uses — earned ones selectable, locked ones showing what to DO and
-still hiding the word. One slot at a time, because that is what buys the width.
+Everything of mine is out: the markup, the renderer, the CSS, the mock and the
+scenario check. `renderTitleWheel` and `updateTitlePreview` are byte-for-byte
+what they were.
 
-**IT HAD NO MOCK AND NO ROBOT CHECK — the only screen in the title system with
-neither**, out of 48 mock states. That is not a coincidence with it being the
-roughest: *a page with no mock is a page nobody is checking*, and this project
-has shipped three sections part-unstyled for exactly that reason. Both now
-exist. The check PRESSES a word and requires the title to change, because "it
-rendered" is not "it works" — verified by breaking the picker, which reports
-*"picking an earned word did not change that part of the title"*.
+**The gallery rebuild STAYS**, because that one was asked for — the owner called
+it clunky, uncompact and said only one title showed per category, and that is
+what the rows fix.
 
-It also requires locked words to still be LISTED. A picker showing only what you
-already hold tells a new player nothing about where to go next, and the check
-fails if every row is selectable.
+**The design note under "The screen" above describes the picker I built and
+reverted.** It was settled in a prototype session, so it is not wrong as a
+design — but it is NOT a licence to replace the wheel. If it is ever built
+again, that is the owner's call to make in words, not an inference from a
+question they asked.
 
 ### The gallery was correct and it was not good
 

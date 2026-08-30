@@ -1286,61 +1286,6 @@ export const STATES = {
   // got in. All three card states are rendered — earned, locked with its hint,
   // and secret — because the hint is the longest text on the screen and two
   // columns at 375px is where it has to fit.
-  // THE TITLE BUILDER, which had NO MOCK AT ALL until 2026-08-30 — the one
-  // screen in the title system nobody had ever rendered for review, and
-  // predictably the roughest. A page with no mock is a page nobody is checking,
-  // and this project has shipped three sections part-unstyled for exactly that.
-  //
-  // MIRRORS renderTitleWheel IN js/profile.js. Knowledge is open, because it is
-  // the slot with the most words and the only one that groups by subject.
-  'title-builder': {
-    page: 'profile',
-    screen: null,
-    inject: () => {
-      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
-      const section = document.getElementById('title-builder-section');
-      if (section) section.style.display = '';
-      const locked = document.getElementById('title-builder-locked');
-      if (locked) locked.style.display = 'none';
-      const wheel = document.getElementById('title-builder-wheel');
-      if (wheel) wheel.style.display = '';
-
-      const parts = [['1', 'Brave', false], ['2', 'History', true], ['3', 'Apprentice', false]];
-      for (const [slot, word, open] of parts) {
-        const btn = document.querySelector(`.title-part[data-slot="${slot}"]`);
-        if (!btn) continue;
-        btn.textContent = word;
-        btn.className = 'title-part' + (open ? ' title-part--open' : '');
-      }
-      const blurb = document.getElementById('title-part-blurb');
-      if (blurb) blurb.textContent = 'What you know. Earned by getting questions right in a subject.';
-
-      const row = (state, word, rarity, how, chosen) => `
-        <div class="title-pick ${state === 'locked' ? '' : 'title-pick--open'} ${chosen ? 'title-pick--chosen' : ''}">
-          <div class="title-row title-row--${state === 'earned' ? 'earned' : 'locked'}" data-rarity="${rarity}">
-            <span class="title-row__word">${word}</span>
-            <span class="title-row__how">${how}</span>
-            <span class="title-row__mark">${state === 'earned' ? '\u2713' : '\u{1F512}'}</span>
-          </div>
-        </div>`;
-      const picker = document.getElementById('title-picker');
-      if (picker) picker.innerHTML = `
-        <p class="title-gallery__group">\u{1F3DB}\uFE0F History
-          <span class="title-gallery__group-count">2 / 4</span></p>
-        <div class="title-rows">
-          ${row('earned', 'History', 'common', '10 right', true)}
-          ${row('earned', 'Chronicles', 'uncommon', '15 right in Ancient', false)}
-          ${row('locked', '\u2014\u2014', 'uncommon', '82 right in Modern', false)}
-          ${row('locked', '\u2014\u2014', 'legendary', '327 right in Modern', false)}
-        </div>
-        <p class="title-gallery__group">\u{1F52C} Science
-          <span class="title-gallery__group-count">0 / 1</span></p>
-        <div class="title-rows">
-          ${row('locked', '\u2014\u2014', 'common', '10 right', false)}
-        </div>`;
-    },
-  },
-
   'title-gallery': {
     page: 'profile',
     screen: null,

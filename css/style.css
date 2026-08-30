@@ -7096,54 +7096,6 @@ body[style*="opacity: 0"] {
 
 /* Two columns at 375px. One is a list and reads as homework; three squeezes a
    hint to two words a line. */
-/* THE TITLE BUILDER — the title itself is the menu.
-   Replaced three side-by-side columns of ❓. Three columns at 375px leaves no
-   width for a word, which is why they held question marks; and nothing said
-   which part of your title a column controlled. */
-.title-builder__preview {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-xs);
-  margin-bottom: var(--space-xs);
-}
-.title-part {
-  font-family: var(--font-heading);
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--color-text);
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 2px 4px;
-  /* A real tap target without forcing the row taller than the words. */
-  min-height: 40px;
-  cursor: pointer;
-}
-.title-part--empty { color: var(--color-text-muted); font-weight: 500; }
-/* The part being edited is underlined rather than filled: a filled chip reads
-   as the word itself being highlighted, which is a different thing. */
-.title-part--open { border-bottom-color: var(--color-primary); color: var(--color-primary); }
-
-.title-builder__blurb {
-  font-size: var(--text-xs);
-  color: var(--color-text-dim);
-  text-align: center;
-  margin-bottom: var(--space-sm);
-}
-.title-picker { display: flex; flex-direction: column; }
-
-.title-builder-wheel { display: flex; flex-direction: column; }
-
-/* An earned row can be chosen; a locked one is shown and inert. The wrapper
-   carries the tap target and the chosen state so the row itself stays exactly
-   the markup the collection renders — one component, two screens. */
-.title-pick { display: block; min-width: 0; }
-.title-pick--open { cursor: pointer; }
-.title-pick--open:active .title-row { background: var(--color-surface-light); }
-.title-pick--chosen .title-row { background: var(--color-surface-light); }
-.title-pick--chosen .title-row__word { color: var(--color-primary); }
-
 /* THE COLLECTION, AS ROWS.
    Replaced a two-column grid of ~200px cards. At roughly a hundred words that
    was a scroll nobody finishes, and the padding hid the only thing worth

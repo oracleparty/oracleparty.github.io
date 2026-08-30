@@ -2123,23 +2123,6 @@ function closeTitleGallery() {
 // TITLE BUILDER WHEEL
 // ============================================
 
-/**
- * THE TITLE BUILDER — the title itself is the menu.
- *
- * It used to be three side-by-side columns of ❓, one per slot, with a hint
- * that flashed for three seconds when you tapped a locked one. The owner said
- * repeatedly that they could not understand their own system, and this was the
- * screen: nothing said which part of the title a column controlled, a locked
- * entry showed a riddle rather than what to do, and thirty-eight entries in
- * three narrow columns at 375px is unreadable whatever is in them.
- *
- * Now the three parts of your title sit at the top as buttons. Tap one and its
- * words list below, as the same rows the collection uses — earned ones
- * selectable, locked ones showing what to DO and still hiding the word.
- *
- * One slot at a time, deliberately. Three columns is what forced ❓ in the
- * first place: there is no width for a word, let alone what earns it.
- */
 async function renderTitleWheel(userId, profile, stats) {
   const unlocks = await fetchTitleUnlocks(userId);
   const unlockMap = {};
@@ -2151,94 +2134,75 @@ async function renderTitleWheel(userId, profile, stats) {
     3: profile.title_slot3 || null
   };
 
-  const picker = $('#title-picker');
-  const blurb = $('#title-part-blurb');
-  let openSlot = 1;
+  // Render each slot column
+  for (const slotNum of [1, 2, 3]) {
+    const column = $(`#wheel-slot${slotNum}`);
+    if (!column) continue;
 
-  const wordsFor = slot => Object.entries(TITLE_WORDS)
-    .filter(([, w]) => w.slot === slot)
-    .map(([id, w]) => ({ id, ...w, level: unlockMap[id] || 0 }));
+    // Get words for this slot
+    const words = Object.entries(TITLE_WORDS)
+      .filter(([, w]) => w.slot === slotNum)
+      .map(([id, w]) => ({ id, ...w, level: unlockMap[id] || 0 }));
 
-  // The three parts of the title, as buttons. An empty slot says so rather than
-  // rendering a gap — "Novice" is what an unset title reads as everywhere else.
-  function renderParts() {
-    for (const slot of [1, 2, 3]) {
-      const btn = document.querySelector(`.title-part[data-slot="${slot}"]`);
-      if (!btn) continue;
-      const chosen = selectedWords[slot] ? TITLE_WORDS[selectedWords[slot]] : null;
-      btn.textContent = chosen ? chosen.word : '—';
-      btn.classList.toggle('title-part--empty', !chosen);
-      btn.classList.toggle('title-part--open', slot === openSlot);
-      btn.setAttribute('aria-pressed', slot === openSlot ? 'true' : 'false');
-    }
-  }
+    // Sort: unlocked first (alphabetical), then locked (by rarity order).
+    // This held its OWN three-tier ladder until 2026-08-30, so every uncommon,
+    // epic and mythic word sorted level with a common — the cheapest and the
+    // rarest things in the game, interleaved, in the one screen for picking.
+    words.sort((a, b) => {
+      if (a.level > 0 && b.level === 0) return -1;
+      if (a.level === 0 && b.level > 0) return 1;
+      if (a.level > 0 && b.level > 0) return a.word.localeCompare(b.word);
+      return (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0);
+    });
 
-  // A row per word, selectable when earned. Reuses the collection's own row so
-  // the two screens cannot drift into describing the same word differently.
-  function renderPicker() {
-    const words = wordsFor(openSlot);
-    const meta = SLOT_NAMES[openSlot];
-    if (blurb) blurb.textContent = meta ? meta.blurb : '';
+    column.innerHTML = words.map(w => {
+      if (w.level === 0) {
+        // Locked
+        return `<div class="title-wheel-item title-wheel-item--locked" data-hint="${escapeHtml(w.hint || '')}">\u2753</div>`;
+      }
+      const isSelected = selectedWords[slotNum] === w.id;
+      const levelClass = w.level >= 3 ? 'title-wheel-item--level3' : w.level >= 2 ? 'title-wheel-item--level2' : '';
+      return `<div class="title-wheel-item ${isSelected ? 'title-wheel-item--selected' : ''} ${levelClass}" data-word-id="${w.id}" data-slot="${slotNum}">${escapeHtml(w.word)}</div>`;
+    }).join('');
 
-    const rowFor = (w, subjectLabel) => {
-      const selectable = w.level > 0;
-      const chosen = selectedWords[openSlot] === w.id;
-      return `<div class="title-pick ${selectable ? 'title-pick--open' : ''} ${chosen ? 'title-pick--chosen' : ''}"
-                   ${selectable ? `role="button" tabindex="0" data-word-id="${w.id}"` : ''}>
-        ${galleryRow(w, w.level, subjectLabel)}
-      </div>`;
+    // Click handler for selection
+    column.onclick = (e) => {
+      const item = e.target.closest('.title-wheel-item');
+      if (!item) return;
+
+      // Locked item — show hint
+      if (item.classList.contains('title-wheel-item--locked')) {
+        const hint = item.dataset.hint;
+        if (hint) {
+          const hintEl = $('#title-hint-toast');
+          hintEl.textContent = hint;
+          hintEl.classList.add('active');
+          setTimeout(() => hintEl.classList.remove('active'), 3000);
+        }
+        return;
+      }
+
+      // Unlocked item — select it
+      const wordId = item.dataset.wordId;
+      const slot = parseInt(item.dataset.slot, 10);
+      selectedWords[slot] = wordId;
+
+      // Update visual selection
+      column.querySelectorAll('.title-wheel-item').forEach(el => el.classList.remove('title-wheel-item--selected'));
+      item.classList.add('title-wheel-item--selected');
+
+      // Update preview
+      updateTitlePreview(selectedWords);
+      // Update uniqueness
+      updateTitleUniqueness(selectedWords);
     };
 
-    // Knowledge groups by subject, the same as the collection — with locked
-    // words hiding their own text, PLACEMENT is the only thing left that can
-    // say where one comes from.
-    if (openSlot === 2) {
-      const bySubject = new Map();
-      for (const w of words) {
-        const cat = w.unlock?.condition?.category || null;
-        if (!bySubject.has(cat)) bySubject.set(cat, []);
-        bySubject.get(cat).push(w);
-      }
-      const order = [...Object.keys(CATEGORY_META), null];
-      picker.innerHTML = order.filter(c => bySubject.has(c)).map(cat => {
-        const mine = bySubject.get(cat)
-          .sort((a, b) => (!!a.unlock?.condition?.subcategory) - (!!b.unlock?.condition?.subcategory)
-            || (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0));
-        const m = cat ? CATEGORY_META[cat] : null;
-        const name = m ? `${m.emoji || ''} ${m.label || cat}`.trim() : 'Anywhere';
-        const got = mine.filter(w => w.level > 0).length;
-        return `<p class="title-gallery__group">${escapeHtml(name)}
-            <span class="title-gallery__group-count">${got} / ${mine.length}</span></p>
-          <div class="title-rows">${mine.map(w => rowFor(w, m ? (m.label || cat) : null)).join('')}</div>`;
-      }).join('');
-    } else {
-      const sorted = words.sort((a, b) => (b.level > 0) - (a.level > 0)
-        || (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0)
-        || a.word.localeCompare(b.word));
-      picker.innerHTML = `<div class="title-rows">${sorted.map(w => rowFor(w, null)).join('')}</div>`;
+    // Scroll to selected item
+    const selectedEl = column.querySelector('.title-wheel-item--selected');
+    if (selectedEl) {
+      setTimeout(() => selectedEl.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100);
     }
   }
-
-  for (const slot of [1, 2, 3]) {
-    const btn = document.querySelector(`.title-part[data-slot="${slot}"]`);
-    if (btn) btn.onclick = () => { openSlot = slot; renderParts(); renderPicker(); };
-  }
-
-  picker.onclick = (e) => {
-    const row = e.target.closest('.title-pick--open');
-    if (!row) return;
-    const id = row.dataset.wordId;
-    // Tapping the chosen one again clears that part, which is the only way to
-    // go back to a two-word title once you have picked three.
-    selectedWords[openSlot] = selectedWords[openSlot] === id ? null : id;
-    renderParts();
-    renderPicker();
-    updateTitlePreview(selectedWords);
-    updateTitleUniqueness(selectedWords);
-  };
-
-  renderParts();
-  renderPicker();
 
   // Initial preview
   updateTitlePreview(selectedWords);
@@ -2272,27 +2236,13 @@ async function renderTitleWheel(userId, profile, stats) {
   }
 }
 
-/**
- * THE PREVIEW IS NOW THE MENU, so it must not be overwritten as text.
- *
- * This used to set #title-preview.textContent, which since the rebuild would
- * destroy the three buttons that ARE the preview — the title would render once
- * and then become an unclickable string. renderParts() inside the builder keeps
- * each part's label current, so this only has to handle the empty case for any
- * caller that has no buttons to update.
- */
 function updateTitlePreview(selectedWords) {
   const preview = $('#title-preview');
   if (!preview) return;
-  const parts = [selectedWords[1], selectedWords[2], selectedWords[3]].filter(Boolean);
-  preview.classList.toggle('title-builder__preview--empty', parts.length === 0);
-  // No buttons means an older layout: fall back to plain text rather than
-  // silently doing nothing.
-  if (!preview.querySelector('.title-part')) {
-    preview.textContent = parts.length
-      ? parts.map(id => TITLE_WORDS[id]?.word || id).join(' ')
-      : 'Select words to build your title';
-  }
+  const parts = [selectedWords[1], selectedWords[2], selectedWords[3]]
+    .filter(Boolean)
+    .map(id => TITLE_WORDS[id]?.word || id);
+  preview.textContent = parts.length > 0 ? parts.join(' ') : 'Select words to build your title';
 }
 
 async function updateTitleUniqueness(selectedWords) {
