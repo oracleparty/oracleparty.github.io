@@ -1,15 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   TITLE_WORDS,
   RARITY_CELEBRATION,
+  RARITY_ORDER,
   computeCategoryTiers,
   evaluateUnlocks,
   hasReachedApprentice,
   buildDisplayTitle,
-  categoryRollupRows, rowProficiency, sumProficiency, rightIn, describeRequirement,
+  categoryRollupRows, rowProficiency, sumProficiency, rightIn, describeRequirement, applyWordOverlay, clearWordOverlay, overlayWordId,
   mergedCategoryRows,
   tierProgress,
   TIER_ORDER,
@@ -371,19 +372,37 @@ describe('TITLE_WORDS structure', () => {
     for (const [id, w] of Object.entries(TITLE_WORDS)) {
       expect(w.slot, `${id} missing slot`).toBeOneOf([1, 2, 3]);
       expect(typeof w.word, `${id} missing word`).toBe('string');
-      expect(w.rarity, `${id} invalid rarity`).toBeOneOf(['common', 'rare', 'epic', 'legendary']);
+      expect(w.rarity, `${id} invalid rarity`).toBeOneOf(Object.keys(RARITY_ORDER));
       expect(w.unlock, `${id} missing unlock`).toBeDefined();
       expect(typeof w.unlock.type, `${id} missing unlock.type`).toBe('string');
     }
   });
 
-  it('every rarity has a celebration tier', () => {
-    const rarities = new Set(Object.values(TITLE_WORDS).map(w => w.rarity));
-    for (const r of rarities) {
-      if (r !== 'epic') { // epic not in RARITY_CELEBRATION (only common, rare, legendary)
-        expect(RARITY_CELEBRATION[r], `missing celebration for ${r}`).toBeDefined();
-      }
+  // THE LADDER GREW AND THREE OF ITS FOUR READERS DID NOT FOLLOW IT. When the
+  // rebuild added uncommon, epic and mythic, the celebration table and both
+  // sorts still listed the old three, and a missing key reads as rank 0 rather
+  // than as an error — so in the Title Builder a mythic word sorted level with
+  // a common. These two assertions are what make the next growth loud: add a
+  // rarity to a word and forget a reader, and they name it.
+  it('every rarity a word actually uses is on the ladder', () => {
+    for (const r of new Set(Object.values(TITLE_WORDS).map(w => w.rarity))) {
+      expect(RARITY_ORDER[r], `${r} is not on the rarity ladder`).toBeDefined();
     }
+  });
+
+  it('every rarity on the ladder has a celebration tier', () => {
+    for (const r of Object.keys(RARITY_ORDER)) {
+      expect(RARITY_CELEBRATION[r], `missing celebration for ${r}`).toBeDefined();
+    }
+  });
+
+  it('celebrates a rarer word over a commoner one in the same batch', () => {
+    const plan = planCelebration([
+      { word: 'Cheap', rarity: 'common', isNew: true },
+      { word: 'Dear', rarity: 'mythic', isNew: true },
+    ]);
+    expect(plan.lead.word).toBe('Dear');
+    expect(plan.tier).toBe('fullscreen');
   });
 });
 
@@ -720,8 +739,17 @@ describe('planCelebration', () => {
     expect(planCelebration([u('Antiquity', 'epic')]).tier).toBe('fullscreen');
   });
 
+  // This case used 'mythic' as its example of an unknown rarity, which was
+  // true and should have been alarming: mythic is a real tier that twelve
+  // words in the game carry, and the table had no entry for it. The example
+  // has to be a rarity that genuinely does not exist, or the test quietly
+  // asserts that a real reward celebrates as nothing.
   it('falls back to the quietest tier for a rarity it does not know', () => {
-    expect(planCelebration([u('Odd', 'mythic')]).tier).toBe('toast');
+    expect(planCelebration([u('Odd', 'nonsense')]).tier).toBe('toast');
+  });
+
+  it('gives the whole of a subject the loudest celebration there is', () => {
+    expect(planCelebration([u('Whole', 'mythic')]).tier).toBe('fullscreen');
   });
 
   // ONE celebration for the batch. Reaching Apprentice in a category can trip
@@ -912,5 +940,56 @@ describe('describing what a word requires', () => {
       .filter(([, w]) => w.hint !== null && describeRequirement(w) === null)
       .map(([id]) => id);
     expect(silent).toEqual([]);
+  });
+});
+
+describe('owner-written words from the database', () => {
+  const targetFor = (cat, sub, tier) => {
+    if (cat !== 'science') return null;                 // only science has slots here
+    if (sub === 'space') return { uncommon: 22, epic: 65 }[tier] ?? null;
+    if (!sub) return tier === 'common' ? 10 : null;
+    return null;
+  };
+  afterEach(() => clearWordOverlay());
+
+  it('adds a word at a slot that exists', () => {
+    const n = applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'uncommon', word: 'Starbound' }], targetFor);
+    expect(n).toBe(1);
+    const id = overlayWordId('science', 'space', 'uncommon');
+    expect(TITLE_WORDS[id].word).toBe('Starbound');
+    expect(describeRequirement(TITLE_WORDS[id])).toBe('Get 22 questions right in space');
+  });
+
+  // A ROW FOR A SLOT THAT DOES NOT EXIST IS IGNORED, not rendered as an
+  // unearnable card. The topic may be too small, or the tier not offered — and
+  // a word nobody can earn is the exact promise this system must never make.
+  it('ignores a row whose slot has no target', () => {
+    expect(applyWordOverlay([
+      { category: 'science', subcategory: 'space', tier: 'legendary', word: 'Nope' },
+      { category: 'food', subcategory: 'cuisines', tier: 'uncommon', word: 'Nope' },
+    ], targetFor)).toBe(0);
+  });
+
+  it('ignores blank text', () => {
+    expect(applyWordOverlay([{ category: 'science', tier: 'common', word: '   ' }], targetFor)).toBe(0);
+  });
+
+  it('clears cleanly and leaves the code words alone', () => {
+    const before = Object.keys(TITLE_WORDS).length;
+    applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'epic', word: 'Voidwise' }], targetFor);
+    expect(Object.keys(TITLE_WORDS).length).toBe(before + 1);
+    clearWordOverlay();
+    expect(Object.keys(TITLE_WORDS).length).toBe(before);
+    expect(TITLE_WORDS.history).toBeDefined();
+  });
+
+  // THE ID MUST NOT DEPEND ON THE TEXT, or correcting a typo would take the
+  // word away from everybody who had earned it.
+  it('keeps the same id when the word is rewritten', () => {
+    applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'uncommon', word: 'Starbound' }], targetFor);
+    const id = overlayWordId('science', 'space', 'uncommon');
+    applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'uncommon', word: 'Stellar' }], targetFor);
+    expect(TITLE_WORDS[id].word).toBe('Stellar');
+    expect(Object.keys(TITLE_WORDS).filter(k => k.startsWith('w:science:space:uncommon')).length).toBe(1);
   });
 });

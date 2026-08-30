@@ -278,17 +278,40 @@ export const TITLE_WORDS = {
 };
 
 /**
- * Celebration tier for each rarity.
+ * THE RARITY LADDER, in one place.
+ *
+ * This was written out four separate times — here, the celebration table, the
+ * gallery's sort and the Title Builder's sort — and three of them were still
+ * the OLD three-tier ladder after the rebuild added uncommon, epic and mythic.
+ * A missing key reads as rank 0, so in the Builder a mythic word sorted level
+ * with a common, and nothing anywhere said so. Same shape as every other
+ * "stated twice, fixed once" fault in this project: one export, and every
+ * reader takes it from here.
+ */
+export const RARITY_ORDER = {
+  common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5
+};
+
+/**
+ * Celebration tier for each rarity — how loudly earning one is announced.
+ *
+ * EPIC WAS MISSING once already. Three words carry rarity 'epic' and this table
+ * had no key for them, so every lookup returned undefined. Nothing noticed,
+ * because nothing read this table at all: it was written, exported, and wired
+ * to nothing. UNCOMMON AND MYTHIC were missing for the same reason after the
+ * rebuild — the ladder grew and this did not follow it.
+ *
+ * Mythic is the whole of a subject and there are twelve of them in the game, so
+ * it takes the screen. Uncommon is a quarter of one topic — real, but it will
+ * happen often enough that interrupting for it would wear thin.
  */
 export const RARITY_CELEBRATION = {
   common: 'toast',
+  uncommon: 'toast',
   rare: 'results',
-  // EPIC WAS MISSING. Three words carry rarity 'epic' — Antiquity, Dynasty,
-  // Revolution — and this table has never had a key for them, so every lookup
-  // for those returned undefined. Nothing noticed, because nothing has ever
-  // read this table at all: it was written, exported, and wired to nothing.
   epic: 'fullscreen',
-  legendary: 'fullscreen'
+  legendary: 'fullscreen',
+  mythic: 'fullscreen'
 };
 
 /**
@@ -310,9 +333,8 @@ export function planCelebration(newUnlocks) {
   const list = (newUnlocks || []).filter(u => u && u.word);
   if (list.length === 0) return null;
 
-  const rank = { common: 0, rare: 1, epic: 2, legendary: 3 };
   const sorted = [...list].sort((a, b) => {
-    const byRarity = (rank[b.rarity] ?? 0) - (rank[a.rarity] ?? 0);
+    const byRarity = (RARITY_ORDER[b.rarity] ?? 0) - (RARITY_ORDER[a.rarity] ?? 0);
     if (byRarity) return byRarity;
     // A brand-new word beats an upgrade of one already held: the first time
     // you see a word is the moment worth marking.
@@ -746,6 +768,70 @@ export function rightIn(stats, category, subcategory = null) {
     if (p) total += p.mastered;
   }
   return total;
+}
+
+// ============================================
+// WORDS WRITTEN BY THE OWNER, FROM THE DATABASE
+//
+// Title words are CONTENT, and content lives in the database and is edited from
+// the admin page — the same as the question bank's answers and alternates. The
+// owner has ~86 still to write, and a trickle of two a week should not need a
+// deploy.
+//
+// The STRUCTURE is never stored: which slots exist and what each requires is
+// computed from CATEGORY_META and title-tiers.js. Only the text is stored, and
+// a slot with no row simply does not exist — which is what makes "a player never
+// sees a slot they cannot fill" true by construction rather than by care.
+// ============================================
+
+/** A stable id for a written word, so an unlock survives the text being edited. */
+export function overlayWordId(category, subcategory, tier) {
+  return `w:${category}:${subcategory || ''}:${tier}`;
+}
+
+/**
+ * Merge owner-written words into TITLE_WORDS.
+ *
+ * MUTATES the exported object on purpose. Roughly a dozen places import
+ * TITLE_WORDS synchronously — the gallery, the builder, the celebration, the
+ * unlock evaluation — and turning all of them async to await a fetch would be a
+ * far larger change than this earns. Applying the overlay once at load keeps
+ * every existing call site correct.
+ *
+ * A row whose slot is already defined in code WINS OVER THE CODE, so the owner
+ * can correct a word without a deploy. Returns how many were applied.
+ */
+export function applyWordOverlay(rows, targetFor = () => null) {
+  let applied = 0;
+  for (const r of rows || []) {
+    const word = String(r.word || '').trim();
+    if (!word || !r.category || !r.tier) continue;
+    const right = targetFor(r.category, r.subcategory || null, r.tier);
+    if (right == null) continue;          // the slot does not exist — ignore the row
+    TITLE_WORDS[overlayWordId(r.category, r.subcategory, r.tier)] = {
+      slot: Number(r.slot) || 2,
+      word,
+      rarity: r.tier,
+      // Not a secret: a written word always says what it requires.
+      hint: '',
+      unlock: { type: 'count', condition: {
+        category: r.category,
+        ...(r.subcategory ? { subcategory: r.subcategory } : {}),
+        right,
+      } },
+      levelMultiplier: 1,
+      fromOverlay: true,
+    };
+    applied++;
+  }
+  return applied;
+}
+
+/** Drop every overlay word. Used when reloading, and by tests. */
+export function clearWordOverlay() {
+  for (const id of Object.keys(TITLE_WORDS)) {
+    if (TITLE_WORDS[id]?.fromOverlay) delete TITLE_WORDS[id];
+  }
 }
 
 /**

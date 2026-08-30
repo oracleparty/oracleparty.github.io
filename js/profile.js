@@ -36,7 +36,7 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress, describeRequirement } from './titles.js';
+import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress, describeRequirement } from './titles.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
 import { hexLayout, hexPoints, hexFill, hexFillRect } from './honeycomb.js';
@@ -1927,7 +1927,8 @@ async function openMapCategory(cat) {
 // owner's call, and it is what the hints were plainly written for.
 // ============================================
 
-const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
+// The ladder itself lives in titles.js, because it was written out four times
+// and three of the copies were left behind when the rebuild added three tiers.
 // NAMED FOR WHAT THEY ARE. "The Calling" described a column that is really
 // "what you know", and "The Rank" collided with the Apprentice-to-Oracle ladder
 // on this same page — the same four words meaning two different things on two
@@ -2115,13 +2116,15 @@ async function renderTitleWheel(userId, profile, stats) {
       .filter(([, w]) => w.slot === slotNum)
       .map(([id, w]) => ({ id, ...w, level: unlockMap[id] || 0 }));
 
-    // Sort: unlocked first (alphabetical), then locked (by rarity order)
-    const rarityOrder = { common: 0, rare: 1, legendary: 2 };
+    // Sort: unlocked first (alphabetical), then locked (by rarity order).
+    // This held its OWN three-tier ladder until 2026-08-30, so every uncommon,
+    // epic and mythic word sorted level with a common — the cheapest and the
+    // rarest things in the game, interleaved, in the one screen for picking.
     words.sort((a, b) => {
       if (a.level > 0 && b.level === 0) return -1;
       if (a.level === 0 && b.level > 0) return 1;
       if (a.level > 0 && b.level > 0) return a.word.localeCompare(b.word);
-      return (rarityOrder[a.rarity] || 0) - (rarityOrder[b.rarity] || 0);
+      return (RARITY_ORDER[a.rarity] ?? 0) - (RARITY_ORDER[b.rarity] ?? 0);
     });
 
     column.innerHTML = words.map(w => {
