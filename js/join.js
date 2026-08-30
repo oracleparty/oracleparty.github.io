@@ -5,7 +5,7 @@
 import { $, $$, escapeHtml, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer, claimSeat, cleanupOrphanedRooms,
          fetchHostReputations, describeHostReputation } from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getAuthUserId, recallSeat } from './auth.js';
+import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, recallSeat } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
 import { logger } from './logger.js';
@@ -154,8 +154,13 @@ async function joinRoom(code) {
     // anybody whose unload beacon never fired — locked phone, lost signal —
     // came back as a SECOND copy of themselves, and from there the lobby's
     // rejoin path made a third and a fourth. See claimSeat.
+    // AN IDENTITY IS ACQUIRED HERE, NOT ON PAGE LOAD. Taking a seat is the
+    // first moment the database needs to tell this person from another one.
+    // Take the id THIS call returns rather than one read earlier — the whole
+    // point is that the identity may not have existed a moment ago.
+    const seatUserId = await ensureAnonymousIdentity() || userId;
     const { data: player, error: playerErr } = await claimSeat({
-      roomId: room.id, displayName, userId, isHost: false, extras,
+      roomId: room.id, displayName, userId: seatUserId, isHost: false, extras,
       // Survives the browser closing, unlike sessionStorage. Without it a guest
       // who shut the tab and came straight back got a second row beside their
       // own still-alive one.

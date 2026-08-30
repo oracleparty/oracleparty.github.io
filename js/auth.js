@@ -182,6 +182,24 @@ async function ensureAnonymousSession() {
 }
 
 /**
+ * Make sure this browser has SOME identity the database can recognise, creating
+ * an invisible account only if there is no session at all.
+ *
+ * Called at the moment a seat is taken — joining, hosting, or rejoining — and
+ * nowhere else. Deliberately NOT on page load: see initAuth below.
+ *
+ * Idempotent and never fatal. If anonymous sign-ins are off, or the call fails,
+ * this returns null and everything behaves exactly as it did before invisible
+ * accounts existed — the guest heuristics in claimSeat take over.
+ */
+export async function ensureAnonymousIdentity() {
+  if (_currentUser || _anonUserId) return getAuthUserId();
+  const session = await ensureAnonymousSession();
+  if (session?.user?.is_anonymous) _anonUserId = session.user.id;
+  return getAuthUserId();
+}
+
+/**
  * Initialize auth state from Supabase session.
  * Call on every page load. Non-blocking for guests.
  */
@@ -210,11 +228,17 @@ export async function initAuth() {
   }
   let session = sessionData?.session;
 
-  // No session at all? Ask for an invisible one. This is what gives a guest an
-  // identity the database can check, without anything changing on screen.
-  if (!session?.user) {
-    session = await ensureAnonymousSession();
-  }
+  // NO SESSION? THEN THERE IS NOTHING TO LOAD, AND WE DO NOT MAKE ONE HERE.
+  //
+  // This used to call ensureAnonymousSession(), so merely OPENING THE SITE
+  // minted an invisible account — reported by the owner, who watched a guest
+  // account appear while a friend was trying to sign in. Three costs, all real:
+  // anonymous users count toward Supabase's monthly-active billing, the owner
+  // could not tell a real visitor from a page load, and it put an auth call in
+  // front of every page — the same queue a sign-in has to wait in.
+  //
+  // An identity is only needed when somebody actually takes a seat in a room,
+  // so it is created there instead (ensureAnonymousIdentity below).
   if (!session?.user) return;
 
   // AN INVISIBLE ACCOUNT STOPS HERE, and that is deliberate. It sets no

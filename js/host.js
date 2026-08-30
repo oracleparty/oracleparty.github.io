@@ -5,7 +5,7 @@
 
 import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount } from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
+import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
@@ -696,7 +696,9 @@ async function handleHostGame() {
       extras.avatarEmoji = authUser.profile.avatar_emoji;
       extras.title = authUser.profile._cachedTitle || null;
     }
-    const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true, userId, extras);
+    // Same as join: the identity is acquired at the moment a seat is taken.
+    const seatUserId = await ensureAnonymousIdentity() || userId;
+    const { data: player, error: playerErr } = await addPlayer(data.id, hostName, true, seatUserId, extras);
     if (playerErr || !player) {
       hostError.textContent = 'Room created but failed to join. Try again.';
       logger.error('Host', 'addPlayer failed', playerErr);

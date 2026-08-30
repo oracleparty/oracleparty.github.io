@@ -39,7 +39,7 @@ import {
   fetchExclusiveWildCardQuestions,
   fetchQuestionFeedback
 } from '../supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getAuthUserId, getVoterId,
+import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
@@ -232,10 +232,11 @@ async function init() {
       && String(p.id) !== String(prevPlayerId)
       && (!(p.last_seen_at || p.joined_at) || seenAt(p) > stale));
 
+    const seatUserId = await ensureAnonymousIdentity() || rejoinUserId;
     const { data: rejoinedPlayer } = await claimSeat({
       roomId: state.room.id,
       displayName,
-      userId: rejoinUserId,
+      userId: seatUserId,
       isHost: state.room.isHost && !someoneElseIsHost,
       extras,
       // Exact when it is there. This branch runs because our own row went

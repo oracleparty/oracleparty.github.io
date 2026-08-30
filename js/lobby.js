@@ -46,7 +46,7 @@ import {
   fetchAllOpenQuestionCount,
   fetchExclusiveWildCardCount
 } from './supabase.js';
-import { getDisplayName, ensureDisplayName, initAuth, getCurrentUser, getAuthUserId, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
+import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
@@ -1094,8 +1094,9 @@ async function ensureCurrentPlayer() {
   // a fourth, and it could never get back to the single case it handled. One
   // person appeared in a live lobby three times over. claimSeat takes the seat
   // that is already yours and clears the copies.
+  const seatUserId = await ensureAnonymousIdentity() || rejoinUserId;
   const { data: rejoinedPlayer } = await claimSeat({
-    roomId: room.id, displayName, userId: rejoinUserId, isHost: room.isHost, extras,
+    roomId: room.id, displayName, userId: seatUserId, isHost: room.isHost, extras,
     // Exact when it is there, and it beats every guess claimSeat would make.
     priorPlayerId: room.playerId || recallSeat(room.id),
   });
