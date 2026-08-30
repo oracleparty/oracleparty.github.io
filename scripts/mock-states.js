@@ -1317,10 +1317,8 @@ export const STATES = {
           ['earned', 'Chronicles', 'uncommon', '15 right in Ancient'],
           ['locked', '——', 'uncommon', '82 right in Modern'],
           ['locked', '——', 'legendary', '327 right in Modern'],
-        ], '🏛️ History<span class="title-gallery__group-count">2 / 4</span>'],
-        [null, null, 0, 0, [
-          ['locked', '——', 'common', '10 right'],
-        ], '🔬 Science<span class="title-gallery__group-count">0 / 1</span>'],
+        ], '__TOGGLE__🏛️ History|2 / 4|open'],
+        [null, null, 0, 0, [], '__TOGGLE__🔬 Science|0 / 1|closed'],
         ['Standing', 'The rank you have reached, and one-off feats.', 1, 8, [
           ['earned', 'Apprentice', 'common', 'Reach Apprentice in any subject'],
           ['locked', '——', 'rare', 'Reach Scholar in any subject'],
@@ -1344,6 +1342,19 @@ export const STATES = {
           <span class="title-row__how">${how || ''}</span>
           <span class="title-row__mark">${state === 'earned' ? '✓' : state === 'secret' ? '' : '🔒'}</span>
         </div>`).join('')}</div>`;
+      // A Knowledge subject is a collapsible button now — one open at a time,
+      // with its count on the CLOSED row, the same shape the admin panels use.
+      const groupHtml = g => {
+        if (!g) return '';
+        if (!g.startsWith('__TOGGLE__')) return `<p class="title-gallery__group">${g}</p>`;
+        const [label, count, state] = g.slice(10).split('|');
+        return `<button type="button" class="title-gallery__group title-gallery__group--toggle"
+                    aria-expanded="${state === 'open' ? 'true' : 'false'}">
+            <span>${label}</span>
+            <span class="title-gallery__group-count">${count}</span>
+            <span class="title-gallery__chev">\u25BE</span>
+          </button>`;
+      };
       body.innerHTML = slots.map(([name, blurb, got, total, cards, group]) => {
         const head = name ? `
           <div class="title-gallery__slot-head">
@@ -1351,7 +1362,7 @@ export const STATES = {
             <span class="title-gallery__slot-count">${got} / ${total}</span>
           </div>
           <p class="title-gallery__slot-blurb">${blurb}</p>` : '';
-        const groupLine = group ? `<p class="title-gallery__group">${group}</p>` : '';
+        const groupLine = groupHtml(group);
         return name
           ? `<section class="title-gallery__slot">${head}${groupLine}${cardsOf(cards)}</section>`
           : `${groupLine}${cardsOf(cards)}`;

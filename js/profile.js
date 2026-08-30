@@ -2083,15 +2083,30 @@ async function renderTitleGallery(userId) {
           // Subjects in the app's own order, so the collection reads the same
           // way as the category grid and the Map do.
           const order = [...Object.keys(CATEGORY_META), null];
+          // COLLAPSED, ONE OPEN AT A TIME.
+          //
+          // Twelve subjects laid open is a scroll nobody finishes, and it gets
+          // worse with every word written — the collection is designed for
+          // roughly a hundred. Closed, it is twelve short rows you can scan.
+          //
+          // THE COUNT ON A CLOSED ROW IS WHAT MAKES THE COLLAPSE WORK, exactly
+          // as it does on the admin page: "2 / 9" visible without opening
+          // anything is the whole point, because a page that hides everything
+          // behind identical doors is worse than a long one.
           return order.filter(c => bySubject.has(c)).map(cat => {
             const mine = bySubject.get(cat);
             const meta = cat ? CATEGORY_META[cat] : null;
             const name = meta ? `${meta.emoji || ''} ${meta.label || cat}`.trim() : 'Anywhere';
             const got = mine.filter(w => w.level > 0).length;
             const subjectLabel = meta ? (meta.label || cat) : null;
-            return `<p class="title-gallery__group">${escapeHtml(name)}
-                <span class="title-gallery__group-count">${got} / ${mine.length}</span></p>
-              <div class="title-rows">${mine.map(w => galleryRow(w, w.level, subjectLabel)).join('')}</div>`;
+            return `<button type="button" class="title-gallery__group title-gallery__group--toggle"
+                        data-subject="${escapeHtml(String(cat || ''))}" aria-expanded="false">
+                <span>${escapeHtml(name)}</span>
+                <span class="title-gallery__group-count">${got} / ${mine.length}</span>
+                <span class="title-gallery__chev" aria-hidden="true">\u25BE</span>
+              </button>
+              <div class="title-rows" data-subject-body="${escapeHtml(String(cat || ''))}" hidden>${
+                mine.map(w => galleryRow(w, w.level, subjectLabel)).join('')}</div>`;
           }).join('');
         })()
       : slot === 3
@@ -2113,6 +2128,23 @@ async function renderTitleGallery(userId) {
       ${inner}
     </section>`;
   }).join('');
+
+  // ONE SUBJECT OPEN AT A TIME. Delegated, so a redraw cannot leave dead
+  // handlers behind, and closing the open one on every tap is what stops the
+  // page growing back into the scroll this replaced.
+  body.onclick = (e) => {
+    const head = e.target.closest('.title-gallery__group--toggle');
+    if (!head) return;
+    const key = head.dataset.subject;
+    const opening = head.getAttribute('aria-expanded') !== 'true';
+    body.querySelectorAll('.title-gallery__group--toggle').forEach(h => h.setAttribute('aria-expanded', 'false'));
+    body.querySelectorAll('[data-subject-body]').forEach(el => { el.hidden = true; });
+    if (opening) {
+      head.setAttribute('aria-expanded', 'true');
+      const panel = body.querySelector(`[data-subject-body="${CSS.escape(key)}"]`);
+      if (panel) panel.hidden = false;
+    }
+  };
 }
 
 function openTitleGallery(userId) {

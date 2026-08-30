@@ -4001,6 +4001,40 @@ for; the probe now watches that column by name.
 dozen places import it synchronously, and turning all of them async to await a
 fetch would be far larger a change than this earns.
 
+### The collection collapses by subject
+
+Asked for by the owner after seeing the rows: *"under knowledge it could get
+long, is there a better display format?"* It will — the collection is designed
+for roughly a hundred words across twelve subjects.
+
+Each subject is a header button now, one open at a time, all closed on arrival.
+**THE COUNT ON THE CLOSED ROW IS WHAT MAKES IT WORK** — "2 / 9" visible without
+opening anything — which is the same reasoning the admin page's panels are built
+on: a page that hides everything behind identical doors is worse than a long one.
+
+It also answers the owner's other complaint in the same move. Eleven of twelve
+subjects hold a single word, so laid open they read as broken; closed, they are
+twelve tidy rows and you open the one you want.
+
+`scenario-account` requires twelve headers, none open on arrival, real rows after
+a tap, and exactly one open after a second tap. Verified by removing the
+close-the-others line: *"opening a second subject left 2 open"*.
+
+### The framework is there for every subject — players only see written words
+
+The owner asked twice whether the framework was actually being built or whether
+only History had one. **Measured: all twelve subjects carry three subject-level
+slots each (36 in total), plus 45 named topics, 26 of which clear the size
+floor.** The rules in `title-tiers.js` are complete and the admin page lists
+every slot, written or not.
+
+What players see is only the slots with a WORD written, which is the deliberate
+rule — a slot with no word does not exist for them, because hitting a
+requirement and receiving nothing is a promise broken. So the collection looks
+like History plus eleven near-empty subjects, and that is the collection, not a
+display fault. **Do not "fix" it by rendering empty slots.** The fix is the ~86
+words, and the admin page is where they go.
+
 ### The slot machine stays — I replaced it without being asked
 
 **Reverted 2026-08-30, same day it shipped.** The owner asked about the "See all
