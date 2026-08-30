@@ -30,7 +30,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260830b">
+  <link rel="stylesheet" href="css/style.css?v=20260830c">
 </head>
 <body style="opacity:0">
 
@@ -243,6 +243,25 @@
           </div>
         </section>
 
+        <!-- ===== TITLE WORDS =====
+             Which topics qualify for which tier, what each target is, and where
+             a word has not been written. Targets are FROZEN once set, so nothing
+             else would ever tell the owner that a growing bank has made a topic
+             newly eligible — without this the collection silently stops growing.
+             Counted live with the game's own filter (format = 'open'), because a
+             target measured against questions the game cannot ask would make
+             100% of a topic unreachable. -->
+        <section class="admin-panel">
+          <button class="admin-panel__head" data-panel="titlewords" aria-expanded="false" aria-controls="panel-titlewords">
+            <span class="admin-panel__title">Title Words</span>
+            <span class="admin-panel__count" data-count="titlewords">·</span>
+            <span class="admin-panel__chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="admin-panel__body" id="panel-titlewords" hidden>
+            <div id="title-words"></div>
+          </div>
+        </section>
+
         <!-- ===== FEATURE FLAGS ===== -->
         <section class="admin-panel">
           <button class="admin-panel__head" data-panel="flags" aria-expanded="false" aria-controls="panel-flags">
@@ -270,7 +289,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js?v=20260830b"></script>
+  <script type="module" src="js/admin.js?v=20260830c"></script>
 
 </body>
 </html>

@@ -7,11 +7,13 @@ import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, flattenSubcategories } from './categories.js';
 import { findAnswersNeedingReview } from './answer-health.js';
+import { TITLE_WORDS } from './titles.js';
+import { tiersForTopic, topicTarget, subjectTargets, TOPIC_FLOOR } from './title-tiers.js';
 
 // Chip order for the question editor. CATEGORY_META's own order is the order
 // the host screen shows, so the two agree.
 const CATEGORY_KEYS = Object.keys(CATEGORY_META);
-import { supabase, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
+import { supabase, fetchQuestionCount, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
   fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts, endRoomAsAdmin,
   fetchHostReputations, describeHostReputation } from './supabase.js';
 import { initAuth, getCurrentUser } from './auth.js';
@@ -104,6 +106,7 @@ const PANEL_LOADERS = {
   chat:         loadChatArchive,
   announcement: loadAnnouncement,
   flags:        loadFeatureFlags,
+  titlewords:   loadTitleWords,
 };
 
 const _panelLoaded = new Set();
@@ -245,6 +248,19 @@ async function loadPanelCounts() {
     hostFlags ? 'alert' : null);
 
   setPanelCount('questions', questions === null ? '?' : questions.toLocaleString());
+
+  // How many words are still unwritten. Cheap — it reads TITLE_WORDS, which is
+  // already loaded, and does NOT count the bank (that happens when the panel is
+  // opened). Amber when non-zero, like the flags: the collection stops growing
+  // silently otherwise, and this is the only thing that would ever say so.
+  // HOW MANY WORDS EXIST — exact, and free, because it reads TITLE_WORDS which
+  // is already loaded. Deliberately NOT "N to write": that number depends on
+  // which topics are big enough to offer a tier, which needs ~54 counts against
+  // the bank. Guessing it from the structure alone over-counted by more than
+  // half, and a chip that lies is worse than one that says less. The real gap
+  // appears when the panel is opened.
+  const written = countWrittenTitleWords();
+  setPanelCount('titlewords', `${written} written`);
   setPanelCount('games',     games === null ? '?' : games === 0 ? 'None' : games.toLocaleString());
   setPanelCount('chat',      chats === null ? '?' : chats === 0 ? 'None' : chats.toLocaleString());
 
@@ -1945,4 +1961,117 @@ function attachQuestionHealthListeners() {
 
   const more = $('#qh-load-more');
   if (more) more.onclick = loadMoreQuestionHealth;
+}
+
+
+// ============================================
+// TITLE WORDS
+//
+// The owner has ~106 words to write and no way to know WHICH. Targets are
+// frozen once set, so nothing else would ever say that a growing bank has made
+// a topic newly eligible for a tier — without this the collection silently
+// stops growing, which is the failure this panel exists to prevent.
+//
+// COUNTED WITH THE GAME'S OWN FILTER. fetchQuestionCount uses format = 'open',
+// which is what every question-fetch path in js/db/questions.js uses, so these
+// are the questions that can actually be ASKED. Measuring against anything
+// wider would set a 100% target nobody could reach — the same shape as the
+// legendary that was defined twice and could never be earned.
+// ============================================
+
+function titleWordFor(slot, cat, sub, rarity) {
+  return Object.entries(TITLE_WORDS).find(([, w]) =>
+    w.slot === slot
+    && (w.unlock?.condition?.category || null) === (cat || null)
+    && (w.unlock?.condition?.subcategory || null) === (sub || null)
+    && w.rarity === rarity);
+}
+
+async function loadTitleWords() {
+  const box = $('#title-words');
+  box.innerHTML = '<p class="admin-empty">Counting the bank…</p>';
+
+  const rows = [];
+  let needWriting = 0;
+
+  for (const [catKey, meta] of Object.entries(CATEGORY_META)) {
+    const subs = flattenSubcategories(catKey);
+    const sizes = {};
+    for (const sub of subs) sizes[sub.key] = await fetchQuestionCount(catKey, sub.key);
+    const subjectSize = await fetchQuestionCount(catKey);
+    const st = subjectTargets(subjectSize, sizes);
+
+    const subjectSlots = [
+      { rarity: 'common', need: st.common + ' right' },
+      { rarity: 'rare',   need: 'a quarter of every topic, ' + st.rare.atLeast + '+ overall' },
+      { rarity: 'mythic', need: 'all ' + st.mythic },
+    ].map(slot => {
+      const found = titleWordFor(2, catKey, null, slot.rarity);
+      if (!found) needWriting++;
+      return { ...slot, word: found ? found[1].word : null };
+    });
+
+    const topics = subs.map(sub => {
+      const size = sizes[sub.key] || 0;
+      const tiers = tiersForTopic(size).map(tier => {
+        const found = titleWordFor(2, catKey, sub.key, tier);
+        if (!found) needWriting++;
+        return { tier, target: topicTarget(size, tier), word: found ? found[1].word : null };
+      });
+      return { label: sub.label, size, tiers };
+    });
+
+    rows.push({ label: meta.label || catKey, emoji: meta.emoji || '', subjectSize, subjectSlots, topics });
+  }
+
+  const totalTopics = rows.reduce((n, r) => n + r.topics.length, 0);
+  const qualifying = rows.reduce((n, r) => n + r.topics.filter(t => t.tiers.length).length, 0);
+
+  box.innerHTML = `
+    <p class="admin-empty" style="margin-bottom:var(--space-md);">
+      <b>${needWriting}</b> word${needWriting === 1 ? '' : 's'} still to write.
+      ${qualifying} of ${totalTopics} topics are big enough for words of their own
+      (${TOPIC_FLOOR.uncommon}+ questions).
+    </p>
+  ` + rows.map(r => `
+    <div class="tw-subject">
+      <div class="tw-subject__head">
+        <span class="tw-subject__name">${escapeHtml(r.emoji + ' ' + r.label)}</span>
+        <span class="tw-subject__size">${r.subjectSize} questions</span>
+      </div>
+      ${r.subjectSlots.map(sl => `
+        <div class="tw-slot${sl.word ? '' : ' tw-slot--empty'}">
+          <span class="tw-slot__tier" data-r="${sl.rarity}">${sl.rarity}</span>
+          <span class="tw-slot__word">${sl.word ? escapeHtml(sl.word) : 'not written'}</span>
+          <span class="tw-slot__need">${escapeHtml(String(sl.need))}</span>
+        </div>`).join('')}
+      ${r.topics.map(t => `
+        <div class="tw-topic">
+          <div class="tw-topic__head">
+            <span class="tw-topic__name">${escapeHtml(t.label)}</span>
+            <span class="tw-topic__size">${t.size}</span>
+          </div>
+          ${t.tiers.length === 0
+            ? `<div class="tw-slot tw-slot--none">too small for its own words</div>`
+            : t.tiers.map(tr => `
+              <div class="tw-slot${tr.word ? '' : ' tw-slot--empty'}">
+                <span class="tw-slot__tier" data-r="${tr.tier}">${tr.tier}</span>
+                <span class="tw-slot__word">${tr.word ? escapeHtml(tr.word) : 'not written'}</span>
+                <span class="tw-slot__need">${tr.target} right</span>
+              </div>`).join('')}
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+
+/**
+ * How many "what you know" words exist, counted from TITLE_WORDS alone.
+ *
+ * Exact and free. The complement — how many are still to WRITE — is not
+ * computable here: it depends on which topics are big enough to offer a tier,
+ * and that needs a count per topic against the bank. Opening the panel does
+ * that work and prints the real figure.
+ */
+function countWrittenTitleWords() {
+  return Object.values(TITLE_WORDS).filter(w => w.slot === 2).length;
 }

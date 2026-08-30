@@ -617,7 +617,7 @@ try {
   await admin.goto('admin.html');
   await admin.page.waitForTimeout(2500);
 
-  for (const key of ['flagged', 'hosts', 'health', 'questions', 'games', 'errors', 'chat', 'announcement', 'flags']) {
+  for (const key of ['flagged', 'hosts', 'health', 'questions', 'games', 'errors', 'chat', 'announcement', 'flags', 'titlewords']) {
     await admin.page.click(`.admin-panel__head[data-panel="${key}"]`).catch(() => {});
     await admin.page.waitForTimeout(800);
 
@@ -628,7 +628,7 @@ try {
         expanded: heads.find(h => h.dataset.panel === k)?.getAttribute('aria-expanded'),
         hidden: body ? body.hidden : null,
         error: (body?.querySelector('.admin-panel__error')?.textContent || '').trim(),
-        stillLoading: /Loading\.\.\./.test(body?.textContent || ''),
+        stillLoading: /Loading\.\.\.|Counting the bank/.test(body?.textContent || ''),
         openCount: heads.filter(h => h.getAttribute('aria-expanded') === 'true').length,
       };
     }, key).catch(() => ({}));
@@ -643,6 +643,39 @@ try {
       problems.push(`opening ${key} left ${state.openCount} panels open — they are meant to be one at a time`);
     }
   }
+
+  // ---- Title Words says what is missing --------------------------------
+  //
+  // The owner has ~106 words to write and no way to know WHICH. Targets are
+  // frozen once set, so nothing else would ever say a growing bank has made a
+  // topic newly eligible. "It opened" is not "it works": a loader rendering an
+  // empty box opens exactly as happily as one showing the list.
+  heading('title words');
+  await admin.page.click('.admin-panel__head[data-panel="titlewords"]').catch(() => {});
+  await admin.page.waitForTimeout(2500);
+  const tw = await admin.page.evaluate(() => {
+    const body = document.getElementById('panel-titlewords');
+    const slots = [...(body?.querySelectorAll('.tw-slot') || [])];
+    return {
+      subjects: body?.querySelectorAll('.tw-subject').length || 0,
+      slots: slots.length,
+      empty: slots.filter(s => s.classList.contains('tw-slot--empty')).length,
+      written: slots.filter(s => !s.classList.contains('tw-slot--empty')
+                              && !s.classList.contains('tw-slot--none')).length,
+      targets: slots.filter(s => /\d+ right/.test(s.textContent || '')).length,
+      chip: (document.querySelector('[data-count="titlewords"]')?.textContent || '').trim(),
+    };
+  }).catch(e => ({ err: String(e).slice(0, 90) }));
+  note(`title words: ${JSON.stringify(tw)}`);
+
+  if (tw.subjects !== 12) problems.push(`Title Words listed ${tw.subjects} subjects, expected all 12`);
+  // BOTH HALVES. Only-empty would pass if it never found the words that exist;
+  // only-written would pass if it never showed a gap — and the gaps are the
+  // entire reason the panel exists.
+  if (!tw.empty) problems.push('Title Words shows no missing words — the owner cannot tell what to write');
+  if (!tw.written) problems.push('Title Words found none of the words that already exist');
+  if (!tw.targets) problems.push('Title Words shows no targets — no way to know what a word would require');
+  if (!/^\d+ written$/.test(tw.chip || '')) problems.push(`the Title Words chip reads "${tw.chip}", expected "N written"`);
 
   // AND THE PANEL ACTUALLY SHOWS THE REPORT. "It opened" is not "it works" —
   // a loader that renders nothing opens exactly as happily as one that renders
