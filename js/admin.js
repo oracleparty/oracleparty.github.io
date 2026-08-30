@@ -7,7 +7,8 @@ import { $, escapeHtml } from './utils.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, flattenSubcategories } from './categories.js';
 import { findAnswersNeedingReview } from './answer-health.js';
-import { TITLE_WORDS } from './titles.js';
+import { TITLE_WORDS, overlayWordId, clearWordOverlay } from './titles.js';
+import { loadTitleWords, resetTitleWordCache } from './title-content.js';
 import { tiersForTopic, topicTarget, subjectTargets, TOPIC_FLOOR } from './title-tiers.js';
 
 // Chip order for the question editor. CATEGORY_META's own order is the order
@@ -15,7 +16,8 @@ import { tiersForTopic, topicTarget, subjectTargets, TOPIC_FLOOR } from './title
 const CATEGORY_KEYS = Object.keys(CATEGORY_META);
 import { supabase, fetchQuestionCount, fetchSiteSettings, upsertSiteSetting, deleteSiteSetting, fetchAnswerTally, cleanupAbandonedRooms,
   fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts, endRoomAsAdmin,
-  fetchHostReputations, describeHostReputation } from './supabase.js';
+  fetchHostReputations, describeHostReputation,
+  saveTitleWord, deleteTitleWord } from './supabase.js';
 import { initAuth, getCurrentUser } from './auth.js';
 import { ADMIN_PAGE_SIZE, ADMIN_STATUS_FADE_MS, STALE_TIMEOUT_MS, ABANDONED_ROOM_MS, MIN_HOST_RATINGS } from './constants.js';
 
@@ -106,7 +108,7 @@ const PANEL_LOADERS = {
   chat:         loadChatArchive,
   announcement: loadAnnouncement,
   flags:        loadFeatureFlags,
-  titlewords:   loadTitleWords,
+  titlewords:   loadTitleWordsPanel,
 };
 
 const _panelLoaded = new Set();
@@ -1987,12 +1989,27 @@ function titleWordFor(slot, cat, sub, rarity) {
     && w.rarity === rarity);
 }
 
-async function loadTitleWords() {
+/**
+ * The whole collection, laid out so the owner can write into it.
+ *
+ * THE STRUCTURE COMES FROM THE BANK, not from a list anybody maintains. Every
+ * subject and every topic big enough to carry words of its own appears here
+ * whether or not a word has been written for it, which is the point: targets
+ * are FROZEN when a word is saved, so nothing else would ever tell the owner
+ * that a growing topic has become eligible for a tier it could not offer
+ * before. Without this page the collection silently stops growing.
+ */
+async function loadTitleWordsPanel() {
   const box = $('#title-words');
   box.innerHTML = '<p class="admin-empty">Counting the bank…</p>';
 
-  const rows = [];
+  // What is already written. This panel is the only screen that shows unwritten
+  // slots, so it needs the same words a player would see.
+  await loadTitleWords();
+
+  const subjects = [];
   let needWriting = 0;
+  let written = 0;
 
   for (const [catKey, meta] of Object.entries(CATEGORY_META)) {
     const subs = flattenSubcategories(catKey);
@@ -2001,50 +2018,85 @@ async function loadTitleWords() {
     const subjectSize = await fetchQuestionCount(catKey);
     const st = subjectTargets(subjectSize, sizes);
 
+    const slot = (tier, sub, target, need) => {
+      const found = titleWordFor(2, catKey, sub, tier);
+      if (found) written++; else needWriting++;
+      return {
+        tier, sub, target, need,
+        word: found ? found[1].word : null,
+        // Only a word that came from the database can be edited from here. One
+        // defined in code needs a deploy, and offering a Remove button that
+        // silently fails would be the "Saved!" lie this page has shipped three
+        // times already.
+        editable: !found || found[0] === overlayWordId(catKey, sub, tier),
+        // The share this tier asks for TODAY. A written word keeps the target
+        // it was frozen at, so when the bank grows the two differ — and that
+        // difference is the only signal the owner gets that re-freezing is
+        // available. It is never applied automatically: a goal that recedes on
+        // its own is the worst thing a collection can do.
+        frozen: found ? (found[1].unlock?.condition?.right ?? null) : null,
+      };
+    };
+
     const subjectSlots = [
-      { rarity: 'common', need: st.common + ' right' },
-      { rarity: 'rare',   need: 'a quarter of every topic, ' + st.rare.atLeast + '+ overall' },
-      { rarity: 'mythic', need: 'all ' + st.mythic },
-    ].map(slot => {
-      const found = titleWordFor(2, catKey, null, slot.rarity);
-      if (!found) needWriting++;
-      return { ...slot, word: found ? found[1].word : null };
-    });
+      slot('common', null, st.common, `${st.common} right in the whole subject`),
+      slot('rare', null, st.rare.atLeast,
+        `a quarter of every topic, ${st.rare.atLeast}+ overall`),
+      slot('mythic', null, st.mythic, `all ${st.mythic}`),
+    ];
 
     const topics = subs.map(sub => {
       const size = sizes[sub.key] || 0;
       const tiers = tiersForTopic(size, sub.key).map(tier => {
-        const found = titleWordFor(2, catKey, sub.key, tier);
-        if (!found) needWriting++;
-        return { tier, target: topicTarget(size, tier), word: found ? found[1].word : null };
+        const target = topicTarget(size, tier);
+        return slot(tier, sub.key, target, `${target} right`);
       });
-      return { label: sub.label, size, tiers };
+      return { key: sub.key, label: sub.label, size, tiers };
     });
 
-    rows.push({ label: meta.label || catKey, emoji: meta.emoji || '', subjectSize, subjectSlots, topics });
+    subjects.push({ key: catKey, label: meta.label || catKey, emoji: meta.emoji || '', subjectSize, subjectSlots, topics });
   }
 
-  const totalTopics = rows.reduce((n, r) => n + r.topics.length, 0);
-  const qualifying = rows.reduce((n, r) => n + r.topics.filter(t => t.tiers.length).length, 0);
+  const totalTopics = subjects.reduce((n, r) => n + r.topics.length, 0);
+  const qualifying = subjects.reduce((n, r) => n + r.topics.filter(t => t.tiers.length).length, 0);
+
+  const slotHtml = (catKey, sl) => {
+    // A written word whose frozen target no longer matches today's share. Shown,
+    // never acted on — saving again is what re-freezes it.
+    const drifted = sl.word && sl.frozen != null && sl.target != null && sl.frozen !== sl.target;
+    return `
+    <div class="tw-slot${sl.word ? '' : ' tw-slot--empty'}"
+         data-cat="${escapeHtml(catKey)}" data-sub="${escapeHtml(sl.sub || '')}"
+         data-tier="${escapeHtml(sl.tier)}" data-target="${sl.target}">
+      <span class="tw-slot__tier" data-r="${sl.tier}">${sl.tier}</span>
+      ${sl.editable
+        ? `<input class="input tw-slot__input" type="text" maxlength="24"
+                  placeholder="not written" value="${escapeHtml(sl.word || '')}"
+                  aria-label="${escapeHtml(sl.tier)} word">
+           <button class="btn btn-secondary tw-slot__save" type="button">Save</button>
+           ${sl.word ? '<button class="btn btn-secondary btn-danger-text tw-slot__remove" type="button">Remove</button>' : ''}`
+        : `<span class="tw-slot__word">${escapeHtml(sl.word)}</span>
+           <span class="tw-slot__need">in code</span>`}
+      <span class="tw-slot__need">${escapeHtml(String(sl.need))}${
+        drifted ? ` &middot; set at ${sl.frozen}` : ''}</span>
+      <span class="tw-slot__status" role="status"></span>
+    </div>`;
+  };
 
   box.innerHTML = `
     <p class="admin-empty" style="margin-bottom:var(--space-md);">
-      <b>${needWriting}</b> word${needWriting === 1 ? '' : 's'} still to write.
+      <b>${written}</b> written, <b>${needWriting}</b> still to write.
       ${qualifying} of ${totalTopics} topics are big enough for words of their own
       (${TOPIC_FLOOR.uncommon}+ questions).
+      A slot with no word does not exist for players.
     </p>
-  ` + rows.map(r => `
+  ` + subjects.map(r => `
     <div class="tw-subject">
       <div class="tw-subject__head">
         <span class="tw-subject__name">${escapeHtml(r.emoji + ' ' + r.label)}</span>
         <span class="tw-subject__size">${r.subjectSize} questions</span>
       </div>
-      ${r.subjectSlots.map(sl => `
-        <div class="tw-slot${sl.word ? '' : ' tw-slot--empty'}">
-          <span class="tw-slot__tier" data-r="${sl.rarity}">${sl.rarity}</span>
-          <span class="tw-slot__word">${sl.word ? escapeHtml(sl.word) : 'not written'}</span>
-          <span class="tw-slot__need">${escapeHtml(String(sl.need))}</span>
-        </div>`).join('')}
+      ${r.subjectSlots.map(sl => slotHtml(r.key, sl)).join('')}
       ${r.topics.map(t => `
         <div class="tw-topic">
           <div class="tw-topic__head">
@@ -2053,14 +2105,79 @@ async function loadTitleWords() {
           </div>
           ${t.tiers.length === 0
             ? `<div class="tw-slot tw-slot--none">too small for its own words</div>`
-            : t.tiers.map(tr => `
-              <div class="tw-slot${tr.word ? '' : ' tw-slot--empty'}">
-                <span class="tw-slot__tier" data-r="${tr.tier}">${tr.tier}</span>
-                <span class="tw-slot__word">${tr.word ? escapeHtml(tr.word) : 'not written'}</span>
-                <span class="tw-slot__need">${tr.target} right</span>
-              </div>`).join('')}
+            : t.tiers.map(tr => slotHtml(r.key, tr)).join('')}
         </div>`).join('')}
     </div>`).join('');
+
+  attachTitleWordEditors(box);
+}
+
+/**
+ * Wire Save and Remove on every editable slot.
+ *
+ * DELEGATED, so a redraw cannot leave dead buttons behind. Each write reports
+ * what actually happened rather than assuming: an RLS refusal returns no error
+ * and zero rows, which this page has three times rendered as "Saved!".
+ */
+function attachTitleWordEditors(box) {
+  box.onclick = async (e) => {
+    const saveBtn = e.target.closest('.tw-slot__save');
+    const removeBtn = e.target.closest('.tw-slot__remove');
+    if (!saveBtn && !removeBtn) return;
+
+    const slot = e.target.closest('.tw-slot');
+    if (!slot) return;
+    const { cat, sub, tier, target } = slot.dataset;
+    const input = slot.querySelector('.tw-slot__input');
+    const btn = saveBtn || removeBtn;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '…';
+
+    try {
+      let result;
+      if (removeBtn) {
+        result = await deleteTitleWord({ slot: 2, category: cat, subcategory: sub || null, tier });
+      } else {
+        const word = (input?.value || '').trim();
+        // An empty box on Save means "take this word away" rather than an error
+        // — it is what somebody clearing the field expects, and refusing it
+        // would leave no way to undo a word from the keyboard.
+        result = word
+          ? await saveTitleWord({
+              slot: 2, category: cat, subcategory: sub || null, tier, word,
+              targetRight: Number(target),
+            })
+          : await deleteTitleWord({ slot: 2, category: cat, subcategory: sub || null, tier });
+      }
+
+      if (result?.error) {
+        // ON THE ROW, not in a page-level bar. This panel is thousands of
+        // pixels long, so a message at the top is one the owner never sees —
+        // and a save that fails silently is the exact fault this page has
+        // shipped three times.
+        setStatus(slot.querySelector('.tw-slot__status'),
+          `Not saved — ${result.error.message}`, { sticky: true });
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+      // Redraw from the database rather than patching the row: the overlay,
+      // the counts at the top and the frozen-target note all move together,
+      // and keeping three of them in step by hand is how they drift apart.
+      resetTitleWordCache();
+      clearWordOverlay();
+      _panelLoaded.delete('titlewords');
+      _panelLoaded.add('titlewords');
+      await loadTitleWordsPanel();
+    } catch (err) {
+      logger.error('Admin', 'title word write failed', err);
+      setStatus(slot.querySelector('.tw-slot__status'),
+        `Not saved — ${err?.message || err}`, { sticky: true });
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  };
 }
 
 

@@ -877,6 +877,105 @@ try {
     }
   }
 
+  // ============================================================
+  // TITLE WORDS — the owner writes the collection from here
+  //
+  // This panel is the only screen anywhere that shows a slot with NO word, and
+  // that is its whole job: targets are frozen when a word is saved, so nothing
+  // else would ever say that a topic has grown big enough to carry a tier it
+  // could not offer before. Without it the collection silently stops growing.
+  //
+  // "It opened" is not "it works" — the same lesson as the eight panels above
+  // and the Flagged Hosts loader. So this types a word, presses Save, and reads
+  // the database.
+  // ============================================================
+  heading('writing a title word');
+  {
+    await openPanel('titlewords');
+    // Counting the whole bank per topic, so give it room.
+    await admin.page.waitForTimeout(2500);
+
+    const slots = await admin.page.locator('#title-words .tw-slot').count().catch(() => 0);
+    note(`slots offered: ${slots}`);
+    if (slots === 0) {
+      problems.push('the title words panel opened and offered no slots at all to write into');
+    }
+
+    const editable = admin.page.locator('#title-words .tw-slot:has(.tw-slot__save)').first();
+    if (!await editable.count().catch(() => 0)) {
+      problems.push('no slot on the title words panel could be written into');
+    } else {
+      const where = await editable.evaluate(el => ({
+        cat: el.dataset.cat, sub: el.dataset.sub || null,
+        tier: el.dataset.tier, target: Number(el.dataset.target),
+      }));
+      note(`writing into ${where.cat}/${where.sub || '(subject)'} ${where.tier}, target ${where.target}`);
+
+      // THE TARGET MUST BE A REAL NUMBER, or the word is saved against nothing
+      // and no player can ever earn it — the unearnable-slot promise this
+      // system exists to never make.
+      if (!Number.isFinite(where.target) || where.target < 1) {
+        problems.push(`a writable slot carries no target (${where.target}) — a word saved there could never be earned`);
+      }
+
+      // --- THE REFUSAL FIRST, because that is the bug this page keeps having.
+      // An RLS refusal returns no error and zero rows, and this page has three
+      // times rendered that as "Saved!". denyWrites reproduces it exactly.
+      table.store.denyWrites('title_words');
+      await editable.locator('.tw-slot__input').fill('Refused');
+      await editable.locator('.tw-slot__save').click().catch(() => {});
+      await admin.page.waitForTimeout(1200);
+
+      const refusedRows = table.store.table('title_words').length;
+      const said = (await admin.page.textContent('#title-words').catch(() => '')) || '';
+      note(`after a refused save: ${refusedRows} rows, screen says permission denied: ${/permission denied|not saved/i.test(said)}`);
+      if (refusedRows !== 0) {
+        problems.push('denyWrites did not stop the write — this check cannot prove anything');
+      } else if (!/not saved/i.test(said)) {
+        problems.push('a refused title word save told the admin nothing — the word is not saved and the screen does not say so');
+      }
+      table.store.allowWrites('title_words');
+
+      // --- NOW THE REAL ONE.
+      const again = admin.page.locator('#title-words .tw-slot:has(.tw-slot__save)').first();
+      await again.locator('.tw-slot__input').fill('Starbound');
+      await again.locator('.tw-slot__save').click().catch(() => {});
+      await admin.page.waitForTimeout(2500);
+
+      const rows = table.store.table('title_words');
+      const saved = rows.find(r => r.word === 'Starbound');
+      note(`saved row: ${saved ? JSON.stringify({ cat: saved.category, sub: saved.subcategory, tier: saved.tier, target: saved.target_right }) : 'NONE'}`);
+      if (!saved) {
+        problems.push('the admin typed a title word, pressed Save, and nothing was written');
+      } else {
+        if (Number(saved.target_right) !== where.target) {
+          problems.push(`the word was saved against target ${saved.target_right}, not the ${where.target} the slot asks for`);
+        }
+        if (String(saved.category) !== String(where.cat) || String(saved.tier) !== String(where.tier)) {
+          problems.push('the word was saved against a different slot from the one it was typed into');
+        }
+      }
+      if (rows.length !== 1) {
+        problems.push(`writing one word left ${rows.length} rows — the same slot must never hold two`);
+      }
+
+      // --- AND IT REACHES A PLAYER. A word written on this page that never
+      // appears in anybody's collection is the whole feature failing quietly.
+      const seen = await admin.page.evaluate(async () => {
+        const mod = await import('/js/titles.js');
+        const content = await import('/js/title-content.js');
+        content.resetTitleWordCache();
+        mod.clearWordOverlay();
+        await content.loadTitleWords();
+        return Object.values(mod.TITLE_WORDS).some(w => w.word === 'Starbound');
+      }).catch(err => `threw: ${err.message}`);
+      note(`a player's collection now contains it: ${seen}`);
+      if (seen !== true) {
+        problems.push(`a saved title word never reached the collection players read (${seen})`);
+      }
+    }
+  }
+
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);
 } finally {

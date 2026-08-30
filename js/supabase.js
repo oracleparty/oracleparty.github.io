@@ -67,4 +67,5 @@ export {
   createFriendship, removeFriend, fetchFriends, isFriend, hasFriends,
   subscribeToFriendRequests,
   fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts,
+  fetchTitleWords, saveTitleWord, deleteTitleWord,
 } from './db/social.js';

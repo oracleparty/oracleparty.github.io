@@ -40,6 +40,7 @@ import {
 } from '../supabase.js';
 import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../auth.js';
 import { evaluateUnlocks, hasReachedApprentice, planCelebration } from '../titles.js';
+import { loadTitleWords } from '../title-content.js';
 import { showCelebration } from '../celebration.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
@@ -1133,6 +1134,11 @@ export async function showResultsScreen() {
 
       // Title system: evaluate unlocks from computed stats
       fetchPlayerStats(uid).then(async freshStats => {
+        // The owner's written words FIRST, or a player who has just earned one
+        // is handed nothing and the check does not run again until their next
+        // game. This chain blocks no rendering, and the loader has its own
+        // deadline, so awaiting here is free.
+        await loadTitleWords();
         const unlocks = await fetchTitleUnlocks(uid);
         const context = {
           hour: new Date().getHours(),

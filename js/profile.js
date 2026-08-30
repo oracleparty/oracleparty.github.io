@@ -40,6 +40,7 @@ import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowPr
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
 import { hexLayout, hexPoints, hexFill, hexFillRect } from './honeycomb.js';
+import { loadTitleWords } from './title-content.js';
 
 // ============================================
 // CONSTANTS
@@ -485,6 +486,12 @@ function _injectProfileCard() {
  * Initialize the profile page. Call from profile.html's inline script.
  */
 export async function initProfilePage() {
+  // The owner's written words before anything draws: the gallery and the Title
+  // Builder both read TITLE_WORDS synchronously, so arriving late would show a
+  // collection missing whatever has been written since the last deploy. It
+  // carries its own deadline and can never hold this page shut.
+  await loadTitleWords();
+
   const authUser = getCurrentUser();
   const displayName = getDisplayName() || 'Guest';
 

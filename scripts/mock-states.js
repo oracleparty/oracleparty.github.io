@@ -991,6 +991,77 @@ export const STATES = {
     },
   },
 
+  // Title Words, open and EDITABLE. Every slot carries a text box and up to two
+  // buttons beside a fixed-width label, which is the most crowded row on the
+  // admin page — and the lobby row is what taught this project that anything
+  // added beside a label at 375px is what overflows. The row must wrap.
+  //
+  // Deliberately mixes all four states, because they lay out differently and a
+  // mock showing only one would review a row that does not ship: written and
+  // editable (two buttons), empty (one), defined in code (no editor at all),
+  // and one carrying a refusal message on its own line.
+  'admin-title-words': {
+    page: 'admin',
+    screen: null,
+    inherits: 'admin-panels',
+    inject: () => {
+      document.querySelectorAll('.admin-panel__head').forEach(h => h.setAttribute('aria-expanded', 'false'));
+      document.querySelectorAll('.admin-panel__body').forEach(b => { b.hidden = true; });
+      const head = document.querySelector('.admin-panel__head[data-panel="titlewords"]');
+      if (head) head.setAttribute('aria-expanded', 'true');
+      const body = document.getElementById('panel-titlewords');
+      if (body) body.hidden = false;
+      const el = document.getElementById('title-words');
+      if (!el) return;
+      // Mirrors loadTitleWordsPanel() in js/admin.js. If that markup changes,
+      // change this in the same commit or the sweep reviews a row that has
+      // never shipped — which is how the lobby previewed perfectly while
+      // overflowing by 71px in a real game.
+      const slot = (tier, word, need, { code = false, status = '' } = {}) => `
+        <div class="tw-slot${word ? '' : ' tw-slot--empty'}">
+          <span class="tw-slot__tier" data-r="${tier}">${tier}</span>
+          ${code
+            ? `<span class="tw-slot__word">${word}</span><span class="tw-slot__need">in code</span>`
+            : `<input class="input tw-slot__input" type="text" maxlength="24" placeholder="not written" value="${word}">
+               <button class="btn btn-secondary tw-slot__save" type="button">Save</button>
+               ${word ? '<button class="btn btn-secondary btn-danger-text tw-slot__remove" type="button">Remove</button>' : ''}`}
+          <span class="tw-slot__need">${need}</span>
+          <span class="tw-slot__status">${status}</span>
+        </div>`;
+      el.innerHTML = `
+        <p class="admin-empty" style="margin-bottom:var(--space-md);">
+          <b>19</b> written, <b>87</b> still to write.
+          29 of 48 topics are big enough for words of their own (60+ questions).
+          A slot with no word does not exist for players.
+        </p>
+        <div class="tw-subject">
+          <div class="tw-subject__head">
+            <span class="tw-subject__name">\u{1F3DB}\uFE0F History</span>
+            <span class="tw-subject__size">405 questions</span>
+          </div>
+          ${slot('common', 'History', '10 right in the whole subject', { code: true })}
+          ${slot('rare', '', 'a quarter of every topic, 100+ overall')}
+          ${slot('mythic', 'Everlasting', 'all 405', { status: 'Not saved \u2014 Permission denied \u2014 the word was not saved' })}
+          <div class="tw-topic">
+            <div class="tw-topic__head">
+              <span class="tw-topic__name">Ancient &amp; Classical Civilisations</span>
+              <span class="tw-topic__size">110</span>
+            </div>
+            ${slot('uncommon', 'Chronicles', '28 right \u00b7 set at 22')}
+            ${slot('epic', '', '83 right')}
+            ${slot('legendary', 'Antiquity', '110 right')}
+          </div>
+          <div class="tw-topic">
+            <div class="tw-topic__head">
+              <span class="tw-topic__name">Medieval</span>
+              <span class="tw-topic__size">52</span>
+            </div>
+            <div class="tw-slot tw-slot--none">too small for its own words</div>
+          </div>
+        </div>`;
+    },
+  },
+
   // Flagged Hosts, open. Its rows carry a name, a standing and free text a
   // player typed, and no other state renders any of that — the flagged-question
   // row shipped for months with two of its three parts unstyled because the

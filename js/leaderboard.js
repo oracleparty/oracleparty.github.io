@@ -42,6 +42,7 @@ import {
 import { initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { TITLE_WORDS } from './titles.js';
+import { loadTitleWords } from './title-content.js';
 import { CATEGORY_META, flattenSubcategories } from './categories.js';
 
 // A PROFICIENCY FLOOR, and it counts QUESTIONS MET, not attempts.
@@ -77,6 +78,9 @@ async function init() {
   if (window.__appBootGuard) clearTimeout(window.__appBootGuard);
   document.body.style.opacity = '1';
   await initAuth();
+  // Titles are rendered beside every name on this board, and an owner-written
+  // word would otherwise show as its raw id.
+  await loadTitleWords();
   initThemeToggle();
 
   buildCategorySelect();

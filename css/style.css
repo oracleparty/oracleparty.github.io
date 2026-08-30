@@ -7468,6 +7468,11 @@ body[style*="opacity: 0"] {
 .tw-slot {
   display: flex;
   align-items: baseline;
+  /* WRAPS, because this row carries a text box and two buttons on the admin
+     page and 375px cannot hold them beside a label. The lobby row taught this
+     expensively: a row that cannot yield has to overflow somewhere, and the
+     whole page becomes draggable sideways. */
+  flex-wrap: wrap;
   gap: var(--space-sm);
   padding: 4px 0;
   font-size: var(--text-sm);
@@ -7501,12 +7506,52 @@ body[style*="opacity: 0"] {
   font-weight: 500;
   font-style: italic;
 }
+/* A panel's own note about what it is showing — the count at the top of Title
+   Words, and its "Counting the bank…" placeholder. It had no rule at all until
+   the sweep rendered the panel for the first time, which is the third time a
+   new admin section has shipped part-unstyled because nothing drew it. */
+.admin-empty {
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+  line-height: 1.5;
+}
+
+/* The editable slot: a text box and its buttons, sized so the three fit one
+   line at 375px with the requirement wrapping underneath. */
+.tw-slot__input {
+  flex: 1 1 90px;
+  min-width: 0;
+  font-size: var(--text-sm);
+  padding: 6px 8px;
+}
+.tw-slot__save,
+.tw-slot__remove {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: var(--text-xs);
+}
+
 .tw-slot__need {
   font-size: var(--text-xs);
   color: var(--color-text-dim);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+/* On a slot with an editor the requirement drops to its own line, indented to
+   the words' column so it reads as belonging to the row above it. */
+.tw-slot:has(.tw-slot__input) .tw-slot__need {
+  flex: 1 0 100%;
+  margin-left: calc(72px + var(--space-sm));
+  text-align: left;
+}
+.tw-slot__status {
+  flex: 1 0 100%;
+  margin-left: calc(72px + var(--space-sm));
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.tw-slot__status:empty { display: none; }
 .tw-slot--none {
   font-size: var(--text-xs);
   color: var(--color-text-muted);

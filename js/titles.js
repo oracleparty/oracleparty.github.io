@@ -800,14 +800,20 @@ export function overlayWordId(category, subcategory, tier) {
  *
  * A row whose slot is already defined in code WINS OVER THE CODE, so the owner
  * can correct a word without a deploy. Returns how many were applied.
+ *
+ * THE TARGET COMES FROM THE ROW, not from recomputing the share. It was frozen
+ * when the word was written, deliberately: a share recomputed live means adding
+ * questions to the bank moves everybody's goal further away. It also means this
+ * needs no counting at all, where computing it here would cost about fifty
+ * requests on every profile load.
  */
-export function applyWordOverlay(rows, targetFor = () => null) {
+export function applyWordOverlay(rows) {
   let applied = 0;
   for (const r of rows || []) {
     const word = String(r.word || '').trim();
+    const right = Number(r.target_right);
     if (!word || !r.category || !r.tier) continue;
-    const right = targetFor(r.category, r.subcategory || null, r.tier);
-    if (right == null) continue;          // the slot does not exist — ignore the row
+    if (!Number.isFinite(right) || right < 1) continue;  // no target — not a real slot
     TITLE_WORDS[overlayWordId(r.category, r.subcategory, r.tier)] = {
       slot: Number(r.slot) || 2,
       word,

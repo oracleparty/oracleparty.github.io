@@ -944,39 +944,53 @@ describe('describing what a word requires', () => {
 });
 
 describe('owner-written words from the database', () => {
-  const targetFor = (cat, sub, tier) => {
-    if (cat !== 'science') return null;                 // only science has slots here
-    if (sub === 'space') return { uncommon: 22, epic: 65 }[tier] ?? null;
-    if (!sub) return tier === 'common' ? 10 : null;
-    return null;
-  };
   afterEach(() => clearWordOverlay());
+  const row = (sub, tier, word, target) => ({
+    category: 'science', subcategory: sub, tier, word, target_right: target,
+  });
 
   it('adds a word at a slot that exists', () => {
-    const n = applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'uncommon', word: 'Starbound' }], targetFor);
-    expect(n).toBe(1);
+    expect(applyWordOverlay([row('space', 'uncommon', 'Starbound', 22)])).toBe(1);
     const id = overlayWordId('science', 'space', 'uncommon');
     expect(TITLE_WORDS[id].word).toBe('Starbound');
     expect(describeRequirement(TITLE_WORDS[id])).toBe('Get 22 questions right in space');
   });
 
-  // A ROW FOR A SLOT THAT DOES NOT EXIST IS IGNORED, not rendered as an
-  // unearnable card. The topic may be too small, or the tier not offered — and
-  // a word nobody can earn is the exact promise this system must never make.
-  it('ignores a row whose slot has no target', () => {
-    expect(applyWordOverlay([
-      { category: 'science', subcategory: 'space', tier: 'legendary', word: 'Nope' },
-      { category: 'food', subcategory: 'cuisines', tier: 'uncommon', word: 'Nope' },
-    ], targetFor)).toBe(0);
+  // THE TARGET IS THE ROW'S, NOT RECOMPUTED. It was frozen when the owner wrote
+  // the word, so growing the bank can never move somebody's goal further away.
+  // Recomputing here would also cost about fifty counting requests on every
+  // profile load, for a number that is not allowed to change.
+  it('takes the frozen target from the row', () => {
+    applyWordOverlay([row('space', 'uncommon', 'Starbound', 22)]);
+    const id = overlayWordId('science', 'space', 'uncommon');
+    expect(TITLE_WORDS[id].unlock.condition.right).toBe(22);
+
+    // The same slot rewritten at a different target keeps the new one: the
+    // owner re-freezing is a deliberate act, and this is how it lands.
+    applyWordOverlay([row('space', 'uncommon', 'Starbound', 35)]);
+    expect(TITLE_WORDS[id].unlock.condition.right).toBe(35);
   });
 
-  it('ignores blank text', () => {
-    expect(applyWordOverlay([{ category: 'science', tier: 'common', word: '   ' }], targetFor)).toBe(0);
+  // A ROW WITH NO USABLE TARGET IS IGNORED, not rendered as an unearnable card.
+  // A word nobody can earn is the exact promise this system must never make.
+  it('ignores a row with no usable target', () => {
+    expect(applyWordOverlay([
+      row('space', 'legendary', 'Nope', null),
+      row('space', 'legendary', 'Nope', 0),
+      { category: 'science', subcategory: 'space', tier: 'epic', word: 'Nope' },
+    ])).toBe(0);
+  });
+
+  it('ignores blank text and a missing category', () => {
+    expect(applyWordOverlay([
+      row(null, 'common', '   ', 10),
+      { category: '', tier: 'common', word: 'Orphan', target_right: 10 },
+    ])).toBe(0);
   });
 
   it('clears cleanly and leaves the code words alone', () => {
     const before = Object.keys(TITLE_WORDS).length;
-    applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'epic', word: 'Voidwise' }], targetFor);
+    applyWordOverlay([row('space', 'epic', 'Voidwise', 65)]);
     expect(Object.keys(TITLE_WORDS).length).toBe(before + 1);
     clearWordOverlay();
     expect(Object.keys(TITLE_WORDS).length).toBe(before);
@@ -984,12 +998,24 @@ describe('owner-written words from the database', () => {
   });
 
   // THE ID MUST NOT DEPEND ON THE TEXT, or correcting a typo would take the
-  // word away from everybody who had earned it.
+  // word away from everybody who had already earned it.
   it('keeps the same id when the word is rewritten', () => {
-    applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'uncommon', word: 'Starbound' }], targetFor);
+    applyWordOverlay([row('space', 'uncommon', 'Starbound', 22)]);
     const id = overlayWordId('science', 'space', 'uncommon');
-    applyWordOverlay([{ category: 'science', subcategory: 'space', tier: 'uncommon', word: 'Stellar' }], targetFor);
+    applyWordOverlay([row('space', 'uncommon', 'Stellar', 22)]);
     expect(TITLE_WORDS[id].word).toBe('Stellar');
     expect(Object.keys(TITLE_WORDS).filter(k => k.startsWith('w:science:space:uncommon')).length).toBe(1);
+  });
+
+  // A SUBJECT WORD AND A TOPIC WORD ARE DIFFERENT SLOTS even at the same tier,
+  // because a null subcategory is its own slot. Collapsing them would let one
+  // silently overwrite the other.
+  it('keeps a subject word and a topic word apart', () => {
+    applyWordOverlay([
+      row(null, 'common', 'Science', 10),
+      row('space', 'common', 'Orbital', 10),
+    ]);
+    expect(TITLE_WORDS[overlayWordId('science', null, 'common')].word).toBe('Science');
+    expect(TITLE_WORDS[overlayWordId('science', 'space', 'common')].word).toBe('Orbital');
   });
 });

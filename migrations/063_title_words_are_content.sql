@@ -7,12 +7,26 @@
 -- admin page — exactly as the question bank's answers and alternates already
 -- are. A trickle of two words a week should not need a deploy.
 --
--- THE STRUCTURE IS NOT STORED. Which slots exist, and what each one requires, is
--- computed from CATEGORY_META and js/title-tiers.js — a subject's word at 10
--- right, and a topic's at a quarter, three quarters or all of it, for topics big
--- enough to offer that tier. This table holds only the TEXT the owner types.
--- Storing the rules here as well would give two sources for one truth, which is
--- the shape this codebase has been bitten by repeatedly.
+-- THE RULES ARE NOT STORED. Which slots exist, and what share of a topic each
+-- tier asks for, is computed from CATEGORY_META and js/title-tiers.js — a
+-- subject's word at 10 right, a topic's at a quarter, three quarters or all of
+-- it, for topics big enough to offer that tier. Storing the rules here as well
+-- would give two sources for one truth, which is the shape this codebase has
+-- been bitten by repeatedly.
+--
+-- BUT THE TARGET IS STORED, AND THAT IS NOT THE SAME THING. `target_right` is
+-- the number of questions this word asks for, FROZEN at the moment the owner
+-- writes it. That is the agreed design and it is not an optimisation: a share
+-- recomputed live means adding questions to the bank moves somebody's goal
+-- BACKWARDS, which is the worst feeling a collection can produce. The rule
+-- ("a quarter of the topic") stays in code; the number it produced on the day
+-- the word was written lives here.
+--
+-- It also settles a real cost. Recomputing shares in a player's browser needs a
+-- count per topic — about fifty requests on every profile load — where reading
+-- a frozen number needs none. The admin page still shows the live share beside
+-- the frozen one, so growth in the bank is visible and re-freezing is the
+-- owner's deliberate choice rather than something that happens behind them.
 --
 -- A SLOT WITH NO ROW IS INVISIBLE TO PLAYERS. That is the rule the owner set and
 -- it is the reason this table can be empty and nothing breaks: hitting a
@@ -30,12 +44,17 @@ CREATE TABLE IF NOT EXISTS title_words (
   subcategory  text,
   tier         text NOT NULL,
   word         text NOT NULL,
+  -- Frozen when the word is written. See the note at the top: the RULE lives in
+  -- code, this is the NUMBER that rule produced on the day, and it must never
+  -- move on its own or a player's goal recedes as the bank grows.
+  target_right integer NOT NULL,
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT title_words_tier_check CHECK (
     tier IN ('common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic')
   ),
-  CONSTRAINT title_words_word_check CHECK (length(btrim(word)) BETWEEN 1 AND 24)
+  CONSTRAINT title_words_word_check CHECK (length(btrim(word)) BETWEEN 1 AND 24),
+  CONSTRAINT title_words_target_check CHECK (target_right BETWEEN 1 AND 100000)
 );
 
 -- One word per slot, counting a NULL subcategory as its own slot.

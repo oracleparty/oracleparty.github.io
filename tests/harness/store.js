@@ -45,7 +45,11 @@ const uuid = () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')
 // friend request with parseInt(btn.dataset.accept, 10), which turns a uuid into
 // NaN, so accepting silently matched no row. The app was right and this store
 // was wrong, and it would have been reported as a bug in the friends feature.
-const INTEGER_PK = new Set(['friend_requests']);
+// title_words is bigint IDENTITY too (migration 063). Added when the table was,
+// rather than after a scenario reported something impossible: an integer-PK
+// table handed uuids is exactly the gap that made accepting a friend request
+// silently match no row.
+const INTEGER_PK = new Set(['friend_requests', 'title_words']);
 let nextIntId = 1;
 const newId = table => (INTEGER_PK.has(table) ? nextIntId++ : uuid());
 

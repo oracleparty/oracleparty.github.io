@@ -7,6 +7,7 @@ import { FRIEND_REQUEST_TOAST_MS, CHAT_HISTORY_GRACE_MS, AUTH_TIMEOUT_MS, AUTH_B
 import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest, unsubscribe } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
 import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle, planCelebration } from './titles.js';
+import { loadTitleWords } from './title-content.js';
 import { showCelebration } from './celebration.js';
 import { logger, recordFault } from './logger.js';
 
@@ -323,6 +324,7 @@ export async function initAuth() {
 
     // Non-blocking background tasks — failures are fine
     fetchTitleUnlocks(session.user.id).then(async unlocks => {
+      await loadTitleWords();
       const ctx = { hour: new Date().getHours() };
       const newUnlocks = evaluateUnlocks(stats, profile, unlocks, ctx);
       for (const u of newUnlocks) {

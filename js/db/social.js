@@ -1195,3 +1195,106 @@ export async function fetchAccountPlayCounts(userIds) {
   }
   return out;
 }
+
+
+// ============================================
+// TITLE WORDS — content the owner writes, not code
+//
+// Migration 063. The structure of the collection is computed from
+// CATEGORY_META and title-tiers.js; this table holds only the TEXT. A slot
+// with no row does not exist for players, which is what makes "nobody sees a
+// slot they cannot fill" true by construction rather than by care.
+// ============================================
+
+/**
+ * Every word the owner has written.
+ *
+ * RETURNS null ON FAILURE, never []. The two mean completely different things
+ * here: [] means nothing has been written yet and the gallery correctly shows
+ * only the coded words, while a failed read means we do not KNOW what is
+ * written. Conflating them would quietly delete the owner's whole collection
+ * from the screen on one dropped request — the shape of CLAUDE.md #6, where
+ * "could not look" and "nothing there" returned the same answer for months.
+ */
+export async function fetchTitleWords() {
+  const { data, error } = await supabase
+    .from('title_words')
+    // target_right IS NOT OPTIONAL HERE. applyWordOverlay skips any row without
+    // a usable target, so leaving it out of this list does not fail — it
+    // silently drops every word the owner has ever written, with no error
+    // anywhere. Exactly the fault that had the category leaderboard ranking on
+    // the wrong measure for weeks because its select forgot two columns.
+    .select('id, slot, category, subcategory, tier, word, target_right');
+  if (error) {
+    // Not an error at warn-and-continue level: until 063 is applied this table
+    // does not exist, and the app is expected to run exactly as before.
+    logger.warn('Supabase', 'fetchTitleWords failed (migration 063 may not be applied)', error);
+    return null;
+  }
+  return data || [];
+}
+
+/**
+ * Write or replace one word.
+ *
+ * CHECKS THE ROW COUNT, because an RLS refusal returns no error at all — it
+ * updates nothing and reports success (CLAUDE.md #4). The admin page has
+ * shipped three separate saves that said "Saved!" while saving nothing, and
+ * this is the check that stops a fourth.
+ */
+export async function saveTitleWord({ slot = 2, category, subcategory = null, tier, word, targetRight }) {
+  const text = String(word || '').trim();
+  const target = Number(targetRight);
+  if (!category || !tier || !text) return { error: new Error('missing category, tier or word') };
+  // THE TARGET IS FROZEN HERE, at the number the rule produces today. It must
+  // never be recomputed afterwards: a share recalculated live means growing the
+  // question bank pushes everybody's goal further away, which is the worst
+  // thing a collection can do. Saving the same word again is how the owner
+  // deliberately re-freezes it.
+  if (!Number.isFinite(target) || target < 1) {
+    return { error: new Error('missing target — this slot does not exist') };
+  }
+
+  // Not an upsert: the unique index treats a NULL subcategory as its own slot
+  // via a PARTIAL index, and PostgREST's onConflict cannot name a partial one.
+  // Delete-then-insert is exact and needs no index to be present at all.
+  const existing = supabase.from('title_words').delete()
+    .eq('category', category).eq('tier', tier).eq('slot', slot);
+  const { error: delError } = await (subcategory
+    ? existing.eq('subcategory', subcategory)
+    : existing.is('subcategory', null));
+  if (delError) return { error: delError };
+
+  const { data, error } = await supabase
+    .from('title_words')
+    .insert({ slot, category, subcategory: subcategory || null, tier, word: text, target_right: target })
+    .select('id');
+  if (error) return { error };
+  if (!data || data.length === 0) {
+    return { error: new Error('Permission denied — the word was not saved') };
+  }
+  return { data: data[0] };
+}
+
+/**
+ * Remove a word, which removes the slot from the game entirely.
+ *
+ * COUNTS THE ROWS, and here that is safe to read as a verdict. Zero rows from
+ * a delete is normally ambiguous — a refusal and "there was nothing matching"
+ * look identical, which is why the admin page's "Clear 7d+" has to count first
+ * — but this delete is aimed at a slot the admin is looking at a word in. It
+ * is known to exist, so nothing deleted means nothing was allowed.
+ */
+export async function deleteTitleWord({ slot = 2, category, subcategory = null, tier }) {
+  if (!category || !tier) return { error: new Error('missing category or tier') };
+  const q = supabase.from('title_words').delete()
+    .eq('category', category).eq('tier', tier).eq('slot', slot);
+  const { data, error } = await (subcategory
+    ? q.eq('subcategory', subcategory).select('id')
+    : q.is('subcategory', null).select('id'));
+  if (error) return { error };
+  if (!data || data.length === 0) {
+    return { error: new Error('Permission denied — the word was not removed') };
+  }
+  return { error: null };
+}
