@@ -3050,6 +3050,33 @@ that lock needs — and the fallbacks are what it will have to remove, so
 enumerate them rather than rediscovering them (049's lesson, stated in advance
 for once).
 
+### The probe printed the alarm and exited 0
+
+Found 2026-08-30 while answering "is it fixed?" — by checking whether the CI
+probe's green tick meant anything.
+
+**It did not.** The only thing that set a non-zero exit was the script's own
+self-check: the guard that fires when a consequence entry names an object the
+script never probes. A live database genuinely MISSING something the app
+depends on printed the whole WHAT THIS MEANS FOR A PLAYER section and **exited
+0**, so the run went green and nobody had any reason to open the log.
+
+That is this file's own catalogue committed by the tool the file says to trust:
+**a check that reports health for something it asked about and then ignored.**
+It is the sixth entry in #6 wearing yet another disguise — not a bad question
+this time, but a good question whose answer was thrown away.
+
+**And the lockdown made it far worse than when it was written.** Before 048-062
+a missing function meant a slower fallback path, which is a degradation. Now it
+means a REFUSED one — and for `op_set_phase` a hard `permission denied for
+column game_phase`, so no game starts or advances at all. A green tick over
+that is worse than having no check.
+
+The consequence section sets `process.exitCode = 1` now. Verified by running the
+script from the dev container, which is firewalled from Supabase: everything
+reads as missing and it exits 1 by the new path. **That proves the guard, not
+the database** — the live answer only ever comes from CI.
+
 ### A round that nobody was allowed to rescue (2026-08-30 playtest)
 
 **Reported from a live game, and the owner was right that it was broken:** a

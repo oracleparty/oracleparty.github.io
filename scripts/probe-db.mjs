@@ -854,6 +854,21 @@ if (broken.length === 0) {
     for (const line of c.breaks) console.log(`      · ${line}`);
     console.log(`      FIX: ${c.fix}`);
   }
+  // AND FAIL THE BUILD, which until 2026-08-30 it did not.
+  //
+  // The only thing that set a non-zero exit was the self-check above — the
+  // script noticing it was inconsistent with itself. A live database MISSING
+  // something the app depends on printed this whole section and exited 0, so
+  // the CI run went green and nobody looked. That is the fault this script is
+  // a catalogue of, committed by the script itself: a check that reports
+  // health for a thing it never asked about, or asked about and then ignored.
+  //
+  // Every entry here is load-bearing since the lockdown. Before 048-062 a
+  // missing function meant a slower fallback path; now it means a refused one,
+  // and for op_set_phase it means no game starts or advances at all. A green
+  // tick over that is worse than no check.
+  console.log('\n*** The live database is missing something the game depends on. ***');
+  process.exitCode = 1;
 }
 console.log('');
 
