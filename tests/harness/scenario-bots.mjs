@@ -208,6 +208,56 @@ try {
     await host.page.waitForTimeout(700);
     if (table.store.table('rooms')[0]?.status === 'playing') break;
   }
+
+  // A STUCK COUNTDOWN IN A SOLO GAME.
+  //
+  // The only ways out of a countdown are the host's own write and this phone's
+  // self-heal. That self-heal used to be a single setTimeout at 3s, so one
+  // failed request left the room on `countdown` and the game never started —
+  // and with one human and one bot there is no second browser to try. Same
+  // fault class as the round that never ended, in the screen every game passes
+  // through.
+  //
+  // Hang the host's phase write the moment the countdown begins. op_advance_phase
+  // is a different function and owns this transition, so the poll must rescue it.
+  {
+    let sawCountdown = false;
+    for (let i = 0; i < 40 && !sawCountdown; i++) {
+      if (table.store.table('rooms')[0]?.game_phase === 'countdown') sawCountdown = true;
+      else await host.page.waitForTimeout(100);
+    }
+    if (sawCountdown) {
+      // SHORT ENOUGH TO SETTLE HERE. A 60s hang landed mid-game and reset the
+      // room to question 0, which broke three checks further down and looked
+      // like a product fault — CLAUDE.md's own warning about suspecting what
+      // you seeded. 12s outlasts the 10s rescue and then resolves while the
+      // room is still on question 0, where a late "go to question 0" is a no-op.
+      // THE HANG MUST OUTLAST THE OBSERVATION, or the check cannot tell which
+      // mechanism saved the room. At 12s the host's own hung write landed first
+      // and the countdown escaped at 16s WITH THE FIX REVERTED — a check that
+      // agreed whatever the code did. The backstop rescues at 10s (the server's
+      // own countdown rule), so a 25s hang against an 18s window leaves only
+      // one possible explanation for a pass.
+      table.store.slowFunction('op_set_phase', 25000);
+      const started = Date.now();
+      let reached = null;
+      while (Date.now() - started < 18000) {
+        const ph = table.store.table('rooms')[0]?.game_phase;
+        if (ph && ph !== 'countdown') { reached = Math.round((Date.now() - started) / 1000); break; }
+        await host.page.waitForTimeout(400);
+      }
+      table.store.normalFunction('op_set_phase');
+      // Let the hung call land and be harmless before the game proper starts.
+      // Let the 25s call land and be harmless before the game proper starts.
+      await host.page.waitForTimeout(12000);
+      note(`countdown with the host's phase write hung: left after ${reached === null ? 'never' : reached + 's'}`);
+      if (reached === null) {
+        problems.push("the countdown never ended with the host's own write hung — one failed request and a solo game never starts");
+      }
+    } else {
+      note('countdown was already over before it could be blocked — stuck-countdown check skipped');
+    }
+  }
   await host.page.waitForURL('**/game.html*', { timeout: 25000 })
     .catch(() => problems.push('the host never reached the game'));
   await host.page.waitForTimeout(6500);

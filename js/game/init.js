@@ -977,6 +977,9 @@ function cleanup() {
   if (state._advancePollId) {
     clearInterval(state._advancePollId);
     state._advancePollId = null;
+    clearInterval(state.countdownBackstopId);
+    state.countdownBackstopId = null;
+    state._advancePollId = null;
   }
   // THESE THREE SURVIVED cleanup() UNTIL 2026-08-28, and one of them could put
   // the room back into a game the host had just ended.

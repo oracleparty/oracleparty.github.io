@@ -8,7 +8,7 @@ import { findNextAvailableWager, countAnswersFrom } from './scoring-helpers.js';
 import { getCountdownElapsed } from './timer-helpers.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
 import { logger } from '../logger.js';
-import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS } from '../constants.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, PHASE_BACKSTOP_POLL_MS } from '../constants.js';
 import {
   updateGameState,
   fetchQuestionsByIds,
@@ -24,6 +24,7 @@ import {
   demoteCohost,
   demoteHost,
   setPhaseOnServer,
+  advancePhaseOnServer,
 } from '../supabase.js';
 import { getDisplayName } from '../auth.js';
 import {
@@ -635,29 +636,41 @@ export function showCountdownScreen() {
       handlePhaseTransition(deferred);
     }
 
-    // Self-healing fallback: if the host quit mid-countdown and the next-host
-    // promotion landed too late to fire the question phase update, the room
-    // would be stuck on 'countdown' forever. After 3s, any connected client
-    // re-checks the DB phase and force-advances. updateGameState is idempotent
-    // (multiple clients writing game_phase='question' converge to same state).
-    setTimeout(async () => {
-      if (_isLeaving || state.gamePhase !== 'countdown') return;
-      try {
-        const { data: r } = await fetchRoom(state.room.id);
-        if (r && r.game_phase === 'countdown') {
-          // ANY client, not just the host — this is the self-heal for a host
-          // who quit mid-countdown, so gating it on being the host would leave
-          // the room stuck forever, which is the fault it exists to fix.
-          // op_set_phase's own rule allows it: a room with no live host may be
-          // moved on by anybody still in it.
-          setPhaseOnServer(state.room.id, state.room.playerId, null, 'question', 0)
-            .then(served => {
-              if (!served) return updateGameState(state.room.id, { game_phase: 'question', current_question: 0 });
-            })
-            .catch(e => logger.warn('Game', 'countdown self-heal failed', e));
-        }
-      } catch (_) {}
-    }, 3000);
+    // A POLL, NOT A ONE-SHOT.
+    //
+    // The only ways out of a countdown are the host's write just above — one
+    // network call, fire-and-forget, no retry — and this. It used to be a
+    // single setTimeout at 3s, so ONE failed or slow request left the room on
+    // `countdown` and the game simply never started.
+    //
+    // In a room with several people that is survivable, because every client
+    // runs this and they are unlikely to all fail. In a SOLO game with a
+    // practice bot there is exactly one browser, so a single miss is fatal —
+    // the same fault that ended rounds nowhere on 2026-08-30, in the screen
+    // every game passes through.
+    //
+    // It asks op_advance_phase, which owns the countdown -> question transition
+    // and REFUSES until the countdown has genuinely run out. So polling cannot
+    // start a game early however eager it is, and it costs one small request
+    // every few seconds for the couple of seconds a healthy countdown lasts.
+    clearInterval(state.countdownBackstopId);
+    state.countdownBackstopId = setInterval(() => {
+      if (_isLeaving || !state.room || state.gamePhase !== 'countdown') {
+        clearInterval(state.countdownBackstopId);
+        state.countdownBackstopId = null;
+        return;
+      }
+      // ANY client, not just the host — this is the self-heal for a host who
+      // quit mid-countdown, so gating it on being the host would leave the room
+      // stuck forever, which is the fault it exists to fix.
+      advancePhaseOnServer(state.room.id, state.room.playerId)
+        .then(did => {
+          if (did && did !== 'not due' && did !== 'nothing to do' && did !== 'already moved') {
+            logger.warn('Game', `the countdown was stuck, so this phone asked the server: ${did}`);
+          }
+        })
+        .catch(e => logger.warn('Game', 'countdown self-heal failed', e));
+    }, PHASE_BACKSTOP_POLL_MS);
   }
 
   function tick() {

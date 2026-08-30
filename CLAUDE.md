@@ -3148,14 +3148,34 @@ The UI and the bot now go first, and the stamp is bounded by
 missing `op_start_clock` already does: a slightly worse clock, never a stopped
 game.
 
-#### An adjacent risk, noted rather than changed
+#### The same fault in the countdown — held back, then fixed
 
-The COUNTDOWN's self-heal (`phases.js`) is a one-shot `setTimeout` at 3s. It is
-not host-gated, so several clients each attempt it — but in a solo game with a
-bot there is only one, and a single failed attempt leaves the room on
-`countdown`. Same fault class as the two above. **Not changed here**: nothing
-reported it, the countdown demonstrably works, and shipping a speculative third
-change alongside two proven ones is how a fix commit introduces a regression.
+The COUNTDOWN's self-heal (`phases.js`) was a one-shot `setTimeout` at 3s. It is
+not host-gated, so several clients each attempt it — but **in a solo game with a
+bot there is exactly one browser**, and the only other way out is the host's own
+fire-and-forget write. Two single attempts, and if both miss the room sits on
+`countdown` and the game never starts. Same fault class as the two above, in the
+screen every game passes through.
+
+It was deliberately NOT changed in the same commit as those two — nothing had
+reported it and shipping a speculative third change beside two proven ones is
+how a fix commit introduces a regression. It is a poll now, asking
+`op_advance_phase`, which owns that transition and refuses until the countdown
+has genuinely run out, so polling cannot start a game early.
+
+**THE FIRST VERSION OF THE CHECK COULD NOT FAIL, and it took reverting the fix to
+see it.** It hung the host's phase write for 12s and watched for 30s. With the
+fix reverted the countdown still escaped — at 16s — because *the hung write
+itself landed at 12s* and rescued the room. Two mechanisms, one observation, and
+the check called it a pass either way. The hang has to OUTLAST the window: 25s
+against 18s, where the backstop's 10s rescue is the only thing that can explain
+a pass. Verified in both directions.
+
+**A late injected call is not inert, either.** The first attempt hung
+`op_set_phase` for 60s; it landed mid-game, reset the room to question 0, and
+broke three checks in later sections that looked like product faults. That is
+CLAUDE.md's own warning arriving on schedule: *when a change to one section
+breaks a check three sections away, suspect what you seeded.*
 
 #### What let both of these through
 
