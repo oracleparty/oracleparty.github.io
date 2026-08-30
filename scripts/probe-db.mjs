@@ -1097,7 +1097,12 @@ try {
 
   const known = new Set(Object.keys(CATEGORY_META));
   const knownSubs = new Set();
-  for (const cat of known) for (const s of flattenSubcategories(cat)) knownSubs.add(s.key);
+  const subsByCat = new Map();
+  for (const cat of known) {
+    const set = new Set();
+    for (const s of flattenSubcategories(cat)) { knownSubs.add(s.key); set.add(s.key); }
+    subsByCat.set(cat, set);
+  }
 
   // Paged, because the bank is ~4,859 rows and PostgREST caps a page.
   const badCats = new Map();
@@ -1125,10 +1130,19 @@ try {
       }
       const s = r.subcategory;
       if (s && !knownSubs.has(s)) badSubs.set(s, (badSubs.get(s) || 0) + 1);
-      if (r.format === 'open') {
+      // ONLY LEGITIMATE PAIRS. 11% of questions carry more than one category
+      // while `subcategory` is a single field, so a history/culture question
+      // filed under "ancient" would otherwise invent a topic called
+      // "culture-society / ancient" — and counting all observed pairs reported
+      // 114 topics where the app offers 42. The app asks
+      // fetchQuestionCount(category, sub) only for subs in THAT category's
+      // tree, so the probe must count the same way or its targets describe
+      // topics no player can ever be shown.
+      if (r.format === 'open' && s) {
         for (const c of r.categories || []) {
           if (!known.has(c)) continue;
-          const key = `${c} / ${s || '(none)'}`;
+          if (!(subsByCat.get(c) || new Set()).has(s)) continue;
+          const key = `${c} / ${s}`;
           topicSize.set(key, (topicSize.get(key) || 0) + 1);
         }
       }
