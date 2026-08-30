@@ -1321,15 +1321,15 @@ export const STATES = {
         [null, null, 0, 0, [
           ['locked', '——', 'common', '10 right'],
         ], '🔬 Science<span class="title-gallery__group-count">0 / 1</span>'],
-        ['Standing', 'Two different things, so they are shown apart.', 1, 8, [
+        ['Standing', 'The rank you have reached, and one-off feats.', 1, 8, [
           ['earned', 'Apprentice', 'common', 'Reach Apprentice in any subject'],
           ['locked', '——', 'rare', 'Reach Scholar in any subject'],
-        ], 'How far you have come'],
+        ], 'Rank in your best subject'],
         [null, null, 0, 0, [
           ['locked', '——', 'rare', 'Win 25 games'],
           ['locked', '——', 'rare', 'Report 10 bad questions'],
           ['secret', '❓', 'legendary', 'Find it yourself'],
-        ], 'Things you pulled off'],
+        ], 'One-off feats'],
       ];
 
       const body = document.getElementById('title-gallery-body');

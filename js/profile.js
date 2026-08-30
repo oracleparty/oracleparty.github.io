@@ -1943,15 +1943,23 @@ async function openMapCategory(cat) {
 const SLOT_NAMES = {
   1: { name: 'Playstyle', blurb: 'How you play — winning, streaks, showing up, hosting.' },
   2: { name: 'Knowledge', blurb: 'What you know. Earned by getting questions right in a subject.' },
-  3: { name: 'Standing',  blurb: 'Two different things, so they are shown apart.' },
+  // "Two different things, so they are shown apart" described the LAYOUT and
+  // said nothing about the content — the owner read it and still could not tell
+  // what the section was for. A blurb has to name the things, not the shelving.
+  3: { name: 'Standing',  blurb: 'The rank you have reached, and one-off feats.' },
 };
 
 // SLOT 3 IS TWO PILES, NOT ONE. Four of its words are the profile's rank ladder
 // showing through and four are unrelated feats; mixed together they read as one
 // jumbled set, which is the other half of why this column felt vague.
+// "How far you have come" meant nothing to the owner, and it was not their
+// fault: it describes a feeling rather than a measure. These four words ARE the
+// Apprentice → Oracle ladder from the profile, awarded on your BEST subject —
+// so the heading now says exactly that, and the rows underneath already print
+// "Reach Scholar in any subject". The other pile is one-off feats.
 const STANDING_GROUPS = [
-  { name: 'How far you have come', ids: ['apprentice', 'scholar', 'master', 'oracle'] },
-  { name: 'Things you pulled off', ids: null },
+  { name: 'Rank in your best subject', ids: ['apprentice', 'scholar', 'master', 'oracle'] },
+  { name: 'One-off feats', ids: null },
 ];
 
 /**
