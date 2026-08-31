@@ -188,11 +188,41 @@
 > Nothing here explains a stall or a refusal on the **live database**. The CI
 > probe on `18d199f` (2026-08-30 15:48) reports every `op_*` function and every
 > watched column installed, and `answers -> players: no relationship`, so 052 is
-> applied. But **the probe runs as `anon`, and since anonymous sign-in every
-> real player is `authenticated`** — the exact blind spot that broke room
-> creation in slice 8c. That repair was run by hand and **is in no migration
-> file**, so this repo cannot say what the live policies are. One query settles
-> it, and it is the owner's to run:
+> applied.
+>
+> ### The role blind spot is CLOSED — measured 2026-08-31
+>
+> The probe runs as `anon` while every real player is now `authenticated`, which
+> is the exact gap that stopped anybody creating a room in slice 8c. That repair
+> was run by hand and is in no migration file, so the question could only be
+> answered from the SQL Editor. **The owner ran it, and the answer is that only
+> two policies in the whole schema are role-restricted:**
+>
+> ```
+> schemaname | tablename | policyname                                 | cmd    | roles
+> public     | duels     | Users can update duels                     | UPDATE | {authenticated}
+> public     | profiles  | Enable insert for authenticated users only | INSERT | {authenticated}
+> ```
+>
+> **`rooms` and `players` are not on that list**, so the `{anon}`-scoped
+> policies slice 8c found have genuinely been replaced with `{public}` ones.
+> Every gameplay policy applies to `anon` and `authenticated` alike, and turning
+> anonymous sign-in on cannot be silently refusing anything.
+>
+> `profiles` INSERT `{authenticated}` is correct and was already known. **DO NOT
+> re-investigate this** — it is the strongest single piece of evidence this repo
+> has about the live policy surface, and it rules out the leading systemic
+> explanation for the 2026-08-30 breakage rather than confirming it. The cause
+> was in the client, and this pass found it.
+>
+> **`duels` IS NOT A TABLE THIS APP HAS EVER HEARD OF.** It is in no migration,
+> no probe watch list and no query in `js/`. Harmless, and worth knowing for
+> what it says about the project: the live database carries objects this repo
+> has no record of, which is #10's whole theme. Do not write code against it,
+> and do not drop it without asking — it may belong to something else the owner
+> is running.
+>
+> The query, for the next time somebody changes who a user IS:
 >
 > ```sql
 > SELECT schemaname, tablename, policyname, cmd, roles
