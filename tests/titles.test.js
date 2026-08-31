@@ -1007,6 +1007,29 @@ describe('owner-written words from the database', () => {
     expect(Object.keys(TITLE_WORDS).filter(k => k.startsWith('w:science:space:uncommon')).length).toBe(1);
   });
 
+  // AN OWNER-WRITTEN WORD IS NOT A SECRET, and the gallery decided that from
+  // `!word.hint` until 2026-08-30. The overlay gives written words `hint: ''`
+  // because their requirement is stated outright, and an empty string is falsy
+  // — so the moment the owner filled the framework, all ~86 of their words
+  // would have rendered as "?" / "Find it yourself".
+  //
+  // The rule the screen uses is "can we DESCRIBE it", which cannot make that
+  // mistake. This pins both halves of it.
+  it('is never mistaken for a secret, however empty its hint is', () => {
+    applyWordOverlay([row('space', 'epic', 'Voidwise', 65)]);
+    const w = TITLE_WORDS[overlayWordId('science', 'space', 'epic')];
+    expect(w.hint, 'the overlay still writes an empty hint').toBe('');
+    expect(describeRequirement(w), 'a written word must always say what it needs').toBeTruthy();
+    expect(!describeRequirement(w) && !w.hint, 'would render as a secret').toBe(false);
+  });
+
+  it('still treats a genuinely hidden word as a secret', () => {
+    const w = TITLE_WORDS.phantom;
+    expect(w.hint).toBeNull();
+    expect(describeRequirement(w)).toBeNull();
+    expect(!describeRequirement(w) && !w.hint, 'phantom must stay a secret').toBe(true);
+  });
+
   // A SUBJECT WORD AND A TOPIC WORD ARE DIFFERENT SLOTS even at the same tier,
   // because a null subcategory is its own slot. Collapsing them would let one
   // silently overwrite the other.

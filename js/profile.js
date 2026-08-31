@@ -2006,9 +2006,20 @@ function shortRequirement(sentence, subjectLabel) {
  */
 function galleryRow(word, level, subjectLabel = null) {
   const earned = level > 0;
-  const secret = !word.hint;
   const rarity = word.rarity || 'common';
   const requirement = shortRequirement(describeRequirement(word, labelForKey), subjectLabel);
+  // A SECRET IS A WORD WE HAVE NOTHING TO SAY ABOUT, not one whose hint happens
+  // to be empty.
+  //
+  // This was `!word.hint`, which was true of every OWNER-WRITTEN word: the
+  // overlay gives them `hint: ''` because their requirement is stated outright,
+  // and an empty string is falsy. So the moment the owner filled the framework,
+  // all ~86 of their words would have rendered as ❓ "Find it yourself" — the
+  // exact opposite of the point, and the complaint that started this rebuild.
+  //
+  // Asking whether we can DESCRIBE it cannot make that mistake: describeRequirement
+  // returns null only for a deliberately hidden unlock.
+  const secret = !requirement && !word.hint;
 
   if (earned) {
     return `<div class="title-row title-row--earned" data-rarity="${rarity}">
