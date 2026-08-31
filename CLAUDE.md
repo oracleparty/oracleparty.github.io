@@ -1,15 +1,82 @@
 # Oracle Party
 
+> ## STATE OF PLAY — 2026-08-30, written as a handover
+>
+> **Read this section first, and read it sceptically.** The owner asked for it
+> after a run of game-breaking faults, and asked specifically that it NOT be
+> written with false confidence. So each claim below says how it was
+> established. Where the answer is "I reasoned it out", treat it as a lead, not
+> a fact — several confident statements in this file have turned out wrong, and
+> the sections below catalogue them.
+>
+> ### What is MEASURED (someone ran something and read the answer)
+>
+> | | Evidence |
+> |---|---|
+> | Migrations 048–064 are applied | the owner ran each one's verification block and pasted the result; every rule read `ok`. 063 needed a follow-up REVOKE, and 064 is the newest. |
+> | The live database has every function and table the app needs | the CI probe on commit `18d199f`. **That tick only started meaning something on 2026-08-30** — before that the probe printed its alarm and still exited 0. |
+> | All 12 subjects have title slots (36 subject-level, 45 topics, 26 clearing the size floor) | computed from `title-tiers.js` and `CATEGORY_META` |
+> | 664 unit tests and 12 robot scenarios pass | run locally, and in CI on every push |
+> | The two round-ending faults were real | reproduced in the harness with an injected slow request, and each re-broken to watch the check fail |
+>
+> ### What is NOT verified
+>
+> - **No real playtest since the fixes.** Everything about the game engine below
+>   is proven against a *simulated* bad connection in an in-memory database.
+>   Nobody has played a real game on a real phone since. **That is the single
+>   biggest gap.**
+> - **"Friend couldn't submit at times" was never reproduced.** A mechanism was
+>   found that follows from a stalled round, and it is plausible, but it was
+>   inferred rather than measured. If it recurs, do not assume it is fixed.
+> - **The countdown backstop and the clock-stamp timeout are new** (2026-08-30)
+>   and have never run in a real game.
+> - **No placeholder title words exist live.** Migration 064 is applied and the
+>   admin button exists; the owner had not pressed it as of this writing.
+>
+> ### What is the OWNER'S to do, and cannot be done for them
+>
+> 1. **Write the title words.** ~86 slots are empty. The admin page's Title
+>    Words panel lists every one with its target. **Do not generate these** —
+>    model-written title text has been deleted twice at their instruction. The
+>    only exception is the mechanical placeholder (`placeholderWord`), which is
+>    tier + subject and never invented.
+> 2. **Add ~a dozen questions each to History's Ancient (58) and Medieval (52)**
+>    so they clear the 60-question floor and can carry words of their own.
+> 3. **Play a real game** and report what breaks.
+>
+> ### The three faults reported in the last playtest, and their status
+>
+> | Reported | Cause found | Fixed | Proven how |
+> |---|---|---|---|
+> | timer ran out, nothing auto-submitted, "Reveal early" stuck | the round-ending backstop skipped the host, and in a solo game the host is the only human | yes | harness: `round ended after never` → `after 39s` |
+> | bot slow to show its answer | the host's whole question screen, and the bot, sat behind one un-timed network call | yes | harness: card and answer box visible while the stamp hangs |
+> | a player could not submit at times | *inferred* — a stalled round means later answers are refused as late | probably | **not reproduced** |
+>
+> ### Habits this session kept proving right, and kept violating
+>
+> - **A check that cannot fail is worse than none.** Three checks written today
+>   passed with the fix reverted and had to be rewritten. Always break the fix
+>   and watch it go red.
+> - **Only change what was asked.** The Title Builder slot machine was rebuilt
+>   without being asked and had to be reverted in full. A question from the
+>   owner is not an instruction.
+> - **The harness lies in the direction of permissiveness.** It could not see
+>   column grants until today, and it still cannot see real latency except
+>   through `store.slowFunction` / `slowReads`.
+>
+
 > **This file describes the code as it actually is, including what's broken.**
 > The previous version described a smaller, abandoned game and misled every
 > session that read it. If you change the architecture, update this file **in
 > the same commit** — a change that leaves this file stale is not finished.
 >
-> Last verified against the code: 2026-08-29.
+> Last verified against the code: 2026-08-30.
 >
-> **THE LOCKDOWN IS APPLIED. Migrations 048 through 061 are all live —
+> **THE LOCKDOWN IS APPLIED. Migrations 048 through 064 are all live —
 > measured on the live database from the owner's SQL Editor, each by its own
-> verification report, on 2026-08-28 and 2026-08-29.** 061's eight rules came
+> verification report, between 2026-08-28 and 2026-08-30.** 062 (the deputy
+> window), 063 (title words as content, plus a follow-up REVOKE the first
+> version needed) and 064 (the placeholder flag) are the newest. 061's eight rules came
 > back ok: nobody can write `rooms.game_phase` or `current_question` directly,
 > and every other room write a client legitimately makes still works. See
 > fact #2 for the table of what is closed and the two nuisances left open
