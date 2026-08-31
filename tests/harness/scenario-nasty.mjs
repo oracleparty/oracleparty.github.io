@@ -659,10 +659,25 @@ async function awayIsVisible() {
       Object.defineProperty(document, 'hidden', { value: true, configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));
     }).catch(() => {});
-    await host.page.waitForTimeout(6000);
 
+    // THE FADE WAITS OUT AWAY_GRACE_MS FIRST — 6 seconds is inside it, 13 is
+    // past it. Presence flips the instant a phone backgrounds, so showing it
+    // immediately greyed somebody out for a two-second glance at a
+    // notification; the owner reported it as looking "afk so often".
+    //
+    // Both halves are checked, because either alone is a check that cannot
+    // fail: quiet-at-6s passes with the away indicator deleted outright, and
+    // faded-at-13s passes with the grace removed.
+    await host.page.waitForTimeout(6000);
+    const during = await bobFadedFor();
+    note(`6s after switching away (inside the grace), host sees Bob faded: ${during}`);
+    if (during === true) {
+      problems.push('a player was faded 6s after backgrounding — a glance at a notification greys somebody out in front of the whole room (AWAY_GRACE_MS)');
+    }
+
+    await host.page.waitForTimeout(7000);
     const after = await bobFadedFor();
-    note(`after switching away, host sees Bob faded: ${after}`);
+    note(`13s after switching away, host sees Bob faded: ${after}`);
     if (after !== true) {
       problems.push('a player who switched away is not shown as away to anyone else');
     }

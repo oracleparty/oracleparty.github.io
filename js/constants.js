@@ -172,6 +172,22 @@ export const NIGHT_OWL_END_HOUR = 5;
 // If you change this, change that: they were 30 and 120 for a while, and the
 // deputy's buttons were live and refused for the whole ninety seconds between.
 export const HOST_HANDOVER_MS = 30000;
+
+// How long somebody has to be gone before the room is TOLD they are away.
+//
+// Purely cosmetic, and deliberately separate from everything that acts on
+// absence: HOST_HANDOVER_MS still deputises at 30s and STALE_TIMEOUT_MS still
+// releases a seat at 120s, both measured on last_seen_at rather than on this.
+// Nothing about who runs the game or who keeps their seat changes here.
+//
+// Presence flips the instant a phone backgrounds — an incoming call, a glance
+// at a notification, the keyboard opening — so the room was being told somebody
+// was AFK for what is usually a two-second dip. The owner's report: it "seems
+// like someone is afk so often".
+//
+// awayTimestamps has always recorded WHEN each player was first seen away, for
+// exactly this, and nothing ever read it.
+export const AWAY_GRACE_MS = 10000;
 export const STALE_TIMEOUT_MS = 120000;          // 2 minutes — seat released; rejoining restores score and history
 export const DISCONNECTED_TIMEOUT_MS = 45000;     // 45 seconds — faster cleanup after beacon (tab close)
 export const HEARTBEAT_DB_INTERVAL_MS = 15000;    // 15 seconds — DB heartbeat (last_seen_at update)

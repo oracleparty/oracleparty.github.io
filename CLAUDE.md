@@ -71,6 +71,133 @@
 > the same commit** — a change that leaves this file stale is not finished.
 >
 > Last verified against the code: 2026-08-30.
+
+> ## 2026-08-31 — a playtest list, worked one at a time
+>
+> Nine things the owner reported after a real game. Written the way the section
+> above asks for: each says how it was established, and the ones that are
+> inference say so.
+>
+> ### The game-breaker: a co-host revealing the final question
+>
+> **REPRODUCED in the harness, fixed, and the fix break-tested.** The owner's
+> words: *"gamebreakingly glitched after difficulty selection. I couldnt see the
+> clue, it kept rerolling the difficulty, the question appeared phased on the
+> wager selection screen, i couldnt even type, my friend saw a different
+> question."*
+>
+> "Reveal Question" is gated on `canControlGame()`, so a **co-host or a deputy**
+> can press it — and `handleRevealFinalQuestion` swaps the final question and
+> writes a new `question_ids`. Two guards were written as *"am I the host"* when
+> they meant *"am I the one who did this"*, and both broke:
+>
+> | | |
+> |---|---|
+> | `handleRoomChange` | `questionIdsChanged` was gated on `!state.room.isHost` — correct when only the host could change the list, and since co-hosts can, **the host was the one client structurally unable to hear about it**. Measured: room and co-host on q15, host still showing q21. Migration 046 judges against the ROOM's question, so the host answers one nobody asked. |
+> | the `reveal` broadcast | skipped the animation on `state.room.isHost`, so the host got **no slot machine at all** when a co-host revealed. The channel is `broadcast:{self:true}`, so the presser also hears itself — reading the code, it runs the animation twice, two six-second chains of uncancellable `setTimeout`s over a `position:fixed; z-index:10000` overlay. |
+>
+> **The double-run is READ, not measured** — say it that way. Both chains
+> overlap so tightly that neither a `hidden` observer nor a `--show` observer
+> sees two transitions. What WAS measured is the host getting zero animations
+> and the two phones being asked different questions.
+>
+> A third fault sat underneath: `syncToCurrentState`'s repair called
+> `handlePhaseTransition`, which **refuses a phase it is already on** — the
+> `question` branch bails on `_lastProcessedQuestion === currentQuestion` and
+> everything else on `phase === state.gamePhase`, and both are true by
+> construction in the only case this repair exists for. So the list was
+> corrected in state and the screen kept the old question. It calls
+> `showQuestionScreen()` directly now.
+>
+> `scenario-cohost` covers it: the co-host drives to the final wager and
+> reveals, and every phone must be asked the room's question AND must have run
+> the reveal. Verified by reverting all three — it names *"Alice is being asked
+> 'Test question 30?' while the room asks 'Test question 9?'"*. **Its bank had
+> to be re-seeded with mixed difficulties first**, or `fetchQuestionByDifficulty`
+> finds nothing, the swap never happens, and the check agrees with itself
+> whatever the code does — the same trap that cost `scenario-fullgame` its
+> coverage.
+>
+> ### The rest of the list
+>
+> | Reported | Cause | How established |
+> |---|---|---|
+> | collapsible panels do nothing | `.title-rows { display: flex }` is an AUTHOR rule and beats the UA's `[hidden] { display: none }` whatever the specificity. Three other places in the stylesheet already carry the `[hidden]` line; the newest forgot | screenshot, break-tested |
+> | admin Title Words slow / broken | `measureTopicSizes()` awaited `fetchQuestionCount` **64 times sequentially** — 12 subjects + 52 topics — before drawing anything. 15-30s on a phone. Batched 8 at a time | counted from `CATEGORY_META` |
+> | players cannot see placeholders | the **Fill placeholders button lives inside that panel**, so it was unreachable. One slow loop, three complaints | inference, and it follows |
+> | friend cannot accept a request | `parseInt(dataset.accept, 10)` on `friend_requests.id`. Migration 003 declares BIGINT, but #10 measured the live `friendships.id` as a **uuid** and the live `friend_requests` as missing 003's UNIQUE — so those tables were not made by 003. `parseInt("3f25…")` is `3`; `parseInt("a3f2…")` is `NaN` | strong inference, NOT measured — the fix is type-agnostic so it does not depend on which |
+> | "it said I sent one as well?" | the profile card ignored `autoAccepted` and flattened every error to "Already Sent". You became friends and it said "Request Sent" | read |
+> | the bot says "Waiting..." | an empty answer before the reveal reads as WAITING because a human's real answer may be in flight. **A bot has nothing in flight, and a blank IS its answer** for the ~20% of the bank with no stored distractor | read |
+> | shown away too eagerly | presence flips the instant a phone backgrounds. `awayTimestamps` has always recorded WHEN, for exactly this, and nothing read it. `AWAY_GRACE_MS` (10s), display only | break-tested both ways |
+>
+> **`AWAY_GRACE_MS` IS DISPLAY ONLY.** Deputising (`HOST_HANDOVER_MS`) and
+> releasing a seat (`STALE_TIMEOUT_MS`) read `last_seen_at` and are untouched:
+> the game still stops waiting for an absent player at once. Only the label
+> waits. It has four readers, so it is one exported `isPlayerAway` in
+> `js/game/state.js` plus the lobby's own — not the grace written out five
+> times. Both scenarios check BOTH halves (quiet early, labelled late); either
+> alone is a check that cannot fail.
+>
+> ### The `picker.onclick` crash was already gone
+>
+> The reported `null is not an object (evaluating 'picker.onclick …')` exists in
+> **exactly one commit** — `7a9f9f6`, 16:06 UTC — and was removed by `fd769bb`
+> at 17:45 the same day, the Title Builder revert. `git log -S"picker.onclick"`
+> is the whole investigation. **Do not go looking for it in HEAD.**
+>
+> ### A hard dependency the app should not have had
+>
+> `fetchTitleWords` named `is_placeholder` in its `select`. That column arrives
+> in **migration 064**, migrations here are applied by hand, and PostgREST
+> answers `42703` for the WHOLE select — so if 064 is not applied, **every
+> owner-written word disappears from every screen**, with nothing but a console
+> warning. It retries without the column now and reads every row as written,
+> which is the harmless direction. This project's own rule is that the
+> JavaScript must be safe to deploy before the SQL is run; that select broke it.
+>
+> ### Two things deliberately NOT done
+>
+> - **The Title Builder wheel is not coloured by rarity.** Only the gallery
+>   rows are. The owner asked for "each title word" in a conversation about the
+>   gallery, and this file records the wheel being rebuilt unasked once and
+>   reverted in full. Ask before touching it.
+> - **Four dead locals remain** — `fromPhase` (reveal.js), `fromPhaseFW` /
+>   `fromPhaseFQ` (scores.js), `questionAtExpiry` (question.js). Each is
+>   assigned once, read never, and carries a paragraph explaining machinery that
+>   is switched off (`expectedPhase` is `null` at every call site). They are
+>   debris from the compare-and-set retreat, they change nothing, and removing
+>   them was not asked for. **The comments lie about what is running** — that is
+>   the reason to delete them, when somebody decides to.
+>
+> ### Also corrected in this pass
+>
+> - **The room code is FOUR LETTERS, not six digits.** `generateRoomCode()` in
+>   `js/db/rooms.js` picks 4 from A-Z. This file said "6-digit" in four places,
+>   including two security arguments about how easily a room is found.
+> - `cleanup()` cleared the countdown backstop **inside `if (state._advancePollId)`**,
+>   and `_advancePollId` is only set during a QUESTION while that timer only runs
+>   during a COUNTDOWN — so the clear was unreachable exactly when it applied.
+>   (`state._advancePollId = null` also appeared twice: an edit that landed in
+>   the wrong place, in `60f40d8`.) The leak lint reads `cleanup()` for the
+>   CLEAR and cannot see that it sits behind an unrelated condition.
+> - `docs/BOTS.md` still says the bot's final wager is 10; `constants.js` says
+>   20, on the owner's instruction. The doc is stale, not the code.
+>
+> ### What this pass did NOT establish
+>
+> Nothing here explains a stall or a refusal on the **live database**. The CI
+> probe on `18d199f` (2026-08-30 15:48) reports every `op_*` function and every
+> watched column installed, and `answers -> players: no relationship`, so 052 is
+> applied. But **the probe runs as `anon`, and since anonymous sign-in every
+> real player is `authenticated`** — the exact blind spot that broke room
+> creation in slice 8c. That repair was run by hand and **is in no migration
+> file**, so this repo cannot say what the live policies are. One query settles
+> it, and it is the owner's to run:
+>
+> ```sql
+> SELECT schemaname, tablename, policyname, cmd, roles
+>   FROM pg_policies WHERE schemaname = 'public' AND roles <> '{public}';
+> ```
 >
 > **THE LOCKDOWN IS APPLIED. Migrations 048 through 064 are all live —
 > measured on the live database from the owner's SQL Editor, each by its own
@@ -109,7 +236,7 @@
 
 ## What This Is
 
-A mobile-only browser trivia party game. Players join a room with a 6-digit
+A mobile-only browser trivia party game. Players join a room with a 4-letter
 code, answer typed trivia questions, and wager points on their own confidence.
 Built for playing with friends in the same room or over chat.
 
@@ -247,7 +374,7 @@ since)`).
 
 **Be precise about what this is.** It is NOT a permission and does not close
 the paragraph above — anyone crafting requests by hand still reads everything.
-What it closes is the realistic leak: room codes are six digits and public
+What it closes is the realistic leak: room codes are four letters and public
 games are listed, so anybody can walk in, and until now they arrived to the
 whole transcript. That is how a private conversation actually escaped.
 
@@ -915,7 +1042,7 @@ not build it on `game_history.score`.
 
 1. **Host** picks a category (and optionally a subcategory), sets who can join,
    question count and timer, then creates the room.
-2. **Players** join by 6-digit code, from a friend's lobby, or from public games.
+2. **Players** join by 4-letter code, from a friend's lobby, or from public games.
 3. **Lobby** — chat, player list, ready status. Host starts.
 4. **Countdown** — synced 3-2-1-GO from a shared server timestamp.
 5. **Each round** — assign a wager, read the question, type an answer, submit.
@@ -2939,7 +3066,7 @@ Supabase's own message when it refuses a sign-in.
 **The hole:** `players` had `FOR DELETE USING (true)`, and every browser carries
 the publishable key because guests play. So anyone who could reach the site
 could remove any player from any live game — mid-round, with their score, in one
-request. Room codes are six digits and public games are listed, so finding a
+request. Room codes are four letters and public games are listed, so finding a
 room to do it to was not a barrier.
 
 **Why this could be closed while CLAUDE.md #2 says `players` cannot be.** That

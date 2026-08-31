@@ -29,7 +29,13 @@ function seedQuestions(store, n = 40) {
       acceptable_answers: [],
       categories: [CATEGORY],
       subcategory: null,
-      difficulty: 'medium',
+      // MIXED, NOT ALL 'medium'. The final question is SWAPPED for one matching
+      // the difficulty vote, and with a bank of a single difficulty
+      // fetchQuestionByDifficulty finds nothing, the swap silently never
+      // happens, and question_ids never changes — so the final-question check
+      // below would agree with itself whatever the code did. CLAUDE.md records
+      // this exact trap costing scenario-fullgame its own coverage.
+      difficulty: ['easy', 'medium', 'hard'][i % 3],
       format: 'open',
       fun_fact: null,
       discarded: false,
@@ -219,6 +225,115 @@ try {
     note(`co-host advanced the room: ${before} -> ${after}`);
     if (before === after) {
       problems.push('the co-host pressed advance and the room did not move');
+    }
+  }
+
+  // ============================================================
+  // THE CO-HOST REVEALS THE FINAL QUESTION
+  //
+  // "Reveal Question" is gated on canControlGame(), so a CO-HOST or a DEPUTY
+  // can press it — and handleRevealFinalQuestion SWAPS the final question for
+  // one matching the difficulty vote and writes a new question_ids.
+  //
+  // Two things used to be written as "am I the host" that meant "am I the one
+  // who did this", and both broke here:
+  //
+  //   * handleRoomChange ignored a question-list change when isHost, so the
+  //     HOST alone never heard about the swap. Measured before the fix: the
+  //     room and the co-host on q15, the host still showing q21. Since
+  //     migration 046 judges against the ROOM's question, the host answers one
+  //     nobody asked and is marked wrong on one they never saw. Reported from a
+  //     live game as "my friend saw a different question".
+  //   * the difficulty 'reveal' broadcast skipped the animation when isHost,
+  //     so the host got no slot machine at all — while the presser, which the
+  //     channel echoes to (broadcast:{self:true}), ran it twice.
+  //
+  // Checking that every phone AGREES is what catches the first; checking that
+  // every phone ANIMATED catches the second. Agreement alone would pass if
+  // nobody was asked anything.
+  // ============================================================
+  heading('the co-host reveals the final question');
+
+  for (const r of [host, bob, carol]) {
+    await r.page.evaluate(() => {
+      window.__drChains = 0;
+      const fin = document.querySelector('.difficulty-reveal__final');
+      if (!fin) return;
+      let had = fin.classList.contains('difficulty-reveal__final--show');
+      new MutationObserver(() => {
+        const now = fin.classList.contains('difficulty-reveal__final--show');
+        if (!had && now) window.__drChains++;
+        had = now;
+      }).observe(fin, { attributes: true, attributeFilter: ['class'] });
+    }).catch(() => {});
+  }
+
+  const screenOf = r => r.page
+    .evaluate(() => document.querySelector('.screen.active')?.id || '(none)').catch(() => '(nav)');
+  const done = new Set();
+  let revealed = false;
+
+  for (let i = 0; i < 220 && !revealed; i++) {
+    for (const r of [host, bob, carol]) {
+      const screen = await screenOf(r);
+      if (screen === 'question-screen') {
+        const shown = await r.page.textContent('#question-text').catch(() => '');
+        const n = (shown || '').match(/\d+/)?.[0];
+        if (done.has(`${r.name}:${n}`)) continue;
+        const input = r.page.locator('#answer-input');
+        if (!await input.isVisible().catch(() => false)) continue;
+        const w = r.page.locator('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first();
+        if (await w.count() > 0) await w.click().catch(() => {});
+        await input.fill(n ? `Answer ${n}` : 'x').catch(() => {});
+        if (await r.page.isEnabled('#btn-submit-answer').catch(() => false)) {
+          await r.page.click('#btn-submit-answer').catch(() => {});
+          done.add(`${r.name}:${n}`);
+        }
+      } else if (screen === 'final-wager-screen') {
+        const key = `${r.name}:final`;
+        if (!done.has(key)) {
+          const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
+          if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
+          if (await clickIfReady(r, '#btn-fw-lock')) done.add(key);
+        }
+        // THE CO-HOST, not the host. That is the whole point of the section.
+        if (r === bob && done.has(key) && await clickIfReady(bob, '#btn-fw-reveal')) {
+          note('the co-host pressed Reveal Question');
+          revealed = true;
+        }
+      } else if (r === host) {
+        if (screen === 'reveal-screen') await clickIfReady(r, '#btn-next-question');
+        if (screen === 'scores-screen') await clickIfReady(r, '#btn-scores-action');
+      }
+    }
+    await host.page.waitForTimeout(400);
+  }
+
+  if (!revealed) {
+    problems.push('the co-host never got to press Reveal Question, so the final-question checks proved nothing');
+  } else {
+    await host.page.waitForTimeout(14000);   // let the slot machine finish everywhere
+    const asked = {};
+    for (const r of [host, bob, carol]) {
+      asked[r.name] = (await r.page.textContent('#question-text').catch(() => null)) || '(none)';
+    }
+    const roomTail = table.store.table('rooms')[0]?.question_ids?.slice(-1)[0];
+    const roomQ = table.store.table('questions').find(q => q.id === roomTail)?.question || '(unknown)';
+    note(`room asks: ${JSON.stringify(roomQ)}`);
+    for (const r of [host, bob, carol]) note(`${r.name} is asked: ${JSON.stringify(asked[r.name])}`);
+
+    for (const r of [host, bob, carol]) {
+      if (asked[r.name] !== roomQ) {
+        problems.push(`${r.name} is being asked ${JSON.stringify(asked[r.name])} while the room asks ${JSON.stringify(roomQ)} — the verdict comes from the room's question, so they are judged on one they never saw`);
+      }
+    }
+
+    for (const r of [host, bob, carol]) {
+      const chains = await r.page.evaluate(() => window.__drChains).catch(() => -1);
+      note(`${r.name} ran the difficulty reveal ${chains}x`);
+      if (chains === 0) {
+        problems.push(`${r.name} never saw the difficulty reveal when the co-host revealed the final question`);
+      }
     }
   }
 

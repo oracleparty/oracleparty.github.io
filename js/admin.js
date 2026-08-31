@@ -2013,15 +2013,52 @@ function titleWordFor(slot, cat, sub, rarity) {
 // are re-read from the database on every redraw.
 let _topicSizes = null;
 
+/**
+ * How big every topic is, counted the way the game actually asks.
+ *
+ * SIXTY-FOUR REQUESTS, AND THEY USED TO GO ONE AT A TIME. Twelve subjects plus
+ * their fifty-two topics, each awaited inside a nested loop, with nothing on
+ * screen but "Counting the bank…" until the last one landed. On a phone at a
+ * few hundred milliseconds per round trip that is fifteen to thirty seconds of
+ * a panel that looks broken — reported by the owner as "title words not working
+ * on admin page? Or it is taking a really long time to load?"
+ *
+ * It matters more than a slow panel usually would: the button that fills the
+ * empty slots with placeholders lives INSIDE this panel, so nobody could reach
+ * it, so no placeholder was ever written, so players saw an empty collection.
+ * One slow loop, three complaints.
+ *
+ * They are independent counts, so they go together. Batched rather than fired
+ * all at once: sixty-four simultaneous requests from one phone is how you get
+ * rate-limited, and a burst that fails is slower than a batch that does not.
+ */
+const TOPIC_COUNT_BATCH = 8;
+
 async function measureTopicSizes() {
   if (_topicSizes) return _topicSizes;
+
+  // Flatten first, so the batching does not have to know about the shape.
+  const jobs = [];
+  for (const catKey of Object.keys(CATEGORY_META)) {
+    jobs.push({ catKey, sub: null });
+    for (const sub of flattenSubcategories(catKey)) jobs.push({ catKey, sub: sub.key });
+  }
+
+  const counts = new Map();
+  for (let i = 0; i < jobs.length; i += TOPIC_COUNT_BATCH) {
+    const batch = jobs.slice(i, i + TOPIC_COUNT_BATCH);
+    await Promise.all(batch.map(async j => {
+      counts.set(`${j.catKey}\u0000${j.sub ?? ''}`, await fetchQuestionCount(j.catKey, j.sub));
+    }));
+  }
+
   const out = {};
   for (const catKey of Object.keys(CATEGORY_META)) {
     const sizes = {};
     for (const sub of flattenSubcategories(catKey)) {
-      sizes[sub.key] = await fetchQuestionCount(catKey, sub.key);
+      sizes[sub.key] = counts.get(`${catKey}\u0000${sub.key}`) || 0;
     }
-    out[catKey] = { sizes, subjectSize: await fetchQuestionCount(catKey) };
+    out[catKey] = { sizes, subjectSize: counts.get(`${catKey}\u0000`) || 0 };
   }
   _topicSizes = out;
   return out;

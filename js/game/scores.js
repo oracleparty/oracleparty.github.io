@@ -47,7 +47,7 @@ import { sendHonk, getHonkCount } from '../honk.js';
 import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import {
-  state, canControlGame, currentGameAnswers, getCategoryLabel,
+  state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
   _lastScoresRenderedForQuestion, setLastScoresRendered,
   _isLeaving, setIsLeaving,
@@ -135,7 +135,7 @@ export async function showScoresScreen() {
     const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
-      <div class="score-anim-row${state.awayTimestamps.has(String(p.id)) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
+      <div class="score-anim-row${isPlayerAway(p.id) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         <div class="avatar-wrap">
           ${avatarHtml}
           ${honkBadge}
@@ -538,10 +538,24 @@ export function showFinalWagerScreen() {
         }
       })
       .on('broadcast', { event: 'reveal' }, ({ payload }) => {
-        // Non-host: run the same slot-machine animation locally so all clients
-        // see the dramatic difficulty reveal in sync. Host already triggered
-        // its own animation directly in handleRevealFinalQuestion.
-        if (state.room.isHost) return;
+        // SKIP MY OWN ECHO — not "skip if I am the host".
+        //
+        // The channel is broadcast:{self:true}, and whoever pressed the button
+        // has already run this animation directly in handleRevealFinalQuestion.
+        // The old test was `state.room.isHost`, which is only the same thing
+        // while the host is the only one who can press it — and that button is
+        // gated on canControlGame(), so a CO-HOST or a DEPUTY can. When one of
+        // them revealed, two things went wrong at once: they ran the slot
+        // machine TWICE, two six-second chains of un-cancellable setTimeouts
+        // fighting over the same overlay ("it kept rerolling the difficulty"),
+        // and the HOST — skipped by the old guard — got no reveal at all.
+        //
+        // Asking who sent it is right for every presser, which is what the old
+        // guard was trying and failing to express.
+        if (payload?.from && String(payload.from) === String(state.room.playerId)) return;
+        // No sender on the payload means an older client. Fall back to the old
+        // rule rather than animating twice for the host.
+        if (!payload?.from && state.room.isHost) return;
         // voted comes over the wire so every client spins through the same
         // options. Deriving it locally would let a client whose vote state was
         // incomplete animate a different wheel from everyone else's.
@@ -796,7 +810,9 @@ export async function handleRevealFinalQuestion() {
       state.difficultyVoteChannel.send({
         type: 'broadcast',
         event: 'reveal',
-        payload: { mostVoted, winner, voted }
+        // WHO SENT IT, so the receiver can skip its own echo. The channel is
+        // broadcast:{self:true}, so whoever presses the button hears itself.
+        payload: { mostVoted, winner, voted, from: String(state.room.playerId) }
       });
     } catch (_) { /* swallow — animation still runs locally */ }
   }

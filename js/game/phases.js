@@ -258,11 +258,33 @@ export function handleRoomChange(payload) {
     return;
   }
 
-  // Detect whether question_ids actually changed (e.g., difficulty vote replaced final question)
-  const questionIdsChanged = !state.room.isHost && question_ids && question_ids.length > 0
+  // Detect whether question_ids actually changed (e.g., difficulty vote replaced
+  // the final question).
+  //
+  // THE HOST IS NOT EXEMPT, AND EXEMPTING IT COST A WHOLE GAME.
+  //
+  // This read `!state.room.isHost`, written when the host was the only client
+  // that could ever change the list — so listening to it would only ever have
+  // been the host hearing its own echo. That stopped being true the moment a
+  // CO-HOST or a DEPUTY could press "Reveal Question": handleRevealFinalQuestion
+  // is gated on canControlGame(), not on isHost, and it swaps the final question
+  // and writes a new list. The host was then the ONE client in the room
+  // structurally unable to hear about it.
+  //
+  // Reproduced in the harness: co-host reveals, the room and everybody else are
+  // on q15, the host is still showing q21. Since migration 046 judges against
+  // the ROOM's question rather than the one on screen, the host answers a
+  // question nobody asked and is marked wrong on one they never saw. Reported
+  // from a live game as "my friend saw a different question".
+  //
+  // Hearing its own echo costs the host nothing: the ids it just wrote match
+  // what it already holds, so this is false and nothing refetches. Compared as
+  // strings, matching syncToCurrentState — the two do the same job and must not
+  // disagree about what "changed" means.
+  const questionIdsChanged = question_ids && question_ids.length > 0
     && state.questions.length > 0
     && (question_ids.length !== state.questions.length
-        || question_ids.some((id, i) => state.questions[i]?.id !== id));
+        || question_ids.some((id, i) => String(state.questions[i]?.id) !== String(id)));
 
   if (current_question !== undefined) {
     state.currentQuestion = current_question;

@@ -416,8 +416,32 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       if (!viewer) return;
       addFriendBtn.disabled = true;
       addFriendBtn.textContent = 'Sending...';
-      const { error } = await sendFriendRequest(viewer.user.id, userId);
-      addFriendBtn.textContent = error ? 'Already Sent' : 'Request Sent';
+      const { error, autoAccepted } = await sendFriendRequest(viewer.user.id, userId);
+      // SAY WHICH OF THE THREE THINGS HAPPENED.
+      //
+      // This read `error ? 'Already Sent' : 'Request Sent'`, which was wrong in
+      // both directions at once. It ignored autoAccepted — so when the other
+      // person had ALREADY sent you one, sendFriendRequest quietly accepted it
+      // and made you friends, and the button said "Request Sent". The owner's
+      // report is exactly that: "i sent again and he sent and it said i sent one
+      // as well? But idk if that means success?" You were friends, and nothing
+      // on screen said so.
+      //
+      // And it flattened every error to "Already Sent", including "Already
+      // friends" and "They declined an earlier request, so a new one has to come
+      // from them" — two sentences sendFriendRequest goes to real trouble to
+      // produce, thrown away at the last step and replaced with a third thing
+      // that was not true. The search-results button one screen away has handled
+      // autoAccepted correctly all along; this is the same rule, in the place
+      // people actually tap it.
+      if (autoAccepted) {
+        addFriendBtn.textContent = 'Friends!';
+      } else if (error) {
+        addFriendBtn.textContent = error.message || "Couldn't send that";
+        addFriendBtn.disabled = false;   // a real failure is worth retrying
+      } else {
+        addFriendBtn.textContent = 'Request Sent';
+      }
     };
   }
 
@@ -1367,7 +1391,20 @@ async function loadFriendsTab(userId) {
         const origText = acceptBtn.textContent;
         acceptBtn.textContent = '...';
         try {
-          const { error } = await acceptFriendRequest(parseInt(acceptBtn.dataset.accept, 10));
+          // NO parseInt. Migration 003 declares friend_requests.id as BIGINT,
+          // but the live tables were not created by 003 — CLAUDE.md #10 records
+          // that friendships.id is a UUID there and that friend_requests never
+          // got 003's UNIQUE constraint. parseInt("3f25…") is 3 and
+          // parseInt("a3f2…") is NaN, so .eq('id', …) matched nothing (or threw
+          // 22P02), .single() failed, and the button said "Error" — for a
+          // request that was sitting there perfectly valid.
+          //
+          // The string works for a bigint AND a uuid, so this stops depending
+          // on a column type this repo does not actually know. The harness
+          // could never see it: the fake store issues integer ids for
+          // integer-PK tables, so it agrees with the migration rather than with
+          // the database.
+          const { error } = await acceptFriendRequest(acceptBtn.dataset.accept);
           if (error) {
             logger.error('Profile', 'acceptFriendRequest failed', error);
             acceptBtn.textContent = 'Error';
@@ -1395,7 +1432,7 @@ async function loadFriendsTab(userId) {
         declineBtn.disabled = true;
         declineBtn.textContent = '...';
         try {
-          await declineFriendRequest(parseInt(declineBtn.dataset.decline, 10));
+          await declineFriendRequest(declineBtn.dataset.decline);   // a string, for the same reason as accept above
         } catch (err) {
           logger.error('Profile', 'declineFriendRequest threw', err);
         }

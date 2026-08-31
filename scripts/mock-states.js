@@ -1312,13 +1312,23 @@ export const STATES = {
           ['locked', '——', 'rare', 'Host 20 games'],
           ['secret', '❓', 'legendary', 'Find it yourself'],
         ], null],
-        ['Knowledge', 'What you know. Earned by getting questions right in a subject.', 3, 20, [
+        // EVERY RARITY APPEARS AS EARNED, because the word itself now carries
+        // its rarity colour and the sweep measures contrast on what is actually
+        // rendered. With only common/uncommon/rare here it would have passed
+        // while epic, legendary and mythic went unmeasured — which is how the
+        // tier badges and the medal colours each shipped unreadable.
+        ['Knowledge', 'What you know. Earned by getting questions right in a subject.', 5, 20, [
           ['earned', 'History', 'common', '10 right'],
           ['earned', 'Chronicles', 'uncommon', '15 right in Ancient'],
+          ['earned', 'Antiquity', 'epic', '44 right in Ancient'],
+          ['earned', 'Atomic', 'legendary', '327 right in Modern'],
+          ['earned', 'Timeless', 'mythic', 'All 1174 in History'],
           ['locked', '——', 'uncommon', '82 right in Modern'],
           ['locked', '——', 'legendary', '327 right in Modern'],
-        ], '__TOGGLE__🏛️ History|2 / 4|open'],
-        [null, null, 0, 0, [], '__TOGGLE__🔬 Science|0 / 1|closed'],
+        ], '__TOGGLE__🏛️ History|5 / 7|open'],
+        [null, null, 0, 0, [
+          ['earned', 'Science', 'rare', 'A quarter of every topic'],
+        ], '__TOGGLE__🔬 Science|1 / 1|closed'],
         ['Standing', 'The rank you have reached, and one-off feats.', 1, 8, [
           ['earned', 'Apprentice', 'common', 'Reach Apprentice in any subject'],
           ['locked', '——', 'rare', 'Reach Scholar in any subject'],
@@ -1336,7 +1346,7 @@ export const STATES = {
       // grid of ~200px boxes was reviewed on a real phone and was clunky,
       // uncompact and showed no structure. If that renderer changes, change
       // this in the same commit or the sweep reviews a screen that never ships.
-      const cardsOf = cards => `<div class="title-rows">${cards.map(([state, word, rarity, how]) => `
+      const cardsOf = (cards, closed = false) => `<div class="title-rows"${closed ? ' hidden' : ''}>${cards.map(([state, word, rarity, how]) => `
         <div class="title-row title-row--${state === 'earned' ? 'earned' : 'locked'}" data-rarity="${rarity}">
           <span class="title-row__word">${word}</span>
           <span class="title-row__how">${how || ''}</span>
@@ -1355,6 +1365,16 @@ export const STATES = {
             <span class="title-gallery__chev">\u25BE</span>
           </button>`;
       };
+      // A CLOSED SUBJECT IS ACTUALLY CLOSED HERE NOW, and it never was.
+      //
+      // The mock drew aria-expanded="false" and then rendered the rows anyway,
+      // so every state this sweep has ever photographed showed the collapse
+      // NOT working — which is precisely the bug the owner reported, sitting in
+      // the review tool the whole time. `.title-rows { display: flex }` is an
+      // author rule and beats the user-agent's `[hidden] { display: none }`, so
+      // the real screen ignored `hidden` too. A mock that cannot express the
+      // closed state cannot review it.
+      const isClosed = g => !!g && g.startsWith('__TOGGLE__') && g.endsWith('|closed');
       body.innerHTML = slots.map(([name, blurb, got, total, cards, group]) => {
         const head = name ? `
           <div class="title-gallery__slot-head">
@@ -1363,9 +1383,10 @@ export const STATES = {
           </div>
           <p class="title-gallery__slot-blurb">${blurb}</p>` : '';
         const groupLine = groupHtml(group);
+        const rows = cardsOf(cards, isClosed(group));
         return name
-          ? `<section class="title-gallery__slot">${head}${groupLine}${cardsOf(cards)}</section>`
-          : `${groupLine}${cardsOf(cards)}`;
+          ? `<section class="title-gallery__slot">${head}${groupLine}${rows}</section>`
+          : `${groupLine}${rows}`;
       }).join('');
     },
   },

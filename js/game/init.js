@@ -6,7 +6,7 @@
 import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 import { logger } from '../logger.js';
 import { presenceNeedsRebuild } from '../presence-health.js';
-import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS } from '../constants.js';
+import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS, AWAY_GRACE_MS } from '../constants.js';
 import {
   setPhaseOnServer,
   claimSeat,
@@ -46,7 +46,7 @@ import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
 import { updatePresence } from '../presence.js';
 import { attachProfileCardHandler } from '../profile.js';
 import {
-  state,
+  state, isPlayerAway,
   resolveFieldMap,
   _flagMenuCloseHandler, setFlagMenuCloseHandler,
   _isLeaving, setIsLeaving,
@@ -684,8 +684,30 @@ window.addEventListener('pagehide', handleUnload);
 // only way back is a new one.
 // ============================================
 
+/**
+ * Re-apply the classes once the youngest away player crosses the grace.
+ *
+ * Presence only syncs on CHANGE, so without this a player who goes away and
+ * stays away would never be shown as away at all — the one sync that recorded
+ * them lands while they are still inside the grace, and nothing looks again.
+ */
+function scheduleAwayRecheck() {
+  clearTimeout(state._awayRecheckId);
+  state._awayRecheckId = null;
+  let soonest = Infinity;
+  for (const since of state.awayTimestamps.values()) {
+    const left = AWAY_GRACE_MS - (Date.now() - since);
+    if (left > 0 && left < soonest) soonest = left;
+  }
+  if (soonest === Infinity) return;
+  state._awayRecheckId = setTimeout(() => {
+    state._awayRecheckId = null;
+    applyAwayClasses();
+  }, soonest + 50);
+}
+
 function applyAwayClasses() {
-  const isAway = row => state.awayTimestamps.has(String(row.dataset.playerId));
+  const isAway = row => isPlayerAway(row.dataset.playerId);
   document.querySelectorAll('#reveal-answers .answer-row').forEach(row => {
     row.classList.toggle('answer-row--away', isAway(row));
   });
@@ -701,8 +723,9 @@ function applyAwayClasses() {
   // The word, not just the fade. 40% opacity alone is ambiguous — it reads as
   // away, gone, disabled or still loading, and a playtest could not tell which.
   document.querySelectorAll('[data-away-label]').forEach(el => {
-    el.textContent = state.awayTimestamps.has(String(el.dataset.awayLabel)) ? 'Away' : '';
+    el.textContent = isPlayerAway(el.dataset.awayLabel) ? 'Away' : '';
   });
+  scheduleAwayRecheck();
 }
 
 function buildPresenceChannel() {
@@ -874,7 +897,20 @@ async function syncToCurrentState() {
         ['question', 'final_question'].includes(roomData.game_phase)) {
       // The round number is the same but the QUESTION is not, so the screen has
       // to be redrawn even though nothing else moved.
-      handlePhaseTransition(roomData.game_phase);
+      //
+      // DIRECTLY, NOT THROUGH THE PHASE ROUTER, and this repair had never once
+      // run. handlePhaseTransition refuses a phase it is already on — the
+      // 'question' branch bails on `_lastProcessedQuestion === currentQuestion`
+      // and everything else bails on `phase === state.gamePhase` — and BOTH are
+      // true here by construction, because this is the case where the round did
+      // not move. So the list was corrected in state and the screen went on
+      // showing the old question, which is the one thing this was written to
+      // stop.
+      //
+      // showQuestionScreen is the right call and needs no guard of its own:
+      // _renderedQuestion was set to null above, which is exactly how this file
+      // asks for a full redraw of a question already on screen.
+      showQuestionScreen();
       return;
     }
 
@@ -977,9 +1013,20 @@ function cleanup() {
   if (state._advancePollId) {
     clearInterval(state._advancePollId);
     state._advancePollId = null;
+  }
+  // NESTED INSIDE THE BLOCK ABOVE UNTIL NOW, WHICH MADE IT UNREACHABLE WHEN IT
+  // MATTERED. The countdown backstop runs during the COUNTDOWN; _advancePollId
+  // is only set by startPhaseBackstop, which runs during a QUESTION. So the one
+  // phase this timer exists for is the one phase where _advancePollId is null,
+  // and cleanup() skipped the clear entirely. (`state._advancePollId = null`
+  // also appeared twice — the shape of an edit that landed in the wrong place.)
+  //
+  // It self-terminated on its next tick, so nothing broke; but the leak lint
+  // reads cleanup() for the CLEAR and cannot see that it sits behind an
+  // unrelated condition, so it reported this as handled.
+  if (state.countdownBackstopId) {
     clearInterval(state.countdownBackstopId);
     state.countdownBackstopId = null;
-    state._advancePollId = null;
   }
   // THESE THREE SURVIVED cleanup() UNTIL 2026-08-28, and one of them could put
   // the room back into a game the host had just ended.
@@ -1016,6 +1063,10 @@ function cleanup() {
   if (state.feedbackFadeTimer) {
     clearTimeout(state.feedbackFadeTimer);
     state.feedbackFadeTimer = null;
+  }
+  if (state._awayRecheckId) {
+    clearTimeout(state._awayRecheckId);
+    state._awayRecheckId = null;
   }
   if (state.stalePollId) {
     clearInterval(state.stalePollId);

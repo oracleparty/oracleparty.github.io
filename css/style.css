@@ -7108,6 +7108,16 @@ body[style*="opacity: 0"] {
   overflow: hidden;
   background: var(--color-surface);
 }
+/* AN AUTHOR `display` BEATS THE `[hidden]` ATTRIBUTE, ALWAYS.
+   `[hidden] { display: none }` comes from the user-agent stylesheet, and any
+   author rule wins over a UA rule whatever the specificity — so the flex above
+   left every collapsed subject permanently open, and the collapse the owner
+   asked for did nothing at all.
+   Three other places in this file already carry this line
+   (.admin-panel__body, .title-gallery, .celebration). This is the fourth
+   reader of a rule that was stated three times and fixed three times; the
+   newest one simply did not get it. */
+.title-rows[hidden] { display: none; }
 .title-row {
   display: grid;
   /* The word column is fixed so every requirement starts at the same x — a
@@ -7154,6 +7164,22 @@ body[style*="opacity: 0"] {
 }
 .title-row--earned .title-row__mark { color: var(--color-primary); font-weight: 700; }
 .title-row--locked .title-row__word { color: var(--color-text-muted); font-weight: 600; }
+
+/* THE WORD ITSELF CARRIES ITS RARITY, at the owner's request.
+   Only an EARNED row: a locked one shows a dash rather than a word, and the
+   left edge already says what tier it is, so colouring the dash would trade the
+   earned/locked distinction for something the border already tells you.
+   Measured against --color-surface in all three themes before being used as
+   text — 5.1:1 is the worst of the eighteen, on light uncommon. These values
+   were chosen for a 3px border, and a border that reads fine can still be
+   invisible as text: that is exactly how the tier badges and the medal colours
+   each shipped unreadable. */
+.title-row--earned[data-rarity="common"]    .title-row__word { color: var(--rarity-common); }
+.title-row--earned[data-rarity="uncommon"]  .title-row__word { color: var(--rarity-uncommon); }
+.title-row--earned[data-rarity="rare"]      .title-row__word { color: var(--rarity-rare); }
+.title-row--earned[data-rarity="epic"]      .title-row__word { color: var(--rarity-epic); }
+.title-row--earned[data-rarity="legendary"] .title-row__word { color: var(--rarity-legendary); }
+.title-row--earned[data-rarity="mythic"]    .title-row__word { color: var(--rarity-mythic); }
 
 .title-cards {
   display: grid;

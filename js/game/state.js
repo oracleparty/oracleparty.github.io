@@ -5,6 +5,7 @@
 
 import { CATEGORY_META, resolveCategoryLabel } from '../categories.js';
 import { answersForCurrentGame } from './scoring-helpers.js';
+import { AWAY_GRACE_MS } from '../constants.js';
 
 // --- State ---
 export const state = {
@@ -96,6 +97,11 @@ export const state = {
   disqualifiedQuestions: new Set(),
   autoProceedTimerId: null,
   autoProceedSeconds: 0,
+  // Re-applies the away labels once the youngest away player crosses
+  // AWAY_GRACE_MS. Presence only syncs on CHANGE, so without a scheduled
+  // re-check somebody who goes away and stays away is never shown as away at
+  // all. Cleared by cleanup() like every other state-held timer.
+  _awayRecheckId: null,
   // Set while the host is away: grants advance rights without moving the role.
   isDeputy: false
 };
@@ -186,6 +192,29 @@ export function setHostSettingsConfirmTimer(v) { _hostSettingsConfirmTimer = v; 
 // --- Sync guard ---
 export let _syncInFlight = false;
 export function setSyncInFlight(v) { _syncInFlight = v; }
+
+/**
+ * Should the room be TOLD this player is away? (AWAY_GRACE_MS)
+ *
+ * ONE RULE, AND IT LIVES HERE BECAUSE IT HAS FOUR READERS — the reveal, the
+ * scoreboard, the results/final-wager pass in init.js, and the lobby's own
+ * copy. This project's most repeated fault is a rule stated once and applied
+ * to two of the three places that need it, so the grace is not written out
+ * anywhere else in js/game/.
+ *
+ * awayTimestamps has always held the moment each player was FIRST seen away,
+ * and nothing ever read it — presence flipping was rendered immediately, so a
+ * phone backgrounded for two seconds by a notification greyed somebody out in
+ * front of the whole room.
+ *
+ * DISPLAY ONLY. Deputising (HOST_HANDOVER_MS) and releasing a seat
+ * (STALE_TIMEOUT_MS) read last_seen_at, not this, and neither is affected: the
+ * game still stops waiting for an absent player at once. Only the label waits.
+ */
+export function isPlayerAway(id) {
+  const since = state.awayTimestamps.get(String(id));
+  return since !== undefined && (Date.now() - since) >= AWAY_GRACE_MS;
+}
 
 /**
  * Answers belonging to the game currently being played, from this room.

@@ -1217,21 +1217,43 @@ export async function fetchAccountPlayCounts(userIds) {
  * "could not look" and "nothing there" returned the same answer for months.
  */
 export async function fetchTitleWords() {
-  const { data, error } = await supabase
-    .from('title_words')
-    // target_right IS NOT OPTIONAL HERE. applyWordOverlay skips any row without
-    // a usable target, so leaving it out of this list does not fail — it
-    // silently drops every word the owner has ever written, with no error
-    // anywhere. Exactly the fault that had the category leaderboard ranking on
-    // the wrong measure for weeks because its select forgot two columns.
-    .select('id, slot, category, subcategory, tier, word, target_right, is_placeholder');
-  if (error) {
-    // Not an error at warn-and-continue level: until 063 is applied this table
-    // does not exist, and the app is expected to run exactly as before.
-    logger.warn('Supabase', 'fetchTitleWords failed (migration 063 may not be applied)', error);
+  // target_right IS NOT OPTIONAL HERE. applyWordOverlay skips any row without
+  // a usable target, so leaving it out of this list does not fail — it
+  // silently drops every word the owner has ever written, with no error
+  // anywhere. Exactly the fault that had the category leaderboard ranking on
+  // the wrong measure for weeks because its select forgot two columns.
+  const COLUMNS = 'id, slot, category, subcategory, tier, word, target_right, is_placeholder';
+  const { data, error } = await supabase.from('title_words').select(COLUMNS);
+  if (!error) return data || [];
+
+  // `is_placeholder` ARRIVED IN 064, AND MIGRATIONS HERE ARE APPLIED BY HAND.
+  //
+  // So "the JS is live and the SQL is not" is a real state, and this project's
+  // own rule is that the JavaScript must be safe to deploy first. Naming a
+  // column that does not exist yet is not safe: PostgREST answers 42703 for the
+  // WHOLE select, so a single missing column would empty the owner's entire
+  // collection from every screen — with nothing but a console warning to say
+  // why. That is the same shape as `player_stats_computed` taking four features
+  // down while every check reported health.
+  //
+  // Without the column we cannot tell a placeholder from a written word, so
+  // every row reads as written. That is the harmless direction: a placeholder
+  // shown as an ordinary word is a word the player really earned, and the admin
+  // page's "N placeholder" count going to zero is visible to the one person who
+  // can act on it.
+  if (error.code === '42703') {
+    logger.warn('Supabase', 'title_words has no is_placeholder column — run migration 064; reading without it');
+    const retry = await supabase.from('title_words')
+      .select('id, slot, category, subcategory, tier, word, target_right');
+    if (!retry.error) return (retry.data || []).map(r => ({ ...r, is_placeholder: false }));
+    logger.warn('Supabase', 'fetchTitleWords retry failed', retry.error);
     return null;
   }
-  return data || [];
+
+  // Not an error at warn-and-continue level: until 063 is applied this table
+  // does not exist, and the app is expected to run exactly as before.
+  logger.warn('Supabase', 'fetchTitleWords failed (migration 063 may not be applied)', error);
+  return null;
 }
 
 /**

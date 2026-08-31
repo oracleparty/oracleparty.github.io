@@ -3,7 +3,7 @@
 // Answer reveal, judgment overrides, feedback UI, honks.
 // ============================================
 
-import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
+import { state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
          _qbFeedback, setQbFeedback } from './state.js';
@@ -210,7 +210,7 @@ export function renderRevealAnswers(answers) {
   for (const player of state.players) {
     const answer = answers.find(a => a.player_id === player.id);
     const row = document.createElement('div');
-    row.className = 'answer-row' + (state.awayTimestamps.has(String(player.id)) ? ' answer-row--away' : '');
+    row.className = 'answer-row' + (isPlayerAway(player.id) ? ' answer-row--away' : '');
     row.dataset.playerId = player.id;
     if (player.user_id) row.dataset.profileUserId = player.user_id;
 
@@ -235,7 +235,18 @@ export function renderRevealAnswers(answers) {
     // Before the reveal the two cases are genuinely indistinguishable, and
     // guessing WAITING is the one that never shows somebody a verdict on an
     // answer they did send. Once the answers are revealed, empty means empty.
-    const isEmptyRow = answer && !(answer.submitted_answer || '').trim();
+    //
+    // A BOT IS NEVER WAITING, and that exception is what makes the guess above
+    // safe rather than wrong. The reason an empty row reads as WAITING is that
+    // a human's real answer may be in flight behind the blank fill. A bot has
+    // no browser and nothing in flight: it answers the instant the question
+    // goes live, and a BLANK IS A REAL ANSWER FOR IT — the owner's rule is that
+    // a bot never invents a wrong answer, so the ~20% of the bank carrying no
+    // stored distractors gets an empty one (see lowestUnusedWager, written for
+    // exactly that case). Reading that as "Waiting..." left the row waiting for
+    // the whole round on the one player that had certainly finished, and told
+    // the host the round was not done when it was.
+    const isEmptyRow = answer && !(answer.submitted_answer || '').trim() && !player.is_bot;
     const stillWaiting = !answer
       || ((isPlaceholder || isEmptyRow) && !state.resultsRevealed);
     const isDisqualified = state.disqualifiedQuestions?.has(state.currentQuestion);

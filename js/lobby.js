@@ -7,7 +7,7 @@ import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithF
 import { logger } from './logger.js';
 import { presenceNeedsRebuild } from './presence-health.js';
 import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, HEARTBEAT_DB_INTERVAL_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS,
-         BOT_DISPLAY_NAME, BOT_AVATAR_COLOR, BOT_AVATAR_EMOJI, MAX_BOTS_PER_ROOM } from './constants.js';
+         BOT_DISPLAY_NAME, BOT_AVATAR_COLOR, BOT_AVATAR_EMOJI, MAX_BOTS_PER_ROOM, AWAY_GRACE_MS } from './constants.js';
 import {
   addPlayer,
   claimSeat,
@@ -65,6 +65,41 @@ let channels = [];
 let presenceChannel = null;
 let presenceReady = false;
 let awayTimestamps = new Map(); // player ID → Date.now() when first seen as away
+let awayRecheckId = null;       // re-renders once the youngest away player crosses the grace
+
+/**
+ * Should the lobby SAY this player is away? (AWAY_GRACE_MS)
+ *
+ * The game page has the same rule in js/game/state.js — the lobby keeps its own
+ * presence map, so it needs its own reader, and both are written against the
+ * same constant rather than against two numbers that can drift.
+ *
+ * Presence flips the instant a phone backgrounds, so a glance at a notification
+ * used to grey somebody out in front of the whole lobby. Nothing that ACTS on
+ * absence reads this: the stale sweep and host promotion both go through
+ * last_seen_at.
+ */
+function isPlayerAway(id) {
+  const since = awayTimestamps.get(String(id));
+  return since !== undefined && (Date.now() - since) >= AWAY_GRACE_MS;
+}
+
+/**
+ * Presence only syncs on CHANGE, so a player who goes away and stays away would
+ * never be shown as away at all without this — the sync that recorded them
+ * lands while they are still inside the grace, and nothing looks again.
+ */
+function scheduleAwayRecheck() {
+  clearTimeout(awayRecheckId);
+  awayRecheckId = null;
+  let soonest = Infinity;
+  for (const since of awayTimestamps.values()) {
+    const left = AWAY_GRACE_MS - (Date.now() - since);
+    if (left > 0 && left < soonest) soonest = left;
+  }
+  if (soonest === Infinity) return;
+  awayRecheckId = setTimeout(() => { awayRecheckId = null; renderPlayers(); }, soonest + 50);
+}
 let playerPollInterval = null;
 let presenceHeartbeatId = null;
 let dbHeartbeatId = null;
@@ -470,7 +505,7 @@ async function _loadPlayerTiers() {
 
 function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const badges = [];
-  const away = awayTimestamps.has(String(p.id));
+  const away = isPlayerAway(p.id);
   if (showRoleBadge) {
     if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
     if (p.is_cohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
@@ -1847,6 +1882,7 @@ function buildPresenceChannel() {
       }
       awayTimestamps = newAway;
       renderPlayers();
+      scheduleAwayRecheck();
       checkStalePresence();
     })
     .subscribe(async (status) => {
@@ -1935,6 +1971,8 @@ function cleanup() {
   presenceReady = false;
   presenceChannel = null;
   awayTimestamps.clear();
+  clearTimeout(awayRecheckId);
+  awayRecheckId = null;
 }
 
 // --- Start ---

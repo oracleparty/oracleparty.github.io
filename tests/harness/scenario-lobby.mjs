@@ -143,15 +143,34 @@ try {
     problems.push('Bob still sees Alice greyed out after coming back — his own channel is dead, so the whole room reads as away to him');
   }
 
-  // The label, not only the fade. 40% opacity alone is ambiguous — it reads
-  // equally as away, gone, disabled or still loading.
-  await setHidden(bob, true);
-  await host.page.waitForTimeout(1500);
-  const awayBadges = await host.page.evaluate(() =>
+  // AWAY WAITS, AND THEN IT ARRIVES. Both halves, because either alone is a
+  // check that cannot fail.
+  //
+  // Presence flips the instant a phone backgrounds, so the room was told
+  // somebody was AFK for what is usually a two-second glance at a notification
+  // — the owner's report: it "seems like someone is afk so often".
+  // AWAY_GRACE_MS makes the LABEL wait ten seconds. Nothing that acts on
+  // absence waits: deputising and the stale sweep both read last_seen_at.
+  //
+  // Checking only that it is quiet early would pass with the away label deleted
+  // outright; checking only that it arrives would pass with the grace removed.
+  // The pair is the rule.
+  const awayBadgesOn = () => host.page.evaluate(() =>
     [...document.querySelectorAll('.player-item--away .badge')].map(b => b.textContent.trim()));
-  console.log('   · badges on an away row:', awayBadges);
-  if (!awayBadges.some(b => /away/i.test(b))) {
-    problems.push('an away player carries no "Away" label, so the fade is the only signal and cannot be told from gone, disabled or loading');
+
+  await setHidden(bob, true);
+  await host.page.waitForTimeout(2500);          // well inside AWAY_GRACE_MS
+  const badgesEarly = await awayBadgesOn();
+  console.log('   · 2.5s after backgrounding, badges on an away row:', badgesEarly);
+  if (badgesEarly.some(b => /away/i.test(b))) {
+    problems.push('a player was shown as Away 2.5s after backgrounding — a glance at a notification greys somebody out in front of the whole room (AWAY_GRACE_MS)');
+  }
+
+  await host.page.waitForTimeout(9500);          // now past it
+  const badgesLate = await awayBadgesOn();
+  console.log('   · 12s after backgrounding, badges on an away row:', badgesLate);
+  if (!badgesLate.some(b => /away/i.test(b))) {
+    problems.push('an away player never carries an "Away" label at all, so the fade is the only signal and cannot be told from gone, disabled or loading');
   }
   await setHidden(bob, false);
   await host.page.waitForTimeout(1200);
