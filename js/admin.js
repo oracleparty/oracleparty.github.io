@@ -2179,10 +2179,11 @@ async function loadTitleWordsPanel() {
       A slot with no word does not exist for players.
     </p>
   ` + subjects.map(r => `
-    <div class="tw-subject">
+    <div class="tw-subject" data-subject="${escapeHtml(r.key)}">
       <div class="tw-subject__head">
         <span class="tw-subject__name">${escapeHtml(r.emoji + ' ' + r.label)}</span>
         <span class="tw-subject__size">${r.subjectSize} questions</span>
+        <button type="button" class="btn btn-secondary tw-subject__save" hidden>Save</button>
       </div>
       ${r.subjectSlots.map(sl => slotHtml(r.key, sl)).join('')}
       ${r.topics.map(t => `
@@ -2207,7 +2208,115 @@ async function loadTitleWordsPanel() {
  * what actually happened rather than assuming: an RLS refusal returns no error
  * and zero rows, which this page has three times rendered as "Saved!".
  */
+// WHAT HAS BEEN TYPED AND NOT YET SAVED, keyed by slot.
+//
+// The panel redraws from the database after every write — deliberately, so the
+// counts, the overlay and the frozen-target notes cannot drift apart. That is
+// right for one edit at a time and ruinous for a sitting: type eight words,
+// save one, and the redraw wipes the other seven with no warning at all.
+//
+// Drafts survive the redraw instead. Nothing here is a cache of saved state —
+// an entry exists only while a box differs from what the database holds, and it
+// is deleted the moment that word lands.
+const _twDrafts = new Map();
+const twKey = d => `${d.cat}|${d.sub || ''}|${d.tier}`;
+
+/** Warn before losing typed words. There are ~86 of them; retyping is not a joke. */
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', (e) => {
+    if (_twDrafts.size === 0) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+}
+
+/**
+ * Put unsaved words back after a redraw, and light up the subjects holding them.
+ */
+function restoreTitleWordDrafts(box) {
+  for (const slot of box.querySelectorAll('.tw-slot')) {
+    const input = slot.querySelector('.tw-slot__input');
+    if (!input) continue;
+    const draft = _twDrafts.get(twKey(slot.dataset));
+    if (draft === undefined) continue;
+    if (draft === input.value) { _twDrafts.delete(twKey(slot.dataset)); continue; }
+    input.value = draft;
+    slot.classList.add('tw-slot--dirty');
+  }
+  refreshSubjectSaveButtons(box);
+}
+
+/** Show "Save 4 words" on any subject with unsaved boxes, and hide it otherwise. */
+function refreshSubjectSaveButtons(box) {
+  for (const subject of box.querySelectorAll('.tw-subject')) {
+    const dirty = subject.querySelectorAll('.tw-slot--dirty').length;
+    const btn = subject.querySelector('.tw-subject__save');
+    if (!btn) continue;
+    btn.hidden = dirty === 0;
+    btn.disabled = false;
+    btn.textContent = dirty === 1 ? 'Save 1 word' : `Save ${dirty} words`;
+  }
+}
+
 function attachTitleWordEditors(box) {
+  restoreTitleWordDrafts(box);
+
+  // ONCE PER ELEMENT, NOT ONCE PER REDRAW.
+  //
+  // This function runs after every write, and `box` is the same element each
+  // time — only its innerHTML is replaced. addEventListener would therefore
+  // STACK: ten saves would leave ten bulk-save handlers on one button, all
+  // firing together. The pre-existing handlers below use `box.onclick =`, which
+  // is idempotent by assignment and hid the hazard from anyone adding a second
+  // kind of listener. Everything delegated lives behind this guard now.
+  if (!box.dataset.twWired) {
+    box.dataset.twWired = '1';
+    wireTitleWordDelegates(box);
+  }
+  // EVERY PASS, unlike the delegates above. The fill button is rebuilt by each
+  // redraw — it only exists while something is empty — so wiring it inside the
+  // once-only block left it dead from the second draw onward. scenario-admin
+  // caught that immediately with "the fill button wrote no placeholders at all",
+  // which is the entire reason this panel has a check pressing its buttons.
+  wireTitleWordFill(box);
+}
+
+function wireTitleWordDelegates(box) {
+  // TYPING ACROSS A SUBJECT, RATHER THAN TAPPING SAVE NINETY TIMES.
+  //
+  // Tab is useless here: between two word boxes it lands on that row's Save and
+  // Remove buttons, so writing a subject meant reaching for the pointer on
+  // every line. Enter goes to the next word box in the panel, which is the
+  // whole flow — type, Enter, type, Enter, then one Save for the subject.
+  box.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const input = e.target.closest('.tw-slot__input');
+    if (!input) return;
+    e.preventDefault();
+    const all = [...box.querySelectorAll('.tw-slot__input')];
+    const next = all[all.indexOf(input) + 1];
+    if (next) { next.focus(); next.select(); }
+    else input.blur();
+  });
+
+  // A box that differs from what is stored is DIRTY, and says so. Without the
+  // marker "Save 4 words" is a number nobody can check, and the owner cannot
+  // tell which four.
+  box.addEventListener('input', (e) => {
+    const input = e.target.closest('.tw-slot__input');
+    if (!input) return;
+    const slot = input.closest('.tw-slot');
+    const saved = input.defaultValue;          // what the redraw rendered
+    if (input.value === saved) {
+      _twDrafts.delete(twKey(slot.dataset));
+      slot.classList.remove('tw-slot--dirty');
+    } else {
+      _twDrafts.set(twKey(slot.dataset), input.value);
+      slot.classList.add('tw-slot--dirty');
+    }
+    refreshSubjectSaveButtons(box);
+  });
+
   // FILL EVERY EMPTY SLOT AT ONCE.
   //
   // There are roughly eighty-six of them, so a per-row "add placeholder" button
@@ -2218,6 +2327,76 @@ function attachTitleWordEditors(box) {
   // never invented. The real words are the owner's to write, and two earlier
   // attempts at model-written title text were deleted at their instruction. A
   // placeholder must read as scaffolding.
+  // ONE SAVE FOR A WHOLE SUBJECT.
+  //
+  // The unit of work is a subject — you sit down and write History, not one
+  // word. Per-row saving meant a round trip and a full redraw per word, ~86
+  // times, and the redraw is what made typing ahead unsafe in the first place.
+  //
+  // Only DIRTY rows are written, so pressing this twice costs nothing, and the
+  // panel redraws ONCE at the end rather than after every word.
+  box.addEventListener('click', async (e) => {
+    const subjectSave = e.target.closest('.tw-subject__save');
+    if (!subjectSave) return;
+    const subject = subjectSave.closest('.tw-subject');
+    const dirty = [...subject.querySelectorAll('.tw-slot--dirty')];
+    if (!dirty.length) return;
+
+    subjectSave.disabled = true;
+    let done = 0, failed = 0;
+
+    // Batched rather than all at once: each word is a delete plus an insert, so
+    // a subject of nine is eighteen statements, and firing them together from a
+    // phone is how you get rate-limited. Four at a time keeps it quick without
+    // a burst.
+    for (let i = 0; i < dirty.length; i += 4) {
+      const batch = dirty.slice(i, i + 4);
+      subjectSave.textContent = `Saving ${Math.min(i + batch.length, dirty.length)} of ${dirty.length}…`;
+      await Promise.all(batch.map(async slot => {
+        const { cat, sub, tier, target } = slot.dataset;
+        const input = slot.querySelector('.tw-slot__input');
+        const word = (input?.value || '').trim();
+        // An empty box means "take this word away", exactly as it does on the
+        // per-row Save. Typing over a placeholder makes it the owner's word,
+        // so the flag goes.
+        const result = word
+          ? await saveTitleWord({
+              slot: 2, category: cat, subcategory: sub || null, tier, word,
+              targetRight: Number(target), isPlaceholder: false,
+            })
+          : await deleteTitleWord({ slot: 2, category: cat, subcategory: sub || null, tier });
+        if (result?.error) {
+          failed++;
+          // ON THE ROW. This panel is thousands of pixels long, so a message at
+          // the top is one nobody sees — and the draft is KEPT, so a refused
+          // word is still in the box to try again rather than silently lost.
+          setStatus(slot.querySelector('.tw-slot__status'),
+            `Not saved — ${result.error.message}`, { sticky: true });
+        } else {
+          done++;
+          _twDrafts.delete(twKey(slot.dataset));
+        }
+      }));
+    }
+
+    subjectSave.textContent = failed ? `Saved ${done}, ${failed} refused` : `Saved ${done}`;
+
+    const scroller = box.closest('.screen--scrollable, .admin-scroll') || document.scrollingElement;
+    const keepAt = scroller ? scroller.scrollTop : 0;
+    resetTitleWordCache();
+    clearWordOverlay();
+    await loadTitleWordsPanel();
+    if (scroller) scroller.scrollTop = keepAt;
+  });
+
+}
+
+/**
+ * The fill button is REDRAWN on every pass — it only exists while something is
+ * empty — so this one really does have to run each time. `onclick` rather than
+ * addEventListener, so re-wiring a fresh button cannot stack.
+ */
+function wireTitleWordFill(box) {
   const fill = box.querySelector('#tw-fill');
   if (fill) fill.onclick = async () => {
     const empties = [...box.querySelectorAll('.tw-slot--empty')]

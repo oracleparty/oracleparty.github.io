@@ -355,7 +355,6 @@ export function clearAutoProceed() {
 
 
 async function handleFinalWager() {
-  const fromPhaseFW = state.gamePhase;
   state.gamePhase = 'final_wager';
   state.isFinalWagerRound = true;
   // Drop the last question's stamp before the screen reads it, or the 20-second
@@ -825,13 +824,6 @@ export async function handleRevealFinalQuestion() {
   if (state.difficultyVoteChannel) { try { supabase.removeChannel(state.difficultyVoteChannel); } catch (e) {} state.difficultyVoteChannel = null; }
 
   // Advance to final question — apply locally first.
-  //
-  // CAPTURED HERE, above every local mutation. I wrote this capture below them
-  // the first time, which made the expected phase 'final_question' — the
-  // DESTINATION — so the compare-and-set could never match, the room would
-  // never advance, and the last question of every game would simply never start
-  // for anybody else. It fails as "the button does nothing", never as an error.
-  const fromPhaseFQ = state.gamePhase;
   state.isFinalWagerRound = true;
   state.currentQuestion = state.totalQuestions;
   state.gamePhase = 'final_question';

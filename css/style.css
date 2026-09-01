@@ -5101,6 +5101,24 @@ body::after {
   cursor: default;
 }
 
+/* THE WORD CARRIES ITS RARITY, matching the gallery rows.
+   Scoped past the three states that already own the colour, because an
+   attribute+class selector outranks a single class and would otherwise silently
+   beat them: --selected is what tells you which word you picked, --locked is a
+   question mark rather than a word, and --level2/3 are the micro-level
+   treatment. Rarity is the DEFAULT colour of an ordinary unlocked word, not an
+   override of everything above it.
+   Measured against --color-surface, which is what .title-wheel-column paints:
+   the same eighteen readings as the gallery, worst 5.1:1. */
+.title-wheel-item[data-rarity]:not(.title-wheel-item--selected):not(.title-wheel-item--locked):not(.title-wheel-item--level2):not(.title-wheel-item--level3) {
+  color: var(--rarity-common);
+}
+.title-wheel-item[data-rarity="uncommon"]:not(.title-wheel-item--selected):not(.title-wheel-item--locked):not(.title-wheel-item--level2):not(.title-wheel-item--level3)  { color: var(--rarity-uncommon); }
+.title-wheel-item[data-rarity="rare"]:not(.title-wheel-item--selected):not(.title-wheel-item--locked):not(.title-wheel-item--level2):not(.title-wheel-item--level3)      { color: var(--rarity-rare); }
+.title-wheel-item[data-rarity="epic"]:not(.title-wheel-item--selected):not(.title-wheel-item--locked):not(.title-wheel-item--level2):not(.title-wheel-item--level3)      { color: var(--rarity-epic); }
+.title-wheel-item[data-rarity="legendary"]:not(.title-wheel-item--selected):not(.title-wheel-item--locked):not(.title-wheel-item--level2):not(.title-wheel-item--level3) { color: var(--rarity-legendary); }
+.title-wheel-item[data-rarity="mythic"]:not(.title-wheel-item--selected):not(.title-wheel-item--locked):not(.title-wheel-item--level2):not(.title-wheel-item--level3)    { color: var(--rarity-mythic); }
+
 /* Micro-level visuals */
 .title-wheel-item--level2,
 .title-level2 {
@@ -7583,6 +7601,23 @@ body[style*="opacity: 0"] {
   flex: 0 0 72px;
   color: var(--rarity-common);
 }
+/* A BOX THAT DIFFERS FROM THE DATABASE, marked so "Save 4 words" is a number
+   the owner can check against the rows rather than take on trust. The bar is on
+   the left where the tier colour already draws the eye down the column. */
+.tw-slot--dirty {
+  box-shadow: inset 3px 0 0 var(--color-primary);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  /* The bar needs room of its own, and the ROW must not shift sideways when it
+     appears — the tier labels are a fixed column you scan down, and a marked
+     row jumping 10px out of that column is worse than no marker. The negative
+     margin buys the space back from the panel's own padding, so the text stays
+     exactly where it sits on an unmarked row. Caught by reading the screenshot:
+     without it the bar sat underneath the first letters of "UNCOMMON". */
+  padding-left: 10px;
+  margin-left: -10px;
+}
+.tw-subject__save { flex: 0 0 auto; padding: 4px 10px; font-size: var(--text-xs); }
 .tw-slot__tier[data-r="uncommon"]  { color: var(--rarity-uncommon); }
 .tw-slot__tier[data-r="rare"]      { color: var(--rarity-rare); }
 .tw-slot__tier[data-r="epic"]      { color: var(--rarity-epic); }

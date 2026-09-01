@@ -20,7 +20,7 @@ numbers at all.
 | **Speed** | Instant. It answers the moment the question goes live |
 | **Wrong answers** | One of the question's own stored `incorrect_answers`. **Blank** if the question has none — the owner chose blank over borrowing another question's answer, so nothing is ever invented |
 | **Wager** | Random among the values it has not spent. It has no read on the questions, so any rule would be a strategy it does not have |
-| **Final wager** | Always 10, the middle option, for the same reason |
+| **Final wager** | Always 20, on the owner's instruction. It was 10 — the middle option, on the reasoning that a bot with one flat accuracy has no read on the question or the standings and so should not pick an extreme. The owner's call overrides that: a permanent middle stake makes the last round of a practice game never swing, and swinging is the point of it. `BOT_FINAL_WAGER` in constants.js is the source of truth |
 | **Recorded** | Nothing. Not `question_stats`, not `answer_tally`, and not counted in the human's placement or player count in `game_history` |
 | **Leaderboard** | Not there at all yet. The yardstick band below is unbuilt |
 

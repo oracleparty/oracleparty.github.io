@@ -2250,7 +2250,11 @@ async function renderTitleWheel(userId, profile, stats) {
       }
       const isSelected = selectedWords[slotNum] === w.id;
       const levelClass = w.level >= 3 ? 'title-wheel-item--level3' : w.level >= 2 ? 'title-wheel-item--level2' : '';
-      return `<div class="title-wheel-item ${isSelected ? 'title-wheel-item--selected' : ''} ${levelClass}" data-word-id="${w.id}" data-slot="${slotNum}">${escapeHtml(w.word)}</div>`;
+      // The word carries its rarity here as well as in the gallery, at the
+      // owner's request. COLOUR ONLY — the wheel's layout and behaviour are
+      // untouched, deliberately: this file records the Title Builder being
+      // rebuilt without being asked and reverted in full the same day.
+      return `<div class="title-wheel-item ${isSelected ? 'title-wheel-item--selected' : ''} ${levelClass}" data-rarity="${w.rarity || 'common'}" data-word-id="${w.id}" data-slot="${slotNum}">${escapeHtml(w.word)}</div>`;
     }).join('');
 
     // Click handler for selection

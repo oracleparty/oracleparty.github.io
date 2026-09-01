@@ -1077,6 +1077,110 @@ try {
     }
   }
 
+  // ============================================================
+  // WRITING A SUBJECT IN ONE SITTING
+  //
+  // There are ~86 words to write. One box, one Save, one full redraw, eighty-six
+  // times is a chore that never gets finished — and the redraw is what made
+  // typing ahead unsafe: it rebuilds from the database, so words typed into
+  // other boxes were silently destroyed by saving any one of them.
+  //
+  // Three things make it a sitting rather than a chore, and the third is the one
+  // that was actively losing work:
+  //   1. Enter goes to the next word box (Tab lands on Save and Remove)
+  //   2. one "Save N words" per subject, not per row
+  //   3. an unsaved box SURVIVES the redraw that a save triggers
+  // ============================================================
+  heading('writing a subject in one sitting');
+  {
+    const boxes = admin.page.locator('.tw-slot__input');
+    if (await boxes.count() === 0) {
+      problems.push('the Title Words panel offers no word boxes at all, so none of this could be measured');
+    } else {
+      // Enter walks the WHOLE panel, so a fixed number of boxes runs off the end
+      // of one subject into the next — which is what the first version of this
+      // check did, and it read as the app losing a word.
+      const subjectCount = await admin.page.locator('.tw-subject').count();
+      let target = -1;
+      let targetBoxes = 0;
+      for (let i = 0; i < subjectCount; i++) {
+        const n = await admin.page.locator('.tw-subject').nth(i).locator('.tw-slot__input').count();
+        if (n >= 2) { target = i; targetBoxes = n; break; }
+      }
+      if (target === -1) {
+        problems.push('no subject offers two word boxes, so typing across one cannot be measured');
+      } else {
+        const subject = admin.page.locator('.tw-subject').nth(target);
+        const words = ['Alpha', 'Beta', 'Gamma'].slice(0, targetBoxes);
+        note(`subject ${target} has ${targetBoxes} boxes; typing ${words.length}`);
+
+        // FILL, not type: an earlier section of this scenario leaves a word in
+        // one of these boxes, and typing after a click put the new text in the
+        // MIDDLE of it ("RefuAlphased"). Select-all then type is what a person
+        // does; fill is its equivalent here.
+        await subject.locator('.tw-slot__input').nth(0).click();
+        await subject.locator('.tw-slot__input').nth(0).fill(words[0]);
+        await admin.page.keyboard.press('Enter');
+        const focused = await admin.page.evaluate(() =>
+          [...document.querySelectorAll('.tw-slot__input')].indexOf(document.activeElement));
+        const wanted = await admin.page.evaluate(t => {
+          const all = [...document.querySelectorAll('.tw-slot__input')];
+          const mine = [...document.querySelectorAll('.tw-subject')[t].querySelectorAll('.tw-slot__input')];
+          return all.indexOf(mine[1]);
+        }, target);
+        note(`Enter moved focus to box ${focused} (next is ${wanted})`);
+        if (focused !== wanted) {
+          problems.push(`Enter did not move to the next word box — writing a subject means reaching for the pointer on every line (focus went to ${focused}, wanted ${wanted})`);
+        }
+
+        for (let i = 1; i < words.length; i++) {
+          await admin.page.keyboard.type(words[i]);
+          if (i < words.length - 1) await admin.page.keyboard.press('Enter');
+        }
+        await admin.page.waitForTimeout(400);
+
+        const saveBtn = subject.locator('.tw-subject__save');
+        const label = ((await saveBtn.textContent().catch(() => '')) || '').trim();
+        const dirty = await subject.locator('.tw-slot--dirty').count();
+        note(`subject Save says ${JSON.stringify(label)}; ${dirty} rows marked unsaved`);
+        if (!await saveBtn.isVisible().catch(() => false)) {
+          problems.push('no per-subject Save button appeared after typing, so every word still needs its own tap');
+        }
+        if (dirty !== words.length) {
+          problems.push(`${words.length} boxes were typed into but ${dirty} rows are marked unsaved — the owner cannot tell what is still to save`);
+        }
+
+        // TYPE AHEAD IN ANOTHER SUBJECT, then save this one. The redraw that
+        // follows a save used to wipe it.
+        const otherIdx = target === 0 ? 1 : 0;
+        const otherBox = admin.page.locator('.tw-subject').nth(otherIdx).locator('.tw-slot__input').first();
+        const hasOther = await otherBox.count() > 0;
+        if (hasOther) await otherBox.fill('Elsewhere');
+        await admin.page.waitForTimeout(200);
+
+        await saveBtn.click();
+        await admin.page.waitForTimeout(4000);
+
+        const stored = table.store.table('title_words').map(w => w.word);
+        note(`words now in the database: ${JSON.stringify(stored.slice().sort())}`);
+        for (const w of words) {
+          if (!stored.includes(w)) {
+            problems.push(`"${w}" was typed and saved with the subject's Save button but never reached the database`);
+          }
+        }
+
+        if (hasOther) {
+          const survived = await admin.page.locator('.tw-subject').nth(otherIdx)
+            .locator('.tw-slot__input').first().inputValue().catch(() => '');
+          note(`the word typed in another subject, after the redraw: ${JSON.stringify(survived)}`);
+          if (survived !== 'Elsewhere') {
+            problems.push('a word typed in another subject was wiped by the redraw a save triggers — typing ahead loses work, which is the whole point of writing a sitting at a time');
+          }
+        }
+      }
+    }
+  }
+
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);
 } finally {

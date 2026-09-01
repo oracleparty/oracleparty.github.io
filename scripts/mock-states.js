@@ -1017,8 +1017,11 @@ export const STATES = {
       // change this in the same commit or the sweep reviews a row that has
       // never shipped — which is how the lobby previewed perfectly while
       // overflowing by 71px in a real game.
-      const slot = (tier, word, need, { code = false, status = '' } = {}) => `
-        <div class="tw-slot${word ? '' : ' tw-slot--empty'}">
+      // `dirty` is a box typed into and not yet saved — the state the panel is in
+      // for most of a writing sitting, and the one the subject's Save button
+      // counts. Reviewed here because it is a new colour on a new row.
+      const slot = (tier, word, need, { code = false, status = '', dirty = false } = {}) => `
+        <div class="tw-slot${word ? '' : ' tw-slot--empty'}${dirty ? ' tw-slot--dirty' : ''}">
           <span class="tw-slot__tier" data-r="${tier}">${tier}</span>
           ${code
             ? `<span class="tw-slot__word">${word}</span><span class="tw-slot__need">in code</span>`
@@ -1038,16 +1041,17 @@ export const STATES = {
           <div class="tw-subject__head">
             <span class="tw-subject__name">\u{1F3DB}\uFE0F History</span>
             <span class="tw-subject__size">405 questions</span>
+            <button type="button" class="btn btn-secondary tw-subject__save">Save 2 words</button>
           </div>
           ${slot('common', 'History', '10 right in the whole subject', { code: true })}
-          ${slot('rare', '', 'a quarter of every topic, 100+ overall')}
+          ${slot('rare', 'Sovereign', 'a quarter of every topic, 100+ overall', { dirty: true })}
           ${slot('mythic', 'Everlasting', 'all 405', { status: 'Not saved \u2014 Permission denied \u2014 the word was not saved' })}
           <div class="tw-topic">
             <div class="tw-topic__head">
               <span class="tw-topic__name">Ancient &amp; Classical Civilisations</span>
               <span class="tw-topic__size">110</span>
             </div>
-            ${slot('uncommon', 'Chronicles', '28 right \u00b7 set at 22')}
+            ${slot('uncommon', 'Chronicles', '28 right \u00b7 set at 22', { dirty: true })}
             ${slot('epic', '', '83 right')}
             ${slot('legendary', 'Antiquity', '110 right')}
           </div>

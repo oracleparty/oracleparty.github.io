@@ -15,7 +15,21 @@ on:
 jobs:
   playtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # THE SUITE OUTGREW 25 MINUTES, AND A TIMEOUT IS NOT A FAILURE — GitHub
+    # cancels the job, which reads as "cancelled" rather than red, and the last
+    # four steps simply never ran. That happened on 2026-09-01: fifteen steps
+    # green, the run killed during the bots scenario, and bots, accuracy and
+    # both layout sweeps went uncovered without anything saying so.
+    #
+    # It had been sitting at ~22 minutes for a while, so the margin was already
+    # gone; one more scenario section spent it. Raised well past the current
+    # ~24, not to the next round number above it, because the next addition
+    # should not re-buy this lesson.
+    #
+    # If it approaches this again, SPLIT THE JOB rather than raising it further:
+    # a suite that takes three quarters of an hour is one nobody waits for, and
+    # a check nobody waits for is a check nobody reads.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

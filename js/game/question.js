@@ -485,12 +485,6 @@ async function handleTimerExpired() {
 
   state.timerExpired = true;
 
-  // Pinned before anything awaits. The late backstop below must only fire for
-  // the round it was armed for — by the time it runs, eight seconds later, the
-  // room may legitimately have moved on, and asking about a round that has been
-  // over for a while is how a backstop starts ending the WRONG one.
-  const questionAtExpiry = state.currentQuestion;
-
   // Hide the reveal screen timer (round is over)
   const revealTimer = $('#reveal-timer');
   if (revealTimer) revealTimer.style.display = 'none';

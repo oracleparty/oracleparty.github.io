@@ -799,15 +799,6 @@ export async function handleNextQuestion() {
 
   const isLastQuestion = state.currentQuestion >= state.totalQuestions - 1;
 
-  // CAPTURED BEFORE THE LOCAL UPDATE. op_set_phase compares against the phase
-  // the caller believes the room is on, and this function applies the change
-  // locally first so the screen does not wait on Realtime — so reading
-  // state.gamePhase afterwards would send the DESTINATION as the expectation
-  // and the compare-and-set would never match. Written wrong the first time,
-  // and the kind of mistake that shows up as "the button does nothing" rather
-  // than as an error.
-  const fromPhase = state.gamePhase;
-
   if (isLastQuestion) {
     state.gamePhase = 'results';
     if (_showResultsScreen) _showResultsScreen();
