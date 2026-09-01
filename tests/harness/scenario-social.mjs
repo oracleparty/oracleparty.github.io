@@ -357,6 +357,50 @@ try {
         if (!!after?.is_correct === wasCorrect) {
           problems.push('flipping a judgement in Edit Scores did not change the stored answer');
         }
+
+        // ========================================================
+        // WHEN op_set_judgement IS REACHED AND FAILS
+        //
+        // "Not installed" and "failed" are different answers, and the client
+        // used to give them the same one: any error sent it down a direct
+        // UPDATE on `answers` — which migration 049 revoked, so it matches zero
+        // rows and returns NO error. The override vanished for everybody while
+        // the host's own toggle sat flipped. A wrong score, silently, from the
+        // one control whose whole job is fixing a wrong score.
+        //
+        // failFunction is what makes this reachable at all: the store could
+        // only model "not installed" (hideFunction), which is the branch that
+        // was always correct. So the screen must now say the change did not
+        // land, and the toggle must go BACK — checking only the toast would
+        // pass with the screen still asserting a score that does not exist.
+        // ========================================================
+        table.store.failFunction('op_set_judgement');
+        const stateBefore = table.store.table('answers').find(a => String(a.id) === String(answerId));
+        const correctBefore = !!stateBefore?.is_correct;
+        const toggle2 = host.page.locator('#score-edit-sheet .answer-toggle--host').first();
+        await toggle2.click().catch(() => {});
+        await host.page.waitForTimeout(2500);
+        table.store.unfailFunction('op_set_judgement');
+
+        const stateAfter = table.store.table('answers').find(a => String(a.id) === String(answerId));
+        const toasted = await host.page.evaluate(() =>
+          [...document.querySelectorAll('.toast, #toast')].map(t => t.textContent.trim()).join(' | ')
+        ).catch(() => '');
+        const shownCorrect = await host.page.evaluate(id => {
+          const el = document.querySelector(`#score-edit-sheet .answer-toggle--host[data-answer-id="${id}"]`);
+          return el ? el.classList.contains('answer-toggle--correct') : null;
+        }, answerId).catch(() => null);
+        note(`refused override: stored ${correctBefore} -> ${!!stateAfter?.is_correct}, screen shows ${shownCorrect}, toast ${JSON.stringify(toasted)}`);
+
+        if (!!stateAfter?.is_correct !== correctBefore) {
+          problems.push('a refused judgement change still altered the stored answer');
+        }
+        if (shownCorrect !== null && shownCorrect !== correctBefore) {
+          problems.push('the host flipped a judgement, the server refused it, and the screen kept showing the flip — it is asserting a score that does not exist');
+        }
+        if (!/couldn.t change that judgement/i.test(toasted)) {
+          problems.push(`a refused judgement change said nothing to the host (toasts: ${JSON.stringify(toasted)})`);
+        }
       }
     }
   }
@@ -413,6 +457,11 @@ try {
 
   for (const r of [host, bob]) {
     const real = r.consoleErrors.filter(e =>
+      // op_set_judgement's failure is INJECTED by the refused-override check
+      // above, and the client logging it is the correct behaviour being
+      // measured. Excluded by its exact shape rather than by muting the
+      // module, so a different op_set_judgement fault still shows up.
+      !/op_set_judgement failed/i.test(e) &&
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — ${real.map(e => e.slice(0, 700)).join(' || ')}`);
   }

@@ -7,7 +7,7 @@ import { state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLab
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
          _qbFeedback, setQbFeedback } from './state.js';
-import { $, transitionScreens, escapeHtml, renderAvatar } from '../utils.js';
+import { $, transitionScreens, escapeHtml, renderAvatar, showToast } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
@@ -637,6 +637,12 @@ export async function handleJudgmentOverride(e) {
   const newCorrect = !answer.is_correct;
   const newScore = newCorrect ? answer.wager : (state.isFinalWagerRound ? -answer.wager : 0);
 
+  // Captured before the optimistic change, so a refusal restores exactly what
+  // was there rather than recomputing it from the wager — a disqualified round
+  // does not carry the score its wager implies.
+  const prevCorrect = answer.is_correct;
+  const prevScore = answer.score_earned;
+
   // Update local cache immediately for instant host feedback
   answer.is_correct = newCorrect;
   answer.score_earned = newScore;
@@ -646,7 +652,22 @@ export async function handleJudgmentOverride(e) {
   // The DATABASE recomputes the points from the answer's own wager (049), so
   // no score is sent. Falls back to the direct write when it is not installed.
   const served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
-  if (!served.ok) await updateAnswerJudgment(answerId, newCorrect, newScore);
+  // ONLY WHEN THE FUNCTION IS ABSENT. A real failure must not be retried
+  // directly: migration 049 revoked UPDATE on `answers`, so the direct write
+  // matches zero rows and reports SUCCESS — the host sees the toggle flipped and
+  // nobody else's score moves.
+  if (!served.ok && served.unavailable) {
+    await updateAnswerJudgment(answerId, newCorrect, newScore);
+  } else if (!served.ok) {
+    // PUT THE TOGGLE BACK. Leaving it flipped is the screen asserting a score
+    // that does not exist — the fault CLAUDE.md #5 is about, on the one control
+    // whose entire job is correcting a score.
+    answer.is_correct = prevCorrect;
+    answer.score_earned = prevScore;
+    renderRevealAnswers(state.currentAnswers);
+    showToast("Couldn't change that judgement — try again", 'error');
+    return;
+  }
 
   // Correct the mastery record for the affected player. AMEND, not upsert:
   // the attempt was already counted by doReveal, and the host changing their
@@ -686,10 +707,16 @@ async function handleDisqualifyRound() {
   }
   const servedDq = await disqualifyRoundOnServer(
     state.room.id, state.currentQuestion, state.room?.playerId);
-  if (!servedDq.ok) {
+  // Same rule as the judgement toggle above: the per-answer loop is only the
+  // pre-049 path, and running it after a real failure writes nothing while
+  // looking like it worked.
+  if (!servedDq.ok && servedDq.unavailable) {
     for (const answer of state.currentAnswers) {
       if (answer.id) updates.push(updateAnswerJudgment(answer.id, false, 0));
     }
+  } else if (!servedDq.ok) {
+    logger.error('Game', 'the server refused to disqualify the round');
+    showToast("Couldn't disqualify that round — try again", 'error');
   }
   // Re-render immediately
   renderRevealAnswers(state.currentAnswers);

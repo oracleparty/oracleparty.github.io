@@ -155,6 +155,38 @@
 > which is the harmless direction. This project's own rule is that the
 > JavaScript must be safe to deploy before the SQL is run; that select broke it.
 >
+> ### "Not installed" and "failed" are DIFFERENT ANSWERS (2026-09-01)
+>
+> Found during grounding, not surfaced, and the owner asked why. Three wrappers
+> in `js/db/` returned the same value for both, and their callers respond by
+> writing DIRECTLY to a table a migration has since locked — where the write
+> matches zero rows and returns no error.
+>
+> | Wrapper | Fallback | What a real failure did |
+> |---|---|---|
+> | `setJudgementOnServer` | direct UPDATE on `answers` (revoked by 049) | the host's override vanished for everybody while their own toggle stayed flipped — **and `amendQuestionHistory` still rewrote the player's permanent record** for a correction that never landed |
+> | `disqualifyRoundOnServer` | a loop of the same | a thrown-out round went on paying points |
+> | `leaveRoomOnServer` | `deleteRoom` (revoked by 048) | leaving as the last player removed NOTHING — not even your own row — so you stayed listed in your own lobby until the stale sweep |
+>
+> `setPhaseOnServer` and `botAnswerOnServer` in the same codebase already draw
+> the distinction. All three now report `unavailable`, and **only that** takes
+> the old path; a real failure reverts the optimistic change, says so, and
+> returns before anything writes it onward.
+>
+> **THE HARNESS COULD ONLY PRODUCE THE BRANCH THAT WAS CORRECT.** `hideFunction`
+> models "not installed" (PGRST202) and `slowFunction` models "not back yet";
+> there was no way to make an installed RPC FAIL, so every one of these
+> fallbacks was unreachable from a scenario. `store.failFunction(name, error)`
+> is the third shape, and it is what makes any of this testable.
+>
+> `scenario-social` fails by name on all three halves — the stored answer, the
+> screen, and whether the host is told. Verified by restoring the old fallback.
+>
+> **THE JUDGEMENT RULE HAD THREE READERS AND I FIXED ONE.** `reveal.js`, the
+> Edit Scores sheet and the results review overlay all call
+> `setJudgementOnServer`; the scenario caught the two I had missed, which is the
+> fourth time this file records that exact shape.
+>
 > ### Two things deliberately NOT done
 >
 > - **The Title Builder wheel is not coloured by rarity.** Only the gallery

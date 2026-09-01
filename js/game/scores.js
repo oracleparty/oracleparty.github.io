@@ -1056,11 +1056,30 @@ async function openScoreEditQuestion(questionNumber) {
     const isFinal = qNum >= state.totalQuestions;
     const newScore = newCorrect ? answer.wager : (isFinal ? -answer.wager : 0);
 
+    // CAPTURED BEFORE THE OPTIMISTIC CHANGE, so a refusal can put it back
+    // exactly rather than recomputing — a disqualified round, for one, does not
+    // have the score its wager implies.
+    const prevCorrect = answer.is_correct;
+    const prevScore = answer.score_earned;
     answer.is_correct = newCorrect;
     answer.score_earned = newScore;
 
     const served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
-    if (!served.ok) await updateAnswerJudgment(answerId, newCorrect, newScore);
+    // ONLY WHEN THE FUNCTION IS ABSENT. Migration 049 revoked UPDATE on
+    // `answers`, so a direct write after a REAL failure matches zero rows and
+    // reports success — the host sees the flip and no other score moves.
+    if (!served.ok && served.unavailable) {
+      await updateAnswerJudgment(answerId, newCorrect, newScore);
+    } else if (!served.ok) {
+      answer.is_correct = prevCorrect;
+      answer.score_earned = prevScore;
+      openScoreEditQuestion(qNum);
+      showToast("Couldn't change that judgement — try again", 'error');
+      // RETURN. Everything below writes the change onward — amendQuestionHistory
+      // rewrites the player's PERMANENT record, and the chat line announces it
+      // to the room — for a correction that never landed.
+      return;
+    }
 
     // AMEND, not upsert — a retroactive correction is not a second attempt.
     const player = state.players.find(p => String(p.id) === String(answer.player_id));
@@ -1454,12 +1473,18 @@ async function handleQuitGame() {
   try {
     // The server decides whether this empties the room — see leaveRoomOnServer.
     const served = await leaveRoomOnServer(state.room?.id, state.room?.playerId);
-    if (served.ok) {
-      // done
-    } else if (state.players.length <= 1) {
-      await deleteRoom(state.room?.id);
-    } else {
+    if (!served.ok) {
+      // GET THE ROW OUT FIRST, whatever went wrong. Removing yourself is
+      // allowed by migration 057, so this works even when op_leave_room was
+      // reached and failed — where the old shape took the deleteRoom branch
+      // instead and left the leaver sitting in the lobby until the stale sweep.
       await removePlayer(state.room?.playerId, state.room?.id, state.room?.playerId);
+      // Deleting the room by hand is the PRE-048 path only. After it, this
+      // matches nothing and reports success, so running it on a real failure is
+      // a no-op dressed as a cleanup.
+      if (served.unavailable && state.players.length <= 1) {
+        await deleteRoom(state.room?.id);
+      }
     }
   } catch (err) {
     logger.error('Game', 'handleQuitGame DB cleanup failed', err);
@@ -1646,6 +1671,11 @@ async function handleReviewQuestions() {
         const newCorrect = !answer.is_correct;
         const newScore = newCorrect ? answer.wager : (isFinalWager ? -answer.wager : 0);
 
+        // Captured before the optimistic change so a refusal restores exactly
+        // what was there.
+        const prevCorrect = answer.is_correct;
+        const prevScore = answer.score_earned;
+
         // Update local state
         answer.is_correct = newCorrect;
         answer.score_earned = newScore;
@@ -1663,7 +1693,22 @@ async function handleReviewQuestions() {
 
         // Persist to DB then re-render results behind the overlay
         const servedRow = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
-        if (!servedRow.ok) await updateAnswerJudgment(answerId, newCorrect, newScore);
+        if (!servedRow.ok && servedRow.unavailable) {
+          await updateAnswerJudgment(answerId, newCorrect, newScore);
+        } else if (!servedRow.ok) {
+          // Same rule as the other two override paths: a direct write after a
+          // real failure is a no-op that reports success (049).
+          answer.is_correct = prevCorrect;
+          answer.score_earned = prevScore;
+          toggle.classList.toggle('answer-toggle--correct', prevCorrect);
+          toggle.classList.toggle('answer-toggle--incorrect', !prevCorrect);
+          if (textEl) {
+            textEl.classList.toggle('review-item__player-answer--correct', prevCorrect);
+            textEl.classList.toggle('review-item__player-answer--incorrect', !prevCorrect);
+          }
+          showToast("Couldn't change that judgement — try again", 'error');
+          return;   // do NOT amend the player's permanent history
+        }
 
         // AMEND, not upsert — a retroactive correction is not a second attempt.
         const player = state.players.find(p => String(p.id) === String(answer.player_id));

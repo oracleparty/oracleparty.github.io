@@ -834,8 +834,19 @@ export async function fetchAnswersForQuestion(roomId, questionNumber) {
  * a verdict AND a score, so anything on the internet could set any score on any
  * answer in any live game.
  *
- * → { ok, outcome } — ok is false when the function is not installed, which is
- *   the caller's cue to do it the old way.
+ * → { ok, unavailable, outcome }. `unavailable` is the ONLY cue to write
+ *   directly — see below.
+ *
+ * NOT INSTALLED AND FAILED ARE DIFFERENT ANSWERS, and collapsing them lost a
+ * host's correction in silence. Both branches used to return { ok: false }, so
+ * ANY error — a blip, a timeout, a refusal — sent the caller down the direct
+ * UPDATE on `answers`. Migration 049 revoked that: it matches zero rows and
+ * returns NO error, so the override vanished for everybody while the host's own
+ * screen showed the toggle flipped. A wrong score, silently, from the one
+ * control whose whole job is fixing a wrong score.
+ *
+ * setPhaseOnServer and botAnswerOnServer in this same codebase already draw the
+ * distinction; this and op_disqualify_round did not.
  */
 export async function setJudgementOnServer(answerId, isCorrect, callerPlayerId) {
   const { data, error } = await supabase.rpc('op_set_judgement', {
@@ -846,10 +857,13 @@ export async function setJudgementOnServer(answerId, isCorrect, callerPlayerId) 
   if (error) {
     if (functionMissing(error)) {
       logger.debug('Supabase', 'op_set_judgement not installed, writing directly');
-      return { ok: false, outcome: null };
+      noteServerFunctions(false);
+      return { ok: false, unavailable: true, outcome: null };
     }
+    // Reached the server and failed. Do NOT retry directly — 049 makes that a
+    // no-op that reports success.
     logger.error('Supabase', 'op_set_judgement failed', error);
-    return { ok: false, outcome: null };
+    return { ok: false, unavailable: false, outcome: null };
   }
   noteServerFunctions(true);
   if (data && data !== 'changed') {
@@ -857,12 +871,17 @@ export async function setJudgementOnServer(answerId, isCorrect, callerPlayerId) 
     // not running the room. Silence here would look like the tap did nothing.
     logger.warn('Supabase', 'the server refused a judgement change', { outcome: data });
   }
-  return { ok: true, outcome: data || null };
+  return { ok: true, unavailable: false, outcome: data || null };
 }
 
 /**
  * That round did not happen (migration 049). Returns rows changed, or -1 when
  * the caller is not the host.
+ *
+ * `unavailable` for the same reason as setJudgementOnServer above: the caller's
+ * fallback is a loop of direct UPDATEs that 049 revoked, so treating a real
+ * failure as "not installed" leaves a thrown-out round still paying points, with
+ * nothing anywhere saying so.
  */
 export async function disqualifyRoundOnServer(roomId, questionNumber, callerPlayerId) {
   const { data, error } = await supabase.rpc('op_disqualify_round', {
@@ -871,10 +890,15 @@ export async function disqualifyRoundOnServer(roomId, questionNumber, callerPlay
     p_caller_id: callerPlayerId,
   });
   if (error) {
-    if (!functionMissing(error)) logger.error('Supabase', 'op_disqualify_round failed', error);
-    return { ok: false, changed: 0 };
+    if (functionMissing(error)) {
+      noteServerFunctions(false);
+      return { ok: false, unavailable: true, changed: 0 };
+    }
+    logger.error('Supabase', 'op_disqualify_round failed', error);
+    return { ok: false, unavailable: false, changed: 0 };
   }
-  return { ok: true, changed: Number(data) };
+  noteServerFunctions(true);
+  return { ok: true, unavailable: false, changed: Number(data) };
 }
 
 export async function updateAnswerJudgment(answerId, isCorrect, scoreEarned) {

@@ -306,13 +306,16 @@ export async function leaveRoomOnServer(roomId, playerId = null) {
     if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
       logger.debug('Supabase', 'op_leave_room not installed, leaving the old way');
       noteServerFunctions(false);
-    } else {
-      logger.error('Supabase', 'op_leave_room failed', error);
+      return { ok: false, unavailable: true, outcome: null };
     }
-    return { ok: false, outcome: null };
+    // Reached the server and failed. The caller must still get the player's ROW
+    // out — that part works either way — but deleting the room by hand does not:
+    // migration 048 revoked it, so it matches nothing and reports success.
+    logger.error('Supabase', 'op_leave_room failed', error);
+    return { ok: false, unavailable: false, outcome: null };
   }
   noteServerFunctions(true);
-  return { ok: true, outcome: data || null };
+  return { ok: true, unavailable: false, outcome: data || null };
 }
 
 /**

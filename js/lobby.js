@@ -1774,12 +1774,16 @@ async function handleLeave() {
   // players, both conclude somebody else is staying, and the room survives
   // with nobody in it.
   const served = await leaveRoomOnServer(room.id, room.playerId);
-  if (served.ok) {
-    // done — the function removed the player and took the room if it emptied
-  } else if (humanPlayers().length <= 1) {
-    await deleteRoom(room.id);
-  } else {
+  if (!served.ok) {
+    // GET THE ROW OUT FIRST, whatever went wrong — removing yourself is allowed
+    // by migration 057. The old shape took the deleteRoom branch when leaving as
+    // the last player, and 048 makes that a silent no-op, so a failed leave left
+    // the leaver listed in their own lobby.
     await removePlayer(room.playerId, room.id, room.playerId);
+    // Deleting the room by hand only works before 048.
+    if (served.unavailable && humanPlayers().length <= 1) {
+      await deleteRoom(room.id);
+    }
   }
   sessionStorage.removeItem('oracle_party_room');
   // Non-host goes to join page (find another game), host goes home

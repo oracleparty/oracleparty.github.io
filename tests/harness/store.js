@@ -62,6 +62,7 @@ export class FakeStore {
     this._missing = new Set();     // tables that answer as if they do not exist
     this._hiddenFunctions = new Set();  // RPCs that answer PGRST202
     this._slowFunctions = new Map();    // RPC -> ms before it answers
+    this._failedFunctions = new Map();  // RPC -> the error it answers with
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     // Doors the LIVE database has shut, so the fake refuses what it refuses.
     // See _shutDoor below — this is not a scenario knob, it is the schema.
@@ -343,6 +344,26 @@ export class FakeStore {
   slowFunction(name, ms) { this._slowFunctions.set(name, ms); }
   /** Undo slowFunction. */
   normalFunction(name) { this._slowFunctions.delete(name); }
+  /**
+   * Make one RPC FAIL — reached the server, and the server said no.
+   *
+   * THE THIRD SHAPE, and the one nothing here could produce. hideFunction is
+   * "not installed" (PGRST202) and slowFunction is "not back yet"; this is an
+   * installed function returning an error, which is what a blip, a timeout or a
+   * refused call actually looks like.
+   *
+   * It matters because the two are handled DIFFERENTLY and must be. Every
+   * fallback in js/db/ exists for the not-installed case, and several of them
+   * write directly to a table a migration has since locked — where the write
+   * matches zero rows and reports SUCCESS. So conflating the two turns a
+   * transient failure into a silent wrong answer, and with only hideFunction
+   * available a scenario could only ever exercise the branch that was correct.
+   */
+  failFunction(name, error = { message: 'boom', code: 'XX000' }) {
+    this._failedFunctions.set(name, error);
+  }
+  /** Undo failFunction. */
+  unfailFunction(name) { this._failedFunctions.delete(name); }
 
   seed(name, rows) {
     this.table(name).push(...rows.map(r => ({ ...r })));
@@ -765,6 +786,10 @@ export class FakeStore {
         // that failed. Only a bounded wait on the caller's side survives it.
         const rpcDelay = this._slowFunctions.get(table);
         if (rpcDelay) await new Promise(r => setTimeout(r, rpcDelay));
+        // Reached the server and failed — NOT the same as not installed, and
+        // the caller must not respond by writing directly. See failFunction.
+        const failure = this._failedFunctions.get(table);
+        if (failure) return { data: null, error: { ...failure } };
         return { data: this._rpc(table, payload), error: null };
       }
 
