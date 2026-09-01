@@ -952,6 +952,25 @@ export function buildDisplayTitle(profile) {
   if (!profile.title_builder_unlocked) return 'Novice';
   const parts = [profile.title_slot1, profile.title_slot2, profile.title_slot3].filter(Boolean);
   if (parts.length === 0) return 'Novice';
-  // Look up display words from the word list
-  return parts.map(id => TITLE_WORDS[id]?.word || id).join(' ');
+  // AN ID THIS BUILD DOES NOT KNOW IS DROPPED, NEVER PRINTED.
+  //
+  // This was `TITLE_WORDS[id]?.word || id`, and the fallback is a slot key:
+  // a player whose title could not be resolved was shown, to the entire room,
+  // as "w:science::rare".
+  //
+  // It is not a rare state. Owner-written words arrive through applyWordOverlay,
+  // which is fetched, and initAuth computes this title BEFORE that fetch — so on
+  // every page load, every owner-written word in a title resolves to nothing.
+  // The result is then cached to localStorage and copied onto the players row,
+  // where it is what the whole lobby reads for the length of a game.
+  //
+  // Invisible while title_words is empty, and certain the moment the owner
+  // writes one. Deleting a word does the same thing permanently.
+  //
+  // Dropping the part degrades to a shorter title, or to Novice if nothing
+  // resolves — the same thing a player sees before they have chosen one, and a
+  // far better wrong answer than a database key.
+  const words = parts.map(id => TITLE_WORDS[id]?.word).filter(Boolean);
+  if (words.length === 0) return 'Novice';
+  return words.join(' ');
 }

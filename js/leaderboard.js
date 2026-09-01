@@ -41,7 +41,7 @@ import {
 } from './supabase.js';
 import { initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
-import { TITLE_WORDS } from './titles.js';
+import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
 import { loadTitleWords } from './title-content.js';
 import { CATEGORY_META, flattenSubcategories } from './categories.js';
 
@@ -292,12 +292,10 @@ function emptyMessage(friendCount, floor) {
 // RENDERING HELPERS
 // ============================================
 
-function buildProfileTitle(profile) {
-  if (!profile || !profile.title_builder_unlocked) return 'Novice';
-  const parts = [profile.title_slot1, profile.title_slot2, profile.title_slot3].filter(Boolean);
-  if (parts.length === 0) return 'Novice';
-  return parts.map(id => TITLE_WORDS[id]?.word || id).join(' ');
-}
+// A SECOND COPY OF buildDisplayTitle IS HOW THE TWO DISAGREE. This one had the
+// same `|| id` fallback, so the leaderboard would have printed "w:science::rare"
+// as somebody's title independently of every other screen. One reader now.
+const buildProfileTitle = buildDisplayTitle;
 
 function renderRow(rank, profile, title, primary, secondary, isMe) {
   const avatar = renderAvatar({

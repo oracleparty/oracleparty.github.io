@@ -354,13 +354,24 @@ describe('buildDisplayTitle', () => {
     })).toBe('Science');
   });
 
-  it('falls back to raw ID for unknown word IDs', () => {
+  // THIS TEST USED TO ASSERT THE BUG, and it read as a deliberate design:
+  // "falls back to raw ID for unknown word IDs". The raw id is a slot key, so
+  // what it pinned was a player being shown to the whole lobby as
+  // "w:science::rare".
+  //
+  // Not a hypothetical fallback either — owner-written words do not exist in
+  // TITLE_WORDS until applyWordOverlay has run, and initAuth builds and caches
+  // this title before that fetch. Every page load, for every written word.
+  //
+  // A test that describes the wrong behaviour confidently is worse than no test:
+  // it is why the fix looked like a regression rather than a repair.
+  it('drops an unknown word rather than printing its id', () => {
     expect(buildDisplayTitle({
       title_builder_unlocked: true,
       title_slot1: 'nonexistent',
       title_slot2: null,
       title_slot3: null,
-    })).toBe('nonexistent');
+    })).toBe('Novice');
   });
 });
 
@@ -1094,5 +1105,69 @@ describe('the celebration explains itself', () => {
     expect(text).toContain('Relentless');
     expect(text).toContain('Level 2');
     expect(text).not.toMatch(/10 games/i);
+  });
+});
+
+// ============================================
+// EDITING A WORD THAT IS ALREADY IN USE
+//
+// The owner asked directly: is it safe to change a title somebody is wearing?
+// It is, and this pins WHY — the unlock key is the SLOT (w:category:sub:tier),
+// which carries no text, so renaming the word keeps it for everybody who earned
+// it. That is what makes placeholders safe to ship at all.
+//
+// The same question found the dangerous half. An owner-written word does not
+// exist in TITLE_WORDS until applyWordOverlay has run, and initAuth builds and
+// CACHES the display title before that fetch — so on every page load an
+// owner-written word resolved to nothing. The old fallback printed the raw id,
+// and that cached string is copied onto the players row and read by the whole
+// lobby for a game. Invisible while title_words is empty; certain the moment
+// the owner writes one.
+// ============================================
+describe('editing a title word that is already in use', () => {
+  const id = overlayWordId('science', null, 'rare');
+  const wearer = { title_builder_unlocked: true, title_slot1: null, title_slot2: id, title_slot3: null };
+  const row = (word) => ([{
+    id: 'r1', slot: 2, category: 'science', subcategory: null, tier: 'rare',
+    word, target_right: 100, is_placeholder: false,
+  }]);
+
+  afterEach(() => clearWordOverlay());
+
+  it('keeps the unlock when the owner renames the word', () => {
+    applyWordOverlay(row('Luminous'));
+    expect(buildDisplayTitle(wearer)).toBe('Luminous');
+    // A rename is a delete and an insert, so the DATABASE row id changes. The
+    // slot key must not.
+    clearWordOverlay();
+    applyWordOverlay(row('Radiant'));
+    expect(buildDisplayTitle(wearer)).toBe('Radiant');
+    expect(overlayWordId('science', null, 'rare')).toBe(id);
+  });
+
+  it('never prints a slot key as somebody’s title', () => {
+    // Before the overlay loads, which is every page boot.
+    expect(buildDisplayTitle(wearer)).not.toContain('w:');
+    expect(buildDisplayTitle(wearer)).toBe('Novice');
+    // And after the owner deletes a word somebody is wearing.
+    applyWordOverlay(row('Luminous'));
+    clearWordOverlay();
+    expect(buildDisplayTitle(wearer)).not.toContain('w:');
+  });
+
+  it('drops only the part it cannot resolve, keeping the rest', () => {
+    // A title is up to three words. One unresolved word must not take the
+    // other two down with it — that would turn a missing word into a lost
+    // title.
+    applyWordOverlay(row('Luminous'));
+    const mixed = {
+      title_builder_unlocked: true,
+      title_slot1: 'brave',              // defined in code
+      title_slot2: id,                   // from the overlay
+      title_slot3: 'w:nope::mythic',     // does not exist
+    };
+    const text = buildDisplayTitle(mixed);
+    expect(text).toContain('Luminous');
+    expect(text).not.toContain('w:');
   });
 });

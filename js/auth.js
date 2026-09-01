@@ -325,6 +325,29 @@ export async function initAuth() {
     // Non-blocking background tasks — failures are fine
     fetchTitleUnlocks(session.user.id).then(async unlocks => {
       await loadTitleWords();
+
+      // RECOMPUTE THE TITLE NOW THE OWNER'S WORDS ARE HERE.
+      //
+      // _cachedTitle was computed above, BEFORE this fetch — deliberately, so
+      // decorative content can never hold up boot (the sign-in freeze of
+      // 2026-08-29 is why nothing here blocks). But an owner-written word does
+      // not exist in TITLE_WORDS until this line, so the cached title was built
+      // without it, and that cache is what gets copied onto the players row and
+      // read by the whole lobby for a game.
+      //
+      // buildDisplayTitle drops what it cannot resolve rather than printing a
+      // slot key, so the worst case was already only a SHORTER title. This is
+      // what makes it the RIGHT one, a moment later and with nothing waiting.
+      try {
+        const refreshed = buildDisplayTitle(profile);
+        if (refreshed && refreshed !== profile._cachedTitle) {
+          profile._cachedTitle = refreshed;
+          localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+        }
+      } catch (err) {
+        logger.warn('Auth', 'could not refresh the title after loading written words', err);
+      }
+
       const ctx = { hour: new Date().getHours() };
       const newUnlocks = evaluateUnlocks(stats, profile, unlocks, ctx);
       for (const u of newUnlocks) {
