@@ -69,6 +69,18 @@ const MIGRATIONS = [
   '060_the_server_moves_the_game_on.sql',
   '061_only_the_rules_change_the_room.sql',
   '062_a_deputy_can_actually_advance.sql',
+  // 063 and 064 create title_words and its placeholder flag. They touch no
+  // gameplay table and carry no rules of their own — but they are past
+  // MIGRATION_FLOOR, so the guard below correctly refused to run without them,
+  // and CI's sql-parity job had been RED since 063 shipped on 2026-08-30.
+  //
+  // Three days in which the 1,621 judging-parity cases and the 172 game rules
+  // did not run at all, on the branch GitHub Pages serves. The guard did its
+  // job perfectly and said so on every push; nobody was reading. Applying them
+  // here is cheaper than an exemption and keeps the rule simple: everything
+  // from 045 on is applied, full stop.
+  '063_title_words_are_content.sql',
+  '064_title_word_placeholders.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.

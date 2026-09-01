@@ -169,6 +169,28 @@
 >   them was not asked for. **The comments lie about what is running** — that is
 >   the reason to delete them, when somebody decides to.
 >
+> ### CI had been RED on the deploy branch for three days
+>
+> **Measured 2026-08-31, and the guard was right.** `scripts/verify-sql.mjs`
+> applies a hand-written list of migrations and refuses to run if anything from
+> 045 on is missing from it. 063 and 064 shipped on 2026-08-30 and were never
+> added — so from that commit onward the `sql-parity` job exited 2 on every
+> push to `claude/setup-oracle-party-PHRgj`, the branch GitHub Pages serves.
+>
+> Three days in which the judging-parity cases and the game-rule table did not
+> run at all. The guard printed exactly what was wrong, by filename, on every
+> single push. **Nobody was reading it**, which is the same fault as the probe
+> printing its alarm and exiting 0 — one notch further out: a check that fails
+> loudly is still useless if no one looks.
+>
+> With both added, the suite passes in full: **2,661 judging cases agree
+> between the SQL and the screen, 1,695 normalisations, 400 edit distances, and
+> 189 game rules hold.** So the lockdown SQL is sound and was never the cause —
+> another negative result worth having, and one that cost one command.
+>
+> **Check the Actions tab after any push that adds a migration.** Everything in
+> this file about SQL being verified is only true while that job is green.
+>
 > ### Also corrected in this pass
 >
 > - **The room code is FOUR LETTERS, not six digits.** `generateRoomCode()` in
