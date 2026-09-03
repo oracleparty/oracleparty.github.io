@@ -914,6 +914,36 @@ export function handleAnswerChange(payload) {
 //   - DISCONNECTED_TIMEOUT_MS (45s): player beacon fired (tab close)
 //   - STALE_TIMEOUT_MS (3 min): heartbeat stopped (internet loss / crash)
 
+/** Is anybody here who is flagged host AND has actually been heard from? */
+function noLiveHost() {
+  return !state.players.some(p => p.is_host && !p.is_bot && isPresentInGame(p));
+}
+
+/**
+ * Present enough to still hold a seat. Deliberately the same test and the same
+ * window as the lobby's isPresentInLobby: the two sweeps must not disagree
+ * about who is in the room.
+ */
+function isPresentInGame(p) {
+  const raw = p.last_seen_at || p.joined_at;
+  // A missing timestamp means CANNOT TELL, and cannot-tell counts as HERE.
+  if (!raw) return true;
+  return (Date.now() - new Date(raw).getTime()) < STALE_TIMEOUT_MS;
+}
+
+/**
+ * Am I the one who should act for a room with no reachable host?
+ *
+ * Earliest joiner still present, so every client picks the same person without
+ * having to agree with each other first. A bot never acts: it runs no browser.
+ */
+function iAmTheCaretaker() {
+  const present = state.players
+    .filter(p => !p.is_bot && isPresentInGame(p))
+    .sort((a, b) => new Date(a.joined_at || 0) - new Date(b.joined_at || 0));
+  return present.length > 0 && String(present[0].id) === String(state.room.playerId);
+}
+
 export async function checkStalePresence() {
   setStaleCheckCount(_staleCheckCount + 1);
   const now = Date.now();
@@ -964,8 +994,21 @@ export async function checkStalePresence() {
       if (connected[0] && String(connected[0].id) === String(state.room.playerId)) {
         removePlayer(id, state.room.id, state.room.playerId);
       }
-    } else if (state.room.isHost) {
-      // Stale non-host: host kicks them
+    } else if (state.room.isHost || (noLiveHost() && iAmTheCaretaker())) {
+      // Stale non-host: the host kicks them — OR, WHEN THERE IS NO REACHABLE
+      // HOST, the caretaker does.
+      //
+      // This branch read `state.room.isHost` alone, and the lobby's copy of the
+      // same rule has carried the caretaker clause since the "ghost cannot be
+      // the host" fix. One rule, two readers, corrected in one — this project's
+      // most repeated fault, found by diffing the two copies.
+      //
+      // What it cost IN A GAME: the host leaves, somebody is deputised to
+      // advance, and from then on nobody has the authority to sweep a player
+      // who has genuinely gone. Their row stays in state.players for the rest
+      // of the game, so "has everybody answered" can never come true — the
+      // reveal countdown never hides and the button reads "Reveal Early" while
+      // the room waits on somebody who is not there.
       removePlayer(id, state.room.id, state.room.playerId);
     }
   }
