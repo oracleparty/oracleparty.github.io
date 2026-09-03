@@ -285,6 +285,56 @@ try {
   }
 
   // ============================================================
+  // WHEN op_set_phase IS REACHED AND FAILS
+  //
+  // Every phase change in this game used to be updateGameState, which goes
+  // through reportWriteFailure and told the player "Couldn't move the game on
+  // — check your connection". Routing them all through op_set_phase (migration
+  // 060) kept the write and DROPPED the message: a genuine error logged and
+  // returned, no fallback, nothing on screen. A transient failure became a
+  // button that does nothing and a game that silently stops — in the one place
+  // that matters most, because a phase change is how the game MOVES.
+  //
+  // No fallback is correct here — 061 revoked the column, so a direct write
+  // would match zero rows and report success — which is exactly why the
+  // message is the whole of the fix.
+  //
+  // failFunction is what makes this reachable: hideFunction models "not
+  // installed", which takes the fallback and is the branch that was always
+  // right.
+  // ============================================================
+  {
+    const advance = host.page.locator('#btn-next-question');
+    const pressable = await advance.evaluate(el => !!el && el.offsetParent !== null && !el.disabled)
+      .catch(() => false);
+    note(`host advance button pressable before the failure test: ${pressable}`);
+    if (!pressable) {
+      // Without a real press this check cannot fail, and a check that cannot
+      // fail is worse than none.
+      problems.push('could not reach an advance button to test a refused phase change');
+    } else {
+      table.store.failFunction('op_set_phase');
+      const phaseBefore = table.store.table('rooms')[0]?.game_phase;
+      await advance.click().catch(() => {});
+      await host.page.waitForTimeout(2500);
+      table.store.unfailFunction('op_set_phase');
+
+      const phaseAfter = table.store.table('rooms')[0]?.game_phase;
+      const toasted = await host.page.evaluate(() =>
+        [...document.querySelectorAll('.toast, #toast')].map(t => t.textContent.trim()).join(' | ')
+      ).catch(() => '');
+      note(`refused phase change: room ${phaseBefore} -> ${phaseAfter}, toast ${JSON.stringify(toasted)}`);
+
+      if (phaseAfter !== phaseBefore) {
+        problems.push('op_set_phase failed and the room moved anyway — something wrote the phase directly');
+      }
+      if (!/couldn.t move the game on/i.test(toasted)) {
+        problems.push(`the host pressed advance, the server failed, and nothing was said (toasts: ${JSON.stringify(toasted)})`);
+      }
+    }
+  }
+
+  // ============================================================
   // THE CO-HOST REVEALS THE FINAL QUESTION
   //
   // "Reveal Question" is gated on canControlGame(), so a CO-HOST or a DEPUTY
@@ -399,6 +449,8 @@ try {
       // above, and the client logging it is the behaviour being measured.
       // Excluded by its exact shape, so a different fault still shows up.
       !/op_set_host_role failed/i.test(e) &&
+      // Same for op_set_phase, injected by the refused-advance check.
+      !/op_set_phase failed/i.test(e) &&
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }

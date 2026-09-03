@@ -579,7 +579,21 @@ export async function setPhaseOnServer(roomId, callerId, expectedPhase, toPhase,
       noteServerFunctions(false);
       return false;
     }
+    // REACHED THE SERVER AND FAILED, and the player must be told.
+    //
+    // No fallback runs — correctly, since migration 061 revoked the column, so
+    // a direct write would match nothing and report success. But that left the
+    // ONLY thing this used to do on a failure: nothing at all. Before the
+    // lockdown every phase change was updateGameState, which goes through
+    // reportWriteFailure and said "Couldn't move the game on — check your
+    // connection". Routing it through op_set_phase kept the write and dropped
+    // the message, so a transient failure became a button that does nothing
+    // and a game that silently stops.
+    //
+    // Phase changes are how the game MOVES — reveal, next question, results,
+    // Play Again — so this is the worst place in the app for a silent failure.
     logger.error('Supabase', 'op_set_phase failed', error);
+    showToast("Couldn't move the game on — tap again", 'error');
     return true;
   }
   if (data === 'already moved') {
@@ -604,7 +618,11 @@ export async function setPhaseOnServer(roomId, callerId, expectedPhase, toPhase,
     logger.warn('Supabase', 'op_set_phase: this client may not advance the room', { toPhase });
     showToast("The host is running the game — you can't advance it", 'error');
   } else if (data !== 'ok') {
+    // Declined for a reason with no wording of its own ('not a phase', and
+    // anything a later migration adds). Rare, but the tap still did nothing, so
+    // it says so rather than leaving the host pressing a dead button.
     logger.warn('Supabase', `op_set_phase declined: ${data}`, { toPhase });
+    showToast("The game didn't move — tap again", 'error');
   }
   return true;
 }
