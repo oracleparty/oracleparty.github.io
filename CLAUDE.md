@@ -72,6 +72,68 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-03 — reading the whole shift, hunk by hunk
+>
+> The owner's question was the right one: *"it had been working well before the
+> shift I mentioned."* So the game engine was diffed against the last commit
+> before it — `a5d6843`, the point Slice 7 begins — and every hunk read. 1,025
+> lines across `js/game/` and `js/lobby.js`. Two findings, and the first is the
+> purest example of the shift's whole failure mode.
+>
+> ### The button that moves the game on said nothing when it failed
+>
+> Before the lockdown, every phase change was `updateGameState`, which goes
+> through `reportWriteFailure` and toasts *"Couldn't move the game on — check
+> your connection"*. Migration 060 routed all fourteen call sites through
+> `setPhaseOnServer`, which on a genuine error logged and returned `true`.
+> **The shift kept the write and dropped the message.**
+>
+> No fallback runs, and that is CORRECT — 061 revoked the column, so a direct
+> write matches zero rows and reports success. Which is exactly why the message
+> is the whole of the fix: with nothing said and nothing retried, a transient
+> failure is a button that does nothing and a game that silently stops. Reveal
+> Results, Next Question, Show Results, Final Wager, Play Again, Return to
+> Lobby, Start Game — every one of them.
+>
+> This is the pattern to expect from every slice of the rebuild, stated once
+> more: **what was harmlessly redundant a moment ago is now the only path**, and
+> the guard written for the old world is silently wrong in the new one.
+>
+> `scenario-cohost` fails the round by name with the toast removed — *"the host
+> pressed advance, the server failed, and nothing was said"* — and requires the
+> room NOT to have moved, so it cannot pass on a fallback quietly working.
+> `store.failFunction` is what makes it reachable at all; `hideFunction` models
+> "not installed", which takes the fallback and is the branch that was always
+> right.
+>
+> ### promoteToHost reported success for a fallback it never checked
+>
+> Three of the four role functions return `{ ok: !error }` from their direct-write
+> fallback. `promoteToHost` returned `{ ok: true }` unconditionally, having
+> logged both errors and discarded them. **The same rule stated four times and
+> followed three** — the shape this file records more than any other. Insurance
+> rather than a live fault (it needs 058 applied AND the function missing), but
+> every caller announces the change in chat on the strength of that `ok`.
+>
+> ### What the read RULED OUT, which is worth as much
+>
+> - **Every `rooms` column the client writes is in 061's grant list.** Enumerated
+>   both dynamic `columnMap`s as well as the literal writes. No refused UPDATE.
+> - **Every `players` column the client writes is in 058's list** — or goes
+>   through `op_set_host_role`.
+> - **`op_submit_answer` accepts an answer when `question_started_at` is NULL**
+>   (`IF r.question_started_at IS NOT NULL THEN`), so moving the clock stamp
+>   behind the UI reveal cannot refuse a fast submitter.
+> - **All four `attachProfileCardHandler` call sites** pass the new fourth
+>   argument.
+> - **`handleLeave`, `handleBackButton` and `handleQuitGame`** all route through
+>   `leaveRoomOnServer` and only reach `deleteRoom` on `unavailable`.
+>
+> ### The habit, restated
+>
+> Diffing against the last known-good commit found in one pass what six sessions
+> of symptom-chasing had not. When a report is *"it worked before X"*, read X.
+
 > ## 2026-08-31 — a playtest list, worked one at a time
 >
 > Nine things the owner reported after a real game. Written the way the section
