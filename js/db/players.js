@@ -185,6 +185,14 @@ export async function promoteToHost(roomId, playerId, displayName, callerId) {
   // below.
   const served = await setHostRoleOnServer(roomId, callerId, playerId, 'host', true);
 
+  // Whether the FALLBACK landed, when there was a fallback. Its two writes
+  // used to be logged and thrown away, and this returned ok unconditionally —
+  // so the one path where 058 has revoked the column but the function is also
+  // missing reported a promotion that could not have happened, and the caller
+  // announced it. The other three role functions already returned `!error`
+  // here; this one did not, which is the same rule stated four times and
+  // followed three.
+  let fallbackOk = true;
   if (!served.handled) {
     const { error: clearError } = await supabase
       .from('players').update({ is_host: false })
@@ -194,6 +202,10 @@ export async function promoteToHost(roomId, playerId, displayName, callerId) {
     const { error: setError } = await supabase
       .from('players').update({ is_host: true }).eq('id', playerId);
     if (setError) logger.error('Supabase', 'promoteToHost player update failed', setError);
+    // The SET is what makes somebody host. A failed clear leaves a spare crown,
+    // which promotion fixes on its next pass; a failed set leaves nobody at
+    // all, and the caller must not say otherwise.
+    fallbackOk = !setError;
   }
 
   // The room's host_name either way — `rooms` UPDATE is still open, and this is
@@ -206,7 +218,7 @@ export async function promoteToHost(roomId, playerId, displayName, callerId) {
   // then announce it in chat — see the note on setHostRoleOnServer. When the
   // server DECLINES (a live host is already there, which is the guard working)
   // this is false, and the caller must not claim otherwise.
-  return { ok: served.handled ? served.ok : true };
+  return { ok: served.handled ? served.ok : fallbackOk };
 }
 
 /**
