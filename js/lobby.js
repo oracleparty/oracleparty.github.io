@@ -857,13 +857,27 @@ async function handleHostPromotion() {
       renderPlayers();
       return;
     }
+    // THE SERVER DECIDES, AND IT CAN SAY NO. op_set_host_role declines when the
+    // room already has a live host — which is the same race the fetch above
+    // guards, one round trip later and with the database's own view. Claiming
+    // the crown anyway gave this client host UI and a chat announcement while
+    // the row said somebody else, and every advance it then tried would be
+    // refused by op_may_advance: the "deputy with dead buttons" shape 062 was
+    // written to end.
+    const promoted = await promoteToHost(room.id, room.playerId, getDisplayName(), room.playerId);
+    if (!promoted?.ok) {
+      logger.info('Lobby', 'the server declined this promotion — somebody else already has it');
+      players = await fetchPlayers(room.id);
+      sortPlayers();
+      renderPlayers();
+      return;
+    }
     room.isHost = true;
     room.isCohost = false;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
     // Update local player state immediately so badge renders
     const localIdx = players.findIndex(p => String(p.id) === String(room.playerId));
     if (localIdx !== -1) { players[localIdx].is_host = true; players[localIdx].is_cohost = false; }
-    await promoteToHost(room.id, room.playerId, getDisplayName(), room.playerId);
     // Clear co-host flag if we were co-host
     if (nextHost.is_cohost) await demoteCohost(room.playerId, room.id, room.playerId);
     activateHostUI();
@@ -933,7 +947,14 @@ async function handleTransferHost(targetPlayerId, targetDisplayName) {
     // The caller is the CURRENT host handing the room over deliberately, so
     // the transfer is passed as coming from them — the server's other branch
     // (a leaderless room) must not be what lets this through.
-    await promoteToHost(room.id, targetPlayerId, targetDisplayName, room.playerId);
+    const promoted = await promoteToHost(room.id, targetPlayerId, targetDisplayName, room.playerId);
+    // STOP IF THE CROWN DID NOT MOVE. Demoting anyway leaves the room with NO
+    // host at all — the current host has given it up and the target never got
+    // it — and nothing recovers that until a stale sweep notices.
+    if (!promoted?.ok) {
+      showToast("Couldn't transfer host — try again", 'error');
+      return;
+    }
     await demoteHost(room.playerId, room.id, targetPlayerId);
 
     // Update local state
@@ -962,19 +983,34 @@ async function handleCohostToggle(playerId, displayName, isDemote) {
   if (!room.isHost || _isCohostToggling) return;
   _isCohostToggling = true;
   try {
+    // ONLY CLAIM WHAT ACTUALLY LANDED.
+    //
+    // These four used to return nothing, so this marked the player co-host in
+    // the local list AND announced it in chat regardless. op_set_host_role
+    // DECLINES when the room's state does not allow it, and a decline came back
+    // looking exactly like a success — so the host saw a badge nobody else had,
+    // the chat said it happened, and the co-host got none of the powers.
     if (isDemote) {
-      await demoteCohost(playerId, room.id, room.playerId);
+      const res = await demoteCohost(playerId, room.id, room.playerId);
+      if (!res?.ok) { showToast("Couldn't remove co-host", 'error'); return; }
       const idx = players.findIndex(p => String(p.id) === String(playerId));
       if (idx !== -1) players[idx].is_cohost = false;
       sendMessage(room.id, 'System', `${displayName} is no longer co-host`);
     } else {
-      // Demote any existing co-host first (only one co-host at a time)
+      // Demote any existing co-host first (only one co-host at a time).
+      // If THAT fails, stop: promoting on top of it would leave two.
       const existingCohost = players.find(p => p.is_cohost);
       if (existingCohost) {
-        await demoteCohost(existingCohost.id, room.id, room.playerId);
+        const cleared = await demoteCohost(existingCohost.id, room.id, room.playerId);
+        if (!cleared?.ok) { showToast("Couldn't change co-host", 'error'); return; }
         existingCohost.is_cohost = false;
       }
-      await promoteToCohost(playerId, room.id, room.playerId);
+      const res = await promoteToCohost(playerId, room.id, room.playerId);
+      if (!res?.ok) {
+        showToast("Couldn't make them co-host", 'error');
+        renderPlayers();   // the demotion above may already have landed
+        return;
+      }
       const idx = players.findIndex(p => String(p.id) === String(playerId));
       if (idx !== -1) players[idx].is_cohost = true;
       sendMessage(room.id, 'System', `${displayName} is now co-host`);

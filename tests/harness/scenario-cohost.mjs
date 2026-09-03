@@ -129,6 +129,62 @@ try {
     }).catch(() => null);
     note(`Bob's own session records isCohost: ${bobKnows}`);
     if (!bobKnows) problems.push('the promoted player\'s own client does not know it is co-host');
+
+    // ============================================================
+    // A PROMOTION THAT DID NOT LAND MUST NOT BE ANNOUNCED
+    //
+    // promoteToCohost and its three siblings used to return NOTHING, so the
+    // lobby marked the player co-host in its own list and posted "X is now
+    // co-host" to the chat whether or not the write landed. op_set_host_role
+    // DECLINES when the room's state does not allow it — that is the guard
+    // working — and a decline was indistinguishable from a success. The host
+    // saw a badge nobody else had, the room was told it happened, and the
+    // co-host got none of the powers. CLAUDE.md records co-host "silently doing
+    // nothing, for months"; this is a fresh route to the same place.
+    //
+    // failFunction is what makes this reachable: the store could only model
+    // "not installed", which takes the fallback rather than the decline.
+    // ============================================================
+    heading('a co-host promotion that fails');
+    const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
+    const carolBtn = host.page.locator(`.cohost-btn[data-cohost-id="${carolId}"]`).first();
+    if (!await carolBtn.isVisible().catch(() => false)) {
+      note('no Co-Host button for Carol — skipping the refused-promotion check');
+    } else {
+      const chatBefore = table.store.table('chat_messages').length;
+      table.store.failFunction('op_set_host_role');
+      await carolBtn.click().catch(() => {});
+      await host.page.waitForTimeout(2500);
+      table.store.unfailFunction('op_set_host_role');
+
+      const carolRow = table.store.table('players').find(p => p.id === carolId);
+      const shownAsCohost = await host.page.evaluate(id =>
+        !!document.querySelector(`[data-player-id="${id}"] .badge--cohost`), carolId).catch(() => null);
+      const announced = table.store.table('chat_messages')
+        .slice(chatBefore).map(m => m.message || '').join(' | ');
+      const toasted = await host.page.evaluate(() =>
+        [...document.querySelectorAll('.toast, #toast')].map(t => t.textContent.trim()).join(' | ')
+      ).catch(() => '');
+      note(`refused promotion: stored is_cohost=${carolRow?.is_cohost}, badge shown=${shownAsCohost}, chat ${JSON.stringify(announced)}, toast ${JSON.stringify(toasted)}`);
+
+      if (carolRow?.is_cohost) {
+        problems.push('a refused co-host promotion still changed the stored row');
+      }
+      if (shownAsCohost) {
+        problems.push('the promotion was refused and the lobby still shows a co-host badge — the host sees a role nobody else has');
+      }
+      if (/is now co-host/i.test(announced)) {
+        problems.push('the promotion was refused and the room was told it happened');
+      }
+      // EITHER MESSAGE IS CORRECT. Only one co-host is allowed at a time, so
+      // this path clears the existing one FIRST — and when that step is the one
+      // refused, stopping there is right: promoting on top of a demotion that
+      // did not land would leave the room with two. What matters is that the
+      // host is told something rather than watching a tap do nothing.
+      if (!/couldn.t (make them co-host|change co-host)/i.test(toasted)) {
+        problems.push(`a refused co-host promotion said nothing to the host (toasts: ${JSON.stringify(toasted)})`);
+      }
+    }
   }
 
   // ============================================================
@@ -339,6 +395,10 @@ try {
 
   for (const r of [host, bob, carol]) {
     const real = r.consoleErrors.filter(e =>
+      // op_set_host_role's failure is INJECTED by the refused-promotion check
+      // above, and the client logging it is the behaviour being measured.
+      // Excluded by its exact shape, so a different fault still shows up.
+      !/op_set_host_role failed/i.test(e) &&
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }

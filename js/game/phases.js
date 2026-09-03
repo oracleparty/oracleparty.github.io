@@ -89,12 +89,25 @@ export async function handlePlayerChange(payload) {
       if (fresh.some(p => p.is_host)) {
         state.players = fresh;
       } else {
+        // ASK FIRST, THEN CLAIM IT. op_set_host_role declines when the room
+        // already has a live host — the same race the fetch above guards, one
+        // round trip later and decided by the database rather than by this
+        // phone. Claiming anyway mid-game is the worst version of it: this
+        // client gets host controls, announces itself in chat, and every
+        // advance it tries is refused by op_may_advance, which is the dead
+        // button 062 was written to end.
+        const promoted = await promoteToHost(
+          state.room.id, state.room.playerId, getDisplayName(), state.room.playerId);
+        if (!promoted?.ok) {
+          logger.info('Game', 'the server declined this promotion — somebody else already has it');
+          state.players = await fetchPlayers(state.room.id);
+          return;
+        }
         state.room.isHost = true;
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
         // Update local player state immediately so host badge renders
         const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
         if (localIdx !== -1) state.players[localIdx].is_host = true;
-        await promoteToHost(state.room.id, state.room.playerId, getDisplayName(), state.room.playerId);
         // Show host controls for current phase WITHOUT re-triggering phase logic
         // (handlePhaseTransition can cause auto-submits, screen transitions, etc.)
         _activateHostControlsForCurrentPhase();
@@ -1014,12 +1027,22 @@ export async function checkStalePresence() {
       if (localMe !== -1) state.players[localMe].is_cohost = false;
       demoteCohost(state.room.playerId, state.room.id, state.room.playerId).catch(e => logger.warn('Game', 'demoteCohost on promotion failed', e));
     }
+    // Same rule as the DELETE path above: the server can decline, and a client
+    // that claims the crown anyway runs a game the database says it does not
+    // run. Staying a deputy is the correct outcome of a decline — it can still
+    // advance, which is what the room actually needs.
+    const promoted = await promoteToHost(
+      state.room.id, state.room.playerId, getDisplayName(), state.room.playerId);
+    if (!promoted?.ok) {
+      logger.info('Game', 'the server declined this promotion — staying a deputy');
+      state.players = await fetchPlayers(state.room.id);
+      return;
+    }
     state.isDeputy = false;          // the real thing now, not a stand-in
     state.room.isHost = true;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
     const localIdx = state.players.findIndex(p => String(p.id) === String(state.room.playerId));
     if (localIdx !== -1) state.players[localIdx].is_host = true;
-    await promoteToHost(state.room.id, state.room.playerId, getDisplayName(), state.room.playerId);
     _activateHostControlsForCurrentPhase();
     sendMessage(state.room.id, 'System', `${getDisplayName()} is now the host`);
   }

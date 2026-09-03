@@ -185,7 +185,7 @@ export async function promoteToHost(roomId, playerId, displayName, callerId) {
   // below.
   const served = await setHostRoleOnServer(roomId, callerId, playerId, 'host', true);
 
-  if (!served) {
+  if (!served.handled) {
     const { error: clearError } = await supabase
       .from('players').update({ is_host: false })
       .eq('room_id', roomId).neq('id', playerId);
@@ -201,6 +201,12 @@ export async function promoteToHost(roomId, playerId, displayName, callerId) {
   const { error: roomError } = await supabase
     .from('rooms').update({ host_name: displayName }).eq('id', roomId);
   if (roomError) logger.error('Supabase', 'promoteToHost room update failed', roomError);
+
+  // WHETHER THE ROLE ACTUALLY MOVED. Every caller used to assume it did and
+  // then announce it in chat — see the note on setHostRoleOnServer. When the
+  // server DECLINES (a live host is already there, which is the guard working)
+  // this is false, and the caller must not claim otherwise.
+  return { ok: served.handled ? served.ok : true };
 }
 
 /**
@@ -223,7 +229,7 @@ export async function promoteToHost(roomId, playerId, displayName, callerId) {
  *   before the SQL is run.
  */
 async function setHostRoleOnServer(roomId, callerId, targetId, role, value) {
-  if (!roomId || !callerId || !targetId) return false;
+  if (!roomId || !callerId || !targetId) return { handled: false, ok: false };
   const { data, error } = await supabase.rpc('op_set_host_role', {
     p_room_id: roomId,
     p_caller_id: callerId,
@@ -232,46 +238,63 @@ async function setHostRoleOnServer(roomId, callerId, targetId, role, value) {
     p_value: value,
   });
   if (error) {
-    if (functionMissing(error)) { noteServerFunctions(false); return false; }
+    if (functionMissing(error)) { noteServerFunctions(false); return { handled: false, ok: false }; }
     logger.error('Supabase', 'op_set_host_role failed', error);
-    return true;   // reached the server and was refused — do NOT retry directly
+    // Reached the server and failed — do NOT retry directly, 058 revoked the
+    // column. handled means "the fallback must not run"; ok means "the role
+    // actually changed", and those are different questions.
+    return { handled: true, ok: false };
   }
   if (data !== 'ok') {
     // Not a fault the player can act on: both the lobby and the stale sweep
     // race to promote, so "a live host is already here" is the guard working.
     logger.debug('Supabase', `op_set_host_role declined: ${data}`, { role, targetId });
   }
-  return true;
+  return { handled: true, ok: data === 'ok' };
 }
 
 /**
  * Demote a player from host status.
  */
 export async function demoteHost(playerId, roomId, callerId) {
-  if (await setHostRoleOnServer(roomId, callerId, playerId, 'host', false)) return;
+  const served = await setHostRoleOnServer(roomId, callerId, playerId, 'host', false);
+  if (served.handled) return { ok: served.ok };
 
   const { error } = await supabase.from('players').update({ is_host: false }).eq('id', playerId);
   if (error) logger.error('Supabase', 'demoteHost failed', error);
+  return { ok: !error };
 }
 
 /**
  * Promote a player to co-host.
+ *
+ * → { ok } — DID THE ROLE ACTUALLY MOVE. These four used to return nothing at
+ * all, so every caller assumed success: the lobby marked the player co-host in
+ * its own list AND posted "X is now co-host" to the chat, whether or not the
+ * write landed. op_set_host_role DECLINES when the room's own state does not
+ * allow it — which is the guard working, not a fault — and a decline was
+ * indistinguishable from a success. CLAUDE.md records co-host "silently doing
+ * nothing, for months"; this is a fresh way to reach the same place.
  */
 export async function promoteToCohost(playerId, roomId, callerId) {
-  if (await setHostRoleOnServer(roomId, callerId, playerId, 'cohost', true)) return;
+  const served = await setHostRoleOnServer(roomId, callerId, playerId, 'cohost', true);
+  if (served.handled) return { ok: served.ok };
 
   const { error } = await supabase.from('players').update({ is_cohost: true }).eq('id', playerId);
   reportWriteFailure('Promote co-host', error, "Couldn't make them co-host");
+  return { ok: !error };
 }
 
 /**
  * Demote a player from co-host status.
  */
 export async function demoteCohost(playerId, roomId, callerId) {
-  if (await setHostRoleOnServer(roomId, callerId, playerId, 'cohost', false)) return;
+  const served = await setHostRoleOnServer(roomId, callerId, playerId, 'cohost', false);
+  if (served.handled) return { ok: served.ok };
 
   const { error } = await supabase.from('players').update({ is_cohost: false }).eq('id', playerId);
   reportWriteFailure('Demote co-host', error, "Couldn't remove co-host");
+  return { ok: !error };
 }
 
 /**

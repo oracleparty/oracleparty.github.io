@@ -187,6 +187,34 @@
 > `setJudgementOnServer`; the scenario caught the two I had missed, which is the
 > fourth time this file records that exact shape.
 >
+> ### A role change that was refused was announced anyway (2026-09-01)
+>
+> Found by the same sweep, one shape along: **an optimistic change that is never
+> reverted.** `promoteToHost`, `demoteHost`, `promoteToCohost` and `demoteCohost`
+> returned NOTHING at all, so no caller could tell success from refusal — and
+> `op_set_host_role` DECLINES whenever the room's own state does not allow it,
+> which is the guard working rather than a fault.
+>
+> | Caller | What a decline did |
+> |---|---|
+> | the lobby's co-host toggle | marked them co-host locally AND posted *"X is now co-host"* to the chat. The host saw a badge nobody else had; the co-host got none of the powers |
+> | the lobby's host TRANSFER | promoted the target, then **demoted itself regardless** — so a refused promotion left the room with **no host at all**, recoverable only by a stale sweep |
+> | both game-side promotions | the client took the crown, showed host controls and announced itself, while the row said otherwise — so every advance it tried was refused by `op_may_advance`. The dead button 062 was written to end |
+>
+> All four report `{ ok }` now, and every caller checks it before mutating,
+> announcing, or demoting anything. The transfer stops if the promotion did not
+> land; a declined self-promotion re-fetches instead of claiming.
+>
+> `scenario-cohost` uses `store.failFunction('op_set_host_role')` and requires
+> the stored row, the badge, the chat and the toast to agree. Verified by
+> restoring the old code: *"the promotion was refused and the room was told it
+> happened"*.
+>
+> **CLAUDE.md already recorded co-host "silently doing nothing, for months."**
+> This was a fresh route to the same place, and the sweep that found it was the
+> plainest possible one: list every direct write to a table a migration
+> narrowed, then ask of each what the screen says when it is refused.
+>
 > ### Two things deliberately NOT done
 >
 > - **The Title Builder wheel is not coloured by rarity.** Only the gallery
