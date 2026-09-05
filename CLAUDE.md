@@ -211,6 +211,46 @@
 > three themes at both widths. A list whose rows are different heights reads as
 > broken before anybody works out why.
 >
+> **ONE CO-HOST, AND THE SCREEN SAYS SO (asked 2026-09-05).** The owner asked
+> whether it should be limited to one — **and it always has been**, silently:
+> `handleCohostToggle` demotes any existing co-host before promoting, so the
+> room could never hold two, but tapping a second star stripped the first person
+> with nothing said except a chat line the host may never read. *A rule enforced
+> in code and invisible on screen is a rule players discover by being surprised
+> by it.* The OFFER (☆) is hidden while a co-host exists; the current co-host
+> keeps their own ★, because that is how you take it back. Moving it is two taps
+> now and both of them say what they do. **The demote-first guard STAYS** — it
+> is the only thing between two clients pressing at once and a room with two
+> co-hosts, and the button is a display rule rather than an enforcement.
+>
+> **Hiding the offer nearly deleted a check, which is this file's own trap
+> arriving on schedule.** `scenario-cohost`'s refused-promotion section looked
+> for Carol's star, found it gone, and printed *"skipping"* — a section that
+> silently stops running is worse than one that fails. It demotes Bob, makes the
+> refused attempt, and puts him back, so section 5 still tests a real demotion.
+> The new rule is checked in BOTH directions (the offer is gone from everybody
+> else AND the co-host still has a button), because hiding both would make the
+> role permanent for the life of the room and a one-sided check would pass on
+> that. Verified by restoring `else`: *"the room already has a co-host and the
+> host is still offered the star on somebody else"*.
+>
+> **AND CO-HOST BESIDE THE HOST BADGE WAS MEASURED AND REFUSED.** The owner
+> asked whether it would make more sense in the same spot as HOST, with the
+> title alone on line 2. Measured at 375px, badge in the strip against badge on
+> line 2:
+>
+> | name | in the strip | on line 2 |
+> |---|---|---|
+> | TimeTraveler42 | 84 of 97 — **cut** | 155/155 |
+> | ArchaeologistAnna | 84 of 118 — **cut** | 155/155 |
+> | MaximilianTheGreat99 | 84 of 141 — **cut** | 155/155 |
+>
+> The name box gets **84px whatever the name is**, because the co-host row
+> carries three buttons the host row does not and a 71px badge beside them takes
+> everything left. At 430px only short names survive. The asymmetry is the
+> price of the name, and the name is the one thing on the row nobody can do
+> without.
+>
 > **And two mock states were describing things they did not draw.**
 > `lobby-away`'s own comment says it exists for "specifically an away CO-HOST"
 > — and its loop read `#player-list` only, while the co-host lives in

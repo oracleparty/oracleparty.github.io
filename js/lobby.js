@@ -612,11 +612,29 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const removeBotBtn = (room.isHost && p.is_bot)
     ? `<button class="icon-btn remove-bot-btn" data-remove-bot-id="${p.id}" aria-label="Remove ${escapeHtml(p.display_name)}" title="Remove bot">&#x2715;</button>`
     : '';
+  // ONE CO-HOST, AND THE SCREEN SAYS SO NOW.
+  //
+  // handleCohostToggle has always demoted any existing co-host before
+  // promoting, so the room could never hold two — but it did it SILENTLY. The
+  // host tapped a second star and the first person lost the role with no
+  // warning, announced only in a chat pane the host may not be reading. A rule
+  // enforced in code and invisible on screen is a rule players discover by
+  // being surprised by it.
+  //
+  // So the OFFER disappears while a co-host exists. The current co-host keeps
+  // their own button, because that is how you take it back — hiding both would
+  // make the role permanent for the life of the room. Moving it is two taps
+  // now (remove, then pick), and both of them say what they do.
+  //
+  // The demote-first guard in handleCohostToggle STAYS. It is the only thing
+  // standing between two clients pressing at once and a room with two
+  // co-hosts, and this button is a display rule, not an enforcement.
+  const roomHasCohost = players.some(x => x.is_cohost && !x.is_bot);
   let cohostBtn = '';
   if (room.isHost && !isMe && !p.is_host && !p.is_bot) {
     if (p.is_cohost) {
       cohostBtn = `<button class="icon-btn cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}" aria-label="Remove ${escapeHtml(p.display_name)} as co-host" title="Remove co-host">&#x2605;</button>`;
-    } else {
+    } else if (!roomHasCohost) {
       cohostBtn = `<button class="icon-btn cohost-btn" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}" aria-label="Make ${escapeHtml(p.display_name)} co-host" title="Make co-host">&#x2606;</button>`;
     }
   }

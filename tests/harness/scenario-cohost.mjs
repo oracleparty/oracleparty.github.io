@@ -147,9 +147,48 @@ try {
     // ============================================================
     heading('a co-host promotion that fails');
     const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
+
+    // ============================================================
+    // ONE CO-HOST, AND THE SCREEN SAYS SO
+    //
+    // handleCohostToggle has always demoted the existing co-host before
+    // promoting, so the room could never hold two — SILENTLY. Tapping a second
+    // star stripped the first person with nothing said but a chat line the host
+    // may never read. The offer is hidden while a co-host exists now.
+    //
+    // BOTH HALVES, or this cannot fail: the offer is gone from Carol, AND the
+    // current co-host keeps their own button. Hiding both would make the role
+    // permanent for the life of the room, and a check for only the first would
+    // pass on that.
+    // ============================================================
+    const offerWhileCohost = await host.page.evaluate(ids => ({
+      carolOffered: !!document.querySelector(`.cohost-btn[data-cohost-id="${ids.carol}"]:not(.cohost-btn--demote)`),
+      bobCanBeRemoved: !!document.querySelector(`.cohost-btn--demote[data-cohost-id="${ids.bob}"]`),
+      offersInRoom: document.querySelectorAll('.cohost-btn:not(.cohost-btn--demote)').length,
+    }), { carol: carolId, bob: bobId }).catch(() => null);
+    note(`with Bob co-host: ${JSON.stringify(offerWhileCohost)}`);
+    if (offerWhileCohost?.carolOffered) {
+      problems.push('the room already has a co-host and the host is still offered the star on somebody else — tapping it strips the first person with no warning');
+    }
+    if (offerWhileCohost && offerWhileCohost.offersInRoom > 0) {
+      problems.push(`${offerWhileCohost.offersInRoom} co-host offer(s) still on screen while the room has a co-host`);
+    }
+    if (offerWhileCohost && !offerWhileCohost.bobCanBeRemoved) {
+      problems.push('the current co-host has no button either — the role is now permanent for the life of the room');
+    }
+
+    // THE REFUSED-PROMOTION CHECK STILL HAS TO RUN, and hiding the offer is
+    // exactly how it would have been lost: "a control that only moved out of
+    // somewhere is a control that was deleted". So take the role off Bob, make
+    // the refused attempt on Carol, and give it back — section 5 below demotes
+    // Bob for real and needs him holding it.
+    await host.page.locator(`.cohost-btn--demote[data-cohost-id="${bobId}"]`).first()
+      .click().catch(() => {});
+    await host.page.waitForTimeout(1800);
+
     const carolBtn = host.page.locator(`.cohost-btn[data-cohost-id="${carolId}"]`).first();
     if (!await carolBtn.isVisible().catch(() => false)) {
-      note('no Co-Host button for Carol — skipping the refused-promotion check');
+      problems.push('with no co-host in the room, the host is still not offered the star — removing one has to give the offer back');
     } else {
       const chatBefore = table.store.table('chat_messages').length;
       table.store.failFunction('op_set_host_role');
@@ -184,6 +223,16 @@ try {
       if (!/couldn.t (make them co-host|change co-host)/i.test(toasted)) {
         problems.push(`a refused co-host promotion said nothing to the host (toasts: ${JSON.stringify(toasted)})`);
       }
+    }
+
+    // Put Bob back, so section 5 tests a real demotion rather than an absence.
+    await host.page.locator(`.cohost-btn[data-cohost-id="${bobId}"]`).first()
+      .click().catch(() => {});
+    await host.page.waitForTimeout(1800);
+    const bobBack = table.store.table('players').find(p => p.id === bobId);
+    note(`Bob restored as co-host: ${bobBack?.is_cohost}`);
+    if (!bobBack?.is_cohost) {
+      problems.push('could not re-promote Bob after the refused-promotion check — the sections below are testing nothing');
     }
   }
 

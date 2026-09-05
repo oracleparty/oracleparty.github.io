@@ -302,11 +302,17 @@ export const STATES = {
            + '<span class="player-title">' + (p.title || 'Guest') + '</span>');
         // The host sees action buttons on everyone but themselves — and on a
         // bot, only the remove button. Host and co-host are for humans.
+        // ONE CO-HOST: the OFFER (☆) is hidden while the room has one, and only
+        // the current co-host keeps a button (★, to take it back). This lobby
+        // has a co-host, so no other row shows a star — which is why the
+        // ordinary player rows here carry two buttons and not three, and why
+        // this mock is the only place that shape gets measured.
         const actions = p.isHost ? '' : p.isBot
           ? '<button class="icon-btn remove-bot-btn" aria-label="Remove bot">✕</button>'
           : '<button class="honk-btn" aria-label="Quack">\u{1F986}</button>'
-          + '<button class="icon-btn cohost-btn' + (p.isCohost ? ' cohost-btn--demote' : '') + '" aria-label="Co-host">'
-          + (p.isCohost ? '★' : '☆') + '</button>'
+          + (p.isCohost
+              ? '<button class="icon-btn cohost-btn cohost-btn--demote" aria-label="Co-host">★</button>'
+              : (opts.roomHasCohost ? '' : '<button class="icon-btn cohost-btn" aria-label="Co-host">☆</button>'))
           + '<button class="icon-btn transfer-host-btn" aria-label="Make host">\u{1F451}</button>';
         return '<div class="player-item">'
           + '<div class="avatar-wrap">' + av(p) + '</div>'
@@ -324,7 +330,8 @@ export const STATES = {
       const host = { ...P[0], isHost: true, title: 'Keeper of Secrets' };
       const cohost = { ...P[1], isCohost: true, title: 'Novice' };
       document.getElementById('host-list').innerHTML =
-        row(host, { roleBadge: true }) + row(cohost, { roleBadge: true });
+        row(host, { roleBadge: true, roomHasCohost: true })
+        + row(cohost, { roleBadge: true, roomHasCohost: true });
 
       document.getElementById('player-list').innerHTML = [
         { ...P[2], title: 'Novice' },
@@ -335,7 +342,7 @@ export const STATES = {
         // to fit the same budget. It is here because a bot row that was never
         // previewed is a bot row nobody measured.
         { name: 'Practice Bot', color: '#6b7280', emoji: '\u{1F916}', isBot: true },
-      ].map(p => row(p, { ready: false })).join('');
+      ].map(p => row(p, { ready: false, roomHasCohost: true })).join('');
 
       // The host's add-bot button is hidden once the room has one, exactly as
       // renderAddBotButton() does it — so this state previews the "already has
