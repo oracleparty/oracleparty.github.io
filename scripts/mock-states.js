@@ -280,8 +280,9 @@ export const STATES = {
       function row(p, opts) {
         opts = opts || {};
         const badges = [];
-        // HOST stays in the strip; CO-HOST is on line 2 — same as the app.
+        // BOTH role badges sit in the strip — same as the app.
         if (opts.roleBadge && p.isHost) badges.push('<span class="badge badge--host">Host</span>');
+        if (opts.roleBadge && p.isCohost && !p.isBot) badges.push('<span class="badge badge--cohost">Co-Host</span>');
         // Ready is one dot in two states, and it is suppressed for host and
         // co-host, who have no ready toggle. Same as the app.
         if (!p.isHost && !p.isCohost && !p.isBot) {
@@ -294,12 +295,10 @@ export const STATES = {
           badges.length = 0;
           badges.push('<span class="badge badge--bot">Bot</span>');
         }
-        // Line 2: the co-host badge, then the title. NOBODY IS BLANK — a guest
-        // has no profile and therefore no title, and reads "Guest". The rank
-        // word that used to sit here is gone; see _renderPlayerItem.
+        // Line 2 is the title and nothing else. NOBODY IS BLANK — a guest has
+        // no profile and therefore no title, and reads "Guest".
         const sub = p.isBot ? '' :
-          ((opts.roleBadge && p.isCohost ? '<span class="badge badge--cohost">Co-Host</span>' : '')
-           + '<span class="player-title">' + (p.title || 'Guest') + '</span>');
+          '<span class="player-title">' + (p.title || 'Guest') + '</span>';
         // The host sees action buttons on everyone but themselves — and on a
         // bot, only the remove button. Host and co-host are for humans.
         // ONE CO-HOST: the OFFER (☆) is hidden while the room has one, and only
@@ -313,7 +312,7 @@ export const STATES = {
           + (p.isCohost
               ? '<button class="icon-btn cohost-btn cohost-btn--demote" aria-label="Co-host">★</button>'
               : (opts.roomHasCohost ? '' : '<button class="icon-btn cohost-btn" aria-label="Co-host">☆</button>'))
-          + '<button class="icon-btn transfer-host-btn" aria-label="Make host">\u{1F451}</button>';
+          + (opts.away ? '' : '<button class="icon-btn transfer-host-btn" aria-label="Make host">\u{1F451}</button>');
         return '<div class="player-item">'
           + '<div class="avatar-wrap">' + av(p) + '</div>'
           + '<div class="name-stack"><span class="player-item__name">' + p.name + '</span>'
@@ -460,6 +459,11 @@ export const STATES = {
         row.classList.add('player-item--away');
         const dot = strip.querySelector('.ready-dot');
         if (dot) dot.remove();
+        // The crown is not offered for somebody who is away — same as the app,
+        // and it is what makes an away CO-HOST fit at 375px at all. Without
+        // this the mock previews a row 31px wider than the one that ships.
+        const crown = row.querySelector('.transfer-host-btn');
+        if (crown) crown.remove();
         const away = document.createElement('span');
         away.className = 'badge badge--away';
         away.textContent = 'Away';

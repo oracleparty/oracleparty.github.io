@@ -477,11 +477,16 @@ function sortPlayers() {
 function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const badges = [];
   const away = isPlayerAway(p.id);
-  // The HOST badge stays in the strip; CO-HOST moved to line 2 — see the
-  // substack note below. The host's row carries no per-player buttons, so it
-  // has the width; the co-host's row carries three and did not.
-  if (showRoleBadge && p.is_host) {
-    badges.push('<span class="badge badge--host">Host</span>');
+  // BOTH ROLE BADGES SIT IN THE STRIP, on the owner's instruction after they
+  // saw the alternative on a real phone and asked twice. Co-Host reads as a
+  // role beside Host or it reads as part of the title, and line 2 made it look
+  // like the second — it displaced the title rather than sitting with it.
+  //
+  // THE COST IS MEASURED AND REAL, not a worry: see the note on `cohostHtml`
+  // below for what the co-host's own name gives up for this.
+  if (showRoleBadge) {
+    if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
+    if (p.is_cohost && !p.is_bot) badges.push('<span class="badge badge--cohost">Co-Host</span>');
   }
   // AWAY IS A WORD, not only a fade.
   //
@@ -568,16 +573,11 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const titleText = p.is_bot
     ? ''
     : `<span class="player-title">${escapeHtml(p.title || 'Guest')}</span>`;
-  // CO-HOST SITS HERE, not in the badge strip beside the name.
-  //
-  // Measured at 375px: the badge cost 71px of a 327px row, and with three
-  // per-player buttons alongside it the name box was left 84px when it needed
-  // 97 — "TimeTravel…". Nothing else could yield. Down here it takes the width
-  // the tier used to and the NAME, the one thing on this row nobody can do
-  // without, gets all 71px back.
-  const cohostHtml = (showRoleBadge && p.is_cohost && !p.is_bot)
-    ? '<span class="badge badge--cohost">Co-Host</span>'
-    : '';
+  // LINE 2 IS THE TITLE AND NOTHING ELSE, for everybody. The co-host badge sat
+  // here for one afternoon and the owner's reading of it was right: beside an
+  // italic title it does not look like a role, it looks like the title has been
+  // pushed aside by something.
+  const cohostHtml = '';
   // Always rendered, even when empty. Only a bot has nothing on this line, and
   // an empty span reserves it so every row is the same height rather than the
   // list going ragged at 44px and 50px.
@@ -606,7 +606,19 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // A bot gets neither. Host and co-host are for humans: a bot cannot start a
   // game, advance a phase or judge an answer, so a room in its hands is a
   // frozen room. Its only control is the host's remove button.
-  const transferBtn = (room.isHost && !isMe && !p.is_host && !p.is_bot)
+  // NOT OFFERED FOR SOMEBODY WHO IS AWAY, and that is a rule on its own merits
+  // rather than a width trick: handing the crown to a phone that is asleep is
+  // the stall this project spent four migrations ending, and
+  // determineNextHost already prefers present candidates for exactly that
+  // reason. Offering an action the game itself avoids is the "dead button" 062
+  // was written to end.
+  //
+  // It also buys the 30px that makes an away CO-HOST fit. With both role and
+  // Away badges in the strip (110px of a 327px row) that row overflowed by
+  // 31px at 375px — the exact fault that made the whole page draggable
+  // sideways in a real playtest, and the reason `overflow-x: hidden` sits on
+  // these lists as a backstop.
+  const transferBtn = (room.isHost && !isMe && !p.is_host && !p.is_bot && !away)
     ? `<button class="icon-btn transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}" aria-label="Make ${escapeHtml(p.display_name)} the host" title="Make host">&#x1F451;</button>`
     : '';
   const removeBotBtn = (room.isHost && p.is_bot)

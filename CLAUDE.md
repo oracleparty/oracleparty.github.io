@@ -234,22 +234,41 @@
 > that. Verified by restoring `else`: *"the room already has a co-host and the
 > host is still offered the star on somebody else"*.
 >
-> **AND CO-HOST BESIDE THE HOST BADGE WAS MEASURED AND REFUSED.** The owner
-> asked whether it would make more sense in the same spot as HOST, with the
-> title alone on line 2. Measured at 375px, badge in the strip against badge on
-> line 2:
+> **CO-HOST IS BESIDE HOST, and the owner chose it knowing the cost.** I
+> measured it, argued against it, and they asked a third time — *"I also still
+> see co host in the same spot? Not where host is. It displaces the title
+> currently."* Their reading is the one that matters and it is right: beside an
+> italic title, a role badge does not look like a role, it looks like the title
+> has been shoved aside. **A layout that is misread is not a layout that works,
+> whatever the pixels say.**
 >
-> | name | in the strip | on line 2 |
+> The cost, measured at 375px, and it is real:
+>
+> | name | badge in the strip | badge on line 2 |
 > |---|---|---|
 > | TimeTraveler42 | 84 of 97 — **cut** | 155/155 |
 > | ArchaeologistAnna | 84 of 118 — **cut** | 155/155 |
 > | MaximilianTheGreat99 | 84 of 141 — **cut** | 155/155 |
 >
-> The name box gets **84px whatever the name is**, because the co-host row
-> carries three buttons the host row does not and a 71px badge beside them takes
-> everything left. At 430px only short names survive. The asymmetry is the
-> price of the name, and the name is the one thing on the row nobody can do
-> without.
+> The name box gets **84px whatever the name is**, because that row carries
+> buttons the host row does not and a 71px badge takes everything left. So the
+> co-host — and ONLY the co-host — truncates above about 11 characters at 375px
+> and 15 at 430px. Every other row is unaffected.
+>
+> **AND IT BROUGHT BACK THE OVERFLOW, which is why this is written down.** An
+> away co-host carries BOTH badges — Co-Host 71px and Away 39px, 110px of a
+> 327px row — and the row **overflowed by 31px at 375px and 9px at 430px**: the
+> exact fault that made the whole page draggable sideways in a real playtest,
+> reintroduced by a layout preference. The sweep caught it; an eye would not
+> have, because `overflow-x: hidden` clips it into looking fine.
+>
+> The fix is a rule that stands on its own: **the crown is not offered for
+> somebody who is away.** Handing the game to a sleeping phone is the stall four
+> migrations were written to end, and `determineNextHost` already prefers
+> present candidates — so offering it was the dead button 062 exists to stop. It
+> also happens to be the 30px that makes the row fit, and that is the only
+> reason it was found. **Shipping the layout without noticing this would have
+> been the 71px bug for the third time.**
 >
 > **And two mock states were describing things they did not draw.**
 > `lobby-away`'s own comment says it exists for "specifically an away CO-HOST"
