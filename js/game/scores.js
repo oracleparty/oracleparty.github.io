@@ -67,6 +67,29 @@ let _showQuestionScreen = null;
 export function registerShowQuestionScreen(fn) { _showQuestionScreen = fn; }
 
 let _handleNextQuestion = null;
+
+// THE FINAL QUESTION IS REVEALED ONCE, BY ONE PERSON.
+//
+// handleRevealFinalQuestion awaits a question fetch and then a SIX-SECOND
+// animation, and for that whole time the button that started it sat on screen,
+// enabled, giving no feedback. Two ways to run it twice, and both were live:
+//
+//   * a second tap — six seconds of nothing happening on a phone is a person
+//     tapping again, and this is the button that decides the last question;
+//   * a second CONTROLLER — the button is gated on canControlGame(), so the
+//     host AND the co-host AND a deputy can each press it.
+//
+// Either one runs the whole body again: pickWeightedDifficulty is RANDOM, so
+// the second run picks its own winner, fetches a DIFFERENT question over
+// state.questions[totalQuestions], broadcasts a second reveal, and writes
+// question_ids a second time — racing the first. Reported from a live game:
+// "difficulty randomizer ran twice, and then advanced to differing questions
+// for each person."
+//
+// `_revealHeldBy` is who owns the reveal — this phone, or somebody whose
+// broadcast reached us first. A controller that hears somebody else's reveal
+// must stand down too, or the guard only stops the double tap.
+let _revealHeldBy = null;
 export function registerHandleNextQuestion(fn) { _handleNextQuestion = fn; }
 
 // ============================================
@@ -472,7 +495,10 @@ export function showFinalWagerScreen() {
   // Host/cohost: show reveal button ONLY after they've locked in their own wager
   if (canControlGame()) {
     revealBtn.onclick = handleRevealFinalQuestion;
-    if (state.finalWagerLocked) {
+    // NOT while a reveal is already under way. Realtime re-calls this function
+    // for the same screen, and putting the button back mid-animation hands the
+    // press straight back to somebody who has already made it.
+    if (state.finalWagerLocked && !_revealHeldBy) {
       revealBtn.classList.remove('hidden');
     } else {
       revealBtn.classList.add('hidden');
@@ -494,6 +520,10 @@ export function showFinalWagerScreen() {
   //
   // Same fault as the wager selection directly above, found by looking for it.
   if (!sameWagerScreen) state.difficultyVotes = {};
+  // A NEW final-wager screen is a new game in this room, so the last game's
+  // reveal no longer owns anything. Without this the room plays once and the
+  // button never comes back — the guard would outlive the round it guards.
+  if (!sameWagerScreen) _revealHeldBy = null;
   const dvOptions = document.querySelectorAll('#final-wager-screen .dv-option');
   const myVote = state.difficultyVotes[state.room.playerId];
   dvOptions.forEach(btn => {
@@ -557,6 +587,12 @@ export function showFinalWagerScreen() {
         // No sender on the payload means an older client. Fall back to the old
         // rule rather than animating twice for the host.
         if (!payload?.from && state.room.isHost) return;
+        // SOMEBODY ELSE OWNS THIS REVEAL NOW. Every controller in the room has
+        // the same button, so without this the guard above only stops one
+        // person tapping twice — two controllers would still each run a whole
+        // reveal, with their own random winner and their own question.
+        _revealHeldBy = payload?.from ? String(payload.from) : 'someone';
+        $('#btn-fw-reveal')?.classList.add('hidden');
         // voted comes over the wire so every client spins through the same
         // options. Deriving it locally would let a client whose vote state was
         // incomplete animate a different wheel from everyone else's.
@@ -782,6 +818,16 @@ function _renderInlineDvTally() {
 }
 
 export async function handleRevealFinalQuestion() {
+  // ONE REVEAL. See _revealHeldBy — this returns for a second tap and for a
+  // second controller alike, and it is set BEFORE the first await so two taps
+  // in the same turn cannot both get past it.
+  if (_revealHeldBy) return;
+  _revealHeldBy = String(state.room.playerId);
+  // Off the screen immediately, which is also the only feedback the press has
+  // ever given: the animation takes a beat to appear and the button sat there
+  // live and unchanged until it did.
+  $('#btn-fw-reveal')?.classList.add('hidden');
+
   // Vote acts as a FLOOR: result can be at-or-above the most-voted, never
   // lower. Unvoted-but-allowed levels keep a 0.1 weight so an all-Easy room
   // still has a small comedic chance of jumping to Medium or Hard.
@@ -876,8 +922,23 @@ export async function handleRevealFinalQuestion() {
  *   3. If the actual winner is different, "gotcha" jump to it after a beat
  *   4. Final flourish on the winner, then fade.
  */
+let _difficultyRevealInFlight = null;
 function playDifficultyRevealAnimation(mostVoted, winner, voted = null) {
-  return new Promise((resolve) => {
+  // ONE CHAIN OVER ONE OVERLAY.
+  //
+  // This is ~6.5 seconds of un-cancellable setTimeouts writing to a single
+  // fixed overlay. Two of them do not queue, they FIGHT: the first chain's
+  // finalReveal hides the overlay while the second is still cycling, and the
+  // second chain's finalReveal puts it back up over the question screen the
+  // first has already moved on to. Reported from a live game as "my screen was
+  // half phased out between the question and the difficulty selection screen".
+  //
+  // Returning the in-flight promise rather than refusing outright matters:
+  // handleRevealFinalQuestion AWAITS this before advancing the room, so a
+  // rejected call that resolved immediately would advance the phase out from
+  // under an animation still playing.
+  if (_difficultyRevealInFlight) return _difficultyRevealInFlight;
+  _difficultyRevealInFlight = new Promise((resolve) => {
     const overlay = $('#difficulty-reveal-overlay');
     if (!overlay) { resolve(); return; }
     const pills = overlay.querySelectorAll('.dr-pill');
@@ -960,6 +1021,10 @@ function playDifficultyRevealAnimation(mostVoted, winner, voted = null) {
     };
     cycle();
   });
+  // Cleared when the chain finishes, so the NEXT game in this room can run its
+  // own reveal. Held for the whole chain, which is the point.
+  _difficultyRevealInFlight.finally(() => { _difficultyRevealInFlight = null; });
+  return _difficultyRevealInFlight;
 }
 
 // ============================================

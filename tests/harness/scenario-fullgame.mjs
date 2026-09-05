@@ -287,6 +287,36 @@ try {
     // the lobby and destroy the thing being measured.
     if (screen === 'results-screen') return screen;
 
+    // CAN A PLAYER ACTUALLY RATE THE HOST? Sampled here rather than asserted
+    // at the end, because the final round's reveal is a screen the game passes
+    // THROUGH — by the time the loop finishes, the room is on results and the
+    // row is long gone.
+    //
+    // Nothing anywhere checked this. scenario-feedback proves the row is hidden
+    // MID-GAME (migration 059 moved the thumbs to the final round) and stops
+    // there, so every check in the repo was about the row not appearing — the
+    // "a control that only moved OUT of somewhere is a control that was
+    // deleted" trap, with nothing watching the half that matters. Reported from
+    // a live game: "is the host rating even working? I don't think my friend
+    // even encountered that option."
+    if (r !== host && screen === 'reveal-screen') {
+      const onFinal = await r.page.evaluate(() =>
+        (window.__state?.currentQuestion ?? -1) >= (window.__state?.totalQuestions ?? 0)).catch(() => false);
+      if (onFinal) {
+        const seen = await r.page.evaluate(() => {
+          const vis = el => !!el && el.style.display !== 'none' && el.offsetParent !== null;
+          const row = document.querySelector('#reveal-host-review');
+          return {
+            row: vis(row),
+            up: vis(document.querySelector('[data-host-vote="up"]')),
+            down: vis(document.querySelector('[data-host-vote="down"]')),
+            label: (document.querySelector('.host-review__label')?.textContent || '').trim(),
+          };
+        }).catch(() => null);
+        if (seen) hostReviewOnFinalRound[r.name] = seen;
+      }
+    }
+
     // Only the host advances reveal and scores.
     if (r === host) {
       if (screen === 'reveal-screen') await clickIfReady(r, '#btn-next-question');
@@ -295,6 +325,7 @@ try {
     return screen;
   }
 
+  const hostReviewOnFinalRound = {};
   let round = 0;
   let lastQuestionSeen = -1;
   let reachedResults = false;
@@ -511,6 +542,17 @@ try {
     await bob.page.waitForTimeout(2500);
     const afterLeave = await bob.openChannelCount();
     note(`Bob channels: ${beforeLeave} in game -> ${afterLeave} after leaving`);
+
+    // THE HALF NOTHING WAS WATCHING. Every existing check about this row asks
+    // that it stay hidden; none asked that it ever appear. A player who cannot
+    // rate the host is a whole feature that is quietly not there, and it looks
+    // identical to one working correctly until somebody plays a game and says
+    // they never saw it.
+    note(`host review on the final round: ${JSON.stringify(hostReviewOnFinalRound)}`);
+    const raters = Object.entries(hostReviewOnFinalRound).filter(([, v]) => v.row && v.up && v.down);
+    if (raters.length === 0) {
+      problems.push(`no player was ever offered the host rating on the final round — samples: ${JSON.stringify(hostReviewOnFinalRound)}`);
+    }
     if (afterLeave >= beforeLeave && beforeLeave > 0) {
       problems.push(`leaving did not release Realtime channels (${beforeLeave} -> ${afterLeave})`);
     }

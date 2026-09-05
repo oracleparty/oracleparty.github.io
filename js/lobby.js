@@ -1166,15 +1166,29 @@ async function ensureCurrentPlayer() {
   // person appeared in a live lobby three times over. claimSeat takes the seat
   // that is already yours and clears the copies.
   const seatUserId = await ensureAnonymousIdentity() || rejoinUserId;
-  const { data: rejoinedPlayer } = await claimSeat({
+  const { data: rejoinedPlayer, error: seatErr } = await claimSeat({
     roomId: room.id, displayName, userId: seatUserId, isHost: room.isHost, extras,
     // Exact when it is there, and it beats every guess claimSeat would make.
     priorPlayerId: room.playerId || recallSeat(room.id),
   });
   if (rejoinedPlayer) {
+    // BELIEVE THE ROW, NOT sessionStorage.
+    //
+    // A host who was away long enough to be swept comes back with isHost still
+    // true in their own storage while the room has promoted somebody else.
+    // claimSeat now takes an ordinary seat in that case rather than asking for
+    // a crown the database will refuse — and if the screen went on claiming the
+    // crown anyway it would show host controls whose every write is refused,
+    // which is the dead button migration 062 was written to end.
+    room.isHost = !!rejoinedPlayer.is_host;
     room.playerId = rejoinedPlayer.id;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
     await loadPlayers();
+  } else if (seatErr) {
+    // Was discarded entirely. addPlayer toasts, so the player was told SOMETHING
+    // — but nothing here knew the seat had not been taken, so the lobby went on
+    // polling and re-rendering around a player who was not in the room.
+    logger.error('Lobby', 'could not take a seat in this room', seatErr);
   }
 }
 

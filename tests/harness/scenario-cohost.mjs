@@ -378,6 +378,7 @@ try {
     .evaluate(() => document.querySelector('.screen.active')?.id || '(none)').catch(() => '(nav)');
   const done = new Set();
   let revealed = false;
+  let revealMark = 0;
 
   for (let i = 0; i < 220 && !revealed; i++) {
     for (const r of [host, bob, carol]) {
@@ -406,6 +407,24 @@ try {
         if (r === bob && done.has(key) && await clickIfReady(bob, '#btn-fw-reveal')) {
           note('the co-host pressed Reveal Question');
           revealed = true;
+          // AND THE HOST PRESSES IT TOO.
+          //
+          // Every controller has this button — it is gated on canControlGame()
+          // — and handleRevealFinalQuestion awaits a fetch and a six-second
+          // animation, so there is a long window in which a second press lands.
+          // A second run picks its OWN random winner, fetches its OWN question
+          // over state.questions[totalQuestions], and writes question_ids again,
+          // racing the first. Reported from a live game: "difficulty randomizer
+          // ran twice, and then advanced to differing questions for each
+          // person." The checks below — everyone asked the ROOM's question —
+          // are what catches it.
+          //
+          // Fired without awaiting the co-host's press, because the two landing
+          // together is the case; a tidy sequence would let the guard win for
+          // the wrong reason.
+          revealMark = table.store.log.length;
+          host.page.evaluate(() => document.getElementById('btn-fw-reveal')?.click()).catch(() => {});
+          note('the host pressed it as well, in the same beat');
         }
       } else if (r === host) {
         if (screen === 'reveal-screen') await clickIfReady(r, '#btn-next-question');
@@ -439,6 +458,42 @@ try {
       note(`${r.name} ran the difficulty reveal ${chains}x`);
       if (chains === 0) {
         problems.push(`${r.name} never saw the difficulty reveal when the co-host revealed the final question`);
+      }
+      // EXACTLY ONE. Two chains are ~6.5s of un-cancellable setTimeouts over a
+      // single overlay, and the second one's ending puts the overlay back up
+      // over the question screen the first already moved on to. This fires only
+      // when the two land far enough apart for the observer to see both
+      // transitions, so it is a bonus — the question-agreement checks above are
+      // what reliably catch a second reveal.
+      if (chains > 1) {
+        problems.push(`${r.name} ran the difficulty reveal ${chains}x — two chains fighting over one overlay is the "screen half phased out between the question and the difficulty screen" report`);
+      }
+    }
+
+    // HOW MANY REVEALS ACTUALLY HAPPENED, counted from the store rather than
+    // from the screen. Each run of handleRevealFinalQuestion writes the
+    // question list once, so two runs write it twice — and the browser-side
+    // signals are unreliable here for the reason CLAUDE.md already records
+    // about this animation: two chains can overlap so tightly that no observer
+    // on the overlay sees both. The write is the fact.
+    const listWrites = table.store.log.filter((o, i) =>
+      i >= revealMark && o.table === 'rooms' && o.action === 'update'
+      && o.payload && Object.prototype.hasOwnProperty.call(o.payload, 'question_ids'));
+    note(`question-list writes after the second press: ${listWrites.length}`);
+    if (listWrites.length > 1) {
+      problems.push(`the final question was revealed ${listWrites.length} times — each run picks its own random difficulty and fetches its own question, so the room's last question depends on which write landed last`);
+    }
+
+    // AND THE OVERLAY IS NOT STILL UP. It is position:fixed over everything, so
+    // a second chain finishing after the room has moved on leaves the question
+    // unreadable and untappable with nothing to dismiss it.
+    for (const r of [host, bob, carol]) {
+      const stuck = await r.page.evaluate(() => {
+        const el = document.getElementById('difficulty-reveal-overlay');
+        return !!el && !el.classList.contains('hidden');
+      }).catch(() => false);
+      if (stuck) {
+        problems.push(`${r.name} is on the final question with the difficulty overlay still covering it`);
       }
     }
   }

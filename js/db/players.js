@@ -100,7 +100,34 @@ export async function claimSeat({ roomId, displayName, userId = null, isHost = f
     : all.filter(p => !p.user_id && p.display_name === displayName && !alive(p));
 
   if (mine.length === 0) {
-    return addPlayer(roomId, displayName, isHost, userId, extras);
+    // ASKING TO COME BACK AS HOST WHEN SOMEBODY ELSE ALREADY IS ONE IS REFUSED
+    // BY THE DATABASE, NOT SOFTENED.
+    //
+    // Migration 058's INSERT policy is `NOT is_host OR NOT
+    // op_room_has_live_host(room_id)`, so a row carrying is_host into a room
+    // that has a live host is rejected outright with 42501 — and addPlayer
+    // reports that as "Couldn't join the room — check your connection and try
+    // again", which is a lie about the cause and about the remedy.
+    //
+    // A host who goes AFK long enough has their seat swept and somebody else
+    // promoted, while their own sessionStorage still says isHost. Every attempt
+    // to come back then asks for a crown the room has already given away, so
+    // the refusal repeats for as long as they keep trying. Reported from a live
+    // game: "I went AFK from the lobby, it said I could not join a bunch of
+    // times, the lobby was still active but it didn't show me as a player."
+    //
+    // 058's own comment says the client's `someoneElseIsHost` check is what
+    // decides this — and that check lived in js/game/init.js and NOWHERE ELSE,
+    // so the lobby handed the crown straight back into a refusal. It belongs
+    // here, where every seat in the app is claimed, rather than being stated
+    // once more in a fourth place and forgotten in a fifth.
+    const liveHostElsewhere = isHost && all.some(p =>
+      p.is_host && alive(p) && !p.is_bot
+      && !(userId && p.user_id && String(p.user_id) === String(userId)));
+    if (liveHostElsewhere) {
+      logger.info('Supabase', 'claimSeat: the room already has a live host, taking an ordinary seat');
+    }
+    return addPlayer(roomId, displayName, isHost && !liveHostElsewhere, userId, extras);
   }
 
   // Newest first — the freshest row is the one carrying the most recent state.

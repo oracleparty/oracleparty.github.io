@@ -300,6 +300,68 @@ try {
   // pressed remove on the bot and it stayed" when the direct delete is put back.
   // An earlier version of this comment claimed it covered op_remove_player; it
   // does not, and the break test that proved so is why it now says which.
+  // ============================================================
+  // A HOST WHO WENT AFK MUST BE ABLE TO GET BACK IN
+  //
+  // Migration 058 refuses an INSERT carrying is_host into a room that already
+  // has a live host: `NOT is_host OR NOT op_room_has_live_host(room_id)`. A
+  // host who is away long enough has their seat swept and somebody else
+  // promoted — while their OWN sessionStorage still says isHost. Every attempt
+  // to come back then asks for a crown the room has given away, is refused
+  // 42501, and surfaces as "Couldn't join the room — check your connection",
+  // which is wrong about the cause and wrong about the remedy.
+  //
+  // Reported from a live game: "I went AFK from the lobby. When I came back it
+  // said I could not join a bunch of times but still showed the lobby as
+  // active. It didn't show me as a player anymore."
+  //
+  // 058's own comment says the client's `someoneElseIsHost` check decides this.
+  // That check lived in js/game/init.js and NOWHERE ELSE, so the lobby walked
+  // straight into the refusal — the "one rule, N readers, fixed in N-1" shape
+  // this project keeps recording. It lives in claimSeat now, which every seat
+  // in the app goes through.
+  // ============================================================
+  console.log('\n=== the host went AFK and came back ===');
+  {
+    const afk = host;
+    const seatId = await afk.page
+      .evaluate(() => JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId)
+      .catch(() => null);
+
+    // Somebody else is the live host now, exactly as promotion leaves the room,
+    // and the AFK host's seat is gone.
+    const players = table.store.table('players');
+    const successor = players.find(p => String(p.id) !== String(seatId) && !p.is_bot);
+    if (!seatId || !successor) {
+      problems.push('could not set up the AFK-host case (no seat or nobody to promote)');
+    } else {
+      successor.is_host = true;
+      successor.last_seen_at = new Date().toISOString();
+      const idx = players.findIndex(p => String(p.id) === String(seatId));
+      if (idx !== -1) players.splice(idx, 1);
+      console.log(`   · ${afk.name}'s seat was swept; ${successor.display_name} is host now`);
+
+      // Their phone wakes up and the lobby re-claims a seat. sessionStorage
+      // still says they are the host, which is the whole point.
+      await afk.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await afk.page.waitForTimeout(6000);
+
+      const back = table.store.table('players').filter(p => p.display_name === afk.name);
+      const hosts = table.store.table('players').filter(p => p.is_host).map(p => p.display_name);
+      console.log(`   · ${afk.name} rows after coming back: ${back.length}; hosts now: ${JSON.stringify(hosts)}`);
+
+      if (back.length === 0) {
+        problems.push(`${afk.name} went AFK, was swept, and could not get back into their own lobby — the room is still there and they are not in it`);
+      }
+      if (back.length > 1) {
+        problems.push(`${afk.name} came back as ${back.length} seats`);
+      }
+      if (hosts.length > 1) {
+        problems.push(`the room has ${hosts.length} hosts after the AFK host returned: ${JSON.stringify(hosts)}`);
+      }
+    }
+  }
+
   console.log('\n=== leaving a lobby ===');
   {
     const leaver = joiners[joiners.length - 1];

@@ -686,6 +686,26 @@ export class FakeStore {
         const incoming = Array.isArray(payload) ? payload : [payload];
         const created = [];
         for (const item of incoming) {
+          // MIGRATION 058's INSERT POLICY, which the store allowed outright:
+          //   NOT coalesce(is_host, false) OR NOT op_room_has_live_host(room_id)
+          //
+          // Leaving it out is the #10 gap in its usual direction — the harness
+          // permitting what the live database refuses. It hid a live fault: a
+          // host whose seat was swept while AFK comes back with sessionStorage
+          // still saying isHost, asks for a crown the room has already given
+          // away, and is refused 42501 on every attempt. Reported as "it said I
+          // could not join a bunch of times" while the lobby was plainly still
+          // there.
+          // 120000 = STALE_TIMEOUT_MS, the CROWN window — the same one
+          // op_room_has_live_host uses. Named at the call site, like every
+          // other caller of this helper, so it cannot be mistaken for the
+          // 25s deputy window beside it.
+          if (table === 'players' && item.is_host && this._hostSeenWithin(item.room_id, 120000)) {
+            return { data: null, error: {
+              code: '42501',
+              message: 'new row violates row-level security policy for table "players"',
+            } };
+          }
           // UNIQUE indexes. A plain INSERT that collides raises 23505 and the
           // whole statement writes nothing — which is how the app's room-code
           // retry loop is reachable, and how a second rating on one question by
