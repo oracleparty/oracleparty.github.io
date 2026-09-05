@@ -2339,7 +2339,7 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  margin: var(--space-md) 0 0;
+  margin: var(--space-sm) 0 0;
 }
 /* The badge stays on the OUTSIDE EDGE, where it has always been — a status
    column you can scan straight down. Wrapping badges and buttons in one block
@@ -5722,7 +5722,14 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+  /* MEASURED: 8px between the two role buttons and 0px between the last of
+     them and "Add Friend", because each block set its own gap and this one had
+     no top margin — so the stack read as two buttons and then a third stuck to
+     it. The owner spotted it on a screenshot before any check did; the sweep
+     measures overflow and contrast, not rhythm. One value everywhere now. */
+  margin-top: var(--space-sm);
 }
+.profile-card__actions:empty { display: none; margin-top: 0; }
 
 .profile-card__guest-hint {
   font-size: var(--text-xs);

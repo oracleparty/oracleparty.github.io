@@ -270,6 +270,20 @@
 > proves nothing. Verified by making `roleActionsFor` return null: three
 > failures by name.
 >
+> **THE FIRST MOCK OF THAT CARD RENDERED LESS THAN THE APP DOES**, and the
+> owner reasonably read the screenshot as "why is so little on it?" The real
+> card carries four stats and the host rating; the mock had name, title and
+> buttons. **A mock that renders LESS than the app is the same fault as one that
+> renders more** — this file has recorded the second direction three times and
+> had not thought about the first.
+>
+> **And the button spacing was wrong, which the owner saw and no check did.**
+> Measured: 8px between the two role buttons and **0px** between the last of
+> them and "Add Friend", because each block set its own gap and
+> `.profile-card__actions` had no top margin. The sweep measures overflow,
+> contrast and row heights — not rhythm. One value everywhere now, verified at
+> 8px/8px.
+>
 > **`module-integrity` earned its keep.** A botched edit left a stray `}` and
 > `node --check` passed it — that check parses as a SCRIPT, where a top-level
 > return is legal. Only the module parse caught it.

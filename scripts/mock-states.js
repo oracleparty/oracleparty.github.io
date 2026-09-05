@@ -793,6 +793,18 @@ export const STATES = {
               <div class="profile-card__name">QuizMasterMax<span class="profile-card__tag">#1042</span></div>
               <div class="profile-card__title">Novice</div>
             </div>
+            <!-- THE STATS AND THE HOST RATING ARE PART OF THIS CARD, and the
+                 first version of this mock left them out — so the screenshot
+                 showed an almost empty sheet and the owner reasonably asked why
+                 so little was on it. A mock that renders LESS than the app is
+                 the same fault as one that renders more. -->
+            <div class="profile-card__stats">
+              <div><div class="profile-card__stat-value">14</div><div class="profile-card__stat-label">Games</div></div>
+              <div><div class="profile-card__stat-value">5</div><div class="profile-card__stat-label">Wins</div></div>
+              <div><div class="profile-card__stat-value">36%</div><div class="profile-card__stat-label">Win Rate</div></div>
+              <div><div class="profile-card__stat-value">Science</div><div class="profile-card__stat-label">Best</div></div>
+            </div>
+            <p class="host-rep host-rep--none">No host ratings yet</p>
             <div class="profile-card__roles">
               <button class="btn btn-secondary btn-block">Make co-host</button>
               <button class="btn btn-secondary btn-block">Make host</button>
