@@ -212,7 +212,8 @@ let _profileCardInjected = false;
  * @param {string|null} opts.roomId - If viewing from a shared room (enables instant-add)
  */
 export async function showProfileCard({ userId, displayName, avatarColor, avatarEmoji, title, roomId,
-                                        viewerPlayerId = null, isRoomHost = false }) {
+                                        viewerPlayerId = null, isRoomHost = false,
+                                        roleActions = null }) {
   if (!_profileCardInjected) {
     _injectProfileCard();
     _profileCardInjected = true;
@@ -354,6 +355,25 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     statsHtml = `<p class="profile-card__guest-hint">Guest player</p>`;
   }
 
+  // THE HOST'S CONTROLS OVER THIS PLAYER, supplied by whoever opened the card.
+  //
+  // They were three icons on the lobby row — 🦆 ☆ 👑 — and measured at 375px
+  // they left the co-host's name 84px of the 97 it needed, whatever the name
+  // was. Moving them here is what lets every row stay compact AND every name
+  // show in full, and it is the same call the report control already made: a
+  // rare, consequential action belongs behind a deliberate tap rather than
+  // sitting on a row you scroll past.
+  //
+  // profile.js is told WHAT to draw and nothing about what it means — the
+  // lobby computes the list. A card that knew what a co-host was would be the
+  // second place in the app deciding that rule.
+  let roleHtml = '';
+  if (Array.isArray(roleActions) && roleActions.length) {
+    roleHtml = `<div class="profile-card__roles">${roleActions.map((a, i) =>
+      `<button class="btn btn-secondary btn-block${a.kind === 'danger' ? ' btn-danger-text' : ''}" data-role-action="${i}">${escapeHtml(a.label)}</button>`
+    ).join('')}</div>`;
+  }
+
   content.innerHTML = `
     <div class="profile-card__header">
       <div class="profile-card__avatar">${avatarHtml}</div>
@@ -361,11 +381,26 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       <div class="profile-card__title">${escapeHtml(profileTitle)}</div>
     </div>
     ${statsHtml}
+    ${roleHtml}
     ${reportHtml}
     <div class="profile-card__actions">${actionsHtml}</div>
   `;
 
   sheet.classList.add('active');
+
+  // The sheet closes FIRST, then the action runs: every one of these re-renders
+  // the list underneath, and leaving the card open over a row that has just
+  // changed role is how you get a card describing somebody who is no longer
+  // the person it describes.
+  if (Array.isArray(roleActions) && roleActions.length) {
+    content.querySelectorAll('[data-role-action]').forEach(btn => {
+      btn.onclick = async () => {
+        const action = roleActions[Number(btn.dataset.roleAction)];
+        sheet.classList.remove('active');
+        if (action && typeof action.onClick === 'function') await action.onClick();
+      };
+    });
+  }
 
   const reportBtn = document.getElementById('profile-card-report');
   if (reportBtn) {
@@ -2368,17 +2403,30 @@ async function updateTitleUniqueness(selectedWords) {
  * Also handles clicks on player-item or answer-row elements
  * by finding the player data from the provided players array.
  */
-export function attachProfileCardHandler(container, getPlayers, roomId = null, getViewerPlayerId = null) {
+/**
+ * @param getRoleActions optional (player) => [{ label, kind, onClick }]. Only the
+ *   LOBBY passes this, and it is how the host's controls over a player reach
+ *   this card without profile.js knowing what a co-host is.
+ */
+export function attachProfileCardHandler(container, getPlayers, roomId = null, getViewerPlayerId = null, getRoleActions = null) {
   container.addEventListener('click', async (e) => {
     // Don't trigger on honk/toggle button clicks
-    if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle') || e.target.closest('.transfer-host-btn') || e.target.closest('.cohost-btn')) return;
+    if (e.target.closest('.honk-btn') || e.target.closest('.answer-toggle') || e.target.closest('.transfer-host-btn') || e.target.closest('.cohost-btn') || e.target.closest('.remove-bot-btn')) return;
 
-    const target = e.target.closest('[data-profile-user-id]');
+    // A SEAT ID OPENS THE CARD, a user id merely fills it in. Every row carries
+    // `data-profile-player-id`; `data-profile-user-id` is missing whenever
+    // anonymous sign-in did not land, and keying the whole card on it would
+    // make that player untappable — and therefore, now that the host's controls
+    // live in here, unpromotable, with nothing on screen saying why.
+    const target = e.target.closest('[data-profile-player-id], [data-profile-user-id]');
     if (!target) return;
 
-    const userId = target.dataset.profileUserId;
+    const userId = target.dataset.profileUserId || null;
+    const playerId = target.dataset.profilePlayerId || null;
     const players = typeof getPlayers === 'function' ? getPlayers() : [];
-    const player = players.find(p => p.user_id === userId);
+    const player = (playerId && players.find(p => String(p.id) === String(playerId)))
+      || (userId && players.find(p => p.user_id === userId))
+      || null;
 
     await showProfileCard({
       userId: userId || null,
@@ -2393,6 +2441,7 @@ export function attachProfileCardHandler(container, getPlayers, roomId = null, g
       // Is the person being looked at the host of this room? The report control
       // only makes sense for them, and only from inside their game.
       isRoomHost: !!(player && player.is_host && !player.is_bot),
+      roleActions: (typeof getRoleActions === 'function' && player) ? getRoleActions(player) : null,
     });
   });
 }

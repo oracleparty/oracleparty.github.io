@@ -234,7 +234,49 @@
 > that. Verified by restoring `else`: *"the room already has a co-host and the
 > host is still offered the star on somebody else"*.
 >
-> **SETTLED: THE HOSTS LIST STACKS, THE PLAYERS LIST DOES NOT — and the owner's
+> ### SETTLED: the host's controls moved into the player's card
+>
+> **Five rounds on one row, and the answer was to stop putting things on it.**
+> Every earlier attempt — moving the badge, stacking it, deleting the rank word
+> — bought a few pixels and cost something else, because the row was carrying
+> more than 327px holds. `roleActionsFor` in `js/lobby.js` hands the host's
+> controls to the profile card that already opens when you tap somebody.
+>
+> | | |
+> |---|---|
+> | the row keeps | avatar, name, title, honk, one badge — **one compact line, for everybody** |
+> | the card gains | "Make co-host" / "Remove as co-host" / "Make host", in WORDS |
+> | the bot keeps its ✕ | that row has no name pressure, and removing a bot is not handing anybody power |
+>
+> Measured: hosts `[52, 51]`, players `[51]` — **uniform, and the host's view is
+> now the same shape as everybody else's.** Every name whole at 375px and 430px.
+>
+> **It is the same call the report button made in August**, and the reasoning
+> transfers exactly: rare and consequential belongs behind a deliberate tap
+> rather than on a row you scroll past. Words are a gain on their own — ☆
+> against ★ was a distinction nobody could read.
+>
+> **`data-profile-player-id` is why this is safe.** The card was keyed on
+> `data-profile-user-id`, which is ABSENT whenever anonymous sign-in did not
+> land — so with the controls in here, that player would have been silently
+> unpromotable, with nothing on screen saying why. A seat always has an id.
+>
+> **`pressPlayerCardAction` in `harness.js` is the other half.** Three scenarios
+> reached for `.cohost-btn[data-cohost-id=…]`, and a check that reaches for a
+> control by its old selector reports "gone" for one that merely moved. Worse,
+> `scenario-bots` asserted those selectors were ABSENT on a bot — which now
+> passes for a bot, a human, and a build with the feature deleted. It asks the
+> CARD now, and asserts a real player IS still offered them, or the bot half
+> proves nothing. Verified by making `roleActionsFor` return null: three
+> failures by name.
+>
+> **`module-integrity` earned its keep.** A botched edit left a stray `}` and
+> `node --check` passed it — that check parses as a SCRIPT, where a top-level
+> return is legal. Only the module parse caught it.
+>
+> ### The four rounds before it, kept because each was measured
+>
+> **THE HOSTS LIST STACKED, THE PLAYERS LIST DID NOT — and the owner's
 > idea is what made it work.** Four rounds of this, and the answer was neither
 > of the two things I kept measuring against each other.
 >

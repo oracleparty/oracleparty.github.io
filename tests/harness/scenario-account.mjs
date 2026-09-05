@@ -14,7 +14,7 @@
 //   6. Signed-in players in a lobby render without breaking the layout.
 //
 // Run: node tests/harness/scenario-account.mjs
-import { PlaytestTable } from './harness.js';
+import { PlaytestTable, pressPlayerCardAction } from './harness.js';
 
 const problems = [];
 const note = m => console.log('   ·', m);
@@ -937,8 +937,7 @@ try {
 
   // Promote one, which is the exact combination that overflowed in a live game.
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
-  await alice.page.locator(`.cohost-btn[data-cohost-id="${bobId}"]`).first().click().catch(() => {});
-  await alice.page.waitForTimeout(2000);
+  await pressPlayerCardAction(alice.page, bobId, /make co-host/i);
 
   const layout = await alice.page.evaluate(() => {
     const vw = document.documentElement.clientWidth;

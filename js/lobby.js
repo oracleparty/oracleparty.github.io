@@ -272,9 +272,11 @@ async function init() {
   playerListEl.addEventListener('click', handlePlayerListClick);
   hostListEl.addEventListener('click', handlePlayerListClick);
 
-  // Profile card on player tap (pass roomId for instant-add)
-  attachProfileCardHandler(playerListEl, () => players, room.id, () => room.playerId);
-  attachProfileCardHandler(hostListEl, () => players, room.id, () => room.playerId);
+  // Profile card on player tap (pass roomId for instant-add). The fifth argument
+  // is what carries the HOST's controls over that player into the card — see
+  // roleActionsFor.
+  attachProfileCardHandler(playerListEl, () => players, room.id, () => room.playerId, roleActionsFor);
+  attachProfileCardHandler(hostListEl, () => players, room.id, () => room.playerId, roleActionsFor);
 
   // Track presence as "in lobby"
   updatePresence({ activity: 'lobby', roomId: room.id, roomCode: room.code, category: room.category });
@@ -465,6 +467,53 @@ function iAmTheCaretaker() {
   return present.length > 0 && String(present[0].id) === String(room.playerId);
 }
 
+/**
+ * What the HOST may do to this player, as buttons for their profile card.
+ *
+ * These were three icons on every lobby row and they cost the row everything it
+ * did not have: measured at 375px, ☆ and 👑 plus the honk button and a role
+ * badge left the co-host's name 84px of the 97 it needed, whatever the name
+ * was. Every attempt to win that back — moving the badge, stacking the badge
+ * above the buttons, taking a rank word out — bought a few pixels and cost
+ * something else, because the row was simply carrying more than 327px holds.
+ *
+ * So the controls move to where you already tap to look at somebody. It is the
+ * same call the report button made in August: rare and consequential belongs
+ * behind a deliberate tap, not on a row you scroll past. And it is words rather
+ * than glyphs, which is a gain on its own — ☆ against ★ was a distinction
+ * nobody could read.
+ *
+ * ONE CO-HOST, and the offer disappears while the room has one; the current
+ * co-host keeps theirs, because that is how you take it back. The demote-first
+ * guard in handleCohostToggle stays regardless — this list is a display rule,
+ * not an enforcement.
+ *
+ * Returns null for anybody with nothing on offer, so the card renders no empty
+ * block: a bot (the ✕ stays on its row, which has the width for it), yourself,
+ * the host's own row, and every non-host viewer.
+ */
+function roleActionsFor(p) {
+  if (!room.isHost || !p || p.is_bot || p.is_host) return null;
+  if (String(p.id) === String(room.playerId)) return null;
+  const name = p.display_name;
+  const actions = [];
+  if (p.is_cohost) {
+    actions.push({ label: 'Remove as co-host', kind: 'danger',
+      onClick: () => handleCohostToggle(p.id, name, true) });
+  } else if (!players.some(x => x.is_cohost && !x.is_bot)) {
+    actions.push({ label: 'Make co-host',
+      onClick: () => handleCohostToggle(p.id, name, false) });
+  }
+  // NOT OFFERED FOR SOMEBODY WHO IS AWAY. Handing the game to a phone that is
+  // asleep is the stall four migrations were written to end, and
+  // determineNextHost already prefers present candidates — so offering it was
+  // the dead button 062 exists to stop.
+  if (!isPlayerAway(p.id)) {
+    actions.push({ label: 'Make host', onClick: () => handleTransferHost(p.id, name) });
+  }
+  return actions.length ? actions : null;
+}
+
 function sortPlayers() {
   // Sort by join time ascending (host first)
   players.sort((a, b) => {
@@ -592,64 +641,25 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // WORSE: the name truncated instead ("QuizMasterMax", 74px of 98px), and the
   // name is the one thing on this row nobody can do without.
   const titleHtml = `<span class="name-substack">${cohostHtml}${titleText}</span>`;
-  const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
+  // BOTH IDS, and the player id is the load-bearing one now that the host's
+  // controls live in this card. `data-profile-user-id` is absent whenever
+  // anonymous sign-in did not land — and if that were the only way in, the host
+  // would simply be unable to promote that person, with nothing on screen
+  // saying why. A seat always has an id.
+  const profileAttr = `data-profile-player-id="${p.id}"`
+    + (p.user_id ? ` data-profile-user-id="${p.user_id}"` : '');
   const honks = getHonkCount(p.id);
   const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
   // No honking at a bot — there is nobody on the other end to startle.
   const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
-  // Host actions are icons, not words. Measured at 375px, the word buttons
-  // ("Co-Host" 65px + "Transfer" 73px) plus the honk button and a status badge
-  // left ZERO pixels for the player's name, which collapsed to nothing. Icons
-  // keep every row on one line and the same height, so the list stays even.
-  // aria-label carries the meaning for screen readers.
-  //
-  // A bot gets neither. Host and co-host are for humans: a bot cannot start a
-  // game, advance a phase or judge an answer, so a room in its hands is a
-  // frozen room. Its only control is the host's remove button.
-  // NOT OFFERED FOR SOMEBODY WHO IS AWAY, and that is a rule on its own merits
-  // rather than a width trick: handing the crown to a phone that is asleep is
-  // the stall this project spent four migrations ending, and
-  // determineNextHost already prefers present candidates for exactly that
-  // reason. Offering an action the game itself avoids is the "dead button" 062
-  // was written to end.
-  //
-  // It also buys the 30px that makes an away CO-HOST fit. With both role and
-  // Away badges in the strip (110px of a 327px row) that row overflowed by
-  // 31px at 375px — the exact fault that made the whole page draggable
-  // sideways in a real playtest, and the reason `overflow-x: hidden` sits on
-  // these lists as a backstop.
-  const transferBtn = (room.isHost && !isMe && !p.is_host && !p.is_bot && !away)
-    ? `<button class="icon-btn transfer-host-btn" data-transfer-id="${p.id}" data-transfer-name="${escapeHtml(p.display_name)}" aria-label="Make ${escapeHtml(p.display_name)} the host" title="Make host">&#x1F451;</button>`
-    : '';
+  // THE HOST'S CONTROLS OVER A PLAYER LIVE IN THAT PLAYER'S CARD, not on the
+  // row. See `roleActionsFor` below for the reasoning; what the row keeps is
+  // the honk button, which is for everybody rather than for the host.
+  const transferBtn = '';
   const removeBotBtn = (room.isHost && p.is_bot)
     ? `<button class="icon-btn remove-bot-btn" data-remove-bot-id="${p.id}" aria-label="Remove ${escapeHtml(p.display_name)}" title="Remove bot">&#x2715;</button>`
     : '';
-  // ONE CO-HOST, AND THE SCREEN SAYS SO NOW.
-  //
-  // handleCohostToggle has always demoted any existing co-host before
-  // promoting, so the room could never hold two — but it did it SILENTLY. The
-  // host tapped a second star and the first person lost the role with no
-  // warning, announced only in a chat pane the host may not be reading. A rule
-  // enforced in code and invisible on screen is a rule players discover by
-  // being surprised by it.
-  //
-  // So the OFFER disappears while a co-host exists. The current co-host keeps
-  // their own button, because that is how you take it back — hiding both would
-  // make the role permanent for the life of the room. Moving it is two taps
-  // now (remove, then pick), and both of them say what they do.
-  //
-  // The demote-first guard in handleCohostToggle STAYS. It is the only thing
-  // standing between two clients pressing at once and a room with two
-  // co-hosts, and this button is a display rule, not an enforcement.
-  const roomHasCohost = players.some(x => x.is_cohost && !x.is_bot);
-  let cohostBtn = '';
-  if (room.isHost && !isMe && !p.is_host && !p.is_bot) {
-    if (p.is_cohost) {
-      cohostBtn = `<button class="icon-btn cohost-btn cohost-btn--demote" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}" aria-label="Remove ${escapeHtml(p.display_name)} as co-host" title="Remove co-host">&#x2605;</button>`;
-    } else if (!roomHasCohost) {
-      cohostBtn = `<button class="icon-btn cohost-btn" data-cohost-id="${p.id}" data-cohost-name="${escapeHtml(p.display_name)}" aria-label="Make ${escapeHtml(p.display_name)} co-host" title="Make co-host">&#x2606;</button>`;
-    }
-  }
+  const cohostBtn = '';
 
   return `
     <div class="player-item${away ? ' player-item--away' : ''}" ${profileAttr}>

@@ -12,7 +12,7 @@
 //   5. Demoting works, and the co-host loses the ability to advance.
 //
 // Run: node tests/harness/scenario-cohost.mjs
-import { PlaytestTable } from './harness.js';
+import { PlaytestTable, pressPlayerCardAction } from './harness.js';
 
 const CATEGORY = 'history';
 const problems = [];
@@ -98,12 +98,12 @@ try {
   // ============================================================
   heading('promoting a co-host');
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
-  const cohostBtn = host.page.locator(`.cohost-btn[data-cohost-id="${bobId}"]`).first();
-  if (!await cohostBtn.isVisible().catch(() => false)) {
-    problems.push('the host is not offered a Co-Host button for another player');
+  // THE CONTROL LIVES IN THE PLAYER'S CARD NOW, not on the row.
+  const promoted = await pressPlayerCardAction(host.page, bobId, /make co-host/i);
+  note(`Bob's card offers: ${JSON.stringify(promoted.labels)}`);
+  if (!promoted.pressed) {
+    problems.push(`the host is not offered "Make co-host" on another player's card (offers: ${JSON.stringify(promoted.labels)})`);
   } else {
-    await cohostBtn.click().catch(() => {});
-    await host.page.waitForTimeout(2500);
 
     const bobRow = table.store.table('players').find(p => p.display_name === 'Bob');
     note(`Bob is_cohost in the database: ${bobRow?.is_cohost}`);
@@ -161,20 +161,14 @@ try {
     // permanent for the life of the room, and a check for only the first would
     // pass on that.
     // ============================================================
-    const offerWhileCohost = await host.page.evaluate(ids => ({
-      carolOffered: !!document.querySelector(`.cohost-btn[data-cohost-id="${ids.carol}"]:not(.cohost-btn--demote)`),
-      bobCanBeRemoved: !!document.querySelector(`.cohost-btn--demote[data-cohost-id="${ids.bob}"]`),
-      offersInRoom: document.querySelectorAll('.cohost-btn:not(.cohost-btn--demote)').length,
-    }), { carol: carolId, bob: bobId }).catch(() => null);
-    note(`with Bob co-host: ${JSON.stringify(offerWhileCohost)}`);
-    if (offerWhileCohost?.carolOffered) {
-      problems.push('the room already has a co-host and the host is still offered the star on somebody else — tapping it strips the first person with no warning');
+    const carolCard = await pressPlayerCardAction(host.page, carolId, /__never__/);
+    const bobCard = await pressPlayerCardAction(host.page, bobId, /__never__/);
+    note(`with Bob co-host — Carol's card: ${JSON.stringify(carolCard.labels)}, Bob's card: ${JSON.stringify(bobCard.labels)}`);
+    if (carolCard.labels.some(l => /make co-host/i.test(l))) {
+      problems.push('the room already has a co-host and the host is still offered "Make co-host" on somebody else — pressing it strips the first person with no warning');
     }
-    if (offerWhileCohost && offerWhileCohost.offersInRoom > 0) {
-      problems.push(`${offerWhileCohost.offersInRoom} co-host offer(s) still on screen while the room has a co-host`);
-    }
-    if (offerWhileCohost && !offerWhileCohost.bobCanBeRemoved) {
-      problems.push('the current co-host has no button either — the role is now permanent for the life of the room');
+    if (!bobCard.labels.some(l => /remove as co-host/i.test(l))) {
+      problems.push(`the current co-host cannot be removed either — the role is now permanent for the life of the room (offers: ${JSON.stringify(bobCard.labels)})`);
     }
 
     // THE REFUSED-PROMOTION CHECK STILL HAS TO RUN, and hiding the offer is
@@ -182,19 +176,16 @@ try {
     // somewhere is a control that was deleted". So take the role off Bob, make
     // the refused attempt on Carol, and give it back — section 5 below demotes
     // Bob for real and needs him holding it.
-    await host.page.locator(`.cohost-btn--demote[data-cohost-id="${bobId}"]`).first()
-      .click().catch(() => {});
-    await host.page.waitForTimeout(1800);
+    await pressPlayerCardAction(host.page, bobId, /remove as co-host/i);
 
-    const carolBtn = host.page.locator(`.cohost-btn[data-cohost-id="${carolId}"]`).first();
-    if (!await carolBtn.isVisible().catch(() => false)) {
-      problems.push('with no co-host in the room, the host is still not offered the star — removing one has to give the offer back');
-    } else {
+    {
       const chatBefore = table.store.table('chat_messages').length;
       table.store.failFunction('op_set_host_role');
-      await carolBtn.click().catch(() => {});
-      await host.page.waitForTimeout(2500);
+      const refused = await pressPlayerCardAction(host.page, carolId, /make co-host/i);
       table.store.unfailFunction('op_set_host_role');
+      if (!refused.pressed) {
+        problems.push(`with no co-host in the room the offer did not come back (offers: ${JSON.stringify(refused.labels)})`);
+      }
 
       const carolRow = table.store.table('players').find(p => p.id === carolId);
       const shownAsCohost = await host.page.evaluate(id =>
@@ -226,9 +217,7 @@ try {
     }
 
     // Put Bob back, so section 5 tests a real demotion rather than an absence.
-    await host.page.locator(`.cohost-btn[data-cohost-id="${bobId}"]`).first()
-      .click().catch(() => {});
-    await host.page.waitForTimeout(1800);
+    await pressPlayerCardAction(host.page, bobId, /make co-host/i);
     const bobBack = table.store.table('players').find(p => p.id === bobId);
     note(`Bob restored as co-host: ${bobBack?.is_cohost}`);
     if (!bobBack?.is_cohost) {
@@ -240,23 +229,11 @@ try {
   // 5 (in the lobby, where the button lives). DEMOTE, THEN RE-PROMOTE
   // ============================================================
   heading('demotion');
-  const demoteBtn = host.page.locator(`.cohost-btn--demote[data-cohost-id="${bobId}"]`).first();
-  if (!await demoteBtn.isVisible().catch(() => false)) {
-    problems.push('no Demote button appears for a player who is already co-host');
+  const demoted = await pressPlayerCardAction(host.page, bobId, /remove as co-host/i);
+  note(`co-host card offers: ${JSON.stringify(demoted.labels)}`);
+  if (!demoted.pressed) {
+    problems.push(`no "Remove as co-host" control appears on the card of a player who is already co-host (offers: ${JSON.stringify(demoted.labels)})`);
   } else {
-    const btnInfo = await host.page.evaluate(id => {
-      const b = document.querySelector(`.cohost-btn--demote[data-cohost-id="${id}"]`);
-      return b ? { classes: b.className, id: b.dataset.cohostId, text: b.textContent.trim() } : null;
-    }, bobId).catch(() => null);
-    note(`demote button: ${JSON.stringify(btnInfo)}`);
-
-    // Do NOT swallow this: a click that Playwright refuses (intercepted by an
-    // overlay, detached mid-render) is indistinguishable from a dead button
-    // once the error is caught.
-    let clickErr = null;
-    await demoteBtn.click({ timeout: 8000 }).catch(e => { clickErr = e.message.split('\n')[0]; });
-    note(`demote click error: ${clickErr || 'none'}`);
-    await host.page.waitForTimeout(2500);
     const sysMsgs = table.store.table('chat_messages').map(m => m.message).filter(Boolean);
     note(`system messages: ${JSON.stringify(sysMsgs.slice(-3))}`);
     const updates = table.store.log.filter(o => o.table === 'players' && o.action === 'update');
@@ -275,8 +252,7 @@ try {
     }
 
     // Put the role back so the in-game checks below have a co-host to test.
-    await host.page.locator(`.cohost-btn[data-cohost-id="${bobId}"]`).first().click().catch(() => {});
-    await host.page.waitForTimeout(2500);
+    await pressPlayerCardAction(host.page, bobId, /make co-host/i);
     const rePromoted = table.store.table('players').find(p => p.display_name === 'Bob')?.is_cohost;
     note(`Bob re-promoted: ${rePromoted}`);
     if (!rePromoted) problems.push('could not re-promote a demoted player to co-host');

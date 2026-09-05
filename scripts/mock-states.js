@@ -306,13 +306,14 @@ export const STATES = {
         // has a co-host, so no other row shows a star — which is why the
         // ordinary player rows here carry two buttons and not three, and why
         // this mock is the only place that shape gets measured.
+        // THE ROW KEEPS THE HONK BUTTON AND NOTHING ELSE. Making somebody
+        // co-host or host now lives in that player's profile card — see
+        // roleActionsFor in js/lobby.js — which is what lets every row stay on
+        // one compact line with room for the name. The bot's ✕ stays: its row
+        // has no name pressure and nothing else to carry.
         const actions = p.isHost ? '' : p.isBot
           ? '<button class="icon-btn remove-bot-btn" aria-label="Remove bot">✕</button>'
-          : '<button class="honk-btn" aria-label="Quack">\u{1F986}</button>'
-          + (p.isCohost
-              ? '<button class="icon-btn cohost-btn cohost-btn--demote" aria-label="Co-host">★</button>'
-              : (opts.roomHasCohost ? '' : '<button class="icon-btn cohost-btn" aria-label="Co-host">☆</button>'))
-          + (opts.away ? '' : '<button class="icon-btn transfer-host-btn" aria-label="Make host">\u{1F451}</button>');
+          : '<button class="honk-btn" aria-label="Quack">\u{1F986}</button>';
         // Badges and buttons live in one right-hand block: a row in the
         // players list, a COLUMN in the hosts list (badge above the buttons,
         // which is what lets a co-host's name show in full). Same markup for
@@ -437,6 +438,49 @@ export const STATES = {
   // overflowed this row by 71px in August and made the whole page draggable
   // sideways. "Away" replaces the Ready badge rather than joining it, so the
   // budget is unchanged, but that has to be measured rather than asserted.
+  // WHAT EVERYBODY ELSE SEES, and until now nothing rendered it. A non-host has
+  // no per-player controls at all — no co-host star, no crown, no remove-bot ✕
+  // — so every row carries at most a honk button, and the Start button becomes
+  // Ready Up. That is the view MOST people in the room are looking at, and "a
+  // page with no mock is a page nobody is checking" applies to it exactly.
+  'lobby-as-player': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      // Strip the host-only controls, exactly as _renderPlayerItem omits them
+      // when room.isHost is false.
+      document.querySelectorAll('#host-list .cohost-btn, #player-list .cohost-btn, '
+        + '#host-list .transfer-host-btn, #player-list .transfer-host-btn, '
+        + '.remove-bot-btn').forEach(b => b.remove());
+      // The viewer is QuizMasterMax, so his row loses its honk button and gains
+      // "(You)"; the host's row GAINS one, since he is no longer looking at
+      // himself.
+      const rows = [...document.querySelectorAll('#player-list .player-item')];
+      const me = rows[0];
+      if (me) {
+        const honk = me.querySelector('.honk-btn');
+        if (honk) honk.remove();
+        const nm = me.querySelector('.player-item__name');
+        if (nm) nm.textContent = nm.textContent + ' (You)';
+      }
+      const hostRow = document.querySelector('#host-list .player-item');
+      if (hostRow && !hostRow.querySelector('.honk-btn')) {
+        const b = document.createElement('button');
+        b.className = 'honk-btn'; b.setAttribute('aria-label', 'Quack');
+        b.textContent = '\u{1F986}';
+        hostRow.querySelector('.player-item__actions').appendChild(b);
+      }
+      // A non-host readies up rather than starting.
+      const start = document.getElementById('btn-start-game');
+      if (start) { start.textContent = 'Ready Up'; start.classList.remove('btn-primary'); start.classList.add('btn-secondary'); }
+      const addBot = document.getElementById('btn-add-bot');
+      if (addBot) addBot.classList.add('hidden');
+      const gear = document.getElementById('btn-settings');
+      if (gear) gear.classList.add('hidden');
+    },
+  },
+
   'lobby-away': {
     page: 'lobby',
     screen: 'lobby-screen',
@@ -719,6 +763,39 @@ export const STATES = {
                 <button data-report-reason="other">Other</button>
               </div>
               <p class="profile-card__report-done"></p>
+            </div>
+            <div class="profile-card__actions">
+              <button class="btn btn-secondary btn-block">Add Friend</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(sheet);
+    },
+  },
+
+  // THE HOST'S CONTROLS OVER A PLAYER, which moved off the lobby row and into
+  // this card. Nothing rendered them until this state existed, and a control
+  // with no mock is a control nobody is measuring — the lesson that has cost
+  // this project a bare back arrow and an unstyled flag row already.
+  'lobby-player-card': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const sheet = document.createElement('div');
+      sheet.id = 'profile-card-sheet';
+      sheet.className = 'modal-overlay active';
+      sheet.innerHTML = `
+        <div class="modal profile-card">
+          <div id="profile-card-content">
+            <div class="profile-card__header">
+              <div class="profile-card__avatar"></div>
+              <div class="profile-card__name">QuizMasterMax<span class="profile-card__tag">#1042</span></div>
+              <div class="profile-card__title">Novice</div>
+            </div>
+            <div class="profile-card__roles">
+              <button class="btn btn-secondary btn-block">Make co-host</button>
+              <button class="btn btn-secondary btn-block">Make host</button>
             </div>
             <div class="profile-card__actions">
               <button class="btn btn-secondary btn-block">Add Friend</button>

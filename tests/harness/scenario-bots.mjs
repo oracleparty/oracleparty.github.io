@@ -16,7 +16,7 @@
 //      own stored distractors, or blank.
 //
 // Run: node tests/harness/scenario-bots.mjs
-import { PlaytestTable } from './harness.js';
+import { PlaytestTable, pressPlayerCardAction } from './harness.js';
 
 const CATEGORY = 'history';
 const QUESTIONS = 5;   // must be one of the options host.html actually offers
@@ -158,15 +158,31 @@ try {
   // ============================================================
   heading('a bot can never be given the room');
   if (botRow) {
-    const promoteOffered = await host.page.evaluate(id => ({
-      transfer: !!document.querySelector(`.transfer-host-btn[data-transfer-id="${id}"]`),
-      cohost: !!document.querySelector(`.cohost-btn[data-cohost-id="${id}"]`),
-      remove: !!document.querySelector(`.remove-bot-btn[data-remove-bot-id="${id}"]`),
-    }), botRow.id).catch(() => ({}));
-    note(`controls offered on the bot's row: ${JSON.stringify(promoteOffered)}`);
-    if (promoteOffered.transfer) problems.push('the host is offered a Make Host button on a bot');
-    if (promoteOffered.cohost) problems.push('the host is offered a Co-Host button on a bot');
-    if (!promoteOffered.remove) problems.push('the host has no way to remove a bot');
+    // THE ROLE CONTROLS LIVE IN THE PLAYER'S CARD NOW, so this has to ask the
+    // CARD. Asserting the old row selectors are absent would pass for a bot,
+    // for a human, and for a build where the whole feature had been deleted —
+    // exactly the check that cannot fail.
+    const botCard = await pressPlayerCardAction(host.page, botRow.id, /__never__/);
+    const removeOnRow = await host.page.evaluate(id =>
+      !!document.querySelector(`.remove-bot-btn[data-remove-bot-id="${id}"]`), botRow.id).catch(() => false);
+    note(`the bot's card offers: ${JSON.stringify(botCard.labels)}; remove button on its row: ${removeOnRow}`);
+    if (botCard.labels.some(l => /make host/i.test(l))) problems.push('the host is offered "Make host" on a bot');
+    if (botCard.labels.some(l => /co-host/i.test(l))) problems.push('the host is offered a co-host control on a bot');
+    // The ✕ stays on the BOT'S ROW: that row has no name pressure and nothing
+    // else to carry, and removing a bot is the one control here that is not
+    // about handing somebody power.
+    if (!removeOnRow) problems.push('the host has no way to remove a bot');
+
+    // AND A HUMAN MUST STILL BE OFFERED THEM, or the two assertions above pass
+    // just as happily on a build where nobody can be promoted at all.
+    const humanId = table.store.table('players').find(p => !p.is_bot && !p.is_host)?.id;
+    if (humanId) {
+      const humanCard = await pressPlayerCardAction(host.page, humanId, /__never__/);
+      note(`a human's card offers: ${JSON.stringify(humanCard.labels)}`);
+      if (!humanCard.labels.some(l => /co-host|make host/i.test(l))) {
+        problems.push(`the host is offered no role controls on a REAL player either — the check above proves nothing (offers: ${JSON.stringify(humanCard.labels)})`);
+      }
+    }
   }
 
   // ============================================================

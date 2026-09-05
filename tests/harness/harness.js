@@ -41,6 +41,41 @@ function startServer() {
   });
 }
 
+/**
+ * Open a player's profile card from a lobby list and press one of the host's
+ * controls in it.
+ *
+ * THE CONTROLS MOVED OFF THE ROW (2026-09-05) and into this card, which is what
+ * lets every lobby row stay on one compact line with room for the name. The
+ * scenarios used to click `.cohost-btn[data-cohost-id=…]` directly; a check
+ * that reaches for a control by its old selector reports "the button is gone"
+ * for a control that merely moved, which is the trap CLAUDE.md names as "a
+ * control that only moved out of somewhere is a control that was deleted".
+ *
+ * Returns what happened rather than throwing, so a scenario can assert on the
+ * ABSENCE of an offer as easily as on pressing one.
+ */
+export async function pressPlayerCardAction(page, playerId, labelRe) {
+  const row = page.locator(`[data-profile-player-id="${playerId}"]`).first();
+  if (!await row.isVisible().catch(() => false)) return { opened: false, labels: [], pressed: false };
+  await row.click().catch(() => {});
+  await page.waitForTimeout(700);
+  const labels = await page.evaluate(() => {
+    const sheet = document.querySelector('#profile-card-sheet');
+    if (!sheet || !sheet.classList.contains('active')) return null;
+    return [...sheet.querySelectorAll('[data-role-action]')].map(b => b.textContent.trim());
+  }).catch(() => null);
+  if (labels === null) return { opened: false, labels: [], pressed: false };
+  const idx = labels.findIndex(l => labelRe.test(l));
+  if (idx === -1) {
+    await page.evaluate(() => document.querySelector('#profile-card-sheet')?.classList.remove('active'));
+    return { opened: true, labels, pressed: false };
+  }
+  await page.locator(`#profile-card-sheet [data-role-action="${idx}"]`).first().click().catch(() => {});
+  await page.waitForTimeout(2200);
+  return { opened: true, labels, pressed: true };
+}
+
 export class Robot {
   constructor(name, page, table) {
     this.name = name;

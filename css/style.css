@@ -2331,30 +2331,28 @@ body::after {
 }
 .player-item__badges:empty,
 .player-item__actions:empty { display: none; }
-/* In a plain row the badge stays on the OUTSIDE EDGE, where it has always
-   been — a status column you can scan straight down. Wrapping the two in one
-   block put the badge before the buttons in source order, which reads as the
-   dot being sandwiched between the duck and the crown. Stacked (hosts), source
-   order is the one that is wanted: the badge on top. */
-.player-item__right > .player-item__badges { order: 2; }
-.lobby-hosts .player-item__right > .player-item__badges { order: 0; }
 
-.lobby-hosts .player-item__right {
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-}
-/* Reserved whether or not this row has a badge, so the host and the co-host
-   are the same height as each other. Without it the host (badge, no buttons)
-   and the co-host (both) differ by 30px and the list reads as broken. */
-.lobby-hosts .player-item__right .player-item__badges,
-.lobby-hosts .player-item__right .player-item__actions {
+/* The host's controls inside a player's card. Full-width buttons in words,
+   which is a gain over the icons they replace: ☆ against ★ was a distinction
+   nobody could read, and "Make co-host" needs no legend. */
+.profile-card__roles {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0 0;
 }
-.lobby-hosts .player-item__right .player-item__badges { min-height: 17px; }
-.lobby-hosts .player-item__right .player-item__actions { min-height: 30px; }
+/* The badge stays on the OUTSIDE EDGE, where it has always been — a status
+   column you can scan straight down. Wrapping badges and buttons in one block
+   put the badge first in source order, which reads as a status dot sandwiched
+   between the buttons rather than a column. */
+.player-item__right > .player-item__badges { order: 2; }
+
+/* THE HOSTS LIST NO LONGER STACKS, and the whole reason is gone with it: the
+   co-host row carried three host buttons plus a 71px badge and the name could
+   not fit. Those buttons live in the player's profile card now, so every row
+   in both lists is one compact line again — which is what the owner wanted all
+   along ("compact is much much better") and what stacking could only fake by
+   making two rows taller and airier than the rest. */
 
 /* Keep the player's name readable, and every row the same height.
  *
