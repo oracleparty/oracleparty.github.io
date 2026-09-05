@@ -1950,24 +1950,16 @@ body::after {
   opacity: 0.8;
 }
 
-/* Not-ready is a DOT, and the width is the whole reason. As words it measured
-   81px on nearly every row in the lobby — not-ready is where everyone starts —
-   and nothing else in that row can shrink, so it came out of the name and the
-   title. See the note in renderPlayerRow.
+/* NOT READY HAS NO BADGE. The rule that was here styled a dot, and the dot is
+   gone with the markup that carried it — a stylesheet rule for an element
+   nothing renders is the drift the sweep's unstyled-class check exists to
+   catch, one direction along.
 
-   Sized in em so it tracks the badge text beside it rather than drifting if the
-   type scale moves. */
-.badge--not-ready {
-  background: transparent;
-  padding: 0;
-  width: 0.62rem;
-  height: 0.62rem;
-  border-radius: 50%;
-  border: 2px solid var(--color-text-muted);
-  opacity: 0.55;
-  box-sizing: border-box;
-  flex: 0 0 auto;
-}
+   Why there is nothing to style: as words, "Not Ready" measured 81px on nearly
+   every row — not-ready is where everybody starts — and nothing else in that
+   row can shrink, so those pixels came straight out of the name and the title.
+   A dot fitted and said nothing. The lobby's only question is who IS ready,
+   and .badge--ready answers it; absence is the other half. */
 
 /* Away is a word, not only a fade. It sits in the READY slot rather than
    beside it, so this row's badge budget is unchanged — a badge added here is
@@ -1975,8 +1967,8 @@ body::after {
 
    Muted rather than coloured: away is a fact about somebody's phone, not a
    warning, and colouring everything is how colour stops meaning anything.
-   Slightly stronger than "Not Ready" because the row it sits on is already at
-   40% opacity, so the badge has to survive being faded too. */
+   Given a surface of its own because the row it sits on is already at 40%
+   opacity, so the badge has to survive being faded too. */
 .badge--away {
   background: var(--color-surface-light);
   color: var(--color-text);

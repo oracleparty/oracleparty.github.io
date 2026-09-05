@@ -286,7 +286,7 @@ export const STATES = {
         if (!p.isHost && !p.isCohost) {
           badges.push(opts.ready
             ? '<span class="badge badge--ready">Ready</span>'
-            : '<span class="badge badge--not-ready" role="img" aria-label="Not ready" title="Not ready"></span>');
+            : '');
         }
         // A bot carries one badge and nothing else — no ready state, no tier,
         // no title. Same as the app.
@@ -390,22 +390,25 @@ export const STATES = {
     screen: 'lobby-screen',
     inherits: 'lobby-waiting',
     inject: () => {
-      // Flip "Not Ready" to "Ready" in place, in the badge strip where the app
-      // puts it. Appending to .player-row did nothing once the rows became
-      // .player-item, and appending to the row rather than its badge strip
-      // would have put the badge outside the container that bounds it.
+      // ADD a Ready badge — there is nothing to flip any more.
+      //
+      // Not-ready renders NOTHING now (the owner's decision: a green "Ready"
+      // answers the lobby's only question, and its absence is the other half).
+      // This used to convert the not-ready badge in place, so the moment that
+      // element stopped existing this loop found nothing and the "everyone is
+      // ready" state previewed a lobby in which nobody could ever be ready —
+      // the mock drifting into fiction, which is the exact fault the sweep's
+      // unstyled-class check exists to catch and which this file has recorded
+      // twice already.
+      //
+      // Skipped for the host, co-host and the bot, mirroring the app: ready
+      // state is meaningless for the people who run the lobby.
       document.querySelectorAll('#player-list .player-item__badges').forEach(strip => {
-        const notReady = strip.querySelector('.badge--not-ready');
-        if (notReady) {
-          // The not-ready mark is a DOT now, so its screen-reader label and
-          // tooltip have to go with it — a "Ready" badge still announcing "Not
-          // ready" is a mock previewing something the app would never build.
-          notReady.className = 'badge badge--ready';
-          notReady.removeAttribute('role');
-          notReady.removeAttribute('aria-label');
-          notReady.removeAttribute('title');
-          notReady.textContent = 'Ready';
-        }
+        if (strip.querySelector('.badge--host, .badge--cohost, .badge--bot')) return;
+        const ready = document.createElement('span');
+        ready.className = 'badge badge--ready';
+        ready.textContent = 'Ready';
+        strip.appendChild(ready);
       });
 
       // The no-bot half of the lobby: the bot's row goes and the host's
@@ -435,8 +438,13 @@ export const STATES = {
         const strip = row.querySelector('.player-item__badges');
         if (!strip) continue;
         const isCohost = !!strip.querySelector('.badge--cohost');
-        const ready = strip.querySelector('.badge--ready, .badge--not-ready');
-        if (!isCohost && !ready) continue;
+        const ready = strip.querySelector('.badge--ready');
+        // An ordinary player who is not ready now carries NO badge at all, so
+        // an empty strip is a player rather than a row to skip. Only the host
+        // and the bot are excluded.
+        const isNotAPlayer = !!strip.querySelector('.badge--host, .badge--bot');
+        if (isNotAPlayer) continue;
+        if (!isCohost && !ready && strip.children.length > 0) continue;
         row.classList.add('player-item--away');
         if (ready) {
           ready.className = 'badge badge--away';

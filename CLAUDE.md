@@ -152,8 +152,14 @@
 > Two consumers, one fix each, and both are the same shape one level apart:
 >
 > - **"Not Ready" was 81px of words on nearly every row**, because not-ready is
->   where everybody starts. It is a **dot** now (14px). What anybody scans a
->   lobby for is who IS ready, and that still says "Ready".
+>   where everybody starts. It shows **NOTHING** now — the owner's decision after
+>   seeing the screenshot. What anybody scans a lobby for is who IS ready, and
+>   that still says "Ready" in words; absence is the other half and needs no
+>   glyph. **A dot was tried first and was worse** (14px, and fitted) — it
+>   reads as a small empty circle that decodes to nothing, and the owner said
+>   so. I had shipped it WITHOUT READING THE SCREENSHOT, which this file
+>   requires in as many words. The measurement was clean and the render was
+>   meaningless: **passing every check is not the same as looking at it.**
 > - **On line 2 the tier was `flex: 0 0 auto`**, so it held its ~62px and the
 >   TITLE truncated. Shrink order reversed: the tier gives way first.
 >
@@ -162,8 +168,16 @@
 > nobody can do without. It is recorded here because the reasoning looked right
 > and the measurement said otherwise.
 >
-> Result at 375px: **overflow 0px, names 141/141px, titles 105/105px.** At 430px
-> 120/120px. The two-line layout finally has the room it always needed.
+> Result at 375px with the dot: overflow 0px, names 141/141px, titles 105/105px.
+> With nothing at all: **overflow 0px, names 151/151px.** At 430px 120/120px.
+> The two-line layout finally has the room it always needed.
+>
+> **AND THE MEASUREMENT LIED ONCE MORE ON THE WAY.** The title reported
+> `105/105` — not truncated — while the screenshot plainly showed "Student of
+> the Ag…". `.name-substack` carries `overflow: hidden`, so a child's
+> `scrollWidth` equals its `clientWidth` while the PARENT does the clipping.
+> Measuring the child answers a question about the child. **When a number and a
+> screenshot disagree, the screenshot is what a person sees.**
 >
 > **The mock had drifted again** — `mock-states.js` builds its own row HTML, so
 > it was previewing markup the app no longer produced and my own measurement

@@ -528,24 +528,22 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
     // the lobby — "Not Ready" was already suppressed for them, so showing them
     // "Ready" was inconsistent as well as wasteful.
     badges.push('<span class="badge badge--ready">Ready</span>');
-  } else if (!p.is_ready && !p.is_host && !p.is_cohost) {
-    // A DOT, NOT THE WIDEST WORDS IN THE ROW.
-    //
-    // "Not Ready" measured 81px and sat on nearly every row nearly all the
-    // time, because not-ready is where everybody starts. Nothing else in this
-    // row can yield — the badge strip is `flex: 0 0 auto` and .name-stack has a
-    // hard 72px floor — so those 81px came straight out of the name and title.
-    // Measured at 375px: the row is 327px wide and its contents needed 329px,
-    // with the name box pinned at exactly its floor. That is the reported "the
-    // players list is too wide, can't see my friend's full title, and Not Ready
-    // is cut off".
-    //
-    // The signal anybody actually scans a lobby for is who IS ready, and that
-    // still says "Ready" in words. Its absence is the other half, and a dot
-    // carries it in 14px instead of 81. Labelled for screen readers and given a
-    // title so a long-press still explains it.
-    badges.push('<span class="badge badge--not-ready" role="img" aria-label="Not ready" title="Not ready"></span>');
   }
+  // NOT READY SHOWS NOTHING AT ALL — the owner's decision, and it is the
+  // simplest true thing this row can do.
+  //
+  // "Not Ready" was 81px of words on nearly every row, because not-ready is
+  // where everybody starts. Nothing else in the row can yield — the badge strip
+  // is `flex: 0 0 auto` and .name-stack has a hard 72px floor — so those 81px
+  // came straight out of the name and the title. Measured at 375px: the row is
+  // 327px wide and its contents needed 329px, with the name box pinned at
+  // exactly its floor. That is "the list is too wide, I can't see my friend's
+  // full title, and Not Ready is cut off".
+  //
+  // A DOT WAS TRIED FIRST AND WAS WORSE. It fitted, but a small empty circle at
+  // the end of a row says nothing — the owner saw the screenshot and said so.
+  // The lobby's only question is WHO IS READY, and a green "Ready" answers it.
+  // Absence is the other half, and it needs no glyph to decode.
   // A bot carries one badge and nothing else. It has no ready state to report
   // (it is always ready), no tier and no title, so the row stays inside the
   // budget that the co-host overflow taught us to respect.
