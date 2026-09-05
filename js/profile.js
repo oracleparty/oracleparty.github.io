@@ -288,6 +288,43 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       ? `<p class="host-rep${rep.measured && rep.pct < 50 ? ' host-rep--poor' : ''}">As host: ${escapeHtml(rep.text)}</p>`
       : '<p class="host-rep host-rep--none">No host ratings yet</p>';
 
+    // THE SHAPE OF WHAT THEY KNOW, on the card as well as the profile page.
+    //
+    // The owner asked for it here and it costs nothing: this card already
+    // fetched `stats` for the four figures above, so the chart is drawn from
+    // data that is already in hand — no second request, no second wait.
+    //
+    // It uses the SAME buildRadarAxes and renderRadarSvg as the profile page.
+    // A second implementation of "twelve axes, one per category" is the
+    // duplication this project records more than any other fault, and the
+    // failure would be quiet: two charts that disagree about the same player.
+    //
+    // AN UNPLAYED CATEGORY IS NOT A ZERO — that rule lives inside
+    // buildRadarAxes and comes along for free. `anyData` is false for somebody
+    // who has never finished a category, and then nothing is drawn at all: an
+    // empty twelve-sided outline says nothing and reads as broken.
+    let radarHtml = '';
+    if (profile) {
+      const byCategory = {};
+      for (const row of mergedCategoryRows(stats)) {
+        const prof = rowProficiency(row);
+        if (prof) byCategory[row.category] = prof;
+      }
+      const axesInput = Object.entries(CATEGORY_META)
+        .map(([key, meta]) => ({ key, label: meta.label, emoji: meta.emoji || meta.icon }));
+      const { axes, anyData } = buildRadarAxes(axesInput, byCategory);
+      if (anyData) {
+        const { strongest } = radarExtremes(axes);
+        // One line, not the profile page's three. A card is glanced at, and
+        // "strongest" is the thing somebody in a lobby actually wants.
+        const cap = strongest
+          ? `Strongest: ${escapeHtml(strongest.label)} ${Math.round(strongest.value * 100)}%`
+          : '';
+        radarHtml = `<div class="profile-card__radar radar">${renderRadarSvg(axes)}</div>`
+          + (cap ? `<p class="radar__caption">${cap}</p>` : '');
+      }
+    }
+
     statsHtml = !profile ? `<p class="profile-card__guest-hint">Guest player</p>` : `
       <div class="profile-card__stats">
         <div><div class="profile-card__stat-value">${totalGames}</div><div class="profile-card__stat-label">Games</div></div>
@@ -295,6 +332,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
         <div><div class="profile-card__stat-value">${winRate}%</div><div class="profile-card__stat-label">Win Rate</div></div>
         <div><div class="profile-card__stat-value">${bestCatLabel}</div><div class="profile-card__stat-label">Best</div></div>
       </div>
+      ${radarHtml}
       ${hostHtml}
     `;
 

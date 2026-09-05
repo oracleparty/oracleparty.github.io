@@ -5699,6 +5699,22 @@ body::after {
   font-style: italic;
 }
 
+/* THE CARD SCROLLS WHEN IT IS TALLER THAN THE PHONE.
+ *
+ * Measured after the proficiency chart went in: at 375x667 (an iPhone SE) the
+ * card stood 728px tall and its TOP sat at -30px, with `overflow: visible` —
+ * so the player's name ran off the top of the screen with no way to reach it.
+ * That is the profile page's 571px bug in a sheet: content wider (here taller)
+ * than the viewport, clipped rather than reachable.
+ *
+ * A max-height with its own scroll is the fix, and it is a backstop for
+ * anything added to this card later rather than a patch for the chart. */
+.modal-overlay .profile-card {
+  max-height: 88vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .profile-card__stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -7484,6 +7500,16 @@ body[style*="opacity: 0"] {
   display: flex;
   justify-content: center;
 }
+/* Smaller on a card than on the profile page. The page has the whole width to
+   itself; the card is a sheet with stats above it and buttons below.
+   `.profile-card__radar svg` and `.radar svg` have EQUAL specificity, so the
+   first version of this lost to whichever came later in the file and the chart
+   drew at its full 300px — measured, not assumed. `.radar.profile-card__radar`
+   outranks it and cannot be undone by ordering. */
+.radar.profile-card__radar {
+  margin: var(--space-sm) 0 0;
+}
+.radar.profile-card__radar svg { max-width: 150px; }
 .radar svg {
   width: 100%;
   max-width: 300px;

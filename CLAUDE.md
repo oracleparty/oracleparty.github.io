@@ -270,6 +270,37 @@
 > proves nothing. Verified by making `roleActionsFor` return null: three
 > failures by name.
 >
+> **THE PROFICIENCY CHART IS ON THE CARD TOO (asked 2026-09-05).** The owner
+> asked whether the web chart could be seen from the lobby, and it costs
+> nothing: the card already fetched `stats` for its four figures, so the chart
+> is drawn from data in hand — no second request. It uses the SAME
+> `buildRadarAxes` and `renderRadarSvg` as the profile page; a second
+> implementation of "twelve axes, one per category" would be this project's
+> signature fault with a quiet failure (two charts disagreeing about one
+> player). "An unplayed category is not a zero" comes along for free, and
+> `anyData` false draws nothing at all.
+>
+> **AND IT PUSHED THE CARD OFF THE TOP OF A SMALL PHONE.** Measured at
+> 375x667: the card stood **728px tall with its top at -30px**, and
+> `overflow: visible` — so the player's name ran off the screen with nothing to
+> scroll back to. That is the profile page's 571px bug in a sheet. The card has
+> `max-height: 88vh` and its own scroll now, which is a backstop for anything
+> added later rather than a patch for the chart.
+>
+> **The first attempt to shrink the chart did nothing, and only measuring said
+> so.** `.profile-card__radar svg` and `.radar svg` have EQUAL specificity, so
+> it lost to whichever came later in the file and the chart drew at its full
+> 300px. `.radar.profile-card__radar svg` outranks it and cannot be undone by
+> ordering. **Equal specificity is decided by file order, which is not a
+> decision anybody made.**
+>
+> **A FLAKE WORTH KNOWING ABOUT, not chased here:** `layout-sweep --stress`
+> reported `.category-grid items side by side differ by 2px: [158, 156]` at
+> 430px on OLED once, then passed twice in a row on the same commit. Nothing in
+> that change touched the category grid. Sub-pixel rounding is the likely cause
+> and the check already tolerates 1px. Recorded rather than silenced — if it
+> recurs, the fix is the tolerance, not the grid.
+>
 > **THE FIRST MOCK OF THAT CARD RENDERED LESS THAN THE APP DOES**, and the
 > owner reasonably read the screenshot as "why is so little on it?" The real
 > card carries four stats and the host rating; the mock had name, title and

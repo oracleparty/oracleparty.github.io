@@ -804,6 +804,8 @@ export const STATES = {
               <div><div class="profile-card__stat-value">36%</div><div class="profile-card__stat-label">Win Rate</div></div>
               <div><div class="profile-card__stat-value">Science</div><div class="profile-card__stat-label">Best</div></div>
             </div>
+            <div class="profile-card__radar radar" id="mock-card-radar"></div>
+            <p class="radar__caption">Strongest: History 81%</p>
             <p class="host-rep host-rep--none">No host ratings yet</p>
             <div class="profile-card__roles">
               <button class="btn btn-secondary btn-block">Make co-host</button>
@@ -815,6 +817,34 @@ export const STATES = {
           </div>
         </div>`;
       document.body.appendChild(sheet);
+
+      // The chart, drawn the same way renderRadarSvg does it. `inject` is
+      // serialised into the browser and cannot import, so the geometry is
+      // inlined here exactly as the profile-stats mock inlines it — if
+      // renderRadarSvg changes, BOTH move in the same commit. The point of
+      // having it here at all is that the sweep then measures a card with a
+      // chart in it, which is the shape that actually ships.
+      const AX = [
+        ['⏳', 0.81], ['⚗️', 0.64], ['🌿', 0.0], ['📜', 0.42],
+        ['🏛️', 0.55], ['🎬', 0.43], ['🌍', 0.0], ['💻', 0.71],
+        ['⚽', 0.18], ['🍕', 0.0], ['🧩', 0.6], ['🃏', 0.33],
+      ];
+      const V = 100, R = 34, LR = 44, C = V / 2, n = AX.length;
+      const pts = (val, radius) => AX.map((a, i) => {
+        const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
+        const r = (val === null ? a[1] : val) * radius;
+        return `${(C + Math.cos(ang) * r).toFixed(2)},${(C + Math.sin(ang) * r).toFixed(2)}`;
+      }).join(' ');
+      const rings = [0.25, 0.5, 0.75, 1].map(f => `<polygon class="radar__ring" points="${pts(f, R)}"/>`).join('');
+      const spokes = pts(1, R).split(' ').map(p =>
+        `<line class="radar__spoke" x1="${C}" y1="${C}" x2="${p.split(',')[0]}" y2="${p.split(',')[1]}"/>`).join('');
+      const dots = pts(null, R).split(' ').map((p, i) => AX[i][1] > 0
+        ? `<circle class="radar__dot" cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="1.6"/>` : '').join('');
+      const labels = pts(1, LR).split(' ').map((p, i) =>
+        `<text class="radar__label${AX[i][1] > 0 ? '' : ' radar__label--untried'}" x="${p.split(',')[0]}" y="${p.split(',')[1]}" text-anchor="middle" dominant-baseline="central">${AX[i][0]}</text>`).join('');
+      const played = pts(null, R).split(' ').filter((_, i) => AX[i][1] > 0).join(' ');
+      document.getElementById('mock-card-radar').innerHTML =
+        `<svg viewBox="0 0 ${V} ${V}" role="img" aria-label="Proficiency by category">${rings}${spokes}<polygon class="radar__shape" points="${played}"/>${dots}${labels}</svg>`;
     },
   },
 
