@@ -661,11 +661,10 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
         <span class="player-item__name">${nameDisplay}</span>
         ${titleHtml}
       </div>
-      ${honkBtn}
-      ${cohostBtn}
-      ${transferBtn}
-      ${removeBotBtn}
-      <span class="player-item__badges">${badges.join('')}</span>
+      <div class="player-item__right">
+        <span class="player-item__badges">${badges.join('')}</span>
+        <span class="player-item__actions">${honkBtn}${cohostBtn}${transferBtn}${removeBotBtn}</span>
+      </div>
     </div>
   `;
 }

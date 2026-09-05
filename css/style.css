@@ -2298,6 +2298,64 @@ body::after {
   transition: opacity 0.3s ease;
 }
 
+/* THE RIGHT-HAND BLOCK: badges and buttons, side by side or stacked.
+ *
+ * In the PLAYERS list it is a plain row and nothing changes — those rows stay
+ * 51px and the chat stays on screen, which is what the owner chose after
+ * seeing the alternative applied to everybody ("compact is much much better").
+ *
+ * In the HOSTS list the badge sits ABOVE the buttons, which is the owner's own
+ * idea and a better one than mine: those are two SEPARATE lists, so making the
+ * host rows taller costs 2 rows rather than 7, cannot make the players list
+ * ragged, and pushes nothing off the bottom of the screen.
+ *
+ * What it buys is the co-host's NAME. Measured at 375px: with the badge beside
+ * it the name box got 84px whatever the name was, so anything over about 11
+ * characters was cut ("TimeTravel…"). Stacked, the same name gets 163px and
+ * every realistic name fits whole.
+ *
+ * And the awkward part of the all-rows version disappears here rather than
+ * being fixed: the lone ready dot floating top-right. Host and co-host have no
+ * ready state at all — they get no dot — so the badge line in this list only
+ * ever holds a role or Away. */
+.player-item__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: 0 0 auto;
+}
+.player-item__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.player-item__badges:empty,
+.player-item__actions:empty { display: none; }
+/* In a plain row the badge stays on the OUTSIDE EDGE, where it has always
+   been — a status column you can scan straight down. Wrapping the two in one
+   block put the badge before the buttons in source order, which reads as the
+   dot being sandwiched between the duck and the crown. Stacked (hosts), source
+   order is the one that is wanted: the badge on top. */
+.player-item__right > .player-item__badges { order: 2; }
+.lobby-hosts .player-item__right > .player-item__badges { order: 0; }
+
+.lobby-hosts .player-item__right {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+/* Reserved whether or not this row has a badge, so the host and the co-host
+   are the same height as each other. Without it the host (badge, no buttons)
+   and the co-host (both) differ by 30px and the list reads as broken. */
+.lobby-hosts .player-item__right .player-item__badges,
+.lobby-hosts .player-item__right .player-item__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.lobby-hosts .player-item__right .player-item__badges { min-height: 17px; }
+.lobby-hosts .player-item__right .player-item__actions { min-height: 30px; }
+
 /* Keep the player's name readable, and every row the same height.
  *
  * Measured at 375px with a host viewing another player: the word buttons

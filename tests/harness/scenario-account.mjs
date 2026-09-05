@@ -943,12 +943,20 @@ try {
   const layout = await alice.page.evaluate(() => {
     const vw = document.documentElement.clientWidth;
     const rows = [...document.querySelectorAll('#player-list .player-item, #host-list .player-item')];
+    const h = sel => [...document.querySelectorAll(sel + ' .player-item')]
+      .map(r => Math.round(r.getBoundingClientRect().height));
     return {
       vw,
       docScrollW: document.documentElement.scrollWidth,
       widest: Math.max(0, ...rows.map(r => r.scrollWidth)),
       widestClient: Math.max(0, ...rows.map(r => r.clientWidth)),
-      heights: rows.map(r => Math.round(r.getBoundingClientRect().height)),
+      // PER LIST, NOT ACROSS BOTH. The hosts list stacks its badge above the
+      // buttons and is deliberately taller — that is what lets a co-host's name
+      // show in full. The two are separate lists on screen with a heading
+      // between them, so a difference BETWEEN them is the design; a difference
+      // WITHIN either one is the ragged list this check was written for.
+      hostHeights: h('#host-list'),
+      playerHeights: h('#player-list'),
     };
   }).catch(() => null);
 
@@ -956,16 +964,18 @@ try {
     problems.push('could not measure the lobby after promoting a signed-in co-host');
   } else {
     note(`viewport=${layout.vw} page scrollWidth=${layout.docScrollW} row scrollW=${layout.widest} clientW=${layout.widestClient}`);
-    note(`row heights: [${layout.heights.join(', ')}]`);
+    note(`row heights — hosts [${layout.hostHeights.join(', ')}], players [${layout.playerHeights.join(', ')}]`);
     if (layout.docScrollW > layout.vw) {
       problems.push(`the lobby is ${layout.docScrollW - layout.vw}px wider than the screen — the page can be dragged sideways`);
     }
     if (layout.widest > layout.widestClient + 1) {
       problems.push(`a player row overflows by ${layout.widest - layout.widestClient}px`);
     }
-    const uniq = [...new Set(layout.heights)];
-    if (uniq.length > 1 && Math.max(...uniq) - Math.min(...uniq) > 1) {
-      problems.push(`player rows are ragged: ${JSON.stringify(layout.heights)}`);
+    for (const [which, heights] of [['host', layout.hostHeights], ['player', layout.playerHeights]]) {
+      const uniq = [...new Set(heights)];
+      if (uniq.length > 1 && Math.max(...uniq) - Math.min(...uniq) > 1) {
+        problems.push(`${which} rows are ragged: ${JSON.stringify(heights)}`);
+      }
     }
   }
 

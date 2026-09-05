@@ -234,7 +234,44 @@
 > that. Verified by restoring `else`: *"the room already has a co-host and the
 > host is still offered the star on somebody else"*.
 >
-> **CO-HOST IS BESIDE HOST, and the owner chose it knowing the cost.** I
+> **SETTLED: THE HOSTS LIST STACKS, THE PLAYERS LIST DOES NOT — and the owner's
+> idea is what made it work.** Four rounds of this, and the answer was neither
+> of the two things I kept measuring against each other.
+>
+> Their words: *"can host and co host just be squeezed above the clickable
+> buttons?"* — a right-hand block two lines deep, mirroring the name and title
+> on the left. I built it for EVERY row first and it was wrong: rows went 51px
+> to 65px, the chat was pushed off the bottom of the screen, and the lone ready
+> dot floated in the top-right corner of every player row with nothing to
+> anchor it. *"Compact is much much better. The second is botched."*
+>
+> **Then they named the thing I had missed: do it for the hosts only.** And
+> `#host-list` and `#player-list` are SEPARATE LISTS, which changes everything:
+>
+> | | |
+> |---|---|
+> | the ragged-row check | compares rows within one list, so two tall host rows cannot make the players list uneven |
+> | the height cost | 2 rows, not 7 — the chat stays on screen |
+> | the floating dot | **disappears rather than being fixed**: host and co-host have no ready state, so that list's badge line only ever holds a role or Away |
+>
+> Measured at 375px, every lobby state, both widths: **0px overflow and not one
+> truncated name anywhere** — the co-host goes from 84 of 97 ("TimeTravel…") to
+> 163/163, and 145/145 even when away and carrying both badges. Host rows 66px,
+> player rows 51px, unchanged.
+>
+> **The stacking is a CSS rule on the LIST, not a shape the JS decides.**
+> `_renderPlayerItem` emits one `.player-item__right` for everybody and
+> `.lobby-hosts` turns it into a column. The mock emits the same markup, so the
+> two cannot disagree about it — which is the drift this file records more than
+> any other.
+>
+> `order: 2` keeps the badge on the OUTER EDGE in the players list. Wrapping the
+> two in one block put it before the buttons in source order, and a status dot
+> sandwiched between the duck and the crown stops being a column you can scan.
+>
+> ### The two rounds before that, kept because the reasoning moved
+>
+> **CO-HOST BESIDE HOST, and the owner chose it knowing the cost.** I
 > measured it, argued against it, and they asked a third time — *"I also still
 > see co host in the same spot? Not where host is. It displaces the title
 > currently."* Their reading is the one that matters and it is right: beside an

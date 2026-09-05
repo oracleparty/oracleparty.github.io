@@ -313,13 +313,19 @@ export const STATES = {
               ? '<button class="icon-btn cohost-btn cohost-btn--demote" aria-label="Co-host">★</button>'
               : (opts.roomHasCohost ? '' : '<button class="icon-btn cohost-btn" aria-label="Co-host">☆</button>'))
           + (opts.away ? '' : '<button class="icon-btn transfer-host-btn" aria-label="Make host">\u{1F451}</button>');
+        // Badges and buttons live in one right-hand block: a row in the
+        // players list, a COLUMN in the hosts list (badge above the buttons,
+        // which is what lets a co-host's name show in full). Same markup for
+        // both — the stacking is a CSS rule on the list, not a shape the JS
+        // decides, so these two can never disagree about it.
         return '<div class="player-item">'
           + '<div class="avatar-wrap">' + av(p) + '</div>'
           + '<div class="name-stack"><span class="player-item__name">' + p.name + '</span>'
           + '<span class="name-substack">' + sub + '</span></div>'
-          + actions
+          + '<div class="player-item__right">'
           + '<span class="player-item__badges">' + badges.join('') + '</span>'
-          + '</div>';
+          + '<span class="player-item__actions">' + actions + '</span>'
+          + '</div></div>';
       }
 
       // THE MIX ON LINE 2 IS THE POINT, and it is what the robot playtests
