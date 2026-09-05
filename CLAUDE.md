@@ -291,6 +291,50 @@
 > bystander still gets in. Verified by making Kick pass `ban=false`: *"a KICKED
 > player walked straight back into the room — the ban does nothing"*.
 >
+> ### A crown for the role, and one small row for the controls (2026-09-05)
+>
+> **The owner's two ideas, and both were right.** *"The host could be indicated
+> by a gold crown and co host by a silver crown?"* and *"a small row/tray of
+> icons instead of giant buttons"*.
+>
+> | | |
+> |---|---|
+> | the lobby list | 👑 gold for the host, a SMALLER desaturated crown for the co-host, replacing the words. **71px back** on the two rows that had least to spare |
+> | the card | four controls in ONE ROW — icon above, word below — instead of four full-width buttons. **The card drops 644px → 498px and fits the smallest phone with no scrolling** |
+>
+> **COLOUR IS NOT THE ONLY DIFFERENCE, and that was mine to solve rather than
+> theirs.** Gold against silver is invisible to a colour-blind player and faint
+> on the light theme, so the co-host's crown is also smaller and desaturated,
+> and both carry a label for screen readers and a long-press.
+>
+> **The crown was only free to mean this because the controls had left the
+> row.** 👑 was the "make host" BUTTON until that change — one glyph meaning two
+> things is the ☆/★ confusion this file records two sections above.
+>
+> **And the icons only work because a WORD sits under each one.** These controls
+> were bare glyphs on the lobby row, and that is precisely why they were moved.
+> A small button with a caption is compact; a small button without one is a
+> guess.
+>
+> **THE OWNER FOUND A REAL INCONSISTENCY BY ASKING ABOUT A DOT.** *"The co-host
+> doesn't have a ready up button, is that intentional?"* — they DO have one;
+> only the host gets Start Game. But the ready dot was suppressed for host and
+> co-host alike, so a co-host could mark themselves ready and nobody, the host
+> included, could see it. The rule is the plain one now: **if you have a Ready
+> Up button you have a dot**, and only the host has neither, because readiness
+> is a message TO them.
+>
+> **A co-host still gets none of the host's controls**, on the owner's decision:
+> a co-host helps run the GAME once it starts; who is in the room stays the
+> host's alone.
+>
+> **`scenario-cohost` failed on the rename, which is the check working.**
+> `.badge--cohost` no longer exists and it reported *"Carol cannot see that
+> anyone is co-host"* — a control that only moved is a control that was deleted,
+> and this time something was watching. Verified again by deleting the co-host
+> crown: two failures by name. `.badge--host` STAYS — the scoreboard, reveal and
+> results still use it; only the lobby changed.
+>
 > **FIVE BUTTONS DID NOT FIT, and only measuring the full host case found it.**
 > The card mock had three — which is what a NON-host sees — so the tallest card
 > the app can build had never been rendered. Measured with all five: **715px on

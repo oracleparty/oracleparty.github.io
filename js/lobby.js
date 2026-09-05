@@ -498,11 +498,16 @@ function roleActionsFor(p) {
   if (String(p.id) === String(room.playerId)) return null;
   const name = p.display_name;
   const actions = [];
+  // ONE WORD AND ONE ICON EACH. These are drawn as a compact row rather than
+  // full-width buttons — four tall ones filled the card and pushed the last off
+  // a small phone — and a word under each glyph is what keeps that readable.
+  // Bare icons would be the ☆ against ★ problem again, which is exactly why
+  // these left the lobby row in the first place.
   if (p.is_cohost) {
-    actions.push({ label: 'Remove as co-host', kind: 'danger',
+    actions.push({ icon: '\u2606', label: 'Demote', kind: 'danger',
       onClick: () => handleCohostToggle(p.id, name, true) });
   } else if (!players.some(x => x.is_cohost && !x.is_bot)) {
-    actions.push({ label: 'Make co-host',
+    actions.push({ icon: '\u2605', label: 'Co-host',
       onClick: () => handleCohostToggle(p.id, name, false) });
   }
   // NOT OFFERED FOR SOMEBODY WHO IS AWAY. Handing the game to a phone that is
@@ -510,7 +515,7 @@ function roleActionsFor(p) {
   // determineNextHost already prefers present candidates — so offering it was
   // the dead button 062 exists to stop.
   if (!isPlayerAway(p.id)) {
-    actions.push({ label: 'Make host', onClick: () => handleTransferHost(p.id, name) });
+    actions.push({ icon: '\u{1F451}', label: 'Host', onClick: () => handleTransferHost(p.id, name) });
   }
   // REMOVING SOMEBODY IS LAST, AND ONLY KICK IS RED.
   //
@@ -530,8 +535,12 @@ function roleActionsFor(p) {
   // What a person genuinely cannot know is what the two DO differently, and
   // "Remove" against "Kick out" does not tell them. So the consequence is the
   // label. It is the one thing worth the width.
-  actions.push({ label: 'Remove — they can rejoin', onClick: () => handleKick(p.id, name, false) });
-  actions.push({ label: 'Kick out — cannot rejoin', kind: 'danger', onClick: () => handleKick(p.id, name, true) });
+  // SHORT WORDS, on the owner's instruction: "kick and eject don't need
+  // explanations". The difference that a label used to carry is stated where it
+  // actually matters instead — in the confirm that Kick asks for, and nowhere
+  // else, because Remove needs no confirming.
+  actions.push({ icon: '\u2715', label: 'Remove', onClick: () => handleKick(p.id, name, false) });
+  actions.push({ icon: '\u26D4', label: 'Kick', kind: 'danger', onClick: () => handleKick(p.id, name, true) });
   return actions.length ? actions : null;
 }
 
@@ -593,9 +602,26 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   //
   // THE COST IS MEASURED AND REAL, not a worry: see the note on `cohostHtml`
   // below for what the co-host's own name gives up for this.
+  // A CROWN, NOT THE WORD. The owner's idea, and it frees 71px on the rows that
+  // had the least to spare — the host and co-host rows are the ones that carry
+  // a role badge at all.
+  //
+  // THE TWO DIFFER BY MORE THAN COLOUR, deliberately. Gold against silver is a
+  // colour-only distinction, which is invisible to a colour-blind player and
+  // faint on the light theme; the co-host's is also SMALLER and desaturated, so
+  // the difference survives without colour. Both carry a label for screen
+  // readers and a long-press.
+  //
+  // The crown was free to mean this only once the host's controls left the row:
+  // 👑 used to be the "make host" BUTTON, and one glyph meaning two things is
+  // the ☆/★ confusion this project just removed.
   if (showRoleBadge) {
-    if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
-    if (p.is_cohost && !p.is_bot) badges.push('<span class="badge badge--cohost">Co-Host</span>');
+    if (p.is_host) {
+      badges.push('<span class="role-crown" role="img" aria-label="Host" title="Host">&#x1F451;</span>');
+    }
+    if (p.is_cohost && !p.is_bot) {
+      badges.push('<span class="role-crown role-crown--cohost" role="img" aria-label="Co-host" title="Co-host">&#x1F451;</span>');
+    }
   }
   // AWAY IS A WORD, not only a fade.
   //
@@ -635,7 +661,12 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // lobby, so host and co-host get no dot — they get no ready toggle either.
   if (away && !p.is_bot) {
     badges.push('<span class="badge badge--away">Away</span>');
-  } else if (!p.is_bot && !p.is_host && !p.is_cohost) {
+  // THE CO-HOST GETS A DOT, and the owner found this by asking why it did not.
+  // A co-host has a READY UP button — only the host gets Start Game — so they
+  // could mark themselves ready and nobody, the host included, could see it.
+  // The rule is now the plain one: if you have a Ready Up button you have a
+  // dot, and only the host has neither, because readiness is a message TO them.
+  } else if (!p.is_bot && !p.is_host) {
     const on = !!p.is_ready;
     const label = on ? 'Ready' : 'Not ready';
     badges.push(`<span class="ready-dot${on ? ' ready-dot--on' : ''}" role="img" aria-label="${label}" title="${label}"></span>`);
@@ -694,8 +725,7 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // KEPT FROM THE VERSION THAT HAD A TIER HERE, because the reasoning outlives
   // it: two things on one line and only one able to give way is how the title
   // came to truncate at 375px (it needed 96px and got 72). Whatever shares this
-  // line with the title must declare which of them yields — see
-  // `.name-substack .badge--cohost` in the stylesheet.
+  // line with the title must declare which of them yields.
   //
   // And moving anything from here UP beside the name was tried and measured
   // WORSE: the name truncated instead ("QuizMasterMax", 74px of 98px), and the

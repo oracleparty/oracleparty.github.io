@@ -280,12 +280,13 @@ export const STATES = {
       function row(p, opts) {
         opts = opts || {};
         const badges = [];
-        // BOTH role badges sit in the strip — same as the app.
-        if (opts.roleBadge && p.isHost) badges.push('<span class="badge badge--host">Host</span>');
-        if (opts.roleBadge && p.isCohost && !p.isBot) badges.push('<span class="badge badge--cohost">Co-Host</span>');
+        // A CROWN, not the word — same as the app. The co-host's is smaller and
+        // desaturated, so the two differ by more than colour.
+        if (opts.roleBadge && p.isHost) badges.push('<span class="role-crown" role="img" aria-label="Host" title="Host">\u{1F451}</span>');
+        if (opts.roleBadge && p.isCohost && !p.isBot) badges.push('<span class="role-crown role-crown--cohost" role="img" aria-label="Co-host" title="Co-host">\u{1F451}</span>');
         // Ready is one dot in two states, and it is suppressed for host and
         // co-host, who have no ready toggle. Same as the app.
-        if (!p.isHost && !p.isCohost && !p.isBot) {
+        if (!p.isHost && !p.isBot) {
           const label = opts.ready ? 'Ready' : 'Not ready';
           badges.push('<span class="ready-dot' + (opts.ready ? ' ready-dot--on' : '')
             + '" role="img" aria-label="' + label + '" title="' + label + '"></span>');
@@ -811,11 +812,15 @@ export const STATES = {
                  mock showed three, which is what a NON-host with a friend
                  request sees — so the tallest card the app can build was never
                  measured. -->
+            <!-- THE FULL HOST CASE: four controls in one row. An earlier
+                 version of this mock showed three full-width buttons, which is
+                 what a NON-host with a friend request sees — so the busiest
+                 card the app can build was never measured. -->
             <div class="profile-card__roles">
-              <button class="btn btn-secondary btn-block">Make co-host</button>
-              <button class="btn btn-secondary btn-block">Make host</button>
-              <button class="btn btn-secondary btn-block">Remove — they can rejoin</button>
-              <button class="btn btn-secondary btn-block btn-danger-text">Kick out — cannot rejoin</button>
+              <button class="role-btn"><span class="role-btn__icon">\u{1F451}</span><span class="role-btn__label">Host</span></button>
+              <button class="role-btn"><span class="role-btn__icon">\u2605</span><span class="role-btn__label">Co-host</span></button>
+              <button class="role-btn"><span class="role-btn__icon">\u2715</span><span class="role-btn__label">Remove</span></button>
+              <button class="role-btn role-btn--danger"><span class="role-btn__icon">\u26D4</span><span class="role-btn__label">Kick</span></button>
             </div>
             <div class="profile-card__actions">
               <button class="btn btn-secondary btn-block">Add Friend</button>

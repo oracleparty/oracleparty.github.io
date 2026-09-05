@@ -179,7 +179,7 @@ try {
     if (humanId) {
       const humanCard = await pressPlayerCardAction(host.page, humanId, /__never__/);
       note(`a human's card offers: ${JSON.stringify(humanCard.labels)}`);
-      if (!humanCard.labels.some(l => /co-host|make host/i.test(l))) {
+      if (!humanCard.labels.some(l => /co-host|^host$/i.test(l))) {
         problems.push(`the host is offered no role controls on a REAL player either — the check above proves nothing (offers: ${JSON.stringify(humanCard.labels)})`);
       }
     }

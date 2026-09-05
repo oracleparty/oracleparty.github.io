@@ -63,7 +63,11 @@ export async function pressPlayerCardAction(page, playerId, labelRe) {
   const labels = await page.evaluate(() => {
     const sheet = document.querySelector('#profile-card-sheet');
     if (!sheet || !sheet.classList.contains('active')) return null;
-    return [...sheet.querySelectorAll('[data-role-action]')].map(b => b.textContent.trim());
+    // The LABEL, not the whole button. Each control is an icon above a word now,
+    // so textContent reads "👑Host" — and a scenario matching on that would
+    // pass or fail on a glyph rather than on what the control says.
+    return [...sheet.querySelectorAll('[data-role-action]')].map(b =>
+      (b.querySelector('.role-btn__label') || b).textContent.trim());
   }).catch(() => null);
   if (labels === null) return { opened: false, labels: [], pressed: false };
   const idx = labels.findIndex(l => labelRe.test(l));

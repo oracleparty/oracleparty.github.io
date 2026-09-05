@@ -1889,13 +1889,6 @@ body::after {
   vertical-align: middle;
 }
 
-.badge--cohost {
-  background: rgba(100, 70, 180, 0.12);
-  color: #5B3FA0;
-  margin-left: var(--space-xs);
-  vertical-align: middle;
-}
-
 [data-theme="dark"] .btn-primary {
   color: #1C1917;
 }
@@ -1907,17 +1900,9 @@ body::after {
   background: rgba(217, 163, 64, 0.15);
   color: #D9A340;
 }
-[data-theme="dark"] .badge--cohost {
-  background: rgba(129, 140, 248, 0.15);
-  color: #818CF8;
-}
 [data-theme="oled"] .badge--host {
   background: rgba(217, 163, 64, 0.15);
   color: #D9A340;
-}
-[data-theme="oled"] .badge--cohost {
-  background: rgba(129, 140, 248, 0.15);
-  color: #818CF8;
 }
 
 [data-theme="dark"] .review-item__player-answer--correct,
@@ -2332,14 +2317,54 @@ body::after {
 .player-item__badges:empty,
 .player-item__actions:empty { display: none; }
 
-/* The host's controls inside a player's card. Full-width buttons in words,
-   which is a gain over the icons they replace: ☆ against ★ was a distinction
-   nobody could read, and "Make co-host" needs no legend. */
+/* The host's controls inside a player's card: ONE COMPACT ROW.
+   Four full-width buttons plus the chart ran this card to 644px and pushed the
+   last control off a small phone. Icon above, word below — bare glyphs are
+   what these were before they left the lobby row, and ☆ against ★ was a
+   distinction nobody could read. */
 .profile-card__roles {
   display: flex;
+  gap: var(--space-xs);
+  margin: var(--space-md) 0 0;
+}
+.role-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
-  margin: var(--space-sm) 0 0;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 2px;
+  border: 1px solid var(--color-surface-light);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-size: var(--text-2xs);
+  /* 44px is the smallest comfortable tap target and these clear it on height;
+     the width is whatever a quarter of the card is. */
+  min-height: 44px;
+  cursor: pointer;
+}
+.role-btn__icon { font-size: 1.15rem; line-height: 1; }
+.role-btn__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* Only Kick shouts. Remove is undone by the person walking back in; a kick
+   cannot be undone from anywhere in this app, so it is the one that is red —
+   colouring both would make the colour mean "removal" rather than "this is the
+   serious one". */
+.role-btn--danger { color: var(--color-danger, #B3261E); border-color: rgba(179, 38, 30, 0.35); }
+
+/* A ROLE IS A CROWN. Gold for the host, and the co-host's differs by SIZE and
+   saturation as well as colour — gold against silver alone is invisible to a
+   colour-blind player and faint on the light theme. */
+.role-crown {
+  font-size: 1.2rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.role-crown--cohost {
+  font-size: 1rem;
+  filter: grayscale(1) contrast(1.25);
 }
 /* The badge stays on the OUTSIDE EDGE, where it has always been — a status
    column you can scan straight down. Wrapping badges and buttons in one block
@@ -4887,31 +4912,6 @@ body::after {
 }
 .name-substack .player-title { flex: 0 1 auto; }
 
-/* CO-HOST SHARES LINE 2 WITH THE TITLE, and holds its width while the title
- * gives way. That is the opposite of the rule the tier had here, deliberately:
- * a role badge ellipsised to "Co-H…" is worse than a truncated title, and a
- * badge is a fixed shape rather than a phrase. The tier used to sit here and
- * is gone — see _renderPlayerItem for why.
- *
- * `margin-left: 0` overrides the badge's own leading space: it is first on the
- * line here rather than trailing a name.
- *
- * AND THE VERTICAL PADDING HAS TO GO, which the sweep caught rather than an
- * eye: `.badge` carries 2px top and bottom, so the co-host's row stood 5px
- * taller than the host's directly above it and the sweep reported
- * `#host-list stacked rows differ by 5px: [51, 56]` in all three themes at
- * both widths. A list whose rows are different heights reads as broken before
- * anybody works out why. The pill keeps its shape from the line box instead —
- * `--text-2xs` at 1.4 is shorter than the substack's `--text-xs` at 1.2, so it
- * can never be the thing that sets the row height. */
-.name-substack .badge--cohost {
-  flex: 0 0 auto;
-  margin-left: 0;
-  align-self: center;
-  padding-top: 0;
-  padding-bottom: 0;
-  line-height: 1.4;
-}
 
 .player-tier {
   flex: 0 0 auto;

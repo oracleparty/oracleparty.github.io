@@ -99,7 +99,7 @@ try {
   heading('promoting a co-host');
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
   // THE CONTROL LIVES IN THE PLAYER'S CARD NOW, not on the row.
-  const promoted = await pressPlayerCardAction(host.page, bobId, /make co-host/i);
+  const promoted = await pressPlayerCardAction(host.page, bobId, /^Co-host$/i);
   note(`Bob's card offers: ${JSON.stringify(promoted.labels)}`);
   if (!promoted.pressed) {
     problems.push(`the host is not offered "Make co-host" on another player's card (offers: ${JSON.stringify(promoted.labels)})`);
@@ -117,7 +117,7 @@ try {
     heading('co-host badge visibility');
     for (const r of [host, bob, carol]) {
       const sees = await r.page.evaluate(() =>
-        !!document.querySelector('.badge--cohost')).catch(() => false);
+        !!document.querySelector('.role-crown--cohost')).catch(() => false);
       note(`${r.name} sees a co-host badge: ${sees}`);
       if (!sees) problems.push(`${r.name} cannot see that anyone is co-host`);
     }
@@ -164,10 +164,10 @@ try {
     const carolCard = await pressPlayerCardAction(host.page, carolId, /__never__/);
     const bobCard = await pressPlayerCardAction(host.page, bobId, /__never__/);
     note(`with Bob co-host — Carol's card: ${JSON.stringify(carolCard.labels)}, Bob's card: ${JSON.stringify(bobCard.labels)}`);
-    if (carolCard.labels.some(l => /make co-host/i.test(l))) {
+    if (carolCard.labels.some(l => /^Co-host$/i.test(l))) {
       problems.push('the room already has a co-host and the host is still offered "Make co-host" on somebody else — pressing it strips the first person with no warning');
     }
-    if (!bobCard.labels.some(l => /remove as co-host/i.test(l))) {
+    if (!bobCard.labels.some(l => /^Demote$/i.test(l))) {
       problems.push(`the current co-host cannot be removed either — the role is now permanent for the life of the room (offers: ${JSON.stringify(bobCard.labels)})`);
     }
 
@@ -176,12 +176,12 @@ try {
     // somewhere is a control that was deleted". So take the role off Bob, make
     // the refused attempt on Carol, and give it back — section 5 below demotes
     // Bob for real and needs him holding it.
-    await pressPlayerCardAction(host.page, bobId, /remove as co-host/i);
+    await pressPlayerCardAction(host.page, bobId, /^Demote$/i);
 
     {
       const chatBefore = table.store.table('chat_messages').length;
       table.store.failFunction('op_set_host_role');
-      const refused = await pressPlayerCardAction(host.page, carolId, /make co-host/i);
+      const refused = await pressPlayerCardAction(host.page, carolId, /^Co-host$/i);
       table.store.unfailFunction('op_set_host_role');
       if (!refused.pressed) {
         problems.push(`with no co-host in the room the offer did not come back (offers: ${JSON.stringify(refused.labels)})`);
@@ -189,7 +189,7 @@ try {
 
       const carolRow = table.store.table('players').find(p => p.id === carolId);
       const shownAsCohost = await host.page.evaluate(id =>
-        !!document.querySelector(`[data-player-id="${id}"] .badge--cohost`), carolId).catch(() => null);
+        !!document.querySelector(`[data-profile-player-id="${id}"] .role-crown--cohost`), carolId).catch(() => null);
       const announced = table.store.table('chat_messages')
         .slice(chatBefore).map(m => m.message || '').join(' | ');
       const toasted = await host.page.evaluate(() =>
@@ -217,7 +217,7 @@ try {
     }
 
     // Put Bob back, so section 5 tests a real demotion rather than an absence.
-    await pressPlayerCardAction(host.page, bobId, /make co-host/i);
+    await pressPlayerCardAction(host.page, bobId, /^Co-host$/i);
     const bobBack = table.store.table('players').find(p => p.id === bobId);
     note(`Bob restored as co-host: ${bobBack?.is_cohost}`);
     if (!bobBack?.is_cohost) {
@@ -229,7 +229,7 @@ try {
   // 5 (in the lobby, where the button lives). DEMOTE, THEN RE-PROMOTE
   // ============================================================
   heading('demotion');
-  const demoted = await pressPlayerCardAction(host.page, bobId, /remove as co-host/i);
+  const demoted = await pressPlayerCardAction(host.page, bobId, /^Demote$/i);
   note(`co-host card offers: ${JSON.stringify(demoted.labels)}`);
   if (!demoted.pressed) {
     problems.push(`no "Remove as co-host" control appears on the card of a player who is already co-host (offers: ${JSON.stringify(demoted.labels)})`);
@@ -252,7 +252,7 @@ try {
     }
 
     // Put the role back so the in-game checks below have a co-host to test.
-    await pressPlayerCardAction(host.page, bobId, /make co-host/i);
+    await pressPlayerCardAction(host.page, bobId, /^Co-host$/i);
     const rePromoted = table.store.table('players').find(p => p.display_name === 'Bob')?.is_cohost;
     note(`Bob re-promoted: ${rePromoted}`);
     if (!rePromoted) problems.push('could not re-promote a demoted player to co-host');
@@ -275,7 +275,7 @@ try {
   {
     const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
     const carolUser = table.store.table('players').find(p => p.display_name === 'Carol')?.user_id;
-    const card = await pressPlayerCardAction(host.page, carolId, /^Remove —/);
+    const card = await pressPlayerCardAction(host.page, carolId, /^Remove$/);
     note(`Carol's card offers: ${JSON.stringify(card.labels)}`);
     if (!card.pressed) {
       problems.push(`the host is offered no way to remove a player (offers: ${JSON.stringify(card.labels)})`);
@@ -304,7 +304,7 @@ try {
 
     // KICK: gone, and refused on the way back.
     const carolAgain = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
-    const kicked = await pressPlayerCardAction(host.page, carolAgain, /^Kick out/);
+    const kicked = await pressPlayerCardAction(host.page, carolAgain, /^Kick$/);
     note(`kick pressed: ${kicked.pressed}, offers were ${JSON.stringify(kicked.labels)}`);
     if (!kicked.pressed) {
       problems.push(`the host is offered no way to kick a player (offers: ${JSON.stringify(kicked.labels)})`);

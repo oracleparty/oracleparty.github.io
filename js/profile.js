@@ -407,8 +407,18 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
   // second place in the app deciding that rule.
   let roleHtml = '';
   if (Array.isArray(roleActions) && roleActions.length) {
+    // A COMPACT ROW, not a stack of full-width buttons. Four 44px buttons plus
+    // the chart ran this card to 644px and pushed the last control off a small
+    // phone; the row is a quarter of the height and the card fits any phone
+    // with nothing cut off.
+    //
+    // ICON ABOVE, WORD BELOW. Bare glyphs are what these controls were BEFORE
+    // they left the lobby row, and ☆ against ★ was a distinction nobody could
+    // read. The word is what makes a small button honest.
     roleHtml = `<div class="profile-card__roles">${roleActions.map((a, i) =>
-      `<button class="btn btn-secondary btn-block${a.kind === 'danger' ? ' btn-danger-text' : ''}" data-role-action="${i}">${escapeHtml(a.label)}</button>`
+      `<button class="role-btn${a.kind === 'danger' ? ' role-btn--danger' : ''}" data-role-action="${i}">`
+      + `<span class="role-btn__icon" aria-hidden="true">${escapeHtml(a.icon || '')}</span>`
+      + `<span class="role-btn__label">${escapeHtml(a.label)}</span></button>`
     ).join('')}</div>`;
   }
 
