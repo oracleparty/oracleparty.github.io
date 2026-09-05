@@ -615,13 +615,18 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // The crown was free to mean this only once the host's controls left the row:
   // 👑 used to be the "make host" BUTTON, and one glyph meaning two things is
   // the ☆/★ confusion this project just removed.
-  if (showRoleBadge) {
-    if (p.is_host) {
-      badges.push('<span class="role-crown" role="img" aria-label="Host" title="Host">&#x1F451;</span>');
-    }
-    if (p.is_cohost && !p.is_bot) {
-      badges.push('<span class="role-crown role-crown--cohost" role="img" aria-label="Co-host" title="Co-host">&#x1F451;</span>');
-    }
+  //
+  // AND IT SITS IN ITS OWN COLUMN, reserved on every row whether or not there
+  // is a crown to put in it. The owner spotted why that matters: with the crown
+  // in the badge strip it sat BETWEEN the honk button and the ready dot, so the
+  // co-host's duck was pushed 48px left of every duck below it and the list
+  // stopped reading as columns. An empty slot costs 21px on rows that have the
+  // width to spare; a ragged column costs the look of the whole list.
+  let roleCrown = '';
+  if (showRoleBadge && p.is_host) {
+    roleCrown = '<span class="role-crown" role="img" aria-label="Host" title="Host">&#x1F451;</span>';
+  } else if (showRoleBadge && p.is_cohost && !p.is_bot) {
+    roleCrown = '<span class="role-crown role-crown--cohost" role="img" aria-label="Co-host" title="Co-host">&#x1F451;</span>';
   }
   // AWAY IS A WORD, not only a fade.
   //
@@ -762,6 +767,7 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
         ${titleHtml}
       </div>
       <div class="player-item__right">
+        <span class="player-item__role">${roleCrown}</span>
         <span class="player-item__badges">${badges.join('')}</span>
         <span class="player-item__actions">${honkBtn}${cohostBtn}${transferBtn}${removeBotBtn}</span>
       </div>

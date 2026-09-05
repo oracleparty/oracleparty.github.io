@@ -307,6 +307,25 @@
 > on the light theme, so the co-host's crown is also smaller and desaturated,
 > and both carry a label for screen readers and a long-press.
 >
+> **AND EVERY COLUMN IS RESERVED, WHICH THE OWNER CAUGHT BEFORE ANY CHECK DID.**
+> *"I don't like that the cohost's quack and ready sign aren't aligned with
+> everyone underneath."* The crown had gone into the badge strip, so it sat
+> BETWEEN the honk button and the ready dot and pushed the co-host's duck **48px
+> left of every duck below it**. The list stopped reading as columns.
+>
+> The crown has its own slot now, reserved on every row, and so do the honk and
+> status columns — the host's own row carries none of the three (no honking at
+> yourself, no ready state when you hold the Start button) and its crown floated
+> 52px right of the co-host's directly beneath it. Measured after: crown, duck
+> and dot at **one x on every human row, at 375px and 430px, in both the waiting
+> and away states**.
+>
+> **Collapsing an empty slot saves width on the one row that has most to spare,
+> which is the wrong trade.** A column that only exists on some rows is not a
+> column, it is a shove. The bot's row stays 31px out because its BOT badge is
+> four times a dot's width — a differently shaped row, with nothing in the
+> columns to misalign.
+>
 > **The crown was only free to mean this because the controls had left the
 > row.** 👑 was the "make host" BUTTON until that change — one glyph meaning two
 > things is the ☆/★ confusion this file records two sections above.

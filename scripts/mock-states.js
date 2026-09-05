@@ -281,9 +281,12 @@ export const STATES = {
         opts = opts || {};
         const badges = [];
         // A CROWN, not the word — same as the app. The co-host's is smaller and
-        // desaturated, so the two differ by more than colour.
-        if (opts.roleBadge && p.isHost) badges.push('<span class="role-crown" role="img" aria-label="Host" title="Host">\u{1F451}</span>');
-        if (opts.roleBadge && p.isCohost && !p.isBot) badges.push('<span class="role-crown role-crown--cohost" role="img" aria-label="Co-host" title="Co-host">\u{1F451}</span>');
+        // desaturated, so the two differ by more than colour. It goes in its
+        // OWN column, reserved on every row, so the honk button and the ready
+        // dot line up down the whole list.
+        let roleCrown = '';
+        if (opts.roleBadge && p.isHost) roleCrown = '<span class="role-crown" role="img" aria-label="Host" title="Host">\u{1F451}</span>';
+        else if (opts.roleBadge && p.isCohost && !p.isBot) roleCrown = '<span class="role-crown role-crown--cohost" role="img" aria-label="Co-host" title="Co-host">\u{1F451}</span>';
         // Ready is one dot in two states, and it is suppressed for host and
         // co-host, who have no ready toggle. Same as the app.
         if (!p.isHost && !p.isBot) {
@@ -325,6 +328,7 @@ export const STATES = {
           + '<div class="name-stack"><span class="player-item__name">' + p.name + '</span>'
           + '<span class="name-substack">' + sub + '</span></div>'
           + '<div class="player-item__right">'
+          + '<span class="player-item__role">' + roleCrown + '</span>'
           + '<span class="player-item__badges">' + badges.join('') + '</span>'
           + '<span class="player-item__actions">' + actions + '</span>'
           + '</div></div>';

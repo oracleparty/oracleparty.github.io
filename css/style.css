@@ -2314,8 +2314,17 @@ body::after {
   align-items: center;
   gap: var(--space-sm);
 }
-.player-item__badges:empty,
-.player-item__actions:empty { display: none; }
+/* EVERY COLUMN IS RESERVED, EVEN WHEN EMPTY, so the crown, the honk button and
+   the ready dot line up straight down the list. The host's own row carries
+   none of the three — no honking at yourself, no ready state when you hold the
+   Start button — and without a reserved slot its crown floated 52px right of
+   the co-host's directly beneath it. Two crowns out of line is exactly the kind
+   of thing that reads as broken without anybody being able to say why.
+
+   Collapsing an empty slot saves width on the ONE row that has the most of it
+   to spare, which is the wrong trade. */
+.player-item__actions { min-width: 1.75rem; justify-content: flex-end; }
+.player-item__badges { min-width: 0.62rem; justify-content: flex-end; }
 
 /* The host's controls inside a player's card: ONE COMPACT ROW.
    Four full-width buttons plus the chart ran this card to 644px and pushed the
@@ -2371,6 +2380,18 @@ body::after {
    put the badge first in source order, which reads as a status dot sandwiched
    between the buttons rather than a column. */
 .player-item__right > .player-item__badges { order: 2; }
+/* THE ROLE COLUMN, reserved on every row so the honk button and the ready dot
+   line up all the way down the list. Empty for everybody but the host and the
+   co-host — and that is the point: a column that only exists on some rows is
+   not a column, it is a shove. Sized for the crown at its largest. */
+.player-item__role {
+  order: 0;
+  flex: 0 0 auto;
+  width: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 /* THE HOSTS LIST NO LONGER STACKS, and the whole reason is gone with it: the
    co-host row carried three host buttons plus a 71px badge and the name could
