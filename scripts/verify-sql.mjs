@@ -81,6 +81,7 @@ const MIGRATIONS = [
   // from 045 on is applied, full stop.
   '063_title_words_are_content.sql',
   '064_title_word_placeholders.sql',
+  '065_the_host_can_remove_a_player.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.

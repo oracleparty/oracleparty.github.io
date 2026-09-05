@@ -706,6 +706,22 @@ export class FakeStore {
               message: 'new row violates row-level security policy for table "players"',
             } };
           }
+          // MIGRATION 065's RESTRICTIVE POLICY: a kicked player cannot rejoin.
+          //
+          // Modelled here rather than left to the RPC, because a restrictive
+          // policy is not something a function can express — it is ANDed with
+          // every permissive one, and the whole point of the migration is that
+          // the refusal happens on the INSERT itself. Without this the harness
+          // would let a kicked player walk straight back in and the scenario
+          // would agree with a build where kick did nothing, which is the
+          // permissive direction CLAUDE.md #10 is about.
+          if (table === 'players' && item.user_id
+              && this._bans && this._bans.has(`${item.room_id}::${item.user_id}`)) {
+            return { data: null, error: {
+              code: '42501',
+              message: 'new row violates row-level security policy for table "players"',
+            } };
+          }
           // UNIQUE indexes. A plain INSERT that collides raises 23505 and the
           // whole statement writes nothing — which is how the app's room-code
           // retry loop is reachable, and how a second rating on one question by
@@ -1460,6 +1476,45 @@ export class FakeStore {
       const [gone] = rows.splice(at, 1);
       this._broadcast('DELETE', 'players', gone, null);
       return 'removed';
+    }
+
+    // ---- migration 065: the host removes a player, and may keep them out ----
+    //
+    // Written to REFUSE for the reasons the real one does. A fake that always
+    // removed would let a scenario pass on a build where anybody could throw
+    // anybody out of any room.
+    if (name === 'op_kick_player') {
+      const rows = this.table('players');
+      const target = rows.find(p => String(p.id) === String(args?.p_target_id)
+        && String(p.room_id) === String(args?.p_room_id));
+      if (!target) return 'already gone';
+      const caller = rows.find(p => String(p.id) === String(args?.p_caller_id)
+        && String(p.room_id) === String(args?.p_room_id));
+
+      // Only the host, never on themselves, never on a bot (that stays with
+      // op_remove_player — two functions doing one job is how a guard gets
+      // fixed in one of them).
+      if (!caller || !caller.is_host) return 'not allowed';
+      if (String(args.p_caller_id) === String(args.p_target_id)) return 'not allowed';
+      if (target.is_bot) return 'not allowed';
+
+      let banned = false;
+      if (args.p_ban && target.user_id) {
+        this._bans = this._bans || new Set();
+        this._bans.add(`${args.p_room_id}::${target.user_id}`);
+        banned = true;
+      }
+      const at = rows.findIndex(p => String(p.id) === String(target.id));
+      const [gone] = rows.splice(at, 1);
+      this._broadcast('DELETE', 'players', gone, null);
+      // CANNOT KEEP THEM OUT IS ITS OWN ANSWER. A guest with no identity is
+      // removed and nothing stops them coming back, and the app must not
+      // report that as a kick.
+      return (args.p_ban && !banned) ? 'removed_no_ban' : 'removed';
+    }
+    if (name === 'op_is_banned') {
+      if (!args?.p_user_id) return false;   // cannot tell is not banned
+      return !!(this._bans && this._bans.has(`${args.p_room_id}::${args.p_user_id}`));
     }
 
     // ---- migration 056: the game advances without the host -----------------

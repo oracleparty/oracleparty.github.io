@@ -1660,4 +1660,102 @@ BEGIN
 END $$;
 
 
+-- ============================================
+-- 065 — THE HOST CAN REMOVE A PLAYER, AND OPTIONALLY KEEP THEM OUT
+--
+-- BOTH HALVES OF EVERY RULE. A check that only asserts a refusal goes green on
+-- a build where nobody can be removed at all, and a check that only asserts a
+-- removal goes green on one where anybody can remove anybody. Each pair below
+-- pins the allowed case AND the refused one.
+-- ============================================
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  otherRid uuid := gen_random_uuid();
+  hostU uuid := gen_random_uuid();
+  bobU uuid := gen_random_uuid();
+  hostP uuid; bobP uuid; carolP uuid; botP uuid; guestP uuid;
+  verdict text;
+  n int;
+BEGIN
+  INSERT INTO auth.users (id) VALUES (hostU), (bobU) ON CONFLICT DO NOTHING;
+  INSERT INTO rooms (id, code, host_name) VALUES (rid, '065A', 'Alice');
+  INSERT INTO rooms (id, code, host_name) VALUES (otherRid, '065B', 'Alice');
+
+  INSERT INTO players (room_id, display_name, is_host, user_id, last_seen_at)
+    VALUES (rid, 'Alice', true, hostU, now()) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, user_id, last_seen_at)
+    VALUES (rid, 'Bob', bobU, now()) RETURNING id INTO bobP;
+  INSERT INTO players (room_id, display_name, user_id, last_seen_at)
+    VALUES (rid, 'Carol', gen_random_uuid(), now()) RETURNING id INTO carolP;
+  INSERT INTO players (room_id, display_name, is_bot)
+    VALUES (rid, 'Practice Bot', true) RETURNING id INTO botP;
+  -- A guest whose anonymous sign-in never landed: no identity to ban.
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Nameless', now()) RETURNING id INTO guestP;
+
+  -- WHO MAY ASK. Only the host, never on themselves, and never on a bot —
+  -- a bot goes through op_remove_player, which has allowed it since 057.
+  SELECT op_kick_player(rid, bobP, carolP, false) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a player who is not the host cannot remove anybody', verdict, 'not allowed');
+  SELECT op_kick_player(rid, hostP, hostP, false) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host cannot remove themselves through this', verdict, 'not allowed');
+  SELECT op_kick_player(rid, hostP, botP, true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a bot is not kicked through this function', verdict, 'not allowed');
+  SELECT count(*) INTO n FROM players WHERE id = botP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and the bot is still sitting there', n::text, '1');
+
+  -- EJECT: gone from the room, and NOT banned.
+  SELECT op_kick_player(rid, hostP, carolP, false) INTO verdict;
+  SELECT count(*) INTO n FROM players WHERE id = carolP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host can eject a player', verdict, 'removed'),
+    ('and the seat really goes', n::text, '0');
+  SELECT count(*) INTO n FROM room_bans WHERE room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('ejecting does NOT ban them', n::text, '0');
+
+  -- KICK: gone, and recorded.
+  SELECT op_kick_player(rid, hostP, bobP, true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host can kick a player', verdict, 'removed');
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and a kick is recorded against that room',
+     CASE WHEN op_is_banned(rid, bobU) THEN 'banned' ELSE 'free' END, 'banned');
+
+  -- ONE ROOM, NOT THE GAME. A kick that leaked to every room would be a ban,
+  -- which is not what this is and not what any screen says it is.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a kick does not follow them to another room',
+     CASE WHEN op_is_banned(otherRid, bobU) THEN 'banned' ELSE 'free' END, 'free');
+
+  -- AND NOBODY ELSE IS CAUGHT BY IT.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the host is not banned from their own room',
+     CASE WHEN op_is_banned(rid, hostU) THEN 'banned' ELSE 'free' END, 'free');
+
+  -- CANNOT TELL IS NOT BANNED. A guest with no auth identity must never be
+  -- locked out of every room in the game by a NULL comparison.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a player with no identity is not banned everywhere',
+     CASE WHEN op_is_banned(rid, NULL) THEN 'banned' ELSE 'free' END, 'free');
+
+  -- AND THE HOST IS TOLD SO. "Kicked" and "removed, but we could not keep them
+  -- out" are different facts, and collapsing them would let the app promise
+  -- something it did not do.
+  SELECT op_kick_player(rid, hostP, guestP, true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('kicking somebody with no identity says so', verdict, 'removed_no_ban');
+
+  -- ALREADY GONE IS ITS OWN ANSWER, not a refusal.
+  SELECT op_kick_player(rid, hostP, bobP, true) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('removing somebody twice is not an error', verdict, 'already gone');
+END $$;
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

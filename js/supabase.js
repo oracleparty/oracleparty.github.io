@@ -22,7 +22,7 @@ export {
 // --- Players & Answers ---
 export {
   addPlayer, claimSeat, addBot, promoteToHost, demoteHost, promoteToCohost, demoteCohost,
-  removePlayer, removePlayerBeacon, markDisconnectedBeacon, playerHeartbeat,
+  removePlayer, kickPlayer, removePlayerBeacon, markDisconnectedBeacon, playerHeartbeat,
   fetchPlayers, toggleReady,
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,

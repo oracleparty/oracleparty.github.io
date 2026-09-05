@@ -28,7 +28,36 @@ export async function addPlayer(roomId, displayName, isHost = false, userId = nu
     .select()
     .single();
 
-  if (reportWriteFailure('Join room', error, "Couldn't join the room — check your connection and try again")) {
+  // A REFUSED INSERT IS NOT ALWAYS A CONNECTION PROBLEM, and saying so is the
+  // fault this project has recorded most often. Two rules can refuse this row,
+  // both with 42501, and the honest message is different for each:
+  //
+  //   058  claiming the host flag in a room that already has a live host —
+  //        handled in claimSeat, which downgrades the claim before it gets here
+  //   065  this person was KICKED out of this room
+  //
+  // So on a refusal we ASK, rather than guessing from the code. op_is_banned is
+  // callable by clients precisely so the screen can tell the truth: "you were
+  // removed from this room" is actionable, and "check your connection" sends
+  // somebody to fix a network that was never broken. That exact wrong message
+  // is what an AFK host saw over and over on 2026-09-05.
+  if (error) {
+    let banned = false;
+    // `userId` is the auth identity the caller already resolved — the same one
+    // the policy checks. Using it rather than importing auth.js keeps this
+    // module free of a cycle (auth.js reaches this file through supabase.js),
+    // and a player with no id is exactly the case that cannot be banned anyway.
+    if (error.code === '42501' && userId) {
+      const { data: isBanned } = await supabase.rpc('op_is_banned', {
+        p_room_id: roomId, p_user_id: userId,
+      });
+      banned = !!isBanned;
+    }
+    if (banned) {
+      reportWriteFailure('Join room', error, 'You were removed from this room');
+      return { data: null, error, banned: true };
+    }
+    reportWriteFailure('Join room', error, "Couldn't join the room — check your connection and try again");
     return { data: null, error };
   }
   return { data, error: null };
@@ -386,6 +415,44 @@ export async function removePlayer(playerId, roomId, callerId) {
 
   if (error) logger.error('Supabase', 'removePlayer failed', error);
   return { error };
+}
+
+/**
+ * The host removes a player. Needs migration 065.
+ *
+ * TWO ACTIONS, ONE CALL, and the difference is the whole point:
+ *   ban=false  EJECT — they leave the room and can come back with the code.
+ *   ban=true   KICK  — they leave, and that room refuses them for as long as
+ *                     it exists (a room survives Play Again, so a kick lasts
+ *                     the sitting rather than one game).
+ *
+ * NO FALLBACK, deliberately, and this is the opposite call from removePlayer.
+ * That one falls back to a direct delete because leaving a room has to work
+ * whether or not the SQL is applied. This has never worked before 065: there
+ * IS no old path, and inventing one would mean a direct delete that RLS
+ * refuses silently — the host presses the button, nothing happens, and nothing
+ * says so. With the function missing, `unavailable` reaches the caller and the
+ * screen can tell the truth.
+ *
+ * The three outcomes are kept apart rather than flattened to a boolean:
+ * 'removed', 'removed_no_ban' (there was no identity to keep out) and
+ * 'not allowed'. "We kicked them" and "we removed them and could not keep them
+ * out" are different facts and the host is entitled to know which happened.
+ */
+export async function kickPlayer(playerId, roomId, callerId, ban = false) {
+  const { data, error } = await supabase.rpc('op_kick_player', {
+    p_room_id: roomId,
+    p_caller_id: callerId,
+    p_target_id: playerId,
+    p_ban: !!ban,
+  });
+  if (!error) return { outcome: data, error: null };
+  if (functionMissing(error)) {
+    noteServerFunctions(false);
+    return { outcome: 'unavailable', error: null };
+  }
+  logger.error('Supabase', 'op_kick_player failed', error);
+  return { outcome: null, error };
 }
 
 /**

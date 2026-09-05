@@ -234,6 +234,67 @@
 > that. Verified by restoring `else`: *"the room already has a co-host and the
 > host is still offered the star on somebody else"*.
 >
+> ### The host can remove a player now — eject and kick (migration 065)
+>
+> Asked for by the owner: *"if someone is bad they need to be removed right and
+> not rejoin"*. **The database refused this until now, deliberately** — 057
+> allows exactly four removals and its own comment says why the fifth was
+> missing: *"there is no kick feature in this game, and a host being able to
+> remove a live human is a product decision nobody has made."* It has been made.
+>
+> | | |
+> |---|---|
+> | **Eject** | out of the room; they can walk back in with the code |
+> | **Kick** | out, and that room refuses them for as long as it exists |
+>
+> **WHAT KICK HONESTLY IS, and no screen may say more.** The ban is keyed on
+> `auth.uid()` and scoped to ONE ROOM — and a room survives Play Again, so a
+> kick lasts the sitting rather than one game, which is the unit people mean.
+> It is not a ban from the game: somebody who clears their browser data is a new
+> person, and room codes are four letters. **It raises the cost of coming back;
+> it does not close the door.**
+>
+> **A player with no auth identity cannot be banned at all**, and that is
+> REPORTED (`removed_no_ban` → *"was removed, but could not be blocked from
+> rejoining"*) rather than silently succeeding. "We kicked them" and "we removed
+> them and could not keep them out" are different facts, and the host is
+> entitled to know which happened — #6 exactly.
+>
+> **RESTRICTIVE is the load-bearing word in the policy.** Permissive policies
+> are ORed, so a second permissive INSERT policy would ADD a way in rather than
+> take one away, and 058's policy has to keep working untouched. A restrictive
+> policy is ANDed with all of them. It checks `auth.uid()`, never the row's own
+> `user_id`, which a banned person would simply omit.
+>
+> **A REFUSED JOIN IS NOT ALWAYS A CONNECTION PROBLEM.** Two rules refuse a
+> `players` insert with 42501 — 058's crown claim and 065's ban — so `addPlayer`
+> now ASKS (`op_is_banned`) instead of guessing, and says *"You were removed from
+> this room"*. Telling a kicked player to check their connection is the exact
+> wrong message an AFK host saw over and over earlier the same day.
+>
+> **`kickPlayer` has NO fallback, and that is the opposite call from
+> `removePlayer`.** That one falls back to a direct delete because leaving must
+> work whether or not the SQL is applied. This has never worked before 065:
+> there is no old path, and inventing one would be a direct delete that RLS
+> refuses silently — the button does nothing and nothing says so. `unavailable`
+> reaches the caller and the screen tells the truth.
+>
+> **14 new rules in `tests/sql/game-rules.sql`, run against a real Postgres**
+> (203 total). Both halves of everything: the removal happens AND the refusal
+> holds; a kick is scoped to its room AND does not follow them elsewhere; NULL
+> is not banned. Verified by breaking the host guard (2 rules fail) and by
+> dropping the room scope from `op_is_banned` (1 fails, `got "banned", want
+> "free"`).
+>
+> `scenario-cohost` presses both and checks the pair that makes them different
+> words: an ejected player rejoins, a kicked one is refused 42501, and a
+> bystander still gets in. Verified by making Kick pass `ban=false`: *"a KICKED
+> player walked straight back into the room — the ban does nothing"*.
+>
+> **The confirm dialog nearly made that check meaningless.** Playwright
+> DISMISSES dialogs by default, so the kick was being cancelled and every
+> assertion after it measured a button that was never really pressed.
+>
 > ### SETTLED: the host's controls moved into the player's card
 >
 > **Five rounds on one row, and the answer was to stop putting things on it.**

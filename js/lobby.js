@@ -29,6 +29,7 @@ import {
   promoteToHost,
   demoteHost,
   promoteToCohost,
+  kickPlayer,
   demoteCohost,
   toggleReady,
   updateRoomStatus,
@@ -511,7 +512,55 @@ function roleActionsFor(p) {
   if (!isPlayerAway(p.id)) {
     actions.push({ label: 'Make host', onClick: () => handleTransferHost(p.id, name) });
   }
+  // REMOVING SOMEBODY IS LAST, AND ONLY KICK IS RED.
+  //
+  // Eject is recoverable — they walk back in with the code — so it reads as an
+  // ordinary action. Kick is the one that cannot be undone from any screen in
+  // the app, so it is the only one that shouts. Colouring both would make the
+  // colour mean "removal" rather than "this is the serious one", which is the
+  // same reasoning the admin page's amber count chips are built on.
+  actions.push({ label: `Remove ${name}`, onClick: () => handleKick(p.id, name, false) });
+  actions.push({ label: `Kick ${name} out`, kind: 'danger', onClick: () => handleKick(p.id, name, true) });
   return actions.length ? actions : null;
+}
+
+/**
+ * Remove a player, optionally keeping them out of this room.
+ *
+ * CONFIRMED FIRST, and only for the kick. Ejecting is undone by the person
+ * walking back in; a kick cannot be undone from anywhere in this app, and a
+ * one-tap irreversible action inside a sheet that opens on a tap is how
+ * somebody loses a friend from their game by accident.
+ *
+ * The three outcomes are SAID, and differently. 'removed_no_ban' is the one
+ * that matters most: the app must not tell a host it kept somebody out when
+ * there was no identity to key on.
+ */
+async function handleKick(playerId, displayName, ban) {
+  if (ban && !confirm(`Kick ${displayName} out of this room? They will not be able to rejoin.`)) return;
+  const { outcome, error } = await kickPlayer(playerId, room.id, room.playerId, ban);
+  if (error) { showToast("Couldn't remove them — check your connection", 'error'); return; }
+  if (outcome === 'unavailable') {
+    showToast('Removing players is not switched on yet', 'error');
+    return;
+  }
+  if (outcome === 'not allowed') { showToast('The host can only remove other players', 'error'); return; }
+  if (outcome === 'already gone') { showToast(`${displayName} has already left`); await loadPlayers(); return; }
+
+  players = players.filter(x => String(x.id) !== String(playerId));
+  renderPlayers();
+  if (outcome === 'removed_no_ban') {
+    // Said plainly rather than dressed up: they are out of the room, and
+    // nothing is stopping them coming back.
+    showToast(`${displayName} was removed, but could not be blocked from rejoining`);
+    sendMessage(room.id, 'System', `${displayName} was removed from the room`);
+  } else if (ban) {
+    showToast(`${displayName} was kicked out`);
+    sendMessage(room.id, 'System', `${displayName} was kicked from the room`);
+  } else {
+    showToast(`${displayName} was removed`);
+    sendMessage(room.id, 'System', `${displayName} was removed from the room`);
+  }
 }
 
 function sortPlayers() {

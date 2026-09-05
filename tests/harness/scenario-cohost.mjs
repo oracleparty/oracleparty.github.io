@@ -259,6 +259,76 @@ try {
   }
 
   // ============================================================
+  // EJECT AND KICK (migration 065)
+  // ============================================================
+  //
+  // The database refused BOTH of these until 065: op_remove_player allows
+  // exactly four removals and "the host removes a live human" was not one of
+  // them, by design. So this is the first check in the repo that a host can
+  // remove anybody at all.
+  //
+  // BOTH HALVES, as everywhere else here. That the removal happens, and that
+  // the DIFFERENCE between the two survives — an ejected player walks back in,
+  // a kicked one does not. A check for only the first passes on a build where
+  // kick is just a slower eject.
+  heading('ejecting and kicking');
+  {
+    const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
+    const carolUser = table.store.table('players').find(p => p.display_name === 'Carol')?.user_id;
+    const card = await pressPlayerCardAction(host.page, carolId, /^Remove /);
+    note(`Carol's card offers: ${JSON.stringify(card.labels)}`);
+    if (!card.pressed) {
+      problems.push(`the host is offered no way to remove a player (offers: ${JSON.stringify(card.labels)})`);
+    }
+    const stillThere = table.store.table('players').some(p => String(p.id) === String(carolId));
+    note(`Carol's seat after eject: ${stillThere ? 'still there' : 'gone'}`);
+    if (stillThere) problems.push('the host pressed Remove and the player stayed');
+
+    // AN EJECTED PLAYER CAN COME BACK. This is the half that makes "eject" a
+    // different word from "kick", and without it the two are the same button.
+    const tryJoin = (name, uid) => table.store.execute({
+      table: 'players', action: 'insert',
+      payload: { room_id: table.store.table('rooms')[0].id, display_name: name,
+                 user_id: uid, joined_at: new Date().toISOString() },
+    });
+    const rejoin = await tryJoin('Carol', carolUser);
+    note(`an ejected player rejoining: ${rejoin.error ? rejoin.error.code : 'allowed'}`);
+    if (rejoin.error) {
+      problems.push(`an EJECTED player was refused a seat (${rejoin.error.code}) — eject is supposed to be recoverable`);
+    }
+
+    // ACCEPT THE CONFIRM. Playwright DISMISSES dialogs by default, so without
+    // this the kick is cancelled and every assertion below would be measuring
+    // a button that was never really pressed.
+    host.page.once('dialog', d => d.accept());
+
+    // KICK: gone, and refused on the way back.
+    const carolAgain = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
+    const kicked = await pressPlayerCardAction(host.page, carolAgain, /^Kick /);
+    note(`kick pressed: ${kicked.pressed}, offers were ${JSON.stringify(kicked.labels)}`);
+    if (!kicked.pressed) {
+      problems.push(`the host is offered no way to kick a player (offers: ${JSON.stringify(kicked.labels)})`);
+    }
+    const kickedGone = !table.store.table('players').some(p => String(p.id) === String(carolAgain));
+    note(`Carol's seat after kick: ${kickedGone ? 'gone' : 'still there'}`);
+    if (!kickedGone) problems.push('the host pressed Kick and the player stayed');
+
+    const retry = await tryJoin('Carol', carolUser);
+    note(`a kicked player rejoining: ${retry.error ? retry.error.code : 'ALLOWED'}`);
+    if (!retry.error) {
+      problems.push('a KICKED player walked straight back into the room — the ban does nothing');
+    }
+
+    // AND NOBODY ELSE IS CAUGHT BY IT. A ban that refused everybody would pass
+    // the check above perfectly.
+    const bystander = await tryJoin('Dave', 'user-dave');
+    note(`somebody else joining after a kick: ${bystander.error ? bystander.error.code : 'allowed'}`);
+    if (bystander.error) {
+      problems.push(`the kick locked OTHER people out of the room too (${bystander.error.code})`);
+    }
+  }
+
+  // ============================================================
   // 3 + 4. CO-HOST POWERS IN GAME
   // ============================================================
   heading('co-host controls in game');
