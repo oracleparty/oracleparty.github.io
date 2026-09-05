@@ -40,7 +40,6 @@ import {
   subscribeToRoom,
   unsubscribe,
   createPresenceChannel,
-  fetchPlayerStatsBatch,
   fetchQuestionCount,
   toggleMessageHeart,
   fetchAllOpenQuestionCount,
@@ -51,7 +50,6 @@ import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './hon
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
-import { computeCategoryTiers } from './titles.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
 
@@ -123,7 +121,6 @@ const btnCloseSettings = $('#btn-close-settings');
 const settingsCategoryGrid = $('#settings-category-grid');
 
 // Player tier badges (user_id → tier string)
-let _playerTiers = {};
 
 // Chat bar state
 let chatOpen = false;
@@ -405,8 +402,6 @@ function attachListeners() {
 async function loadPlayers() {
   players = await fetchPlayers(room.id);
   sortPlayers();
-  // Load tier badges for logged-in players (non-blocking)
-  _loadPlayerTiers();
   renderPlayers();
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
@@ -479,36 +474,14 @@ function sortPlayers() {
   });
 }
 
-async function _loadPlayerTiers() {
-  const cat = room.category;
-  const userIds = players.map(p => p.user_id).filter(Boolean);
-  if (userIds.length === 0) return;
-  try {
-    const allStats = await fetchPlayerStatsBatch(userIds);
-    // Group stats by user_id, compute tiers
-    for (const uid of userIds) {
-      const userStats = allStats.filter(s => s.user_id === uid);
-      const tiers = computeCategoryTiers(userStats);
-      if (tiers[cat]) _playerTiers[uid] = tiers[cat];
-    }
-    renderPlayers();
-  } catch (e) { /* non-critical */ }
-}
-
-// Tier colour now comes from CSS via data-tier, not an inline style.
-//
-// These were badge colours, chosen to sit on a badge's own background. Moving
-// the tier under the player's name turned them into bare text on the row, and
-// measured against the light theme they came out at 2.5:1 — legible on a
-// desk, not on a phone in daylight. An inline style also cannot respond to the
-// theme, so one value had to serve white, dark grey and black backgrounds.
-
 function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   const badges = [];
   const away = isPlayerAway(p.id);
-  if (showRoleBadge) {
-    if (p.is_host) badges.push('<span class="badge badge--host">Host</span>');
-    if (p.is_cohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
+  // The HOST badge stays in the strip; CO-HOST moved to line 2 — see the
+  // substack note below. The host's row carries no per-player buttons, so it
+  // has the width; the co-host's row carries three and did not.
+  if (showRoleBadge && p.is_host) {
+    badges.push('<span class="badge badge--host">Host</span>');
   }
   // AWAY IS A WORD, not only a fade.
   //
@@ -521,29 +494,38 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // Host and co-host DO get it, even though they get no ready badge: a host
   // being away is the most consequential fact in the lobby, because the game
   // cannot start without them.
+  // READY IS ONE DOT THAT LIGHTS UP GREEN. The owner's design, and it is the
+  // smallest thing that can carry the meaning.
+  //
+  // The words cost the row everything it did not have. "Not Ready" measured
+  // 81px and sat on nearly every row, because not-ready is where everybody
+  // starts; "Ready" cost 54px. Nothing else in the row can yield — the badge
+  // strip is `flex: 0 0 auto` and .name-stack has a hard 72px floor — so those
+  // pixels came straight out of the name and the title. Measured at 375px: the
+  // row is 327px and its contents needed 329px, with the name box pinned at
+  // exactly its floor. That is "the list is too wide and I can't see my
+  // friend's full title".
+  //
+  // TWO WRONG ANSWERS CAME FIRST, and both are worth keeping written down.
+  // A grey dot shown ONLY when not ready reads as a small empty circle with
+  // nothing to decode it against — I shipped it without reading the
+  // screenshot, which this project's own rules forbid in as many words.
+  // Showing nothing at all fitted perfectly and said nothing at all.
+  //
+  // One dot in two states is what neither of those had: a comparison. Grey
+  // beside green is legible without a caption, which is the whole reason a
+  // status light works anywhere. The label lives in aria-label/title so a
+  // screen reader and a long-press still get the words.
+  //
+  // Ready state is lobby state and is meaningless for the people who RUN the
+  // lobby, so host and co-host get no dot — they get no ready toggle either.
   if (away && !p.is_bot) {
     badges.push('<span class="badge badge--away">Away</span>');
-  } else if (p.is_ready && !p.is_host && !p.is_cohost) {
-    // Ready state is lobby state, and it is meaningless for the people who run
-    // the lobby — "Not Ready" was already suppressed for them, so showing them
-    // "Ready" was inconsistent as well as wasteful.
-    badges.push('<span class="badge badge--ready">Ready</span>');
+  } else if (!p.is_bot && !p.is_host && !p.is_cohost) {
+    const on = !!p.is_ready;
+    const label = on ? 'Ready' : 'Not ready';
+    badges.push(`<span class="ready-dot${on ? ' ready-dot--on' : ''}" role="img" aria-label="${label}" title="${label}"></span>`);
   }
-  // NOT READY SHOWS NOTHING AT ALL — the owner's decision, and it is the
-  // simplest true thing this row can do.
-  //
-  // "Not Ready" was 81px of words on nearly every row, because not-ready is
-  // where everybody starts. Nothing else in the row can yield — the badge strip
-  // is `flex: 0 0 auto` and .name-stack has a hard 72px floor — so those 81px
-  // came straight out of the name and the title. Measured at 375px: the row is
-  // 327px wide and its contents needed 329px, with the name box pinned at
-  // exactly its floor. That is "the list is too wide, I can't see my friend's
-  // full title, and Not Ready is cut off".
-  //
-  // A DOT WAS TRIED FIRST AND WAS WORSE. It fitted, but a small empty circle at
-  // the end of a row says nothing — the owner saw the screenshot and said so.
-  // The lobby's only question is WHO IS READY, and a green "Ready" answers it.
-  // Absence is the other half, and it needs no glyph to decode.
   // A bot carries one badge and nothing else. It has no ready state to report
   // (it is always ready), no tier and no title, so the row stays inside the
   // budget that the co-host overflow taught us to respect.
@@ -557,7 +539,7 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
 
   const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
 
-  // Tier and title sit UNDER the name, not in the badge strip.
+  // ROLE AND TITLE SIT UNDER THE NAME, not in the badge strip beside it.
   //
   // Measured at 375px: a signed-in player promoted to co-host while ready
   // carried three badges — Co-Host 75px, tier 66px, Ready 54px — and the badge
@@ -568,27 +550,48 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // game always did.
   //
   // Down here both can truncate with an ellipsis instead, and the badge strip
-  // is bounded to one role badge or one ready badge.
-  const tier = _playerTiers[p.user_id];
-  const tierHtml = tier
-    ? `<span class="player-tier" data-tier="${escapeHtml(String(tier).toLowerCase())}">${escapeHtml(tier)}</span>`
-    : '';
-  const titleText = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
-  // Always rendered, even when empty. A signed-in player has a tier and a
-  // guest does not, so rows would otherwise be 44px or 50px depending on who
-  // was in them and the list would look ragged. The empty span reserves the
-  // second line so every row is the same height.
-  // THE TIER YIELDS BEFORE THE TITLE DOES. `.player-tier` was `flex: 0 0 auto`,
-  // so it took its 63px of a 141px line and the TITLE truncated — measured at
-  // 375px, the title needed 96px and got 72. That is "can't even see my
-  // friend's full title", and it is the row-level fault one level down: two
-  // things on a line and only one of them able to give way.
+  // is bounded to one badge — Host, Away, or a dot.
+  // THE RANK WORD IS GONE FROM THIS ROW, on the owner's decision, and their
+  // reasoning is the good one: Apprentice, Scholar, Master and Oracle are all
+  // TITLE WORDS in slot 3 already (see TITLE_WORDS in titles.js), unlocked by
+  // reaching that rank in any category. So anybody who wants their rank on
+  // display can wear it — and printing it a second time, automatically, beside
+  // every name was the same idea told twice while costing the name ~62px.
   //
-  // Moving the tier up beside the name was tried and measured WORSE: the name
-  // then truncated instead ("QuizMasterMax" 74px of 98px), and the name is the
-  // one thing on this row nobody can do without. Shrink order is the fix, not
-  // relocation — see .player-tier in the stylesheet.
-  const titleHtml = `<span class="name-substack">${tierHtml}${titleText}</span>`;
+  // NOBODY'S SECOND LINE IS BLANK. A signed-in player who has chosen nothing
+  // already resolves to "Novice" (buildDisplayTitle), and a guest — who has no
+  // profile row and therefore no title at all — reads "Guest". That is the
+  // honest word rather than the flattering one: a guest is not on the rank
+  // ladder, has no stats, cannot appear on anybody's leaderboard and cannot be
+  // added as a friend. The profile card a tap away has said "Guest player"
+  // since it was written; this row was the one place staying quiet.
+  const titleText = p.is_bot
+    ? ''
+    : `<span class="player-title">${escapeHtml(p.title || 'Guest')}</span>`;
+  // CO-HOST SITS HERE, not in the badge strip beside the name.
+  //
+  // Measured at 375px: the badge cost 71px of a 327px row, and with three
+  // per-player buttons alongside it the name box was left 84px when it needed
+  // 97 — "TimeTravel…". Nothing else could yield. Down here it takes the width
+  // the tier used to and the NAME, the one thing on this row nobody can do
+  // without, gets all 71px back.
+  const cohostHtml = (showRoleBadge && p.is_cohost && !p.is_bot)
+    ? '<span class="badge badge--cohost">Co-Host</span>'
+    : '';
+  // Always rendered, even when empty. Only a bot has nothing on this line, and
+  // an empty span reserves it so every row is the same height rather than the
+  // list going ragged at 44px and 50px.
+  //
+  // KEPT FROM THE VERSION THAT HAD A TIER HERE, because the reasoning outlives
+  // it: two things on one line and only one able to give way is how the title
+  // came to truncate at 375px (it needed 96px and got 72). Whatever shares this
+  // line with the title must declare which of them yields — see
+  // `.name-substack .badge--cohost` in the stylesheet.
+  //
+  // And moving anything from here UP beside the name was tried and measured
+  // WORSE: the name truncated instead ("QuizMasterMax", 74px of 98px), and the
+  // name is the one thing on this row nobody can do without.
+  const titleHtml = `<span class="name-substack">${cohostHtml}${titleText}</span>`;
   const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
   const honks = getHonkCount(p.id);
   const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;

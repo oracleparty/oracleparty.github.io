@@ -1931,35 +1931,42 @@ body::after {
   background: rgba(231, 76, 60, 0.15);
 }
 
-.badge--ready {
-  background: rgba(46, 122, 66, 0.1);
-  /* Measured at 2.80:1 against its own tint. Same green, darkened until it
-     clears 4:1 — a status badge is information, not decoration.
-     The badge tint is only 10% opaque, so what this sits on is the surface
-     behind it, which the theme changes: darkening alone made it WORSE in dark
-     and OLED (1.90:1), so each side gets its own value. */
-  color: #1B5427;
+/* READY IS ONE DOT IN TWO STATES — grey, then green. The owner's design.
+   See the note in _renderPlayerItem for why the words had to go and why a dot
+   shown only in ONE state was worse than either.
+
+   A filled circle, not an outlined one: an outline reads as an empty slot
+   waiting to be filled, which is what made the not-ready-only version say
+   nothing. Sized in rem so it tracks the badge text beside it if the type
+   scale moves, and `flex: 0 0 auto` so it never collapses in the badge strip.
+
+   The words live in aria-label and title, not on screen. */
+.ready-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--color-text-muted);
+  opacity: 0.4;
 }
-[data-theme="dark"] .badge--ready,
-[data-theme="oled"] .badge--ready {
-  color: #7BE0A4;
+.ready-dot--on {
+  /* The same green the "Ready" badge carried, at full strength because this is
+     a fill rather than text — a colour that must clear a contrast ratio as
+     text and one that must simply read as "lit" are different jobs. Dark and
+     OLED take the lighter value for the same reason the badge did: one value
+     cannot answer to three palettes. */
+  background: #2E7A42;
+  opacity: 1;
+}
+[data-theme="dark"] .ready-dot--on,
+[data-theme="oled"] .ready-dot--on {
+  background: #7BE0A4;
 }
 .badge--tier {
   background: transparent;
   font-size: 0.55rem;
   opacity: 0.8;
 }
-
-/* NOT READY HAS NO BADGE. The rule that was here styled a dot, and the dot is
-   gone with the markup that carried it — a stylesheet rule for an element
-   nothing renders is the drift the sweep's unstyled-class check exists to
-   catch, one direction along.
-
-   Why there is nothing to style: as words, "Not Ready" measured 81px on nearly
-   every row — not-ready is where everybody starts — and nothing else in that
-   row can shrink, so those pixels came straight out of the name and the title.
-   A dot fitted and said nothing. The lobby's only question is who IS ready,
-   and .badge--ready answers it; absence is the other half. */
 
 /* Away is a word, not only a fade. It sits in the READY slot rather than
    beside it, so this row's badge budget is unchanged — a badge added here is
@@ -1977,7 +1984,7 @@ body::after {
 /* A bot's only badge. Deliberately grey and quiet: it must be unmistakable
    that this is not a person, without competing with Host or Ready for
    attention. Measured against the badge's own tint over each theme's surface,
-   which is why light and dark carry different values — see .badge--ready. */
+   which is why light and dark carry different values — see .ready-dot--on. */
 .badge--bot {
   background: rgba(107, 114, 128, 0.14);
   color: #4B5563;
@@ -4824,21 +4831,30 @@ body::after {
 }
 .name-substack .player-title { flex: 0 1 auto; }
 
-/* WHEN LINE 2 IS TOO NARROW, THE TIER GIVES WAY AND THE TITLE DOES NOT.
+/* CO-HOST SHARES LINE 2 WITH THE TITLE, and holds its width while the title
+ * gives way. That is the opposite of the rule the tier had here, deliberately:
+ * a role badge ellipsised to "Co-H…" is worse than a truncated title, and a
+ * badge is a fixed shape rather than a phrase. The tier used to sit here and
+ * is gone — see _renderPlayerItem for why.
  *
- * The tier was `flex: 0 0 auto`, so it held its ~62px of a 141px line and the
- * title truncated instead — measured at 375px, the title needed 96px and got
- * 72, which is the reported "can't even see my friend's full title".
+ * `margin-left: 0` overrides the badge's own leading space: it is first on the
+ * line here rather than trailing a name.
  *
- * A shrink factor of 100 against the title's 1 makes the order explicit rather
- * than leaving it to whichever basis happens to be larger. The tier is a rank
- * word that also appears on the profile card a tap away; the title is the thing
- * the player earned and the only thing on this row that distinguishes them. */
-.name-substack .player-tier {
-  flex: 0 100 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+ * AND THE VERTICAL PADDING HAS TO GO, which the sweep caught rather than an
+ * eye: `.badge` carries 2px top and bottom, so the co-host's row stood 5px
+ * taller than the host's directly above it and the sweep reported
+ * `#host-list stacked rows differ by 5px: [51, 56]` in all three themes at
+ * both widths. A list whose rows are different heights reads as broken before
+ * anybody works out why. The pill keeps its shape from the line box instead —
+ * `--text-2xs` at 1.4 is shorter than the substack's `--text-xs` at 1.2, so it
+ * can never be the thing that sets the row height. */
+.name-substack .badge--cohost {
+  flex: 0 0 auto;
+  margin-left: 0;
+  align-self: center;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1.4;
 }
 
 .player-tier {

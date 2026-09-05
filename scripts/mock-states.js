@@ -280,23 +280,26 @@ export const STATES = {
       function row(p, opts) {
         opts = opts || {};
         const badges = [];
+        // HOST stays in the strip; CO-HOST is on line 2 — same as the app.
         if (opts.roleBadge && p.isHost) badges.push('<span class="badge badge--host">Host</span>');
-        if (opts.roleBadge && p.isCohost) badges.push('<span class="badge badge--cohost">Co-Host</span>');
-        // Ready state is suppressed for host and co-host, as in the app.
-        if (!p.isHost && !p.isCohost) {
-          badges.push(opts.ready
-            ? '<span class="badge badge--ready">Ready</span>'
-            : '');
+        // Ready is one dot in two states, and it is suppressed for host and
+        // co-host, who have no ready toggle. Same as the app.
+        if (!p.isHost && !p.isCohost && !p.isBot) {
+          const label = opts.ready ? 'Ready' : 'Not ready';
+          badges.push('<span class="ready-dot' + (opts.ready ? ' ready-dot--on' : '')
+            + '" role="img" aria-label="' + label + '" title="' + label + '"></span>');
         }
-        // A bot carries one badge and nothing else — no ready state, no tier,
-        // no title. Same as the app.
+        // A bot carries one badge and nothing else — no ready state, no title.
         if (p.isBot) {
           badges.length = 0;
           badges.push('<span class="badge badge--bot">Bot</span>');
         }
+        // Line 2: the co-host badge, then the title. NOBODY IS BLANK — a guest
+        // has no profile and therefore no title, and reads "Guest". The rank
+        // word that used to sit here is gone; see _renderPlayerItem.
         const sub = p.isBot ? '' :
-          ((p.tier ? '<span class="player-tier" data-tier="' + p.tier.toLowerCase() + '">' + p.tier + '</span>' : '')
-           + (p.title ? '<span class="player-title">' + p.title + '</span>' : ''));
+          ((opts.roleBadge && p.isCohost ? '<span class="badge badge--cohost">Co-Host</span>' : '')
+           + '<span class="player-title">' + (p.title || 'Guest') + '</span>');
         // The host sees action buttons on everyone but themselves — and on a
         // bot, only the remove button. Host and co-host are for humans.
         const actions = p.isHost ? '' : p.isBot
@@ -314,18 +317,19 @@ export const STATES = {
           + '</div>';
       }
 
-      // A signed-in player carries a tier; a guest does not. That difference is
-      // what the robot playtests cannot represent and what broke the real row,
-      // so the mock deliberately mixes both.
-      const host = { ...P[0], isHost: true, tier: 'Oracle', title: 'Keeper of Secrets' };
-      const cohost = { ...P[1], isCohost: true, tier: 'Scholar' };
+      // THE MIX ON LINE 2 IS THE POINT, and it is what the robot playtests
+      // cannot produce: a signed-in player who has built a title, a signed-in
+      // player who has not (and therefore reads "Novice"), and a guest (who has
+      // no profile at all, and reads "Guest"). All three widths in one list.
+      const host = { ...P[0], isHost: true, title: 'Keeper of Secrets' };
+      const cohost = { ...P[1], isCohost: true, title: 'Novice' };
       document.getElementById('host-list').innerHTML =
         row(host, { roleBadge: true }) + row(cohost, { roleBadge: true });
 
       document.getElementById('player-list').innerHTML = [
-        { ...P[2], tier: 'Apprentice' },
+        { ...P[2], title: 'Novice' },
         { ...P[3] },
-        { ...P[4], tier: 'Novice', title: 'Student of the Ages' },
+        { ...P[4], title: 'Student of the Ages' },
         { ...P[5] },
         // A practice bot sits in the same list as everyone else, so its row has
         // to fit the same budget. It is here because a bot row that was never
@@ -390,25 +394,20 @@ export const STATES = {
     screen: 'lobby-screen',
     inherits: 'lobby-waiting',
     inject: () => {
-      // ADD a Ready badge — there is nothing to flip any more.
+      // LIGHT THE DOTS. The base state renders one for every ordinary player,
+      // so this flips the ones that exist rather than creating any — which is
+      // the whole point of the dot: the two states are the same element, so a
+      // mock cannot preview a lobby where one of them is unreachable.
       //
-      // Not-ready renders NOTHING now (the owner's decision: a green "Ready"
-      // answers the lobby's only question, and its absence is the other half).
-      // This used to convert the not-ready badge in place, so the moment that
-      // element stopped existing this loop found nothing and the "everyone is
-      // ready" state previewed a lobby in which nobody could ever be ready —
-      // the mock drifting into fiction, which is the exact fault the sweep's
-      // unstyled-class check exists to catch and which this file has recorded
-      // twice already.
-      //
-      // Skipped for the host, co-host and the bot, mirroring the app: ready
-      // state is meaningless for the people who run the lobby.
-      document.querySelectorAll('#player-list .player-item__badges').forEach(strip => {
-        if (strip.querySelector('.badge--host, .badge--cohost, .badge--bot')) return;
-        const ready = document.createElement('span');
-        ready.className = 'badge badge--ready';
-        ready.textContent = 'Ready';
-        strip.appendChild(ready);
+      // This loop has been wrong twice, in both directions: it once converted a
+      // "Not Ready" badge that no longer existed (previewing a lobby in which
+      // nobody could ever be ready), and then appended a badge the app does not
+      // build. Flipping a class on an element the base state emits is the shape
+      // that cannot drift.
+      document.querySelectorAll('#player-list .ready-dot').forEach(dot => {
+        dot.classList.add('ready-dot--on');
+        dot.setAttribute('aria-label', 'Ready');
+        dot.setAttribute('title', 'Ready');
       });
 
       // The no-bot half of the lobby: the bot's row goes and the host's
@@ -431,32 +430,33 @@ export const STATES = {
     screen: 'lobby-screen',
     inherits: 'lobby-waiting',
     inject: () => {
-      const rows = [...document.querySelectorAll('#player-list .player-item')];
-      // Whichever rows have a ready badge are ordinary players; fade one and
-      // relabel it exactly as _renderPlayerItem does.
+      // THE CO-HOST LIVES IN #host-list, and this loop read #player-list only —
+      // so the state whose whole comment says "specifically an away CO-HOST"
+      // had never once rendered one. Another mock quietly describing something
+      // it does not draw. Both lists now, with the HOST left alone so a normal
+      // row sits beside the faded ones for comparison.
+      const rows = [
+        ...document.querySelectorAll('#host-list .player-item'),
+        ...document.querySelectorAll('#player-list .player-item'),
+      ];
+      // AWAY REPLACES THE DOT rather than joining it, exactly as
+      // _renderPlayerItem does — the away branch runs first and the dot branch
+      // is its `else`. The bot is skipped (it is never away) and the host is
+      // left alone so the list still shows a normal row beside the faded ones.
       for (const row of rows) {
         const strip = row.querySelector('.player-item__badges');
         if (!strip) continue;
-        const isCohost = !!strip.querySelector('.badge--cohost');
-        const ready = strip.querySelector('.badge--ready');
-        // An ordinary player who is not ready now carries NO badge at all, so
-        // an empty strip is a player rather than a row to skip. Only the host
-        // and the bot are excluded.
-        const isNotAPlayer = !!strip.querySelector('.badge--host, .badge--bot');
-        if (isNotAPlayer) continue;
-        if (!isCohost && !ready && strip.children.length > 0) continue;
+        if (strip.querySelector('.badge--host, .badge--bot')) continue;
+        // A co-host is on line 2 now, so its strip is EMPTY — which is exactly
+        // the row this state exists to measure. Do not read an empty strip as
+        // "not a player".
         row.classList.add('player-item--away');
-        if (ready) {
-          ready.className = 'badge badge--away';
-          ready.textContent = 'Away';
-        } else {
-          // A co-host carries no ready badge, so Away is appended — the two
-          // together are the widest this row ever gets.
-          const away = document.createElement('span');
-          away.className = 'badge badge--away';
-          away.textContent = 'Away';
-          strip.appendChild(away);
-        }
+        const dot = strip.querySelector('.ready-dot');
+        if (dot) dot.remove();
+        const away = document.createElement('span');
+        away.className = 'badge badge--away';
+        away.textContent = 'Away';
+        strip.appendChild(away);
       }
     },
   },

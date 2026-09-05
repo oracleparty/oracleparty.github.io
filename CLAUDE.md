@@ -151,26 +151,74 @@
 >
 > Two consumers, one fix each, and both are the same shape one level apart:
 >
-> - **"Not Ready" was 81px of words on nearly every row**, because not-ready is
->   where everybody starts. It shows **NOTHING** now — the owner's decision after
->   seeing the screenshot. What anybody scans a lobby for is who IS ready, and
->   that still says "Ready" in words; absence is the other half and needs no
->   glyph. **A dot was tried first and was worse** (14px, and fitted) — it
->   reads as a small empty circle that decodes to nothing, and the owner said
->   so. I had shipped it WITHOUT READING THE SCREENSHOT, which this file
->   requires in as many words. The measurement was clean and the render was
->   meaningless: **passing every check is not the same as looking at it.**
+> - **The ready words cost the row everything it did not have.** "Not Ready" was
+>   81px on nearly every row (not-ready is where everybody starts) and "Ready"
+>   was 54px. It is **one dot in two states** now — grey, then green — which is
+>   the owner's design and took **three tries to arrive at**:
+>
+>   | | |
+>   |---|---|
+>   | a grey dot shown ONLY when not ready | reads as a small empty circle with nothing to decode it against. I shipped it **without reading the screenshot**, which this file requires in as many words |
+>   | nothing at all | fitted perfectly and said nothing at all |
+>   | **one dot, grey → green** | has what neither had: a COMPARISON. Grey beside green is legible with no caption, which is why a status light works anywhere |
+>
+>   **Passing every check is not the same as looking at it.** The measurement
+>   was clean for all three.
 > - **On line 2 the tier was `flex: 0 0 auto`**, so it held its ~62px and the
->   TITLE truncated. Shrink order reversed: the tier gives way first.
+>   TITLE truncated. Shrink order reversed — and the tier has since been
+>   removed from this row entirely (below), so the title's line-mate is now the
+>   co-host badge, which holds its width because a badge ellipsised to "Co-H…"
+>   is worse than a truncated title.
 >
 > **Moving the tier up beside the name was tried and MEASURED WORSE** — the name
 > truncated instead (74px of 98px), and the name is the one thing on the row
 > nobody can do without. It is recorded here because the reasoning looked right
 > and the measurement said otherwise.
 >
-> Result at 375px with the dot: overflow 0px, names 141/141px, titles 105/105px.
-> With nothing at all: **overflow 0px, names 151/151px.** At 430px 120/120px.
-> The two-line layout finally has the room it always needed.
+> Result at 375px, measured at each step: with the dot 141/141px names; with
+> nothing 151/151px; **with the rank word gone and the co-host badge moved down,
+> 155/155px for the co-host (it was 84 of 97 — "TimeTravel…") and 0px overflow
+> on every row at both 375 and 430.** The two-line layout finally has the room
+> it always needed.
+>
+> ### The lobby row, finished (2026-09-05, later)
+>
+> Three more decisions from the owner, all of them removing something:
+>
+> - **THE RANK WORD IS GONE FROM THE LOBBY.** Their question was the right one:
+>   *"shouldn't the rank be something they can just incorporate into their
+>   title? I feel like one is enough?"* — and **they had already built that.**
+>   `apprentice`, `scholar`, `master` and `oracle` are slot-3 entries in
+>   `TITLE_WORDS`, unlocked by `{ type: 'mastery', anyCategory: X }`. So the
+>   coloured word beside every name was the same idea told twice, automatically,
+>   for ~62px. `_loadPlayerTiers` went with it — it was a `fetchPlayerStatsBatch`
+>   round trip on every lobby render feeding one label.
+> - **CO-HOST MOVED TO LINE 2.** Measured: the badge cost **71px of a 327px
+>   row**, and with three per-player buttons beside it the name box got 84px
+>   when it needed 97. The HOST badge stays in the strip — that row carries no
+>   buttons and has the width. Asymmetric on purpose.
+> - **NOBODY'S SECOND LINE IS BLANK, and a guest reads "Guest", not "Novice".**
+>   My first advice was Novice and the owner asked the better question. Novice
+>   is the bottom rung of a ladder a guest is not on: no profile, no stats, no
+>   titles, and not addable as a friend. **The profile card one tap away has
+>   said "Guest player" since it was written** — the lobby row was the one place
+>   staying quiet. A signed-in player who has chosen nothing already resolves to
+>   "Novice" through `buildDisplayTitle`, so only the guest case changed.
+>
+> **THE SWEEP CAUGHT THE ONE THING AN EYE WOULD NOT.** `.badge` carries 2px of
+> vertical padding, so the co-host's row stood 5px taller than the host's
+> directly above it — `#host-list stacked rows differ by 5px: [51, 56]`, in all
+> three themes at both widths. A list whose rows are different heights reads as
+> broken before anybody works out why.
+>
+> **And two mock states were describing things they did not draw.**
+> `lobby-away`'s own comment says it exists for "specifically an away CO-HOST"
+> — and its loop read `#player-list` only, while the co-host lives in
+> `#host-list`. It had **never once rendered one**. `lobby-ready` had been
+> rewritten twice in one day and was wrong both times (converting a badge that
+> no longer existed, then appending one the app does not build); it flips a
+> class on an element the base state emits now, which is the shape that cannot
+> drift.
 >
 > **AND THE MEASUREMENT LIED ONCE MORE ON THE WAY.** The title reported
 > `105/105` — not truncated — while the screenshot plainly showed "Student of
@@ -198,8 +246,24 @@
 > appeared **only on the final round's reveal**, a screen that lasts exactly as
 > long as it takes the host to tap on.
 >
-> It is on the **results screen** too now — where people stop. The row is
-> **MOVED, not copied**: two copies would mean two sets of buttons and two
+> **AND THE LABEL WAS MISREAD, which is the same fault one level along.**
+> "Play with this host again?" states the question the vote actually asks, and
+> that framing is deliberate (below). But on the results screen it sits a few
+> pixels above a button reading "Back to Lobby" / "Play Again", and the owner
+> took it for the rematch prompt: *"the wording might be confused for play again
+> instead of a host review no?"* Two "agains" stacked read as one control. It is
+> **"Rate your host"** now — 👍/👎 under that is not ambiguous about what a
+> thumb means, and a label that is misread is worse than a shorter one.
+>
+> **Measured while placing it: on a six-player reveal at 375px the thumbs sit
+> UNDER the "Next Question" button**, with the label sliced in half. That is the
+> whole of *"my friend didn't see it"* — not a bug in the mechanism, which
+> works, but a row below the fold on the one screen it appeared on. The layout
+> sweep's COVERED check reports it by name.
+>
+> It is on the **results screen** too now — where people stop, and where the
+> owner chose to put it: *"below feels less intrusive and yet is visible"*,
+> under the scoreboard rather than above it. The row is **MOVED, not copied**: two copies would mean two sets of buttons and two
 > listener bindings for one vote, which is the worst possible place to introduce
 > the duplication fault this file records more than any other. `hostReviewOnScreen()`
 > replaced two `state.onRevealScreen` tests that would have gone quiet exactly

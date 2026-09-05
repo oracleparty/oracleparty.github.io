@@ -1042,11 +1042,20 @@ function showHostReviewUI() {
   row.querySelectorAll('[data-host-vote="up"], [data-host-vote="down"]').forEach(b => {
     b.style.display = canRate ? '' : 'none';
   });
+  // "RATE YOUR HOST", not "play with this host again?".
+  //
+  // The old wording stated the question the vote actually asks, which is the
+  // right question (see CLAUDE.md — it is deliberately not "was the host
+  // correct"). But on the RESULTS screen it sits a few pixels above a button
+  // reading "Back to Lobby" / "Play Again", and two "agains" stacked read as
+  // one control: the owner took it for the rematch prompt. A label that is
+  // misread is worse than a shorter one, and 👍/👎 under "Rate your host" is
+  // not ambiguous about what a thumb means.
   const labelEl = row.querySelector('.host-review__label');
   if (labelEl) {
     labelEl.textContent = state._hostReviewRefused
       ? 'Play the whole game to rate this host'
-      : 'Play with this host again?';
+      : 'Rate your host';
   }
 
   row.style.display = '';

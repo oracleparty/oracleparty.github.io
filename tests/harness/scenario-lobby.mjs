@@ -278,6 +278,41 @@ try {
   }
 
   // ============================================================
+  // A GUEST'S LOBBY ROW SAYS "GUEST"
+  // ============================================================
+  //
+  // The owner's call, and the honest word rather than the flattering one:
+  // "Novice" is the bottom rung of a rank ladder a guest is not on. A guest has
+  // no profile row, so no stats, no titles, and nothing anybody can add as a
+  // friend. The profile card a tap away has said "Guest player" since it was
+  // written; this row was the one place staying quiet.
+  //
+  // BOTH HALVES, because either alone is a check that cannot fail. That the
+  // word is THERE, and that nothing else on the row went with it — a version
+  // that stamped "Guest" over everybody's real title would pass the first half
+  // perfectly. The mock cannot answer this: it builds its own row HTML, so only
+  // a real lobby of real guests renders what _renderPlayerItem actually emits.
+  const guestRow = await host.page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#player-list .player-item, #host-list .player-item')];
+    return rows.map(r => ({
+      name: (r.querySelector('.player-item__name')?.textContent || '').trim(),
+      sub: (r.querySelector('.name-substack')?.textContent || '').trim(),
+    }));
+  }).catch(e => ({ err: String(e).slice(0, 120) }));
+  console.log('   · guest lobby rows:', JSON.stringify(guestRow));
+
+  if (Array.isArray(guestRow)) {
+    const blank = guestRow.filter(r => r.name && !r.sub);
+    if (blank.length) {
+      problems.push(`${blank.length} lobby row(s) have nothing under the name — a guest should read "Guest": ${JSON.stringify(blank)}`);
+    }
+    const notGuest = guestRow.filter(r => r.name && r.sub && !/guest/i.test(r.sub));
+    if (notGuest.length) {
+      problems.push(`a guest's row says something other than "Guest": ${JSON.stringify(notGuest)}`);
+    }
+  }
+
+  // ============================================================
   // SHUTTING THE DELETE DOOR DID NOT BREAK LEAVING (migration 057)
   // ============================================================
   //
