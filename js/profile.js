@@ -314,14 +314,18 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
         .map(([key, meta]) => ({ key, label: meta.label, emoji: meta.emoji || meta.icon }));
       const { axes, anyData } = buildRadarAxes(axesInput, byCategory);
       if (anyData) {
-        const { strongest } = radarExtremes(axes);
-        // One line, not the profile page's three. A card is glanced at, and
-        // "strongest" is the thing somebody in a lobby actually wants.
-        const cap = strongest
-          ? `Strongest: ${escapeHtml(strongest.label)} ${Math.round(strongest.value * 100)}%`
-          : '';
-        radarHtml = `<div class="profile-card__radar radar">${renderRadarSvg(axes)}</div>`
-          + (cap ? `<p class="radar__caption">${cap}</p>` : '');
+        // NO CAPTION ON THE CARD, and this fixes a contradiction rather than
+        // saving a line. It read "Strongest: X" directly under a stat labelled
+        // "Best" — two names for nearly the same idea, computed differently:
+        // `bestCat` takes the highest accuracy over MIN_QUESTIONS_FOR_ACCURACY,
+        // radarExtremes takes the highest axis over 5 questions met. So they
+        // disagree, and a player reported exactly that: "best is logic but
+        // strongest is science".
+        //
+        // One number in one place. The stat says which category, and the chart
+        // shows the shape — which is what a chart is for. The profile page
+        // keeps its caption: there is no competing stat beside it there.
+        radarHtml = `<div class="profile-card__radar radar">${renderRadarSvg(axes)}</div>`;
       }
     }
 

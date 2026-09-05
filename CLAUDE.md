@@ -72,6 +72,48 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-05 — a sheet sized in the wrong viewport
+>
+> **Photographed on a real phone: the profile card ran off the bottom of the
+> screen with its buttons unreachable, and it was NOT the content.**
+>
+> `.modal-overlay` is `position: fixed; inset: 0`, which covers the **LAYOUT**
+> viewport — and on iOS Safari that extends underneath the address bar and the
+> toolbar. So a sheet centred in it is centred in a box taller than anything
+> you can see, and the bottom of it sits behind the chrome. `max-height: 88vh`
+> made it worse for the same reason: `vh` is the large viewport too.
+>
+> **`dvh` is the unit that shrinks with the browser chrome, and every `.screen`
+> in this app already uses it** — the overlay was the one place still on the old
+> unit. `bottom: auto; height: 100dvh` is what lets the height win over the
+> top/bottom pair.
+>
+> Measured after, with the card at its busiest (four role controls plus Add
+> Friend): **479px, fitting with no scrolling at 560px, 620px, 667px and on a
+> 390x640 phone.** 560 is an SE in Safari with both bars showing — the tightest
+> case this app can meet.
+>
+> **THE LESSON IS THE ONE THE KEYBOARD WORK ALREADY LEARNED**, one screen along:
+> a fixed element is positioned against a viewport the person cannot
+> necessarily see. That cost a question screen in August and a sheet in
+> September, and the tell is the same both times — it looks fine in every
+> desktop check, because a desktop browser has no chrome inside the viewport.
+>
+> ### "Best is Logic but Strongest is Science"
+>
+> Reported in the same message, and it was a contradiction I had shipped hours
+> earlier. The card printed **"Strongest: X" directly under a stat labelled
+> "Best"** — two names for nearly the same idea, computed differently:
+> `bestCat` takes the highest accuracy over `MIN_QUESTIONS_FOR_ACCURACY`;
+> `radarExtremes` takes the highest axis over 5 questions met. **Different
+> thresholds, so they can and did name different categories.**
+>
+> The caption is gone from the CARD. One number in one place: the stat says
+> which category, the chart shows the shape, and that is what a chart is for.
+> The profile PAGE keeps its caption — there is no competing stat beside it
+> there. It also took 19px off the sheet, which was the smaller of the two
+> reasons.
+
 > ## 2026-09-05 (third playtest) — the final round's clock was the host's guess
 >
 > **Reported: "the player could answer but host couldn't see the question till

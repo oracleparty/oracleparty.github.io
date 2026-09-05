@@ -810,7 +810,6 @@ export const STATES = {
               <div><div class="profile-card__stat-value">Science</div><div class="profile-card__stat-label">Best</div></div>
             </div>
             <div class="profile-card__radar radar" id="mock-card-radar"></div>
-            <p class="radar__caption">Strongest: History 81%</p>
             <p class="host-rep host-rep--none">No host ratings yet</p>
             <!-- THE FULL HOST CASE: five buttons. The first version of this
                  mock showed three, which is what a NON-host with a friend

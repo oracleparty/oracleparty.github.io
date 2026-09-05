@@ -318,6 +318,17 @@ body::after {
 .modal-overlay {
   position: fixed;
   inset: 0;
+  /* THE VISIBLE VIEWPORT, NOT THE LAYOUT ONE.
+     `inset: 0` on a fixed element covers the LAYOUT viewport, which on iOS
+     Safari extends underneath the address bar and the toolbar — so a sheet
+     centred in it is centred in a box taller than anything you can see, and its
+     bottom sits behind the toolbar. Photographed on a real phone: the profile
+     card ran off the bottom with the buttons unreachable.
+     `dvh` is the unit that shrinks with the browser chrome, and it is what
+     every .screen in this app already uses. `bottom: auto` is what lets the
+     height win over the top/bottom pair. */
+  bottom: auto;
+  height: 100dvh;
   background: var(--color-overlay);
   display: flex;
   align-items: center;
@@ -5731,7 +5742,7 @@ body::after {
  * A max-height with its own scroll is the fix, and it is a backstop for
  * anything added to this card later rather than a patch for the chart. */
 .modal-overlay .profile-card {
-  max-height: 88vh;
+  max-height: 88dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
   /* .modal carries 48px of padding top AND bottom — 96px of a 667px phone
