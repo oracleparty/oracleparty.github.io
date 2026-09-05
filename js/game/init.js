@@ -69,7 +69,7 @@ import {
 } from './question.js';
 import {
   showRevealScreen, enableRevealButton,
-  enableNextQuestion, updateRevealButtonText,
+  enableNextQuestion, updateRevealButtonText, placeHostReview,
   updateHonkBadges, handleNextQuestion, initFeedbackListeners,
   registerScoresRef as registerRevealScoresRef,
 } from './reveal.js';
@@ -79,6 +79,7 @@ import {
   registerCleanup as registerScoresCleanup,
   registerShowQuestionScreen as registerScoresShowQuestionScreen,
   registerHandleNextQuestion as registerScoresHandleNextQuestion,
+  registerPlaceHostReview as registerScoresPlaceHostReview,
 } from './scores.js';
 import {
   handlePhaseTransition, handleRoomChange, handlePlayerChange,
@@ -1137,5 +1138,6 @@ registerRevealScoresRef({
 registerScoresCleanup(cleanup);
 registerScoresShowQuestionScreen(showQuestionScreen);
 registerScoresHandleNextQuestion(handleNextQuestion);
+registerScoresPlaceHostReview(placeHostReview);
 registerPhasesCleanup(cleanup);
 init();

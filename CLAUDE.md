@@ -72,6 +72,134 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-05 (second playtest) — the final question, the swept host, and a row that could not shrink
+>
+> Six reports. Two game-breaking, and both were about something being allowed to
+> happen TWICE.
+>
+> ### The final question was revealed twice
+>
+> `handleRevealFinalQuestion` awaits a question fetch and then a **six-second
+> animation**, and the button that starts it stayed on screen, enabled, giving
+> no feedback for all of it. Two ways in, and both were live:
+>
+> - **a second tap** — six seconds of nothing happening on a phone is a person
+>   tapping again, and this is the button that picks the last question;
+> - **a second CONTROLLER** — it is gated on `canControlGame()`, so the host AND
+>   the co-host AND a deputy each have it.
+>
+> Either one runs the whole body again. `pickWeightedDifficulty` is **random**,
+> so the second run picks its own winner, fetches its own question over
+> `state.questions[totalQuestions]`, broadcasts a second reveal, and writes
+> `question_ids` again — racing the first. *"Difficulty randomizer ran twice, and
+> then advanced to differing questions for each person."*
+>
+> And `playDifficultyRevealAnimation` could not tell it was already running: two
+> chains of un-cancellable `setTimeout`s over one `position:fixed` overlay. The
+> first chain's ending hides the overlay while the second is still cycling; the
+> second chain's ending puts it back up over the question screen the first has
+> already moved to. That is *"my screen was half phased out between the question
+> and the difficulty selection screen"*, exactly.
+>
+> `_revealHeldBy` owns the reveal — this phone, or whoever's broadcast reached us
+> first, so a second controller stands down too. The animation returns its
+> in-flight promise rather than refusing, because the caller AWAITS it before
+> advancing the room.
+>
+> **THE FIRST BREAK TEST PASSED AND THE CHECK WAS THE PROBLEM.** Both
+> browser-side signals (the `--show` observer, the question on screen) can miss
+> it — CLAUDE.md already records that these two chains overlap too tightly for
+> an overlay observer to see both. Counting `question_ids` writes in
+> `store.log` is the fact: **each run writes the list once.** Reverted, it
+> reports three failures including *Bob and Carol asked "Test question 12?" while
+> the room asks "Test question 28?"*.
+>
+> ### A host who went AFK could not get back into their own lobby
+>
+> Migration 058's INSERT policy is `NOT is_host OR NOT
+> op_room_has_live_host(room_id)`. A host who is away long enough is swept and
+> somebody else promoted — while their own **sessionStorage still says isHost**.
+> Every return then asks for a crown the room has given away, is refused 42501,
+> and surfaces as *"Couldn't join the room — check your connection and try
+> again"*: wrong about the cause, wrong about the remedy, and repeating for as
+> long as they keep trying. *"It said I could not join a bunch of times but still
+> showed the lobby as active."*
+>
+> **058's own comment names the fix** — the client's `someoneElseIsHost` check —
+> and that check lived in `js/game/init.js` and NOWHERE ELSE. The lobby walked
+> straight into the refusal. It lives in **`claimSeat`** now, which every seat in
+> the app goes through, rather than being stated a fourth time and forgotten a
+> fifth. The lobby also believes the row it got back rather than sessionStorage:
+> asserting a crown the database refused is the dead button 062 was written to
+> end.
+>
+> **The fake store did not model that policy at all** — the #10 gap in its usual
+> direction. It does now, and reverted the lobby scenario reports Alice with
+> **0 rows and eight 42501s**.
+>
+> ### The player row: measured, not argued
+>
+> The owner asked *"should we just make everyone two lines? With title
+> underneath?"* — **it already was**, and that was not the problem. The problem
+> is horizontal, and more lines buy no horizontal room.
+>
+> Measured at 375px: the row is **327px and its contents needed 329px**, with
+> `.name-stack` pinned at exactly its **72px floor**. Nothing in the row can
+> yield — the badge strip is `flex: 0 0 auto` and the name box has a hard floor —
+> so the overflow was clipped by `overflow-x: hidden` and the title and "Not
+> Ready" were simply cut off.
+>
+> Two consumers, one fix each, and both are the same shape one level apart:
+>
+> - **"Not Ready" was 81px of words on nearly every row**, because not-ready is
+>   where everybody starts. It is a **dot** now (14px). What anybody scans a
+>   lobby for is who IS ready, and that still says "Ready".
+> - **On line 2 the tier was `flex: 0 0 auto`**, so it held its ~62px and the
+>   TITLE truncated. Shrink order reversed: the tier gives way first.
+>
+> **Moving the tier up beside the name was tried and MEASURED WORSE** — the name
+> truncated instead (74px of 98px), and the name is the one thing on the row
+> nobody can do without. It is recorded here because the reasoning looked right
+> and the measurement said otherwise.
+>
+> Result at 375px: **overflow 0px, names 141/141px, titles 105/105px.** At 430px
+> 120/120px. The two-line layout finally has the room it always needed.
+>
+> **The mock had drifted again** — `mock-states.js` builds its own row HTML, so
+> it was previewing markup the app no longer produced and my own measurement
+> script was injecting the OLD shape into row 0 and reporting it as fact. Both
+> corrected in the same commit, which is the rule this file already states.
+>
+> ### The host rating worked, and nobody could reach it
+>
+> *"Is the host rating even working? I don't think my friend even encountered
+> that option."* It works — but **nothing anywhere checked that it ever
+> appears.** Every existing check asks that the row stay HIDDEN mid-game (059
+> moved the thumbs to the final round), which is the *"a control that only moved
+> out of somewhere is a control that was deleted"* trap with nothing watching the
+> half that matters.
+>
+> `scenario-fullgame` samples the final round's reveal now, and both non-host
+> players get it. So the mechanism is sound and the report is still true: it
+> appeared **only on the final round's reveal**, a screen that lasts exactly as
+> long as it takes the host to tap on.
+>
+> It is on the **results screen** too now — where people stop. The row is
+> **MOVED, not copied**: two copies would mean two sets of buttons and two
+> listener bindings for one vote, which is the worst possible place to introduce
+> the duplication fault this file records more than any other. `hostReviewOnScreen()`
+> replaced two `state.onRevealScreen` tests that would have gone quiet exactly
+> where the row now lives.
+>
+> ### Understood and NOT changed
+>
+> *"One time my timer ran out and it looked stuck for a couple seconds but still
+> proceeded properly."* That is `TIMER_GRACE_MS` (500ms) plus the host's
+> round-ending chain — re-fetch answers, fill blanks, write the phase. It is the
+> system working, and it says nothing while it does. Left alone deliberately:
+> nothing was reported as broken, and adding a line to a screen that is about to
+> change was not asked for.
+
 > ## 2026-09-05 — a playtest, and one trapdoor behind three of the four reports
 >
 > The owner played a game and reported four things. **Three of them are one

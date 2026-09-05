@@ -286,7 +286,7 @@ export const STATES = {
         if (!p.isHost && !p.isCohost) {
           badges.push(opts.ready
             ? '<span class="badge badge--ready">Ready</span>'
-            : '<span class="badge badge--not-ready">Not Ready</span>');
+            : '<span class="badge badge--not-ready" role="img" aria-label="Not ready" title="Not ready"></span>');
         }
         // A bot carries one badge and nothing else — no ready state, no tier,
         // no title. Same as the app.
@@ -397,7 +397,13 @@ export const STATES = {
       document.querySelectorAll('#player-list .player-item__badges').forEach(strip => {
         const notReady = strip.querySelector('.badge--not-ready');
         if (notReady) {
+          // The not-ready mark is a DOT now, so its screen-reader label and
+          // tooltip have to go with it — a "Ready" badge still announcing "Not
+          // ready" is a mock previewing something the app would never build.
           notReady.className = 'badge badge--ready';
+          notReady.removeAttribute('role');
+          notReady.removeAttribute('aria-label');
+          notReady.removeAttribute('title');
           notReady.textContent = 'Ready';
         }
       });

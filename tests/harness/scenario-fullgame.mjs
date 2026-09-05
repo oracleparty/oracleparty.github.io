@@ -553,6 +553,27 @@ try {
     if (raters.length === 0) {
       problems.push(`no player was ever offered the host rating on the final round — samples: ${JSON.stringify(hostReviewOnFinalRound)}`);
     }
+
+    // AND IT IS STILL THERE ON RESULTS, which is where people actually stop.
+    // The final round's reveal lasts as long as it takes the host to tap on,
+    // and a control nobody has time to reach is not far from one that is not
+    // there — which is what "my friend didn't see it" describes.
+    for (const r of [bob, carol]) {
+      const onResults = await r.page.evaluate(() => {
+        const vis = el => !!el && el.style.display !== 'none' && el.offsetParent !== null;
+        const row = document.querySelector('#reveal-host-review');
+        return {
+          screen: document.querySelector('.screen.active')?.id || null,
+          inResults: !!row && !!row.closest('#results-screen'),
+          row: vis(row),
+          up: vis(document.querySelector('[data-host-vote="up"]')),
+        };
+      }).catch(() => null);
+      note(`${r.name} host review on results: ${JSON.stringify(onResults)}`);
+      if (onResults && onResults.screen === 'results-screen' && !(onResults.inResults && onResults.row && onResults.up)) {
+        problems.push(`${r.name} reached the results screen with no way to rate the host — the only other chance was the final reveal, which lasts as long as the host takes to tap on`);
+      }
+    }
     if (afterLeave >= beforeLeave && beforeLeave > 0) {
       problems.push(`leaving did not release Realtime channels (${beforeLeave} -> ${afterLeave})`);
     }

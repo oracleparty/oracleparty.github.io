@@ -428,7 +428,9 @@ export function doReveal() {
 
   // Show feedback icons and start fade timer
   showFeedbackUI();
-  showHostReviewUI();
+  // Takes the row BACK from the results screen, so a second game in the same
+  // room still has it on the reveal where 059 put it.
+  placeHostReview('reveal-host-review-slot');
 
   // Render immediately with cached answers (Realtime keeps these up-to-date).
   renderRevealAnswers(state.currentAnswers);
@@ -927,6 +929,46 @@ function showFeedbackUI() {
  * one. That is why the previous choice is restored from state rather than
  * re-read: the vote is about the host, not about this question.
  */
+/**
+ * MOVE the host-review row to a screen, and render it there.
+ *
+ * Reported from a live game: "is the host rating even working? I don't think my
+ * friend even encountered that option." It works — scenario-fullgame proves
+ * both non-host players get it — but migration 059 put it on the FINAL round's
+ * reveal only, and that screen lasts exactly as long as it takes the host to
+ * tap on. A control nobody has time to reach is not far from one that is not
+ * there, which is what the report actually describes.
+ *
+ * Results is where people linger, and the whole-game rule (059) is just as
+ * satisfied there — op_rate_host enforces it server-side either way, so nothing
+ * about WHO may vote changes.
+ *
+ * The ROW IS MOVED, not copied. A second copy would mean two sets of buttons
+ * and two listener bindings for one vote — "one rule, N readers" is the fault
+ * this codebase records more than any other, and a duplicated vote control is
+ * the worst possible place to introduce it. Moving keeps the listeners bound in
+ * initHostReviewListeners, because they sit on the buttons themselves.
+ */
+/**
+ * Is the review row currently on a screen somebody is looking at?
+ *
+ * The async re-render paths below used to ask `state.onRevealScreen`, which
+ * showResultsScreen sets to false — so once the row could live on results too,
+ * that test would have gone quiet exactly where the row now is. Asking the DOM
+ * where the row actually IS covers both homes with one rule.
+ */
+function hostReviewOnScreen() {
+  const row = $('#reveal-host-review');
+  return !!row && !!row.closest('.screen.active');
+}
+
+export function placeHostReview(slotId) {
+  const row = $('#reveal-host-review');
+  const slot = slotId ? document.getElementById(slotId) : null;
+  if (row && slot && row.parentElement !== slot) slot.appendChild(row);
+  showHostReviewUI();
+}
+
 function showHostReviewUI() {
   const row = $('#reveal-host-review');
   if (!row) return;
@@ -958,7 +1000,7 @@ function showHostReviewUI() {
       state._hostRepKnown = true;
       // Re-render rather than un-hiding here: the round may have moved on, and
       // this function already knows every reason the row should stay hidden.
-      if (state.onRevealScreen) showHostReviewUI();
+      if (hostReviewOnScreen()) showHostReviewUI();
     });
   }
   if (!state._hostRepKnown || !hostRatingsAvailable()) {
@@ -1041,7 +1083,7 @@ function sendHostVote({ rating = null, flagReason = null, flagNote = null }) {
     if (res.reason === 'you did not play the whole game') {
       state._hostReviewRefused = true;
       state.hostVote = null;
-      if (state.onRevealScreen) showHostReviewUI();
+      if (hostReviewOnScreen()) showHostReviewUI();
       return;
     }
     if (!res.ok && res.reason && res.reason !== 'host has no account' && res.reason !== 'not installed') {

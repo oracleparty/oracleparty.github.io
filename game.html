@@ -33,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260905b">
+  <link rel="stylesheet" href="css/style.css?v=20260905c">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body style="opacity:0">
@@ -170,6 +170,10 @@
              silently wrong. One vote per player per game; tap again to change
              it. Hidden entirely when the host is a guest, since there is no
              account to attach a reputation to. -->
+        <!-- The row's HOME on the reveal. It is moved to the results screen at
+             the end of the game and taken back here on the next reveal, so
+             there is only ever one of it. -->
+        <div id="reveal-host-review-slot"></div>
         <div id="reveal-host-review" class="host-review" style="display:none;">
           <span class="host-review__label">Play with this host again?</span>
           <div class="host-review__buttons">
@@ -319,6 +323,12 @@
           <div class="scores-animated__title">Scoreboard</div>
           <div id="results-list"></div>
         </div>
+
+        <!-- Where the host review LANDS on this screen. The row itself lives on
+             the reveal and is MOVED here, so there is one row, one set of
+             buttons and one set of listeners — two copies would be the "one
+             rule, N readers" fault this file records more than any other. -->
+        <div id="results-host-review-slot"></div>
       </div>
 
       <div class="game-footer results-footer">
@@ -453,7 +463,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/game/init.js?v=20260905b"></script>
+  <script type="module" src="js/game/init.js?v=20260905c"></script>
 
 </body>
 </html>

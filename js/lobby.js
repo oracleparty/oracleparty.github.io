@@ -529,7 +529,22 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
     // "Ready" was inconsistent as well as wasteful.
     badges.push('<span class="badge badge--ready">Ready</span>');
   } else if (!p.is_ready && !p.is_host && !p.is_cohost) {
-    badges.push('<span class="badge badge--not-ready">Not Ready</span>');
+    // A DOT, NOT THE WIDEST WORDS IN THE ROW.
+    //
+    // "Not Ready" measured 81px and sat on nearly every row nearly all the
+    // time, because not-ready is where everybody starts. Nothing else in this
+    // row can yield — the badge strip is `flex: 0 0 auto` and .name-stack has a
+    // hard 72px floor — so those 81px came straight out of the name and title.
+    // Measured at 375px: the row is 327px wide and its contents needed 329px,
+    // with the name box pinned at exactly its floor. That is the reported "the
+    // players list is too wide, can't see my friend's full title, and Not Ready
+    // is cut off".
+    //
+    // The signal anybody actually scans a lobby for is who IS ready, and that
+    // still says "Ready" in words. Its absence is the other half, and a dot
+    // carries it in 14px instead of 81. Labelled for screen readers and given a
+    // title so a long-press still explains it.
+    badges.push('<span class="badge badge--not-ready" role="img" aria-label="Not ready" title="Not ready"></span>');
   }
   // A bot carries one badge and nothing else. It has no ready state to report
   // (it is always ready), no tier and no title, so the row stays inside the
@@ -565,6 +580,16 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // guest does not, so rows would otherwise be 44px or 50px depending on who
   // was in them and the list would look ragged. The empty span reserves the
   // second line so every row is the same height.
+  // THE TIER YIELDS BEFORE THE TITLE DOES. `.player-tier` was `flex: 0 0 auto`,
+  // so it took its 63px of a 141px line and the TITLE truncated — measured at
+  // 375px, the title needed 96px and got 72. That is "can't even see my
+  // friend's full title", and it is the row-level fault one level down: two
+  // things on a line and only one of them able to give way.
+  //
+  // Moving the tier up beside the name was tried and measured WORSE: the name
+  // then truncated instead ("QuizMasterMax" 74px of 98px), and the name is the
+  // one thing on this row nobody can do without. Shrink order is the fix, not
+  // relocation — see .player-tier in the stylesheet.
   const titleHtml = `<span class="name-substack">${tierHtml}${titleText}</span>`;
   const profileAttr = p.user_id ? `data-profile-user-id="${p.user_id}"` : '';
   const honks = getHonkCount(p.id);

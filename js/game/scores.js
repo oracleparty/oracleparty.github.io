@@ -92,6 +92,12 @@ let _handleNextQuestion = null;
 let _revealHeldBy = null;
 export function registerHandleNextQuestion(fn) { _handleNextQuestion = fn; }
 
+// reveal.js owns the host-review row; this file shows the results screen it now
+// also appears on. Registered rather than imported, like everything else that
+// crosses between these two — a direct import would be a cycle.
+let _placeHostReview = null;
+export function registerPlaceHostReview(fn) { _placeHostReview = fn; }
+
 // ============================================
 // SCORES SCREEN (animated reveal)
 // ============================================
@@ -1187,6 +1193,12 @@ export async function showResultsScreen() {
     state.timerId = null;
   }
   state.onRevealScreen = false;
+
+  // The host review comes WITH us to results. It lived only on the final
+  // round's reveal, which lasts as long as it takes the host to tap on —
+  // reported as a friend never encountering the option at all. Results is where
+  // people actually stop. See placeHostReview: the row is moved, not copied.
+  if (_placeHostReview) _placeHostReview('results-host-review-slot');
 
   await updateScores();
 
