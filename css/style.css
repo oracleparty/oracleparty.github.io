@@ -5713,6 +5713,27 @@ body::after {
   max-height: 88vh;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* .modal carries 48px of padding top AND bottom — 96px of a 667px phone
+     spent on nothing, which is affordable on a two-button dialog and is not
+     here. Measured with the host's five buttons: the card ran to 715px on a
+     375x812 phone and the LAST button sat below the fold on both sizes. */
+  padding-top: var(--space-lg);
+  padding-bottom: var(--space-lg);
+}
+
+/* SMALLER BUTTONS, INSIDE THIS CARD ONLY.
+ *
+ * The global .btn is 53px and is calibrated on a real device for Start Game
+ * and Ready Up — one big target at the bottom of a screen. This card stacks up
+ * to FIVE, and five 53px buttons plus a chart is more than a phone holds.
+ *
+ * 44px is the floor, not a number picked to fit: it is the smallest
+ * comfortable tap target, and going under it to win space would trade a real
+ * problem for a worse one. */
+.profile-card .btn {
+  padding: 0.7rem var(--space-md);
+  font-size: var(--text-base);
+  min-height: 44px;
 }
 
 .profile-card__stats {

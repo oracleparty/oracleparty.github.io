@@ -519,8 +519,19 @@ function roleActionsFor(p) {
   // the app, so it is the only one that shouts. Colouring both would make the
   // colour mean "removal" rather than "this is the serious one", which is the
   // same reasoning the admin page's amber count chips are built on.
-  actions.push({ label: `Remove ${name}`, onClick: () => handleKick(p.id, name, false) });
-  actions.push({ label: `Kick ${name} out`, kind: 'danger', onClick: () => handleKick(p.id, name, true) });
+  // THE LABELS CARRY THE DIFFERENCE, not the name.
+  //
+  // The card already says who this is, twice — the name and the tag are the
+  // first thing on it — so repeating it in two buttons spent width on nothing
+  // and read as a form letter. The same fault the title gallery had: "the
+  // subject repeated in every requirement under a heading that already named
+  // it".
+  //
+  // What a person genuinely cannot know is what the two DO differently, and
+  // "Remove" against "Kick out" does not tell them. So the consequence is the
+  // label. It is the one thing worth the width.
+  actions.push({ label: 'Remove — they can rejoin', onClick: () => handleKick(p.id, name, false) });
+  actions.push({ label: 'Kick out — cannot rejoin', kind: 'danger', onClick: () => handleKick(p.id, name, true) });
   return actions.length ? actions : null;
 }
 

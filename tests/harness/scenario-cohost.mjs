@@ -275,7 +275,7 @@ try {
   {
     const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
     const carolUser = table.store.table('players').find(p => p.display_name === 'Carol')?.user_id;
-    const card = await pressPlayerCardAction(host.page, carolId, /^Remove /);
+    const card = await pressPlayerCardAction(host.page, carolId, /^Remove —/);
     note(`Carol's card offers: ${JSON.stringify(card.labels)}`);
     if (!card.pressed) {
       problems.push(`the host is offered no way to remove a player (offers: ${JSON.stringify(card.labels)})`);
@@ -304,7 +304,7 @@ try {
 
     // KICK: gone, and refused on the way back.
     const carolAgain = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
-    const kicked = await pressPlayerCardAction(host.page, carolAgain, /^Kick /);
+    const kicked = await pressPlayerCardAction(host.page, carolAgain, /^Kick out/);
     note(`kick pressed: ${kicked.pressed}, offers were ${JSON.stringify(kicked.labels)}`);
     if (!kicked.pressed) {
       problems.push(`the host is offered no way to kick a player (offers: ${JSON.stringify(kicked.labels)})`);

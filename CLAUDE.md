@@ -291,6 +291,27 @@
 > bystander still gets in. Verified by making Kick pass `ban=false`: *"a KICKED
 > player walked straight back into the room — the ban does nothing"*.
 >
+> **FIVE BUTTONS DID NOT FIT, and only measuring the full host case found it.**
+> The card mock had three — which is what a NON-host sees — so the tallest card
+> the app can build had never been rendered. Measured with all five: **715px on
+> a 375x812 phone, with the last button below the fold on both sizes.**
+>
+> | | |
+> |---|---|
+> | `.modal` padding | **48px top AND bottom** — affordable on a two-button dialog, not here. 24px now |
+> | `.profile-card .btn` | 53px → **44px**, and 44 is the floor rather than a number picked to fit: under it, a real problem is traded for a worse one. Scoped to this card — the global 53px is calibrated on a real device for Start Game |
+>
+> After: 644px at 375x812 and 702px at 430x932, **no scrolling**; the 667px SE
+> still scrolls, with the fifth button peeking at the edge, which is the right
+> affordance rather than a hidden control.
+>
+> **And the labels stopped repeating the name.** "Remove QuizMasterMax" /
+> "Kick QuizMasterMax out" spent width on a name the card states twice at the
+> top — the gallery's *"the subject repeated in every requirement under a
+> heading that already named it"*, again. What a person genuinely cannot know is
+> what the two do DIFFERENTLY, so that is the label now: **"Remove — they can
+> rejoin"** and **"Kick out — cannot rejoin"**.
+>
 > **The confirm dialog nearly made that check meaningless.** Playwright
 > DISMISSES dialogs by default, so the kick was being cancelled and every
 > assertion after it measured a button that was never really pressed.

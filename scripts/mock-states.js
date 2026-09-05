@@ -807,9 +807,15 @@ export const STATES = {
             <div class="profile-card__radar radar" id="mock-card-radar"></div>
             <p class="radar__caption">Strongest: History 81%</p>
             <p class="host-rep host-rep--none">No host ratings yet</p>
+            <!-- THE FULL HOST CASE: five buttons. The first version of this
+                 mock showed three, which is what a NON-host with a friend
+                 request sees — so the tallest card the app can build was never
+                 measured. -->
             <div class="profile-card__roles">
               <button class="btn btn-secondary btn-block">Make co-host</button>
               <button class="btn btn-secondary btn-block">Make host</button>
+              <button class="btn btn-secondary btn-block">Remove — they can rejoin</button>
+              <button class="btn btn-secondary btn-block btn-danger-text">Kick out — cannot rejoin</button>
             </div>
             <div class="profile-card__actions">
               <button class="btn btn-secondary btn-block">Add Friend</button>
