@@ -72,6 +72,54 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-05 (third playtest) — the final round's clock was the host's guess
+>
+> **Reported: "the player could answer but host couldn't see the question till
+> after the timer, then it rerolled the difficulty, gave the same question, and
+> the player's prior answer was locked."** One cause found by reading, and it is
+> an ORDER.
+>
+> `handleRevealFinalQuestion` drew the question screen BEFORE it wrote the
+> phase. `showQuestionScreen` is where the host stamps the round clock, and
+> `op_start_clock` checks the phase it is given against the ROOM's — which was
+> still `final_wager`. **So the stamp was refused every single time**, the
+> client fell back to its own `Date.now() + serverTimeOffset` estimate, and
+> wrote that instead.
+>
+> **This is migration 047's fault arriving by a different road.** That one
+> passed the wrong phase NAME; this passed the right name at the wrong MOMENT,
+> and `op_start_clock` cannot tell those apart — both are "you are not where you
+> think you are". 047 exists because `op_submit_answer` compares the stamp
+> against the database's own `now()`: **a host whose estimate runs slow has
+> every answer in the room refused as late, and one whose estimate runs fast
+> stops the timer expiring at all.** On the one round that subtracts points.
+>
+> The phase write now comes first and the screen last. The cost is that the
+> host's final question waits on one ordinary phase write, which every other
+> round already does; the 2026-08-30 rule is about an UNBOUNDED call gating a
+> screen, and this is not one.
+>
+> ### INSPECTION-VERIFIED ONLY, and two break tests are what established that
+>
+> **`scenario-cohost` cannot reach this**, and both attempts to check it passed
+> with the fix reverted:
+>
+> | check | why it could not fail |
+> |---|---|
+> | the room has a stamp when the phase flips | it never does, either way — the phase and the stamp are two calls, and a brief gap is the harmless direction |
+> | how long the round goes with no clock | ~1s either way: refused, the client writes its own estimate a moment later |
+> | whether a CLIENT-estimated stamp was written | 0 either way — because the reveal in that scenario is won by the CO-HOST, and only the HOST stamps |
+>
+> That last one is the real reason: the co-host writes the phase, the host hears
+> it, and by the time the host's screen stamps, the room IS on `final_question`.
+> **The fault needs the host to be the presser**, which that section is not
+> written to produce. The assertions were deleted rather than kept — a check
+> that agrees with you whatever you do is worse than none — and the two
+> diagnostic notes stay, so the next run prints who stamped the clock.
+>
+> **Still open from that report**: the rerolled difficulty and the locked prior
+> answer are not explained by this, and are not fixed.
+
 > ## 2026-09-05 (second playtest) — the final question, the swept host, and a row that could not shrink
 >
 > Six reports. Two game-breaking, and both were about something being allowed to

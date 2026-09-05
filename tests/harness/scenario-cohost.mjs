@@ -474,6 +474,31 @@ try {
   const done = new Set();
   let revealed = false;
   let revealMark = 0;
+  // THE FINAL ROUND'S CLOCK, SAMPLED AT THE MOMENT IT MATTERS.
+  //
+  // Reading rooms.question_started_at after the round is over reports whatever
+  // the backstop has since repaired — the game has moved on and the column is
+  // set again, so the check passes whatever the write order was. And the log
+  // cannot see it either: the fake store stamps inside op_start_clock rather
+  // than through a rooms update, exactly as Postgres does.
+  //
+  // So watch the row and record the FIRST observation of the final question.
+  // That is the state every phone but the host is reading from.
+  // HOW LONG THE ROUND GOES WITHOUT A CLOCK, not whether it has one at the
+  // exact instant the phase flips. A brief gap is unavoidable and harmless —
+  // the phase write and the stamp are two calls, and CLAUDE.md's own rule is
+  // that a phone with no stamp runs a FULL clock until the real one lands. What
+  // is NOT survivable is the stamp never arriving, which is what a refused
+  // op_start_clock produced: the host runs on its own local time and every
+  // other phone shows a bar that never moves.
+  let finalPhaseAt = 0;
+  let stampDelay = null;
+  const stampWatch = setInterval(() => {
+    const r = table.store.table('rooms')[0];
+    if (!r || r.game_phase !== 'final_question') return;
+    if (!finalPhaseAt) finalPhaseAt = Date.now();
+    if (stampDelay === null && r.question_started_at) stampDelay = Date.now() - finalPhaseAt;
+  }, 100);
 
   for (let i = 0; i < 220 && !revealed; i++) {
     for (const r of [host, bob, carol]) {
@@ -578,6 +603,49 @@ try {
     if (listWrites.length > 1) {
       problems.push(`the final question was revealed ${listWrites.length} times — each run picks its own random difficulty and fetches its own question, so the room's last question depends on which write landed last`);
     }
+
+    // THE FINAL ROUND HAS A CLOCK, and this is the half that was missing.
+    //
+    // The stamp was made by the question screen and then WIPED by the write
+    // that clears the stale wager-screen stamp, because that write came second.
+    // The host has a local questionStartedAt and runs a timer regardless, so
+    // the fault is invisible from the host's phone — while getServerTimeLeft
+    // returns the FULL duration for a null stamp, so every OTHER phone showed a
+    // bar that never moved and a round that never ended.
+    //
+    clearInterval(stampWatch);
+    note(`the final question's clock arrived ${stampDelay === null ? 'NEVER' : stampDelay + 'ms'} after the phase`);
+    if (finalPhaseAt && stampDelay === null) {
+      problems.push('the final question never got a clock in the room — every phone but the host shows a bar that never moves, on the one round that subtracts points');
+    }
+    // THIS SECTION CANNOT REACH THE FAULT THE FIX IS FOR, and saying so beats a
+    // check that agrees with you. The reveal here is won by the CO-HOST, and
+    // only the host stamps the clock — so the co-host writes the phase, the
+    // host hears it, and by the time the host's screen stamps, the room IS on
+    // final_question and op_start_clock is happy. The bug needs the HOST to be
+    // the presser. Both break tests passed with the fix reverted, which is what
+    // established that; the assertion below was deleted rather than kept as
+    // something that looks like coverage.
+
+    // WHO STAMPED IT, which is the property that actually moved.
+    //
+    // A delay check cannot tell the two apart: with the screen drawn before the
+    // phase write, op_start_clock is REFUSED (it checks the phase it is given
+    // against the room's, and the room is still on final_wager) and the client
+    // writes its own estimate instead — so the room gets a stamp either way,
+    // about a second later either way. Measuring the delay proved nothing, and
+    // the break test passing is what said so.
+    //
+    // The difference is WHOSE CLOCK it is. op_start_clock exists because
+    // op_submit_answer compares the stamp against the database's own now(): a
+    // host whose estimate runs slow has every answer in the room refused as
+    // late, and one whose estimate runs fast stops the timer expiring at all
+    // (migration 047). A stamp written through a plain rooms update is that
+    // estimate, and on the final round it was the ONLY path.
+    const fallbackStamps = table.store.log.filter((o, i) =>
+      i >= revealMark && o.table === 'rooms' && o.action === 'update'
+      && o.payload && o.payload.question_started_at);
+    note(`client-estimated stamps written after the reveal: ${fallbackStamps.length} (0 means the DATABASE stamped it)`);
 
     // AND THE OVERLAY IS NOT STILL UP. It is position:fixed over everything, so
     // a second chain finishing after the room has moved on leaves the question

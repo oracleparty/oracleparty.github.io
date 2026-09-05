@@ -894,20 +894,31 @@ export async function handleRevealFinalQuestion() {
   clearFinalWagerTimer();
   $('#reveal-answers').innerHTML = '';
 
-  _showQuestionScreen();
-
-  // TWO WRITES, and the order matters. The question LIST is not a phase, so it
-  // goes through the ordinary room update — and it must land FIRST: every
-  // client re-reads the list when the phase arrives, and a player who got the
-  // phase without the swapped final question would answer a question nobody
-  // else was asked (the bug "the screen must show the question the room is
-  // asking" records, which migration 046 made far worse by judging against the
-  // ROOM's question rather than the one on screen).
-  // The question list AND the dead clock, in the one write that lands before
-  // the phase. The stamp still sitting there belongs to the 20-second WAGER
-  // screen, so a phone that picked it up would open the final question with
-  // seconds left on it — the same fault the regular rounds had, on the one
-  // round that subtracts.
+  // THE LIST AND THE DEAD CLOCK GO FIRST — BEFORE the question screen, not
+  // after it. This was the other way round, and the two writes fought:
+  //
+  //   1. _showQuestionScreen() stamps the clock. op_start_clock REFUSES,
+  //      because it checks the phase it is given against the ROOM's and the
+  //      room is still on final_wager at this point — so the client falls back
+  //      to its local estimate and writes that itself, fire-and-forget.
+  //   2. The write below then set question_started_at back to NULL, landing
+  //      after it and wiping the stamp that had just been made.
+  //
+  // The final round therefore ended up with NO clock in the room. The host has
+  // its own local `state.questionStartedAt` and runs a timer regardless, but
+  // getServerTimeLeft returns the FULL duration for a null stamp, so every
+  // other phone showed a bar that never moved. Reported from a live game as the
+  // last question going wrong in several ways at once.
+  //
+  // Clearing the stamp before the screen is drawn fixes it by ordering rather
+  // than by a guard: the stale 20-second WAGER stamp is gone before anybody can
+  // read it, and the host's own stamp is then the last write standing.
+  //
+  // The question LIST must also land before the phase: every client re-reads it
+  // when the phase arrives, and a player who got the phase without the swapped
+  // final question would answer a question nobody else was asked — the bug
+  // "the screen must show the question the room is asking" records, which
+  // migration 046 made far worse by judging against the ROOM's question.
   const questionIds = state.questions.map(qn => qn.id);
   await updateGameState(state.room.id, { question_ids: questionIds, question_started_at: null });
 
@@ -918,6 +929,30 @@ export async function handleRevealFinalQuestion() {
       current_question: state.totalQuestions,
     });
   }
+
+  // THE SCREEN COMES LAST, AND THAT IS THE WHOLE FIX.
+  //
+  // showQuestionScreen is where the host stamps the round clock, and
+  // op_start_clock checks the phase it is given against the ROOM's. With the
+  // screen drawn before the phase write, the room was still on `final_wager`,
+  // so the stamp was REFUSED every time — the client fell back to its local
+  // estimate and wrote that itself, fire-and-forget, and the room commonly
+  // reached `final_question` with question_started_at still NULL.
+  //
+  // The host never sees it: it holds its own state.questionStartedAt and its
+  // timer runs. Every OTHER phone reads the room, and getServerTimeLeft returns
+  // the FULL duration for a null stamp — a bar that does not move, on the one
+  // round that subtracts points.
+  //
+  // This is the 047 fault arriving by a different road. That one passed the
+  // wrong phase NAME; this one passed the right name at the wrong MOMENT, and
+  // op_start_clock cannot tell those apart — both are "you are not where you
+  // think you are".
+  //
+  // The cost is that the host's question screen waits on one ordinary phase
+  // write, which is what every other round already does. The 2026-08-30 rule is
+  // about an UNBOUNDED call gating the screen, and this is not one.
+  _showQuestionScreen();
 }
 
 /**
