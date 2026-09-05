@@ -833,6 +833,22 @@ export async function handleNextQuestion() {
       await updateGameState(state.room.id, { game_phase: 'results' });
     }
   } else {
+    // THE OLD ROUND'S CLOCK GOES BEFORE THE NEW ROUND IS ANNOUNCED.
+    //
+    // Data first, phase second — this file's own rule, applied to the one
+    // column it had been left off. Announcing the round and stamping its clock
+    // are two writes a second apart, and in between the room row named the new
+    // round while still holding the last one's stamp. Realtime hands every
+    // phone the whole row, so any write landing in that gap — the scoreboard, a
+    // settings change — gave somebody a question that opened with seconds left.
+    //
+    // Clearing it makes that value simply absent rather than wrong, and a phone
+    // with no stamp runs a full clock until the real one arrives, which is the
+    // harmless direction. Fire-and-forget: it is a tidy-up, and the round must
+    // not wait on it. isStampForCurrentRound covers the case where it does not
+    // land at all.
+    updateGameState(state.room.id, { question_started_at: null })
+      .catch(err => logger.warn('Game', 'Could not clear the previous round clock', err));
     state.currentQuestion = state.currentQuestion + 1;
     if (_handlePhaseTransition) _handlePhaseTransition('question');
     if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,

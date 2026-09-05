@@ -36,6 +36,23 @@ export const PHASE_BACKSTOP_POLL_MS = 3000;
 // Generous, because a false timeout costs accuracy on a number the server is
 // better at, and because the stamp normally lands in well under a second.
 export const CLOCK_STAMP_TIMEOUT_MS = 4000;
+
+// HOW STALE A ROUND CLOCK MAY LOOK BEFORE THIS PHONE REFUSES IT.
+//
+// Realtime sends the WHOLE room row on every update, so every unrelated write —
+// the scoreboard, the question list, a settings change — carries whatever
+// `question_started_at` currently holds. Between the write that announces a new
+// round and the one that stamps its clock (WAGER_AUTO_SKIP_MS later) the row is
+// internally inconsistent: it names the new round and still holds the PREVIOUS
+// round's stamp. A phone that took it started the question with the last one's
+// clock — reported from a live game as "the question started with only 4
+// seconds left".
+//
+// So a stamp older than the moment this phone entered the round is not this
+// round's stamp. The tolerance only has to absorb clock skew between
+// serverTimeOffset and the database's own now(); what it rejects is a whole
+// round old, so being generous here costs nothing.
+export const CLOCK_STAMP_TOLERANCE_MS = 5000;
 export const TOAST_DURATION_MS = 3000;
 export const TRANSITION_MS = 260;
 export const FADE_MS = 500;

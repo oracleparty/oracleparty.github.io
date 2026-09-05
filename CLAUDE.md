@@ -72,6 +72,119 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-05 — a playtest, and one trapdoor behind three of the four reports
+>
+> The owner played a game and reported four things. **Three of them are one
+> bug**, and it is in a shortcut nine words long.
+>
+> ### "He said time's up but he could still type"
+>
+> `handleRoomChange` had a fast path for one moment — a non-host sitting on a
+> question screen with the card still hidden, waiting for the host's clock stamp
+> to reveal it:
+>
+> ```js
+> if (!isHost && question_started_at && state.gamePhase === 'question'
+>     && !state.hasSubmitted && !state.timerId) {
+>   revealQuestionAndStartTimer();
+>   return;                       // ← everything below is skipped
+> }
+> ```
+>
+> `return` skips `current_question`, a swapped question list, and
+> **handlePhaseTransition**. And the conditions cannot tell that moment from a
+> round that has ALREADY ENDED, because **`startTimer` sets `state.timerId` to
+> null the instant the clock runs out**.
+>
+> So from expiry onwards, a player who had not submitted matched this on EVERY
+> room update — the host's `game_phase = 'reveal'` included. The timer restarted
+> against the same expired stamp, re-expired, nulled `timerId` again, and the
+> next update was swallowed the same way. **Stuck on a dead question for the
+> rest of the game**, which is exactly what was reported.
+>
+> The window is not only the 500ms grace before the auto-submit. `doSubmitAnswer`
+> puts `hasSubmitted` BACK to false when a deliberate submit is refused — and a
+> submit into a closed round is refused — so trying to answer is what makes it
+> permanent. The player typing is the thing that keeps them trapped.
+>
+> **AND IT EXPLAINS "I BET 5 AND IT SAID I BET 1".** Everything typed into that
+> dead round is refused as late, so the row that stands is the blank the host
+> already filled in — carrying that player's **lowest unused wager**, which
+> early in a game is 1. Not a wager bug at all; a symptom.
+>
+> ### "Question 4 started with only 4 seconds left"
+>
+> Same area, separate cause, and it is about what Realtime actually delivers:
+> **the whole `rooms` row on every update**. Announcing a round and stamping its
+> clock are two writes a second apart (`WAGER_AUTO_SKIP_MS`), so in between, the
+> row names the new round and still holds the LAST one's stamp. The handler took
+> it unconditionally. Any write landing in that gap — the scoreboard, the
+> question list, a settings change — handed somebody the previous round's clock.
+>
+> Two fixes, because either alone leaves a hole:
+>
+> - **At source.** `handleNextQuestion` and `handleRevealFinalQuestion` now
+>   write `question_started_at: null` BEFORE the phase. Data first, phase second
+>   — this project's own rule, applied to the one column it had been left off.
+>   Absent is not wrong: a phone with no stamp runs a FULL clock until the real
+>   one lands, which is the harmless direction.
+> - **On arrival.** `isStampForCurrentRound` in `timer-helpers.js` — pure, 9
+>   unit tests — refuses a stamp whose round number is not ours, or that predates
+>   the moment we entered this round. `state._roundEnteredAt` is what makes the
+>   second question answerable at all, and `beginRoundClock()` in `state.js` is
+>   the one place that sets it: **five sites begin a round**, and "the same rule
+>   stated N times and followed N-1" is this file's most repeated fault.
+>
+> **A dead guard found on the way.** The `final_question` case tested
+> `state.gamePhase !== 'loading'` — but the switch overwrites `state.gamePhase`
+> with the new phase *before* the cases run, so it could never be false and the
+> reconnect it protected was never protected. It uses `prevPhase` now, which the
+> `final_wager` case two above had right all along.
+>
+> ### The check, and what makes it a check
+>
+> `scenario-nasty` closes a round under a player and requires them to follow the
+> room. Reverting the guard fails it by name, twice: *"the room moved to reveal
+> and Bob never heard it"* and *"the round is over and Bob can still type into
+> it"*, with `{"screen":"question-screen","phase":"question","canType":true}` —
+> the reported bug, reproduced.
+>
+> **The state is SET, not waited for**, and that is deliberate: reaching it by
+> playing needs the reveal write to land inside a 500ms window, and a flaky
+> check is one people learn to re-run. Every field is one the app writes itself.
+>
+> ### "When I type I can't see the question"
+>
+> Every screen is `position: fixed; inset: 0; height: 100dvh`, and that is the
+> shape a phone keyboard breaks. iOS does not shrink the layout viewport, so
+> `100dvh` stays the whole phone; the browser PANS the visible window up to reach
+> the answer box, a fixed element pans with the layout viewport rather than the
+> visible one, and the question goes off the top with `overflow: hidden` leaving
+> nothing to scroll back to.
+>
+> `js/keyboard-inset.js` (no imports, 7 unit tests) measures `visualViewport` and
+> publishes `--kb-visible-height` / `--kb-offset-top` plus a `kb-open` class; the
+> question screen is resized and re-anchored to the window that is actually
+> visible, so there is nothing left to pan. The answer box becomes sticky and the
+> question card keeps its own scroll, so the thing that gives way is never the
+> thing you are looking at. `game.html` also gains
+> `interactive-widget=resizes-content`, which fixes it outright on Android
+> without any of the JS running.
+>
+> **EVERY RULE IS BEHIND `.kb-open`.** With no keyboard — which is every state
+> the layout sweep and the robots can produce — not one applies, and the sweep
+> confirms the layout is unchanged. **This is the one fix here that a real phone
+> still has to confirm**, because nothing in this repo can open a keyboard.
+> Measuring the arithmetic is not measuring the result; say it that way.
+>
+> ### The habit
+>
+> Three of four reports were one bug, and the bug was a `return`. **A shortcut
+> that skips the main path is a trapdoor the moment its conditions drift** — and
+> `timerId` did not drift, it was never a test for "is this round live" in the
+> first place. When a guard uses a variable to mean something it does not mean,
+> the failure is not a wrong answer, it is a right answer to the wrong question.
+
 > ## 2026-09-03 — reading the whole shift, hunk by hunk
 >
 > The owner's question was the right one: *"it had been working well before the

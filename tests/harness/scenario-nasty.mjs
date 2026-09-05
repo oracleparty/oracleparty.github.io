@@ -853,7 +853,88 @@ async function theRoundEndsWithoutTheHost() {
   }
 }
 
+// ------------------------------------------------------------
+// A CLOSED ROUND MUST NOT TRAP THE PLAYER IN IT
+//
+// handleRoomChange has a shortcut for one moment — a non-host sitting on a
+// question screen with the card hidden, waiting for the host's clock stamp to
+// reveal it. It `return`ed, so it skipped `current_question`, a swapped
+// question list, and handlePhaseTransition; and its conditions could not tell
+// that moment from a round that had ALREADY ENDED, because state.timerId is
+// nulled the instant the timer expires.
+//
+// So from expiry onwards, a player who had not submitted matched it on EVERY
+// room update — the host's `game_phase = 'reveal'` included. The timer
+// restarted against the same expired stamp, re-expired, and the next update
+// was swallowed the same way: stuck on a dead question for the rest of the
+// game. Reported from a live game as "he said time's up but he could still
+// type", and everything typed into that round was then refused as late.
+//
+// THE STATE IS SET HERE RATHER THAN WAITED FOR. Reaching it by playing needs
+// the host's reveal write to land inside the 500ms grace before the auto-submit
+// runs, which is a coin flip, and a flaky check is one people learn to re-run.
+// Every field below is one the app writes itself: startTimer nulls timerId and
+// sets timerExpired when the clock runs out, and doSubmitAnswer puts
+// hasSubmitted BACK to false when the server refuses a deliberate submit —
+// which is what a submit into a closed round gets. That is the player typing.
+// ------------------------------------------------------------
+async function aClosedRoundReleasesThePlayer() {
+  heading('the round closed while a player had not answered');
+  const table = await PlaytestTable.open();
+  try {
+    const { bob } = await roomOnAQuestion(table);
+    await bob.page.waitForTimeout(2000);
+
+    const forced = await bob.page.evaluate(() => {
+      const st = window.__state;
+      if (!st) return null;
+      if (st.timerId) clearInterval(st.timerId);
+      st.timerId = null;
+      st.timerExpired = true;
+      st.hasSubmitted = false;
+      return { phase: st.gamePhase, question: st.currentQuestion };
+    });
+    note(`Bob's clock ran out on: ${JSON.stringify(forced)}`);
+
+    if (!forced || forced.phase !== 'question') {
+      // Without a live question under him this check cannot fail, and a check
+      // that cannot fail looks like coverage.
+      problems.push(`could not put Bob on a live question to close under him (state: ${JSON.stringify(forced)})`);
+    } else {
+      // The room moves on, exactly as the host's own timer expiry writes it —
+      // through the same _broadcast every real write goes through.
+      const row = roomRow(table);
+      const before = { ...row };
+      row.game_phase = 'reveal';
+      table.store._broadcast('UPDATE', 'rooms', row, before);
+      await bob.page.waitForTimeout(3000);
+
+      const seen = await bob.page.evaluate(() => ({
+        screen: document.querySelector('.screen.active')?.id || null,
+        phase: window.__state?.gamePhase || null,
+        canType: (() => {
+          const el = document.getElementById('answer-input');
+          return !!el && el.offsetParent !== null && !el.disabled;
+        })(),
+      })).catch(() => null);
+      note(`Bob after the round closed: ${JSON.stringify(seen)}`);
+
+      if (seen && seen.phase === 'question') {
+        problems.push(`the room moved to reveal and Bob never heard it — he is stuck on a round that is over (screen: ${seen.screen})`);
+      }
+      if (seen && seen.canType) {
+        problems.push(`the round is over and Bob can still type into it — everything he sends now is refused as late, and the blank already filled in for him is the answer that stands`);
+      }
+    }
+  } catch (err) {
+    problems.push(`closed-round scenario threw: ${err.message.split('\n')[0]}`);
+  } finally {
+    await table.close();
+  }
+}
+
 await awayIsVisible();
+await aClosedRoundReleasesThePlayer();
 await aQuestionWhoseClockNeverStarted();
 await theRoundEndsWithoutTheHost();
 await hostDisappearsMidQuestion();

@@ -5,10 +5,10 @@
 
 import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../utils.js';
 import { findNextAvailableWager, countAnswersFrom } from './scoring-helpers.js';
-import { getCountdownElapsed } from './timer-helpers.js';
+import { getCountdownElapsed, isStampForCurrentRound } from './timer-helpers.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
 import { logger } from '../logger.js';
-import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, PHASE_BACKSTOP_POLL_MS } from '../constants.js';
+import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TOLERANCE_MS } from '../constants.js';
 import {
   updateGameState,
   fetchQuestionsByIds,
@@ -35,6 +35,7 @@ import {
   _countdownActive, setCountdownActive,
   _deferredPhase, setDeferredPhase,
   _staleCheckCount, setStaleCheckCount,
+  beginRoundClock,
 } from './state.js';
 import { showChatBar, hideChatBar } from './chat.js';
 import { initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear } from './host.js';
@@ -242,8 +243,26 @@ export function handleRoomChange(payload) {
     return;
   }
 
-  // Track server timer start timestamp
-  if (question_started_at) {
+  // THE ROUND CLOCK, AND ONLY IF IT IS THIS ROUND'S.
+  //
+  // This was an unconditional assignment, and Realtime sends the WHOLE room row
+  // on every update — so the scoreboard write, the question-list write, a host
+  // settings change, and the write that announces the next question all carried
+  // whatever `question_started_at` happened to hold. Announcing a round and
+  // stamping its clock are two writes a second apart, so in between the row
+  // names the new round and still holds the LAST one's stamp. A phone that took
+  // it started the question on a clock that had already run out.
+  //
+  // Reported from a live game: "on question 4 the question started with only 4
+  // seconds left and we had no time to answer."
+  const stampIsForThisRound = isStampForCurrentRound({
+    rowQuestion: current_question,
+    myQuestion: state.currentQuestion,
+    stampedAt: question_started_at,
+    roundEnteredAt: state._roundEnteredAt,
+    toleranceMs: CLOCK_STAMP_TOLERANCE_MS,
+  });
+  if (stampIsForThisRound) {
     state.questionStartedAt = question_started_at;
   }
 
@@ -252,10 +271,38 @@ export function handleRoomChange(payload) {
     state.countdownStartedAt = countdown_started_at;
   }
 
-  // Non-host: when host writes question_started_at, reveal the question and start timer
-  if (!state.room.isHost && question_started_at && state.gamePhase === 'question' && !state.hasSubmitted && !state.timerId) {
+  // NON-HOST: THE HOST'S CLOCK STAMP IS WHAT REVEALS THE QUESTION.
+  //
+  // This shortcut exists for one moment — a player sitting on a question screen
+  // with the card still hidden, waiting for that stamp — and it was a trapdoor.
+  //
+  // `return` skips everything below it: `current_question`, a swapped question
+  // list, and handlePhaseTransition. And its conditions could not tell that
+  // moment from a round that had ALREADY FINISHED, because `state.timerId` is
+  // set to null the instant the timer expires. So from expiry onwards, a player
+  // who had not submitted matched this on EVERY room update — including the
+  // host's `game_phase = 'reveal'` — and the phase change was swallowed by it.
+  // The timer restarted against the same expired stamp, re-expired, nulled
+  // timerId again, and the next update was swallowed the same way. A player
+  // stuck on a closed round for the rest of the game.
+  //
+  // Reported from a live game, in the words that name it exactly: "other player
+  // said time's up... but he could still type". And everything typed into that
+  // dead round was refused as late, so the blank the host had already filled in
+  // for him is the row that stood — carrying his LOWEST UNUSED WAGER, which
+  // early in a game is 1. That is "I bet 5 and it said I bet 1".
+  //
+  // Three conditions now, each closing a different door: the ROOM must still be
+  // asking a question (if it has moved on, there is no clock to start and the
+  // phase below is the whole point), the stamp must be this round's, and our
+  // own clock must not have already run out. And it no longer returns — a phase
+  // change must never be swallowed by a shortcut, whatever the conditions say.
+  // handlePhaseTransition refuses a phase it is already on, so falling through
+  // costs nothing.
+  if (!state.room.isHost && stampIsForThisRound && game_phase === 'question'
+      && state.gamePhase === 'question'
+      && !state.hasSubmitted && !state.timerExpired && !state.timerId) {
     revealQuestionAndStartTimer();
-    return;
   }
 
   if (!state.room.isHost && question_ids && question_ids.length > 0 && state.questions.length === 0) {
@@ -471,11 +518,12 @@ export async function handlePhaseTransition(phase) {
         gameKey: state.countdownStartedAt || null
       });
     }
-    // Clear stale questionStartedAt on normal transitions (not init reconnect)
-    // Reconnects from init set questionStartedAt BEFORE calling handlePhaseTransition
-    if (state.gamePhase !== 'loading') {
-      state.questionStartedAt = null;
-    }
+    // A ROUND BEGINS ON THIS PHONE. Drops the previous round's stamp and
+    // records the moment we arrived, which is the only thing that later tells
+    // this round's stamp from one the room row is still carrying for the last
+    // one. Reconnects from init set questionStartedAt BEFORE calling this and
+    // must keep it — clearing it would restart everyone's clock.
+    beginRoundClock({ keepStamp: state.gamePhase === 'loading' });
     state.gamePhase = phase;
 
     // On reconnect (questionStartedAt present), check if we already answered
@@ -580,7 +628,7 @@ export async function handlePhaseTransition(phase) {
       // arrives from init.js with the phase still 'loading' and the room's real
       // timestamp already in place — that one must survive, or a player coming
       // back would restart everyone's clock.
-      if (prevPhase !== 'loading') state.questionStartedAt = null;
+      beginRoundClock({ keepStamp: prevPhase === 'loading' });
       showFinalWagerScreen();
       break;
     case 'difficulty_vote':
@@ -611,9 +659,14 @@ export async function handlePhaseTransition(phase) {
       state.previousScores = {};
       // Clear stale reveal DOM from previous round
       $('#reveal-answers').innerHTML = '';
-      if (state.gamePhase !== 'loading') {
-        state.questionStartedAt = null;
-      }
+      // prevPhase, NOT state.gamePhase. This case runs after the switch's own
+      // `state.gamePhase = phase` above it, so the original `state.gamePhase
+      // !== 'loading'` here could never be false and the reconnect it was
+      // written to protect was never protected — a player returning to the
+      // final question had this round's real stamp thrown away and ran no
+      // clock. The final_wager case two above already used prevPhase, which is
+      // what made the difference visible.
+      beginRoundClock({ keepStamp: prevPhase === 'loading' });
       state.gamePhase = phase;
       showQuestionScreen();
       return; // already set gamePhase

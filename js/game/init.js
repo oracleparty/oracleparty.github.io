@@ -43,6 +43,7 @@ import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, g
          rememberSeat, recallSeat } from '../auth.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
+import { initKeyboardInset } from '../keyboard-inset.js';
 import { updatePresence } from '../presence.js';
 import { attachProfileCardHandler } from '../profile.js';
 import {
@@ -84,6 +85,12 @@ import {
   handleAnswerChange, checkStalePresence, showCountdownScreen,
   registerCleanup as registerPhasesCleanup,
 } from './phases.js';
+
+// Teardown for the visual-viewport listener that keeps the question on screen
+// while the keyboard is up. Module-level so cleanup() can reach it — every
+// other listener started in init() is cleared there, and phase-guards.test.js
+// exists because the ones that were not leaked on every game exit.
+let _teardownKeyboardInset = null;
 
 // ============================================
 // FEEDBACK PREFETCH
@@ -308,6 +315,10 @@ async function init() {
   loadChatMessages();
   attachChatListeners();
   initFeedbackListeners();
+
+  // Keep the question on screen while the keyboard is up. Returns a teardown,
+  // and does nothing at all on a browser with no visualViewport.
+  _teardownKeyboardInset = initKeyboardInset();
 
   // Typing indicator
   initTypingIndicator(state.room.id, state.room.playerId, getDisplayName(), updateTypingUI);
@@ -1002,6 +1013,10 @@ function cleanup() {
   // (ResizeObserver removed — chat is now inline flex, no positioning needed)
   destroyHonkSystem();
   destroyTypingIndicator();
+  if (_teardownKeyboardInset) {
+    _teardownKeyboardInset();
+    _teardownKeyboardInset = null;
+  }
   if (state.timerId) {
     clearInterval(state.timerId);
     state.timerId = null;

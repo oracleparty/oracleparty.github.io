@@ -30,6 +30,12 @@ export const state = {
   chatOpen: false,
   serverTimeOffset: 0,  // serverTime - clientTime in ms
   questionStartedAt: null, // ISO timestamp from DB — single source of truth for timer
+  // WHEN THIS PHONE ENTERED THE ROUND IT IS ON, in server time. Set by
+  // beginRoundClock(); read only by the rule that decides whether an arriving
+  // stamp belongs to this round or to the last one. Without it a phone cannot
+  // tell those apart, because the room row carries no round number ON the
+  // stamp — see isStampForCurrentRound.
+  _roundEnteredAt: null,
   presenceChannel: null,
   presenceReady: false,
   awayTimestamps: new Map(), // player ID → Date.now() when first seen as away
@@ -128,6 +134,31 @@ export function setDeferredPhase(v) { _deferredPhase = v; }
 
 export let _screenTransitioning = false;
 export function setScreenTransitioning(v) { _screenTransitioning = v; }
+
+/**
+ * A NEW ROUND STARTS ON THIS PHONE.
+ *
+ * Two facts move together and were being written apart: the previous round's
+ * clock stamp must go, and the moment we arrived has to be recorded, because
+ * that moment is the only thing that tells a stamp for THIS round from one the
+ * room row is still carrying for the last one.
+ *
+ * Five places begin a round — the question phase, the final wager, the final
+ * question, and two reconnect paths — and "the same rule stated N times and
+ * followed N-1" is the most repeated fault in this project, so it is stated
+ * once here.
+ *
+ * `keepStamp` is the RECONNECT: init.js has already put the room's real
+ * timestamp into state and clearing it would restart everyone's clock. There
+ * the stamp itself is when the round began, which is exactly what we need to
+ * record.
+ */
+export function beginRoundClock({ keepStamp = false } = {}) {
+  if (!keepStamp) state.questionStartedAt = null;
+  state._roundEnteredAt = state.questionStartedAt
+    ? new Date(state.questionStartedAt).getTime()
+    : Date.now() + state.serverTimeOffset;
+}
 
 // --- Question field name resolution ---
 let FIELD_MAP = null;

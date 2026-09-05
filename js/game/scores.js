@@ -53,6 +53,7 @@ import {
   _isLeaving, setIsLeaving,
   _screenTransitioning, setScreenTransitioning,
   _qbFeedback,
+  beginRoundClock,
 } from './state.js';
 import { repositionChatBar, showChatBar, hideChatBar, closeChatDrawer } from './chat.js';
 import { showHostSettingsGear } from './host.js';
@@ -358,8 +359,9 @@ async function handleFinalWager() {
   state.gamePhase = 'final_wager';
   state.isFinalWagerRound = true;
   // Drop the last question's stamp before the screen reads it, or the 20-second
-  // clock would open already expired.
-  state.questionStartedAt = null;
+  // clock would open already expired — and record the moment, so a room write
+  // still carrying that stamp cannot put it straight back.
+  beginRoundClock();
   showFinalWagerScreen();
   if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'final_wager')) {
     await updateGameState(state.room.id, { game_phase: 'final_wager' });
@@ -833,7 +835,7 @@ export async function handleRevealFinalQuestion() {
   state.timerExpired = false;
   state.currentAnswers = [];
   state.previousScores = {};
-  state.questionStartedAt = null;
+  beginRoundClock();
   state.currentWager = state.finalWager || 0;
   // The wager screen is over. A tick left running here would fire
   // lockInFinalWager against a screen nobody is looking at any more.
@@ -849,8 +851,13 @@ export async function handleRevealFinalQuestion() {
   // else was asked (the bug "the screen must show the question the room is
   // asking" records, which migration 046 made far worse by judging against the
   // ROOM's question rather than the one on screen).
+  // The question list AND the dead clock, in the one write that lands before
+  // the phase. The stamp still sitting there belongs to the 20-second WAGER
+  // screen, so a phone that picked it up would open the final question with
+  // seconds left on it — the same fault the regular rounds had, on the one
+  // round that subtracts.
   const questionIds = state.questions.map(qn => qn.id);
-  await updateGameState(state.room.id, { question_ids: questionIds });
+  await updateGameState(state.room.id, { question_ids: questionIds, question_started_at: null });
 
   if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
                               'final_question', state.totalQuestions)) {

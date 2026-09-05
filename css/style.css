@@ -7755,3 +7755,52 @@ body[style*="opacity: 0"] {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
 }
+
+
+/* ============================================
+   THE ON-SCREEN KEYBOARD
+   ============================================
+
+   Reported from a live game: "when I type I can't see the question."
+
+   A screen is `position: fixed; inset: 0; height: 100dvh`. On iOS the keyboard
+   does not shrink the layout viewport, so 100dvh stays the height of the whole
+   phone and the browser PANS the visible window up to reach the answer box —
+   taking the question off the top, with no way to scroll back because the
+   screen is overflow:hidden.
+
+   js/keyboard-inset.js measures the visible window and publishes it. Here the
+   question screen is resized and re-anchored to exactly that window, so the
+   whole screen fits what can be seen and the browser has nothing left to pan.
+
+   EVERY RULE IS BEHIND .kb-open, which exists only while a keyboard is really
+   up and only on a browser that reports visualViewport. With no keyboard, this
+   whole block is inert and the layout is unchanged — which is what the layout
+   sweep, running a viewport that never shrinks, is able to confirm. */
+body.kb-open #question-screen {
+  height: var(--kb-visible-height, 100dvh);
+  top: var(--kb-offset-top, 0px);
+}
+
+/* THE QUESTION IS WHAT GIVES WAY, not what disappears. Inside a short screen
+   something has to yield; letting the card keep its own scroll means a long
+   question is still reachable while the answer box stays put, rather than one
+   of them being pushed off the end. */
+body.kb-open #question-screen .question-card {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 0;
+  margin-bottom: var(--space-sm);
+}
+
+/* PINNED. The answer box is the one thing that must never be the thing that
+   scrolls away — it is where the player is looking and where the keyboard is
+   pointing. */
+body.kb-open #question-screen #answer-form {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--color-bg);
+  padding-bottom: var(--space-xs);
+}
