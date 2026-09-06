@@ -6575,6 +6575,12 @@ body::after {
   flex-wrap: wrap;
   margin-bottom: var(--space-sm);
 }
+/* These three carried their widths inline, and inline beats a stylesheet
+   whatever its specificity — so the desktop shell could not reproportion them
+   without `!important`. Same widths as before, stated where a rule can win. */
+.admin-qh__controls #qh-sort { flex: 1; min-width: 150px; }
+.admin-qh__controls #qh-dir { flex: 0 0 auto; min-width: 110px; }
+.admin-qh__controls #qh-search { flex: 1; min-width: 150px; }
 
 .admin-filters {
   display: flex;
@@ -8321,6 +8327,52 @@ body.kb-open #question-screen #answer-form {
 .admin-desktop #panel-questions .admin-q-edit__status {
   grid-column: span 4;
   align-self: center;
+}
+
+/* --- Question Health: which answer keys need a human ---
+
+   The panel is a LIST you scan and a FORM you act in, exactly like the Question
+   Bank one section up, and it gets the same shape for the same reasons. Sharing
+   the treatment is the point: two data panels on one page that read differently
+   is a page you have to re-learn every time you switch.
+
+   Its three controls were stacked one above another, each the width of the work
+   area with its text CENTRED, because `.input` is calibrated for a four-letter
+   room code on a phone. */
+.admin-desktop .admin-qh__controls {
+  max-width: 900px;
+  gap: var(--space-sm);
+  flex-wrap: nowrap;
+}
+.admin-desktop .admin-qh__controls .input {
+  text-align: left;
+  font-size: var(--text-sm);
+  padding: var(--space-sm);
+}
+.admin-desktop .admin-qh__controls #qh-sort { flex: 0 1 12rem; }
+.admin-desktop .admin-qh__controls #qh-dir { flex: 0 1 10rem; }
+.admin-desktop .admin-qh__controls #qh-search { flex: 1 1 16rem; }
+.admin-desktop #qh-summary { max-width: 900px; }
+
+/* AN INPUT IS ONLY AS READABLE AS IT IS LONG. The alternates box held two words
+   in a box the width of the monitor, and the tally's count sat a thousand
+   pixels from the answer it counts. */
+.admin-desktop #panel-health .qh-edit,
+.admin-desktop #panel-health .qh-tally {
+  max-width: 780px;
+}
+.admin-desktop #panel-health .qh-save {
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-base);
+}
+.admin-desktop #qh-load-more {
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-base);
+}
+/* The question text is what you scan for, so give it room and let the stat
+   chips sit under it rather than competing for the same line. */
+.admin-desktop #panel-health .admin-flag-row {
+  max-width: 1000px;
 }
 
 /* A search box, two menus and a button, sized for a mouse rather than a thumb.

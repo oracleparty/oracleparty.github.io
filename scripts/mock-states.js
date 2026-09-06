@@ -1380,6 +1380,115 @@ export const STATES = {
   // and each has to stay a real tap target on its own line, which is exactly
   // the kind of thing that fits in a mock with four chips and breaks with
   // twelve. Mirrors createQuestionRow() in js/admin.js.
+  // QUESTION HEALTH HAD NO MOCK AT ALL, so nothing had ever rendered the panel
+  // whose whole job is deciding which answer keys need a human. Fifth time this
+  // file records "a page with no mock is a page nobody is checking".
+  //
+  // One row is OPEN, because the answer tally — the reason this panel exists —
+  // only appears when a row is opened, and a closed list would review markup
+  // that never shows the thing it is for.
+  'admin-question-health': {
+    page: 'admin',
+    screen: null,
+    // Desktop: the panel is `data-desktop-only`. See admin-title-words.
+    widths: [1280],
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const loading = document.getElementById('admin-loading');
+      if (loading) loading.style.display = 'none';
+      const content = document.getElementById('admin-content');
+      if (content) content.style.display = '';
+
+      const head = document.querySelector('.admin-panel__head[data-panel="health"]');
+      if (head) head.setAttribute('aria-expanded', 'true');
+      const body = document.getElementById('panel-health');
+      if (body) body.hidden = false;
+      if (window.buildAdminShell) window.buildAdminShell();
+
+      const summary = document.getElementById('qh-summary');
+      if (summary) summary.textContent = '4,859 questions, 312 with any play data. Sorted by flags, most first.';
+
+      const list = document.getElementById('qh-list');
+      if (!list) return;
+
+      // The same five chips js/admin.js emits, same inline styles, so the
+      // preview cannot disagree with what ships.
+      const stat = (label, value, tone) => {
+        const color = tone === 'bad' ? 'var(--color-error, #c33)'
+                    : tone === 'good' ? 'var(--color-success, #2a7)'
+                    : 'var(--color-text-muted)';
+        return `<span style="font-size:var(--text-xs); color:${color}; margin-right:var(--space-sm);">
+                  ${label} <strong>${value}</strong>
+                </span>`;
+      };
+
+      const tallyRow = (text, count, pct, known) => `
+        <div style="position:relative; padding:3px 6px; margin-bottom:2px; font-size:var(--text-xs);">
+          <div style="position:absolute; inset:0; width:${pct}%;
+                      background:${known ? 'var(--color-success)' : 'var(--color-primary)'};
+                      opacity:0.14; border-radius:3px;"></div>
+          <div style="position:relative; display:flex; justify-content:space-between; gap:var(--space-sm);">
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              ${text}${known ? ' <span style="opacity:.6">(accepted)</span>' : ''}
+            </span>
+            <strong style="flex:0 0 auto;">${count}</strong>
+          </div>
+        </div>`;
+
+      const row = (q, open) => `
+        <div class="admin-flag-row" data-qid="${q.id}"
+             style="padding:var(--space-sm) 0; border-bottom:1px solid var(--color-border);">
+          <div class="admin-q-row__text" style="font-weight:500; margin-bottom:4px; cursor:pointer;">${q.question}</div>
+          <div style="margin-bottom:6px;">
+            <span style="font-size:var(--text-xs); color:var(--color-text-muted);">
+              Answer: <strong>${q.answer}</strong>
+            </span>
+          </div>
+          <div>
+            ${stat('played', q.asked)}
+            ${stat('correct', q.pct, q.pctTone)}
+            ${stat('overrides', q.overrides, q.overrides > 0 ? 'bad' : null)}
+            ${stat('flags', q.flags, q.flags > 0 ? 'bad' : null)}
+            ${stat('liked', q.liked, q.likedTone)}
+          </div>
+          <div class="qh-edit" style="display:${open ? '' : 'none'}; margin-top:var(--space-sm);">
+            <div class="qh-tally" style="margin-bottom:var(--space-sm);">
+              <div style="font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:4px;">
+                What people typed — 41 answers recorded
+              </div>
+              ${tallyRow('John F. Kennedy', 18, 100, true)}
+              ${tallyRow('JFK', 11, 61, false)}
+              ${tallyRow('Kennedy', 9, 50, false)}
+              ${tallyRow('J.F.K.', 3, 17, false)}
+              <p style="font-size:var(--text-xs); color:var(--color-text-muted); margin-top:4px;">
+                Answers with no "(accepted)" mark are ones the game counts as wrong.
+              </p>
+            </div>
+            <label style="display:block; font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:4px;">
+              Also accept these answers (one per line)
+            </label>
+            <textarea class="input qh-alts" rows="3" placeholder="JFK&#10;Kennedy">John Kennedy</textarea>
+            <div style="display:flex; gap:var(--space-xs); align-items:center; margin-top:var(--space-xs);">
+              <button class="btn btn-primary qh-save">Save</button>
+              <span class="qh-status" style="font-size:var(--text-xs);">Saved!</span>
+            </div>
+          </div>
+        </div>`;
+
+      list.innerHTML = [
+        row({ id: 'q-jfk', question: 'Who was the 35th President of the United States?',
+              answer: 'John F. Kennedy', asked: 41, pct: '44% (41)', pctTone: null,
+              overrides: 7, flags: 3, liked: '62% (26)', likedTone: null }, true),
+        row({ id: 'q-pi', question: 'What are the first 6 digits of Pi?',
+              answer: '3.14159', asked: 28, pct: '18% (28)', pctTone: 'bad',
+              overrides: 4, flags: 2, liked: '41% (17)', likedTone: 'bad' }, false),
+        row({ id: 'q-nile', question: 'Which river is the longest in the world, a question deliberately written long enough to test how a full-width row behaves on a desktop layout?',
+              answer: 'The Nile', asked: 96, pct: '81% (96)', pctTone: 'good',
+              overrides: 0, flags: 0, liked: '88% (52)', likedTone: 'good' }, false),
+      ].join('');
+    },
+  },
+
   'admin-question-edit': {
     page: 'admin',
     screen: null,

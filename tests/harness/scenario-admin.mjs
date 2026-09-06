@@ -316,6 +316,56 @@ try {
   }
 
   // ============================================================
+  // 5a. QUESTION HEALTH ON A COMPUTER
+  //
+  // Same measurement as the Question Bank, because the two panels now share a
+  // shape deliberately: two data panels on one page that read differently is a
+  // page you have to re-learn every time you switch.
+  //
+  // Its three controls used to stack one above another, each the width of the
+  // work area with its text CENTRED, and the alternates box held two words in
+  // a box as wide as the monitor. Measured while a row is OPEN, since the
+  // editor is what the cap is about.
+  // ============================================================
+  heading('question health on a computer');
+  const qhDesktop = await admin.page.evaluate(() => {
+    const round = n => Math.round(n);
+    const controls = document.querySelector('#panel-health .admin-qh__controls');
+    const edit = document.querySelector('#panel-health .qh-edit');
+    const body = document.getElementById('panel-health');
+    const visible = el => el && el.offsetParent !== null;
+    return {
+      controlCount: controls ? controls.children.length : 0,
+      controlLines: controls ? new Set([...controls.children]
+        .map(el => round(el.getBoundingClientRect().y))).size : -1,
+      centred: controls ? [...controls.children]
+        .filter(el => getComputedStyle(el).textAlign === 'center').length : -1,
+      editWidth: edit && visible(edit) ? round(edit.getBoundingClientRect().width) : -1,
+      bodyWidth: body ? round(body.getBoundingClientRect().width) : -1,
+    };
+  }).catch(() => null);
+
+  if (!qhDesktop) {
+    problems.push('could not measure the question health layout at all');
+  } else {
+    note(`controls: ${qhDesktop.controlCount} on ${qhDesktop.controlLines} line(s), ${qhDesktop.centred} centred`);
+    note(`editor ${qhDesktop.editWidth}px inside a ${qhDesktop.bodyWidth}px panel`);
+    if (qhDesktop.controlCount > 0 && qhDesktop.controlLines !== 1) {
+      problems.push(`the sort, direction and search controls sit on ${qhDesktop.controlLines} lines — three controls fit on one at this width`);
+    }
+    // `.input` centres its text, which is right for a four-letter room code and
+    // wrong for a menu you are reading down.
+    if (qhDesktop.centred > 0) {
+      problems.push(`${qhDesktop.centred} of the health controls still centre their text, which is the phone's room-code styling`);
+    }
+    if (qhDesktop.editWidth <= 0) {
+      problems.push('no question was open, so nothing about the editor was measured');
+    } else if (qhDesktop.editWidth >= qhDesktop.bodyWidth) {
+      problems.push(`the answer editor fills its ${qhDesktop.bodyWidth}px panel — it is not capped, so a two-word alternate sits in a box as wide as the monitor`);
+    }
+  }
+
+  // ============================================================
   // 5b. WHAT PEOPLE TYPED
   //
   // It has to appear next to the box for adding acceptable answers, because

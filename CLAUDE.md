@@ -588,6 +588,39 @@
 > until the end is a rebuild nobody can test, and doing Title Words first means
 > the owner can start writing this week.
 
+> ## 2026-09-06 — Question Health, third panel of the desktop pass
+>
+> **The panel whose whole job is deciding which answer keys need a human, and
+> nothing had ever rendered it.** Fifth time this file records *a page with no
+> mock is a page nobody is checking* — so the mock came first, and the faults
+> were visible the moment it did.
+>
+> | | before | after |
+> |---|---|---|
+> | sort, direction, search | **three controls stacked one above another**, each the width of the work area, text CENTRED | one row, 900px |
+> | the alternates box | 1450px, holding two words | capped at 780px |
+> | the answer tally | its count a thousand pixels from the answer it counts | capped with it |
+>
+> **The controls carried their widths inline again** (`style="flex:1;
+> min-width:150px"`), and inline beats a stylesheet whatever its specificity —
+> the same thing that blocked the Question Bank. Moved to CSS at the same values,
+> so the phone is unchanged and the desktop rule can win.
+>
+> **`.input` CENTRES its text**, which is right for a four-letter room code and
+> wrong for a menu you read down a list of. That is measured rather than judged:
+> the check counts controls whose computed `text-align` is `center`.
+>
+> **It deliberately shares the Question Bank's shape.** Two data panels on one
+> page that read differently is a page you re-learn every time you switch.
+>
+> `scenario-admin` measures it with a row OPEN, since the cap is about the
+> editor. Verified by removing the block: three failures by name — three lines,
+> three centred controls, and an editor filling its whole panel.
+>
+> `admin-question-health` renders one row OPEN on purpose: the answer tally is
+> the reason this panel exists and only appears when a row is opened, so a
+> closed list would review markup that never shows the thing it is for.
+>
 > ## 2026-09-06 — the host was navigated out of their own results screen
 >
 > **Bug 1 of the two the bad-network scenario left open, and it is FIXED. The
@@ -6947,8 +6980,9 @@ Known and deliberate, and reported every run: `.mastery-group`,
 are grouping wrappers the JS queries by (`closest`, `querySelector`) and shows
 or hides inline — there is nothing for CSS to say about them.
 `.feedback-btn--flag` has no rule (the flag button falls
-back to the shared `.feedback-btn` look), **`.admin-q-edit__text`** is a JS query
-hook on an element already styled by `.input` (it was seven of these until the
+back to the shared `.feedback-btn` look), **`.admin-q-edit__text`** and
+**`.qh-status`** are JS query hooks on elements already styled by `.input` or
+carrying their colour inline (there were seven of the first family until the
 desktop Question Bank started placing the others by name), and
 `watermark-all` is excluded
 — it is a glyph-calibration state whose cards differ by design.

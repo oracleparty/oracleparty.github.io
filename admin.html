@@ -30,7 +30,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20260906j">
+  <link rel="stylesheet" href="css/style.css?v=20260906k">
 </head>
 <body style="opacity:0">
 
@@ -117,18 +117,18 @@
           </button>
           <div class="admin-panel__body" id="panel-health" hidden>
             <div class="admin-qh__controls">
-              <select id="qh-sort" class="input" style="flex:1; min-width:150px;">
+              <select id="qh-sort" class="input">
                 <option value="flags" selected>Flags</option>
                 <option value="overrides">Overrides</option>
                 <option value="correct">% correct</option>
                 <option value="liked">% liked</option>
                 <option value="asked">Times played</option>
               </select>
-              <select id="qh-dir" class="input" style="flex:0 0 auto; min-width:110px;">
+              <select id="qh-dir" class="input">
                 <option value="desc">Most first</option>
                 <option value="asc">Least first</option>
               </select>
-              <input id="qh-search" class="input" placeholder="Search questions..." style="flex:1; min-width:150px;">
+              <input id="qh-search" class="input" placeholder="Search questions...">
             </div>
             <p id="qh-summary" style="font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:var(--space-xs);"></p>
             <div id="qh-list"></div>
@@ -302,8 +302,8 @@
        imports, so it runs even when the esm.sh module chain does not — which is
        the state the layout sweep and the screenshot tool are always in, and the
        reason the desktop layout lives there rather than in admin.js. -->
-  <script src="js/admin-shell.js?v=20260906j"></script>
-  <script type="module" src="js/admin.js?v=20260906j"></script>
+  <script src="js/admin-shell.js?v=20260906k"></script>
+  <script type="module" src="js/admin.js?v=20260906k"></script>
 
 </body>
 </html>
