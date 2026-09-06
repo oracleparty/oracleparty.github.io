@@ -13,7 +13,8 @@
 >
 > | | Evidence |
 > |---|---|
-> | Migrations 048–064 are applied | the owner ran each one's verification block and pasted the result; every rule read `ok`. 063 needed a follow-up REVOKE, and 064 is the newest. |
+> | Migrations 048–064 are applied | the owner ran each one's verification block and pasted the result; every rule read `ok`. 063 needed a follow-up REVOKE. |
+> | **Migration 066 is applied** (2026-09-06) | the owner ran its verification query and pasted `verdict: ok` — it reads `pg_proc.prosrc` for both halves of the new `ON CONFLICT` rule, so it cannot pass on a partial paste. **065 has no such confirmation and must not be assumed applied.** |
 > | The live database has every function and table the app needs | the CI probe on commit `18d199f`. **That tick only started meaning something on 2026-08-30** — before that the probe printed its alarm and still exited 0. |
 > | All 12 subjects have title slots (36 subject-level, 45 topics, 26 clearing the size floor) | computed from `title-tiers.js` and `CATEGORY_META` |
 > | 664 unit tests and 12 robot scenarios pass | run locally, and in CI on every push |
@@ -213,6 +214,12 @@
 > answer are not explained by this, and are not fixed.
 
 > ## 2026-09-06 — a leftover row made a player invisible (migration 066)
+>
+> **APPLIED TO THE LIVE DATABASE 2026-09-06** — the owner ran the verification
+> query and it returned `ok`. That query reads the installed function's own
+> source for BOTH halves of the rule (the stale-question clause and the
+> `__WAGER_LOCKED__` clause), so a paste that stopped halfway would have
+> reported FAIL rather than passing quietly.
 >
 > **The cause behind "a player's answer kept saying waiting… even after the time
 > was up and answers revealed."** The display was made honest earlier the same
