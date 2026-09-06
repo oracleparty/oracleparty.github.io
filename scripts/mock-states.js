@@ -1168,6 +1168,12 @@ export const STATES = {
     page: 'admin',
     screen: null,
     inherits: 'admin-panels',
+    // MEASURED ON A COMPUTER, because that is the only place it is served. Title
+    // Words is `data-desktop-only` — about 130 slots and ~86 words to type is
+    // not a thing a 375px phone can do, and the page says so rather than
+    // offering a control that is merely miserable. Rendering it at phone width
+    // would measure a layout nobody is ever shown.
+    widths: [1280],
     inject: () => {
       document.querySelectorAll('.admin-panel__head').forEach(h => h.setAttribute('aria-expanded', 'false'));
       document.querySelectorAll('.admin-panel__body').forEach(b => { b.hidden = true; });
@@ -1187,11 +1193,11 @@ export const STATES = {
       const slot = (tier, word, need, { code = false, status = '', dirty = false } = {}) => `
         <div class="tw-slot${word ? '' : ' tw-slot--empty'}${dirty ? ' tw-slot--dirty' : ''}">
           <span class="tw-slot__tier" data-r="${tier}">${tier}</span>
-          ${code
-            ? `<span class="tw-slot__word">${word}</span><span class="tw-slot__need">in code</span>`
+          <span class="tw-slot__edit">${code
+            ? `<span class="tw-slot__word">${word}</span><span class="tw-slot__incode">in code</span>`
             : `<input class="input tw-slot__input" type="text" maxlength="24" placeholder="not written" value="${word}">
                <button class="btn btn-secondary tw-slot__save" type="button">Save</button>
-               ${word ? '<button class="btn btn-secondary btn-danger-text tw-slot__remove" type="button">Remove</button>' : ''}`}
+               ${word ? '<button class="btn btn-secondary btn-danger-text tw-slot__remove" type="button">Remove</button>' : ''}`}</span>
           <span class="tw-slot__need">${need}</span>
           <span class="tw-slot__status">${status}</span>
         </div>`;
@@ -1227,6 +1233,13 @@ export const STATES = {
             <div class="tw-slot tw-slot--none">too small for its own words</div>
           </div>
         </div>`;
+
+      // THE REAL SHELL, not a copy of it. js/admin-shell.js is a classic script
+      // with no imports precisely so this line can work: js/admin.js never runs
+      // here (its Supabase import cannot resolve), and a mock that rebuilt the
+      // sidebar by hand would be previewing a layout that drifts away from the
+      // one that ships. That has happened three times in this project.
+      if (window.buildAdminShell) window.buildAdminShell();
     },
   },
 
@@ -1274,6 +1287,10 @@ export const STATES = {
   'admin-question-edit': {
     page: 'admin',
     screen: null,
+    // Desktop, because the Question Bank is `data-desktop-only` — searching and
+    // refiling ~4,859 questions is the other job this page exists for and the
+    // other one a phone cannot do. See admin-title-words.
+    widths: [1280],
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
       const loading = document.getElementById('admin-loading');
@@ -1285,6 +1302,9 @@ export const STATES = {
       if (head) head.setAttribute('aria-expanded', 'true');
       const body = document.getElementById('panel-questions');
       if (body) body.hidden = false;
+      // The real shell — see admin-title-words for why this is a call and not a
+      // copy of the sidebar markup.
+      if (window.buildAdminShell) window.buildAdminShell();
       const results = document.getElementById('question-results');
       if (!results) return;
 
@@ -1332,6 +1352,10 @@ export const STATES = {
   'admin-answer-review': {
     page: 'admin',
     screen: null,
+    // Desktop, because the Question Bank is `data-desktop-only` — searching and
+    // refiling ~4,859 questions is the other job this page exists for and the
+    // other one a phone cannot do. See admin-title-words.
+    widths: [1280],
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
       const loading = document.getElementById('admin-loading');
@@ -1343,6 +1367,9 @@ export const STATES = {
       if (head) head.setAttribute('aria-expanded', 'true');
       const body = document.getElementById('panel-questions');
       if (body) body.hidden = false;
+      // The real shell — see admin-title-words for why this is a call and not a
+      // copy of the sidebar markup.
+      if (window.buildAdminShell) window.buildAdminShell();
 
       const summary = document.getElementById('q-review-summary');
       if (summary) summary.textContent =

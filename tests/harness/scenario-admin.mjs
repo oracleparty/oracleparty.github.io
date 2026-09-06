@@ -100,7 +100,15 @@ try {
   // 2. THE DASHBOARD
   // ============================================================
   heading('dashboard counts');
-  const admin = await table.seatSignedIn('Roman', { isAdmin: true, tier: 'Oracle' });
+  // ON A COMPUTER, because that is what this page is now. The admin dashboard
+  // is the one screen in this app that is not mobile-only: it carries ten
+  // sections, the whole question bank and about 130 title slots, and four of
+  // those panels are `data-desktop-only` and deliberately not offered on a
+  // phone. A robot at 390px would report every one of them as broken, which
+  // would be the check misreading a design decision as a fault.
+  //
+  // The phone half is checked separately, at the end — see "the emergency half".
+  const admin = await table.seatSignedIn('Roman', { isAdmin: true, tier: 'Oracle', desktop: true });
 
   // Two live rooms, one playing; one abandoned room with a stale player in it.
   const now = Date.now();
@@ -953,9 +961,19 @@ try {
       //
       // So: pick a row DEEP in the panel, let the fill scroll to it, and read
       // the position that the click will actually happen from.
-      const scrollSel = '.screen--scrollable';
-      const readScroll = () => admin.page.evaluate(
-        sel => document.querySelector(sel)?.scrollTop || 0, scrollSel);
+      // ASK WHICH ELEMENT IS SCROLLING, do not name one. This read
+      // `.screen--scrollable` and reported 0px the moment the desktop shell
+      // shipped — because there the page does not scroll and `.admin-work`
+      // does. It found a real bug doing so: the scroll-restore in admin.js
+      // named the same class and was silently dead on the new layout.
+      const readScroll = () => admin.page.evaluate(() => {
+        const box = document.getElementById('title-words');
+        for (let n = box; n && n !== document.body; n = n.parentElement) {
+          const oy = getComputedStyle(n).overflowY;
+          if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n.scrollTop;
+        }
+        return document.scrollingElement ? document.scrollingElement.scrollTop : 0;
+      });
 
       const again = admin.page.locator('#title-words .tw-slot:has(.tw-slot__save)').last();
       const deep = await again.evaluate(el => ({
@@ -1178,6 +1196,61 @@ try {
           }
         }
       }
+    }
+  }
+
+  // ============================================================
+  // THE EMERGENCY HALF, ON A PHONE
+  //
+  // The admin page is built for a computer now, and the owner may still need to
+  // end a stuck room or read a report from their phone. Both halves are checked,
+  // because either alone is a check that cannot fail: asserting only that the
+  // heavy panels are gone would pass on a build where NOTHING opened, and
+  // asserting only that the light ones work would pass on the old page.
+  // ============================================================
+  heading('the emergency half, on a phone');
+  const phone = await table.seatSignedIn('RomanPhone', { isAdmin: true });
+  await phone.goto('admin.html');
+  await phone.page.waitForSelector('#admin-content', { state: 'visible', timeout: 20000 }).catch(() => {});
+  await phone.page.waitForTimeout(1500);
+
+  const onPhone = await phone.page.evaluate(() => {
+    const seen = {};
+    document.querySelectorAll('.admin-panel__head').forEach(h => {
+      seen[h.dataset.panel] = h.getBoundingClientRect().height > 0;
+    });
+    const note = document.querySelector('.admin-desktop-note');
+    return {
+      seen,
+      note: note ? getComputedStyle(note).display !== 'none' : false,
+      shell: document.body.classList.contains('admin-desktop'),
+    };
+  }).catch(() => null);
+  note(`on a phone: ${JSON.stringify(onPhone)}`);
+
+  if (!onPhone) {
+    problems.push('the admin page never rendered on a phone at all');
+  } else {
+    // The heavy four: typing ~86 title words or refiling a 4,859-row bank is
+    // not a thing a 375px screen can do, and a control that is merely miserable
+    // rather than absent is the shape CLAUDE.md #4 is about.
+    for (const key of ['titlewords', 'questions', 'health', 'chat']) {
+      if (onPhone.seen[key]) {
+        problems.push(`the ${key} panel is offered on a phone — it is desktop-only, and a control that cannot usefully be operated should not be on screen`);
+      }
+    }
+    // AND THE URGENT ONES MUST STILL BE THERE. Without this half, hiding every
+    // panel would pass the check above perfectly.
+    for (const key of ['flagged', 'hosts', 'games', 'errors', 'announcement']) {
+      if (!onPhone.seen[key]) {
+        problems.push(`the ${key} panel is missing on a phone — this is the half somebody needs when a game is stuck and they are out`);
+      }
+    }
+    if (!onPhone.note) {
+      problems.push('nothing on the phone says where the rest of the page went — a section that simply vanishes reads as a broken page');
+    }
+    if (onPhone.shell) {
+      problems.push('the desktop shell was built on a phone viewport');
     }
   }
 

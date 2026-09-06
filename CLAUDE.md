@@ -212,6 +212,113 @@
 > **Still open from that report**: the rerolled difficulty and the locked prior
 > answer are not explained by this, and are not fixed.
 
+> ## 2026-09-06 — the admin page is a workbench, and workbenches are not phones
+>
+> **The owner's call, and the reasoning is theirs:** *"the admin page, which has
+> a lot of data and technical fixes etc. and may even be expanded in the future,
+> should be made primarily for desktop interaction… at this point managing all
+> that from mobile is impractical."*
+>
+> **The strongest argument for it is not "more room".** The Title Words panel
+> holds about 130 slots and ~86 of them are empty — the single biggest piece of
+> outstanding work in this project, and it has not happened because typing
+> eighty-six things into a 375px phone is miserable. Desktop is not cosmetic
+> here; it unblocks the job.
+>
+> ### What was built
+>
+> | | |
+> |---|---|
+> | the shell | a fixed sidebar of the ten sections and one work area beside it, at `min-width: 900px` |
+> | the phone | keeps the EMERGENCY half — flagged questions, flagged hosts, recent games, error logs, announcement, feature flags — and says where the rest went |
+> | desktop-only | question bank, question health, chat archive, title words: `data-desktop-only`, hidden below the breakpoint rather than offered and miserable |
+>
+> **The accordion was already the right shape for a sidebar** — one panel open at
+> a time, keyed on `data-panel`, with every lookup in `js/admin.js` by attribute
+> or id and never by position. So the shell REPARENTS the existing heads into a
+> nav and the bodies into a work area, and not one handler had to change. Two
+> copies of the head markup would have meant two count chips to keep in step,
+> which is this file's most repeated fault wearing a new hat.
+>
+> ### `js/admin-shell.js` is a classic script with no imports, deliberately
+>
+> Every module in this app pulls the Supabase client from esm.sh, so `js/admin.js`
+> **never runs under the layout sweep or the screenshot tool** — which is why
+> every admin mock builds the page by hand. A mock that rebuilds a LAYOUT is a
+> mock that drifts away from it, and CLAUDE.md records that shipping three times.
+>
+> So the transform lives in a plain script that always executes, and
+> `scripts/mock-states.js` calls `window.buildAdminShell()` — the same function
+> the page calls. One implementation, so the preview cannot disagree with what
+> ships.
+>
+> ### A mock may now declare its own widths
+>
+> `STATES[name].widths` — and `admin-title-words`, `admin-question-edit` and
+> `admin-answer-review` declare `[1280]`. Without it the sweep would measure a
+> desktop layout at 375px: reporting faults nobody can see, and **going green
+> about a layout it never looked at**, which is the shape #6 catalogues.
+>
+> Two guards, because the feature is worthless if it silently does not apply:
+> the sweep **exits 2** if a state declares widths and would be measured at the
+> defaults anyway, and the report **prints the override** (`admin-title-words @
+> 1280px`) rather than the header's defaults. Verified by forcing `widthsFor` to
+> ignore declarations — it names the state and refuses to run.
+>
+> ### Three faults, and all three came from reading the screenshot
+>
+> This project's own rule, earning its keep three times in one sitting:
+>
+> - **The sidebar truncated the NAMES and not the counts** — "Question B…",
+>   "Flagged Q…" and, worst, "Q…" for Question Health, because the count chip
+>   ("3 ratings, 0 played") was taking the width. That is backwards: the count is
+>   information, the name is how you get anywhere. The chip yields now.
+> - **The requirement column was EIGHT PIXELS wide**, rendering "10 right in the
+>   whole subject" as "1". A title-word row varies — a word defined in code has
+>   no boxes, an empty slot has no Remove button — so the row had three, four or
+>   five children and any attempt to line up columns put a different thing in
+>   each. `.tw-slot__edit` wraps the variable part, so the row is always exactly
+>   four cells.
+> - **THE ROOT FONT-SIZE IN THIS APP IS 20px, NOT 16.** I wrote `minmax(0, 26rem)`
+>   meaning "about 416px", got 520, and blamed flex min-content sizing in a code
+>   comment. Measuring the computed track said otherwise. **Any `rem` written
+>   here off the browser default is a quarter too big** — and a wrong explanation
+>   left in a comment is worse than no comment, so that one was corrected rather
+>   than left standing.
+>
+> ### The conversion found a live bug, which is the point of converting carefully
+>
+> `scenario-admin` reported *"the save happened at 0px"*. The Title Words panel
+> restores the reader's scroll position after a save — thousands of pixels of
+> panel, redrawn on every one of the ~86 words — and it found the scroller by
+> naming `.screen--scrollable`. **On the desktop shell that element does not
+> scroll; `.admin-work` does.** So the feature written for exactly this job would
+> have been silently dead on the layout built for it. `twScroller()` asks which
+> ancestor is actually scrolling instead of naming one.
+>
+> That is the pattern this file records more than any other, arriving on
+> schedule: *a guard written for the old world is quietly wrong in the new one.*
+>
+> ### The robot drives it on a computer now
+>
+> `table.seat(name, { desktop: true })` gives one robot a 1280x900 non-touch
+> viewport. **It is for this page and should stay that way** — every other screen
+> is mobile-only and a desktop robot would be driving a layout nobody is served.
+>
+> `scenario-admin` checks BOTH halves, because either alone cannot fail:
+> asserting only that the heavy panels are absent from a phone passes on a build
+> where nothing opens at all, and asserting only that the light ones work passes
+> on the old page. Verified by breaking each — un-hiding one panel names it, and
+> hiding every panel names all five that must stay.
+>
+> ### Still to do, and it is the second pass
+>
+> The other seven panels move into the work area as they are, and each will want
+> its own desktop treatment — the question bank most of all, since it is the
+> other job a phone cannot do. **One panel at a time**: a rebuild nobody can use
+> until the end is a rebuild nobody can test, and doing Title Words first means
+> the owner can start writing this week.
+
 > ## 2026-09-06 — the final question, reproduced at last, and the instrument that was missing
 >
 > **The owner asked the right question: "I must've mentioned it countless times
@@ -1336,6 +1443,9 @@ Built for playing with friends in the same room or over chat.
   only runtime dependency, loaded from `esm.sh`.
 - **Hosting:** GitHub Pages, with a service worker (`sw.js`) for offline caching.
 - **Mobile only:** designed for 375px–430px width, viewport-locked (100dvh).
+  **One exception: `admin.html`**, which is a workbench rather than a game and is
+  built for a computer (sidebar shell at 900px+). A phone keeps the emergency
+  half of it. See "the admin page is a workbench".
 
 ---
 
@@ -2055,7 +2165,7 @@ not build it on `game_history.score`.
 ├── game.html           All in-game screens (see below)
 ├── profile.html        Player profile, stats, mastery tree
 ├── leaderboard.html    Friends only: mastery / proficiency, by category
-├── admin.html          Admin dashboard (requires profiles.is_admin)
+├── admin.html          Admin dashboard (requires profiles.is_admin) — DESKTOP
 ├── sw.js               Service worker — CACHE_VERSION must be bumped on deploy
 ├── css/style.css       All styles; CSS variables for theming
 ├── js/
@@ -2085,6 +2195,8 @@ not build it on `game_history.score`.
 │   ├── titles.js       Title unlock rules, the rarity ladder, the word overlay
 │   ├── title-content.js  Loads the owner's written words (the ONLY fetcher)
 │   ├── utils.js        Fuzzy answer matching, DOM helpers, escaping
+│   ├── admin-shell.js  The admin sidebar. A CLASSIC script, no imports, so the
+│   │                   mocks can call the same code the page does
 │   ├── honk.js / typing.js / presence.js / theme.js / logger.js
 │   ├── celebration.js  Unlock overlays (planCelebration lives in titles.js)
 │   ├── difficulty-band.js  "How hard was that?" on the reveal

@@ -180,7 +180,7 @@ export class PlaytestTable {
    * Guests remain the default — plenty of real players never sign in, and both
    * kinds share a lobby.
    */
-  async seatSignedIn(name, { tier = 'Scholar', title = null, isAdmin = false, storageState } = {}) {
+  async seatSignedIn(name, { tier = 'Scholar', title = null, isAdmin = false, storageState, desktop = false } = {}) {
     const userId = `user-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     this.store.table('profiles').push({
       id: `profile-${userId}`,
@@ -203,7 +203,7 @@ export class PlaytestTable {
       is_admin: isAdmin,
     });
 
-    const robot = await this.seat(name, { storageState, session: { userId, name } });
+    const robot = await this.seat(name, { storageState, desktop, session: { userId, name } });
 
     // Without this the display-name modal opens and ensureDisplayName() never
     // resolves, so init() stops before it fetches anything — the host page sat
@@ -219,14 +219,22 @@ export class PlaytestTable {
     return robot;
   }
 
-  async seat(name, { storageState, session } = {}) {
+  async seat(name, { storageState, session, desktop = false } = {}) {
     // storageState lets a robot come back as the SAME browser rather than a
     // fresh one. Without it, "rejoining" silently tests a different device,
     // because localStorage — where a player's seat is remembered — starts empty.
+    //
+    // `desktop` IS FOR ONE PAGE AND SHOULD STAY THAT WAY. Every screen in this
+    // game is mobile-only and viewport-locked; the admin dashboard is the one
+    // that is not, because it is a workbench rather than a game — ten sections,
+    // ~4,859 questions and about 130 title slots to type words into. A robot
+    // driving it at 390px would be driving a layout the owner is never served,
+    // and would report the panels it deliberately does not offer there as
+    // broken. Do NOT reach for this to make a game screen easier to test.
     const context = await this.browser.newContext({
-      viewport: { width: 390, height: 844 },
-      isMobile: true,
-      hasTouch: true,
+      viewport: desktop ? { width: 1280, height: 900 } : { width: 390, height: 844 },
+      isMobile: !desktop,
+      hasTouch: !desktop,
       ...(storageState ? { storageState } : {}),
     });
     const page = await context.newPage();

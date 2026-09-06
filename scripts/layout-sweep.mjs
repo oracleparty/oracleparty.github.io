@@ -437,17 +437,52 @@ if (flags.state && !STATES[flags.state]) {
 }
 
 console.log('='.repeat(72));
-console.log(`LAYOUT SWEEP — ${names.length} state(s) x ${WIDTHS.join('/')}px x ${THEMES.join('/')}${STRESS ? '  [STRESS]' : ''}`);
-console.log('='.repeat(72));
+
 
 let faults = 0;
 let clippedCount = 0;
 const drift = new Set();
 const covered = new Set();
 
+// A STATE MAY NAME ITS OWN WIDTHS, and admin.html is why. Everything else in
+// this app is mobile-only and locked to a phone viewport; the admin page is a
+// workbench built for a computer, and rendering it at 375px would measure a
+// layout that is never served at that width — reporting faults nobody can see
+// and, worse, going green about a desktop layout it never looked at.
+//
+// An explicit --widths still wins, so a deliberate "show me this at 320" works.
+const widthsFor = name => (flags.widths || !STATES[name].widths)
+  ? WIDTHS
+  : STATES[name].widths;
+
+// A state that declares widths and is measured at the default ones anyway is a
+// check that looks like coverage and is not — the exact shape this project
+// keeps deleting. Assert the wiring rather than trusting it.
+if (!flags.widths) {
+  for (const n of names) {
+    const declared = STATES[n].widths;
+    if (declared && widthsFor(n) !== declared) {
+      console.error(`state ${n} declares widths ${declared} and would be measured at ${WIDTHS}`);
+      process.exit(2);
+    }
+  }
+}
+
+console.log(`LAYOUT SWEEP — ${names.length} state(s) x ${WIDTHS.join('/')}px x ${THEMES.join('/')}${STRESS ? '  [STRESS]' : ''}`);
+// SAY WHICH STATES ARE MEASURED SOMEWHERE ELSE. The header prints the default
+// widths, so a state rendered at 1280 read as if it had been checked at 375 —
+// a report that quietly describes a measurement nobody took.
+{
+  const overrides = names.filter(n => widthsFor(n) !== WIDTHS);
+  if (overrides.length) {
+    console.log(overrides.map(n => `  ${n} @ ${widthsFor(n).join('/')}px`).join('\n'));
+  }
+}
+console.log('='.repeat(72));
+
 for (const name of names) {
   const state = STATES[name];
-  for (const width of WIDTHS) {
+  for (const width of widthsFor(name)) {
    for (const theme of THEMES) {
     const context = await browser.newContext({ viewport: { width, height: 800 }, deviceScaleFactor: 1 });
     const p = await context.newPage();

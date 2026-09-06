@@ -48,6 +48,7 @@ async function init() {
   attachListeners();
   attachQuestionHealthListeners();
   attachPanels();
+  buildDesktopShell();
 
   // Only the four numbers at the top and the count on each closed panel are
   // fetched now. Every section's contents waits until somebody opens it —
@@ -118,6 +119,18 @@ function attachPanels() {
   document.querySelectorAll('.admin-panel__head').forEach(head => {
     head.onclick = () => togglePanel(head.dataset.panel);
   });
+}
+
+// THE DESKTOP SHELL lives in js/admin-shell.js — a classic script with no
+// imports, so the layout sweep and the screenshot tool can build the same
+// layout this page builds. See the comment at the top of that file: a mock that
+// rebuilds a layout by hand is a mock that drifts away from it.
+//
+// It returns the panel to arrive on, and this file opens it — opening a panel
+// fetches its contents, which that file knows nothing about.
+function buildDesktopShell() {
+  const first = window.buildAdminShell ? window.buildAdminShell() : null;
+  if (first) togglePanel(_openPanel || first);
 }
 
 const panelHead = key => document.querySelector(`.admin-panel__head[data-panel="${key}"]`);
@@ -2064,6 +2077,27 @@ async function measureTopicSizes() {
   return out;
 }
 
+// WHICHEVER ELEMENT IS ACTUALLY SCROLLING.
+//
+// A save redraws the whole Title Words panel, which is thousands of pixels long,
+// and the reader's place has to survive it — otherwise somebody writing the ~86
+// outstanding words is thrown to the top eighty-six times. That was written when
+// `.screen--scrollable` was the scroller, and on the desktop shell it is not:
+// the page no longer scrolls at all and `.admin-work` does.
+//
+// So this ASKS rather than naming a class. Hardcoding the old one would have
+// left the feature silently dead on the one layout it was written for — the
+// exact shape this project keeps recording, a guard written for the old world
+// that is quietly wrong in the new one. Caught by scenario-admin, which reported
+// the save happening at 0px.
+function twScroller(el) {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+  }
+  return document.scrollingElement;
+}
+
 async function loadTitleWordsPanel() {
   const box = $('#title-words');
   // Only on the FIRST draw. On a redraw after a save this would collapse a very
@@ -2145,6 +2179,17 @@ async function loadTitleWordsPanel() {
   const totalTopics = subjects.reduce((n, r) => n + r.topics.length, 0);
   const qualifying = subjects.reduce((n, r) => n + r.topics.filter(t => t.tiers.length).length, 0);
 
+  // FOUR CELLS, ALWAYS: tier, editor, requirement, status.
+  //
+  // The editor used to be loose children of the row, and a row varies — a word
+  // defined in code has no boxes at all, an empty slot has no Remove button. So
+  // the row had three, four or five children depending on its state, and any
+  // attempt to line the columns up put a different thing in each one. On the
+  // phone that only made the wrap untidy; on the desktop grid it was visibly
+  // broken, with requirements ellipsised to "a qu…" beside boxes that were
+  // nowhere near each other. Wrapping the variable part is what makes the row
+  // regular, and a regular row is what lets the eye scan a column of ~130 slots
+  // for the empty ones.
   const slotHtml = (catKey, sl) => {
     // A written word whose frozen target no longer matches today's share. Shown,
     // never acted on — saving again is what re-freezes it.
@@ -2155,14 +2200,14 @@ async function loadTitleWordsPanel() {
          data-tier="${escapeHtml(sl.tier)}" data-target="${sl.target}"
          data-label="${escapeHtml(sl.label || '')}">
       <span class="tw-slot__tier" data-r="${sl.tier}">${sl.tier}</span>
-      ${sl.editable
+      <span class="tw-slot__edit">${sl.editable
         ? `<input class="input tw-slot__input" type="text" maxlength="24"
                   placeholder="not written" value="${escapeHtml(sl.word || '')}"
                   aria-label="${escapeHtml(sl.tier)} word">
            <button class="btn btn-secondary tw-slot__save" type="button">Save</button>
            ${sl.word ? '<button class="btn btn-secondary btn-danger-text tw-slot__remove" type="button">Remove</button>' : ''}`
         : `<span class="tw-slot__word">${escapeHtml(sl.word)}</span>
-           <span class="tw-slot__need">in code</span>`}
+           <span class="tw-slot__incode">in code</span>`}</span>
       <span class="tw-slot__need">${sl.placeholder ? '<b>placeholder</b> &middot; ' : ''}${escapeHtml(String(sl.need))}${
         drifted ? ` &middot; set at ${sl.frozen}` : ''}</span>
       <span class="tw-slot__status" role="status"></span>
@@ -2381,7 +2426,7 @@ function wireTitleWordDelegates(box) {
 
     subjectSave.textContent = failed ? `Saved ${done}, ${failed} refused` : `Saved ${done}`;
 
-    const scroller = box.closest('.screen--scrollable, .admin-scroll') || document.scrollingElement;
+    const scroller = twScroller(box);
     const keepAt = scroller ? scroller.scrollTop : 0;
     resetTitleWordCache();
     clearWordOverlay();
@@ -2478,7 +2523,7 @@ function wireTitleWordFill(box) {
       // History after every save would make the tool unusable for the one job
       // it exists for. Captured from whichever ancestor actually scrolls,
       // because that differs between this page's layout and a plain document.
-      const scroller = box.closest('.screen--scrollable, .admin-scroll') || document.scrollingElement;
+      const scroller = twScroller(box);
       const keepAt = scroller ? scroller.scrollTop : 0;
 
       resetTitleWordCache();

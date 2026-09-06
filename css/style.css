@@ -7773,6 +7773,21 @@ body[style*="opacity: 0"] {
   padding: 4px 0;
   font-size: var(--text-sm);
 }
+/* The variable half of the row, wrapped so the row itself always has exactly
+   four children. See slotHtml() in js/admin.js for why that matters. */
+.tw-slot__edit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tw-slot__incode {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+
 .tw-slot__tier {
   font-size: 10px;
   font-weight: 800;
@@ -7985,4 +8000,218 @@ body.kb-open #question-screen #answer-form {
   z-index: 1;
   background: var(--color-bg);
   padding-bottom: var(--space-xs);
+}
+
+/* ============================================
+   THE ADMIN WORKBENCH — DESKTOP
+
+   Everything else in this app is mobile-only and viewport-locked, deliberately.
+   The admin page is the one screen that is not a game: ten sections, a bank of
+   ~4,859 questions and about 130 title slots to type words into. The owner
+   asked for it to be built for a computer, and the honest reading of that is
+   that the accordion IS the mobile design — a page that hides everything behind
+   identical doors is the right answer at 375px and the wrong one at 1400px.
+
+   NOTHING HERE IS GLOBAL. Every rule is behind `.admin-desktop`, a class that
+   js/admin.js adds only when it has actually built the shell, so a game screen
+   cannot inherit any of it and a phone sees exactly what it saw before.
+   ============================================ */
+
+.admin-desktop .screen--scrollable {
+  /* The shell owns the scrolling, not the page: a sidebar that scrolls away is
+     a sidebar you have to hunt for. */
+  overflow: hidden;
+  padding: 0;
+}
+
+.admin-desktop .page-header {
+  width: 100%;
+  max-width: none;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--color-surface-light);
+  flex: 0 0 auto;
+}
+
+.admin-desktop #admin-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+}
+
+/* The four numbers stay across the top, where they answer "is anything wrong"
+   without a click. Four across rather than two: this is the one place the extra
+   width costs nothing to use. */
+.admin-desktop .admin-section {
+  flex: 0 0 auto;
+  padding: var(--space-md) var(--space-lg) 0;
+  max-width: none;
+}
+.admin-desktop .admin-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
+  max-width: 900px;
+}
+
+/* --- the shell itself --- */
+.admin-desktop .admin-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  border-top: 1px solid var(--color-surface-light);
+  margin-top: var(--space-md);
+}
+
+.admin-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-md) var(--space-sm);
+  border-right: 1px solid var(--color-surface-light);
+  overflow-y: auto;
+  background: var(--color-bg-deep);
+}
+
+/* The heads are the same elements the phone uses, moved — so the count chip,
+   its alert colour and every listener come along untouched. */
+.admin-nav .admin-panel__head {
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-sm);
+  min-height: 0;
+  text-align: left;
+}
+.admin-nav .admin-panel__head:hover { background: var(--color-surface); }
+/* THE NAME NEVER TRUNCATES; THE COUNT DOES.
+   First render of this sidebar read "Question B…", "Flagged Q…" and, worst,
+   "Q…" for Question Health — because the count chip ("3 ratings, 0 played") was
+   taking the width and the title was yielding. That is backwards: the count is
+   information, the name is how you get anywhere. Caught by reading the
+   screenshot, which is what this project's own rules ask for and what a clean
+   set of measurements would not have told me. */
+.admin-nav .admin-panel__title {
+  font-size: var(--text-sm);
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: visible;
+}
+.admin-nav .admin-panel__count {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.admin-nav .admin-panel__head[aria-expanded="true"] {
+  background: var(--color-surface);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+/* The chevron said "this opens downwards", and here it does not. */
+.admin-nav .admin-panel__chev { display: none; }
+
+.admin-work {
+  overflow-y: auto;
+  padding: var(--space-lg) var(--space-xl);
+  min-width: 0;
+  /* A PHONE'S TYPE SCALE ON A MONITOR READS AS A LARGE-PRINT EDITION. Every
+     size in this app is set for a device held in one hand; at 1280px the
+     intro paragraph alone ran two full lines across a thousand pixels. Scaled
+     at the container rather than by rewriting every rule inside it, so nothing
+     the game uses moves. */
+  font-size: 0.88em;
+}
+.admin-work .admin-empty { max-width: 62ch; }
+.admin-desktop .admin-panel__body {
+  padding: 0;
+  max-width: 1100px;
+}
+
+/* --- Title Words, the panel this was built for ---
+
+   ~130 slots, and the job is typing a word into each empty one. On a phone
+   every row wraps, so nothing lines up and there is no way to scan for what is
+   missing. Here the columns are fixed and the eye can run straight down them:
+   tier, word, requirement. An empty box in a straight column is visible without
+   reading a single label, which is the entire point. */
+.admin-desktop .tw-slot {
+  display: grid;
+  /* THIS APP'S ROOT FONT-SIZE IS 20px, NOT 16.
+     The first attempt wrote `minmax(0, 26rem)` for the editor meaning "about
+     416px" and got 520 — which left the requirement column EIGHT PIXELS wide
+     and rendered "10 right in the whole subject" as "1". I blamed flex
+     min-content and was wrong; measuring the computed track said 520px for
+     26rem, and the root is 20px. Any rem written here off the browser default
+     will be a quarter too big. Measured: 84 / 400 / 348 at 1280px. */
+  grid-template-columns: 84px 20rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-md);
+  padding: 2px 0;
+}
+.admin-desktop .tw-slot__edit {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.admin-desktop .tw-slot--none {
+  display: block;
+  padding-left: 84px;
+}
+.admin-desktop .tw-slot__input { flex: 1 1 auto; min-width: 0; width: 100%; }
+.admin-desktop .tw-slot__need {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* THE STATUS GETS ITS OWN LINE, and only when it has something to say.
+   As a fourth column, "Not saved — Permission denied — the word was not saved"
+   wrapped to three lines and made that row 76px against its neighbours' 32 —
+   which destroys the straight column of boxes the eye runs down to find the
+   empty ones. Below the row it is fully readable, and the only row that grows
+   is the one that wants attention. */
+.admin-desktop .tw-slot__status {
+  grid-column: 2 / -1;
+  text-align: left;
+}
+.admin-desktop .tw-slot__status:empty { display: none; }
+
+/* THE UNSAVED BAR ATE THE TIER LABEL. `.tw-slot--dirty` buys its 10px back with
+   a negative margin, which is right for the mobile flex row — the text must not
+   shift sideways when the marker appears. On a grid that pulls the whole track
+   set left instead, so the bar sat on top of the first letter and "UNCOMMON"
+   rendered as "JNCOMMON". Here the row has padding of its own to give back, so
+   the bar needs no margin trick at all. Caught by reading the screenshot. */
+.admin-desktop .tw-slot--dirty {
+  padding-left: 10px;
+  margin-left: 0;
+}
+.admin-desktop .tw-subject { max-width: 1040px; }
+
+/* Two subjects side by side would halve the scrolling and destroy the column
+   alignment that makes a missing word visible. One column, wide. */
+
+/* ============================================
+   THE PHONE KEEPS THE EMERGENCY HALF
+
+   The owner may still need to end a stuck room or read a report from a phone,
+   and that must keep working. What a phone cannot usefully do is edit the
+   question bank or type eighty-six title words, and offering a control that is
+   miserable rather than impossible is how a page teaches somebody it is broken.
+
+   HIDDEN, NOT DISABLED, AND SAID OUT LOUD. A greyed row that does nothing is
+   the shape CLAUDE.md #4 is about; a line saying where the rest lives is the
+   honest version.
+   ============================================ */
+@media (max-width: 899px) {
+  .admin-panel[data-desktop-only] { display: none; }
+}
+@media (min-width: 900px) {
+  .admin-desktop-note { display: none; }
+}
+.admin-desktop-note {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  padding: var(--space-md) 0 var(--space-sm);
+  line-height: 1.5;
 }
