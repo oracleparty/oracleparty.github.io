@@ -588,6 +588,110 @@
 > until the end is a rebuild nobody can test, and doing Title Words first means
 > the owner can start writing this week.
 
+> ## 2026-09-06 — a whole game on a bad link, and the guard that could not recover
+>
+> **The owner could not playtest and asked whether a machine could do anything.**
+> It can do one thing well: play a COMPLETE game with one phone on a bad
+> connection. Every adverse-condition check in this repo applies the lag to ONE
+> MOMENT and then removes it. Nobody had ever played lobby-to-results on a bad
+> link with all the recent fixes in place at once.
+>
+> `tests/harness/scenario-badnetwork.mjs`, `--lag=N --on=Name`. **It is NOT a
+> playtest and must not be reported as one**: Chromium against an in-memory
+> store cannot see iOS Safari, a keyboard, a real radio, or how anything feels.
+>
+> ### THE FINDING: the room sat on the scoreboard and the host stayed on the reveal
+>
+> Deterministic at a 1500ms round trip on the host. The game never left round 0.
+> Bob and Carol reached the scoreboard; Alice did not, her advance button was on
+> a screen she could not reach, **and not one error was thrown anywhere.**
+>
+> Instrumented, the trace is unambiguous:
+>
+> ```
+> enter q=0 guard=-1        the host starts rendering the scoreboard
+> phase-in answer_reveal    a STALE event, 1500ms late, arrives while the client
+>                           is already on scores_reveal, and drags the screen
+>                           back to the reveal
+> switching-screen          the first render finishes and switches to scores
+> phase-in scores_reveal    the real event lands
+> enter q=0 guard=0
+> blocked-by-guard          ...and every attempt after it, for ever
+> ```
+>
+> **Two faults compounding.** A late Realtime event drags a client BACKWARDS
+> through a phase it has already passed — there is no check that an arriving
+> phase is still the room's. Then `showScoresScreen`'s "already rendered for
+> this question" guard, which exists to stop the scoreboard ANIMATION running
+> twice, **also gated the only screen switch** — so once tripped, the screen
+> could never be corrected.
+>
+> **Only the second is fixed**, deliberately. Re-rendering a scoreboard twice is
+> a stutter; refusing to correct the screen is a game nobody can finish. The
+> early return now still puts the player where the room is. That is the same
+> call `syncToCurrentState`'s repair already makes, and it restores recovery
+> whatever dragged the screen away. **The stale-event handling is established
+> and NOT fixed** — dropping events risks breaking legitimate ordering, and
+> shipping a speculative second change beside a proven one is how a fix commit
+> introduces a regression.
+>
+> Measured: stuck at round 0 for the full 240s budget before; a complete
+> six-round game to results after. `fullgame`, `nasty` and `playagain` all pass.
+>
+> ### showScreen() had been applied to 2 of 6 in-game screen switches
+>
+> Found by the grep this file's own rules demand. `transitionScreens` strips
+> `.active` from the old screen at t=0 and adds it to the new one only after the
+> fade — **so for the whole fade NO screen carries `.active`** and
+> `querySelector('.screen.active')` returns null. Three hand-written switches
+> read that null, fell into an `else` that only called `showChatBar()`, and
+> never switched the screen at all. Converted: reveal, scores, results. The
+> countdown one is fine — its else branch really does switch.
+>
+> **This did NOT fix the stall** and is not claimed to; it is a real hole found
+> on the way, provable by reading.
+>
+> ### THREE OF MY OWN CHECKS WERE WRONG BEFORE ANY OF THE ABOVE WAS TRUE
+>
+> Worth more than the fix, because each looked completely convincing:
+>
+> | reported | what it really was |
+> |---|---|
+> | 3 rows "Waiting..." after the reveal | sampled in the gap between `resultsRevealed` flipping and the rows re-rendering. Now requires a 3s streak |
+> | every round asked 2 DIFFERENT questions | a per-round bucket keyed on a LOOP COUNTER, so a phone one round ahead read as a disagreement. Now reads the stored answers, which cannot be a timing artefact |
+> | 88-second screen lag on a link with no lag | a phase repeats every round, and the timer was stamped the FIRST time each phase was seen. **A confidently wrong number is worse than no number** |
+>
+> And the phase names were GUESSED — `reveal`/`scores` instead of
+> `answer_reveal`/`scores_reveal`/`difficulty_vote` — so the map skipped the
+> phases it did not recognise and the screen assertions silently passed over
+> them. They are read off `PHASE_ORDER` in `init.js` now.
+>
+> **The scenario also listened to `console` only.** An unhandled rejection
+> arrives as `pageerror`, never as a console message, and an async function
+> whose caller does not await it fails in exactly that silent way — so the run
+> printed "not one console error anywhere" while stalled. It listens to both.
+>
+> ### TWO FINDINGS ARE OPEN, REPRODUCED AND UNEXPLAINED
+>
+> Recorded rather than guessed at, and the scenario catches both:
+>
+> 1. **On a 1500ms link the host never reaches the results screen and lands in
+>    the lobby** (3/3 runs; clean at lag 0). `showResultsScreen` gates its
+>    screen switch behind `await updateScores()` AND `await
+>    archiveChatMessages()`, while `_showReturnToLobbyNotice` decides where the
+>    game is by asking whether `#results-screen` is *currently visible* — so a
+>    host whose screen is still queued reads as mid-game and is navigated away.
+>    **Plausible and NOT established**: whether the trigger is real or the
+>    scenario's own teardown is unknown.
+> 2. **On the final round the host shows "Waiting..." for over 3s after the
+>    reveal though every player already has an answer stored** — at lag 0, on
+>    UNTOUCHED code, so it is neither new nor lag-related. Confirmed
+>    pre-existing by reverting both fixes and re-running.
+>
+> **THE SCENARIO IS THEREFORE NOT IN CI.** A check that fails for reasons nobody
+> has explained is one people learn to re-run, and this file records that
+> costing weeks. Wire it in once both are settled.
+>
 > ## 2026-09-06 — the Question Bank, second panel of the second pass
 >
 > **The panel that most needed a computer was the one still wearing a phone.**
@@ -6421,6 +6525,7 @@ node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused wr
 node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
 node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
 node tests/harness/scenario-finalq.mjs   # the host reveals the final question on a bad connection
+node tests/harness/scenario-badnetwork.mjs --lag=1500  # a WHOLE game on a bad link (NOT in CI — see below)
 ```
 
 **`robot.slowConnection(ms)` gives ONE phone a bad connection.** Every other

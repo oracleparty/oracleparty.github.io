@@ -4,6 +4,7 @@
 // ============================================
 
 import { state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
+         showScreen,
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
          _qbFeedback, setQbFeedback } from './state.js';
@@ -124,13 +125,21 @@ export async function showRevealScreen() {
   }
 
 
-  const currentScreen = document.querySelector('.screen.active');
-  const revealScreen = $('#reveal-screen');
-  if (currentScreen && currentScreen !== revealScreen) {
-    transitionScreens(currentScreen, revealScreen).then(showChatBar);
-  } else {
-    showChatBar();
-  }
+  // ROUTED THROUGH showScreen(), NOT transitionScreens().
+  //
+  // `transitionScreens` strips `.active` from the old screen at t=0 and only
+  // adds it to the new one after the fade — so FOR THE WHOLE FADE NO SCREEN
+  // CARRIES `.active`, and `document.querySelector('.screen.active')` returns
+  // null. The hand-written switch this replaces read that null, fell into an
+  // `else` that only called showChatBar(), and NEVER SWITCHED THE SCREEN. The
+  // room moved on and this phone stayed where it was, with no error anywhere.
+  //
+  // That is the same fault showScreen() was written for on 2026-09-06 —
+  // "a transition in flight is a reason to CUT, never a reason to stay" — and
+  // it was applied to two of the six in-game switches. This is the shape this
+  // project records more than any other: the same rule stated N times and
+  // followed N-2.
+  Promise.resolve(showScreen($('#reveal-screen'))).then(showChatBar);
 
   showHostSettingsGear();
 

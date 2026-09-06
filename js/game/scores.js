@@ -119,8 +119,35 @@ export async function handleShowScores() {
 }
 
 export async function showScoresScreen() {
-  // Guard: prevent rendering the same question's scores twice
-  if (state.currentQuestion === _lastScoresRenderedForQuestion) return;
+  // THE GUARD IS ABOUT THE ANIMATION, NOT ABOUT THE SCREEN — and until now it
+  // was about both, which is what turned a flicker into a dead game.
+  //
+  // MEASURED on a host with a 1500ms round trip, with the phase transitions
+  // and this function both instrumented:
+  //
+  //   enter q=0 guard=-1        the host starts rendering the scoreboard
+  //   phase-in answer_reveal    a STALE event, 1500ms late, arrives while the
+  //                             client is already on scores_reveal, and drags
+  //                             the screen back to the reveal
+  //   switching-screen          the first render finishes and switches to scores
+  //   phase-in scores_reveal    the real event finally lands
+  //   enter q=0 guard=0
+  //   blocked-by-guard          ...and every attempt after it, for ever
+  //
+  // The room sat on the scoreboard while the host's phone showed the reveal,
+  // with the advance button on a screen she could not reach and NOT ONE ERROR
+  // ANYWHERE. That is the report, in the owner's words: "it didn't move me
+  // (host) to another page. The other player was able to advance."
+  //
+  // Re-rendering a scoreboard twice is a stutter. Refusing to correct the
+  // screen is a game nobody can finish, so the early return now still puts the
+  // player where the room is. Same lesson as syncToCurrentState's repair,
+  // which had to call showQuestionScreen() directly because
+  // handlePhaseTransition refuses a phase it is already on.
+  if (state.currentQuestion === _lastScoresRenderedForQuestion) {
+    Promise.resolve(showScreen($('#scores-screen'))).then(showChatBar);
+    return;
+  }
   setLastScoresRendered(state.currentQuestion);
 
   state.onRevealScreen = false;
@@ -182,13 +209,21 @@ export async function showScoresScreen() {
   }).join('');
 
 
-  const currentScreen = document.querySelector('.screen.active');
-  const scoresScreen = $('#scores-screen');
-  if (currentScreen && currentScreen !== scoresScreen) {
-    transitionScreens(currentScreen, scoresScreen).then(showChatBar);
-  } else {
-    showChatBar();
-  }
+  // ROUTED THROUGH showScreen(), NOT transitionScreens().
+  //
+  // `transitionScreens` strips `.active` from the old screen at t=0 and only
+  // adds it to the new one after the fade — so FOR THE WHOLE FADE NO SCREEN
+  // CARRIES `.active`, and `document.querySelector('.screen.active')` returns
+  // null. The hand-written switch this replaces read that null, fell into an
+  // `else` that only called showChatBar(), and NEVER SWITCHED THE SCREEN. The
+  // room moved on and this phone stayed where it was, with no error anywhere.
+  //
+  // That is the same fault showScreen() was written for on 2026-09-06 —
+  // "a transition in flight is a reason to CUT, never a reason to stay" — and
+  // it was applied to two of the six in-game switches. This is the shape this
+  // project records more than any other: the same rule stated N times and
+  // followed N-2.
+  Promise.resolve(showScreen($('#scores-screen'))).then(showChatBar);
 
   showHostSettingsGear();
 
@@ -1433,13 +1468,21 @@ export async function showResultsScreen() {
   }).join('');
 
 
-  const currentScreen = document.querySelector('.screen.active');
-  const resultsScreen = $('#results-screen');
-  if (currentScreen && currentScreen !== resultsScreen) {
-    transitionScreens(currentScreen, resultsScreen).then(showChatBar);
-  } else {
-    showChatBar();
-  }
+  // ROUTED THROUGH showScreen(), NOT transitionScreens().
+  //
+  // `transitionScreens` strips `.active` from the old screen at t=0 and only
+  // adds it to the new one after the fade — so FOR THE WHOLE FADE NO SCREEN
+  // CARRIES `.active`, and `document.querySelector('.screen.active')` returns
+  // null. The hand-written switch this replaces read that null, fell into an
+  // `else` that only called showChatBar(), and NEVER SWITCHED THE SCREEN. The
+  // room moved on and this phone stayed where it was, with no error anywhere.
+  //
+  // That is the same fault showScreen() was written for on 2026-09-06 —
+  // "a transition in flight is a reason to CUT, never a reason to stay" — and
+  // it was applied to two of the six in-game switches. This is the shape this
+  // project records more than any other: the same rule stated N times and
+  // followed N-2.
+  Promise.resolve(showScreen($('#results-screen'))).then(showChatBar);
 
   showHostSettingsGear();
 
