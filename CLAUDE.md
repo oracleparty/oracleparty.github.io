@@ -212,6 +212,52 @@
 > **Still open from that report**: the rerolled difficulty and the locked prior
 > answer are not explained by this, and are not fixed.
 
+> ## 2026-09-06 — the bot has a chart, and it is a circle on purpose
+>
+> **Asked for by the owner: "give the bot its own proficiency chart… later when
+> I have more bots they'll show the differences."** Built, and one premise in the
+> request had to be corrected first rather than quietly worked around.
+>
+> ### A bot's data does not accumulate, and never will
+>
+> The owner expected the chart to fill in as the bot played. It cannot. **A bot
+> row carries no `user_id`** — `addBot` does not write one — and the owner's own
+> rule is that nothing a bot does is recorded, which is what keeps its coin flips
+> out of `question_stats` and `answer_tally`, the evidence used to decide whether
+> a question has a bad answer key.
+>
+> So a chart built to wait for data would have been permanently blank, and the
+> owner would have had no way to tell that from a bug. **Saying so was worth more
+> than shipping it.**
+>
+> ### It draws from the bot's SKILL instead
+>
+> `botSkillFor(category, accuracy, strengths)` in `bot-logic.js` — no imports,
+> unit tested, and the single place that answers "how good is this bot at this
+> subject". Today `strengths` is null and every category returns `BOT_ACCURACY`,
+> so the card draws an even twelve-sided shape.
+>
+> **THE EVENNESS IS THE POINT, not a placeholder.** It is what a bot with one
+> flat accuracy honestly looks like, and rendering it now is what proves the
+> whole path works before there is anything interesting to show. The day bots
+> gain per-category strengths, this function reads them and the shape changes
+> with nothing rewired — which is exactly what was asked for.
+>
+> **NOTHING IN IT IS INVENTED.** `BOT_ACCURACY` is the number the bot actually
+> plays by. `docs/BOTS.md` marks the per-category table as the owner's to write,
+> and two drafts of model-invented bot numbers have already been deleted at their
+> instruction. `strengths` is the seam that makes adding them a DATA change.
+>
+> ### A bot holds no rank
+>
+> The card defaulted to "Novice", which is the bottom rung of a ladder players
+> climb by answering questions — and a bot's answers are recorded nowhere, so it
+> could never leave it. It reads as a player who has never played. The title line
+> is omitted entirely for a bot, the same call the lobby row already makes in
+> saying "Guest" rather than "Novice" for somebody not on the ladder at all.
+>
+> `lobby-bot-card` is a mock state, so this is measured rather than assumed.
+
 > ## 2026-09-06 — a row that waited forever, and two things a photograph found
 >
 > ### "Waiting…" outlived the reveal

@@ -901,6 +901,63 @@ export const STATES = {
     },
   },
 
+  // THE BOT'S CARD. Its chart comes from its stated skill rather than from any
+  // history — a bot has no account and nothing it does is recorded, so there is
+  // nothing to accumulate. Today that skill is one flat number, so every axis is
+  // equal and the shape is an even twelve-sided figure. That evenness IS the
+  // finding: it is what a bot with no per-category strengths honestly looks
+  // like, and it is why this card is worth rendering before those strengths
+  // exist rather than after.
+  'lobby-bot-card': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const sheet = document.createElement('div');
+      sheet.id = 'profile-card-sheet';
+      sheet.className = 'modal-overlay active';
+      sheet.innerHTML = `
+        <div class="modal profile-card">
+          <div id="profile-card-content">
+            <div class="profile-card__header">
+              <div class="profile-card__avatar"></div>
+              <div class="profile-card__name">Practice Bot</div>
+            </div>
+            <div class="profile-card__radar radar" id="mock-bot-radar"></div>
+            <p class="profile-card__guest-hint">
+              Practice bot &middot; gets about 50% right, across every subject.
+              Nothing it plays is recorded.
+            </p>
+            <div class="profile-card__roles">
+              <button class="role-btn role-btn--danger"><span class="role-btn__icon">\u2715</span><span class="role-btn__label">Remove</span></button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(sheet);
+
+      // Same geometry as renderRadarSvg — inject() is serialised and cannot
+      // import, exactly as lobby-player-card and profile-stats already inline
+      // it. If renderRadarSvg changes, all three move in the same commit.
+      const EMOJI = ['⏳','⚗️','🌿','📜','🏛️','🎬','🌍','💻','⚽','🍕','🧩','🃏'];
+      const AX = EMOJI.map(e => [e, 0.5]);
+      const V = 100, R = 34, LR = 44, C = V / 2, n = AX.length;
+      const pts = (val, radius) => AX.map((a, i) => {
+        const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
+        const r = (val === null ? a[1] : val) * radius;
+        return `${(C + Math.cos(ang) * r).toFixed(2)},${(C + Math.sin(ang) * r).toFixed(2)}`;
+      }).join(' ');
+      const rings = [0.25, 0.5, 0.75, 1].map(f => `<polygon class="radar__ring" points="${pts(f, R)}"/>`).join('');
+      const spokes = pts(1, R).split(' ').map(p =>
+        `<line class="radar__spoke" x1="${C}" y1="${C}" x2="${p.split(',')[0]}" y2="${p.split(',')[1]}"/>`).join('');
+      const dots = pts(null, R).split(' ').map(p =>
+        `<circle class="radar__dot" cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="1.6"/>`).join('');
+      const labels = pts(1, LR).split(' ').map((p, i) =>
+        `<text class="radar__label" x="${p.split(',')[0]}" y="${p.split(',')[1]}" text-anchor="middle" dominant-baseline="central">${AX[i][0]}</text>`).join('');
+      document.getElementById('mock-bot-radar').innerHTML =
+        `<svg viewBox="0 0 ${V} ${V}" role="img" aria-label="Proficiency by category">${rings}${spokes}<polygon class="radar__shape" points="${pts(null, R)}"/>${dots}${labels}</svg>`;
+    },
+  },
+
   'reveal-host-override': {
     page: 'game',
     screen: 'reveal-screen',

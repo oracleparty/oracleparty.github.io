@@ -4,7 +4,8 @@
 // ============================================
 
 import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade, showToast } from './utils.js';
-import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT, MIN_HOST_RATINGS } from './constants.js';
+import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT, MIN_HOST_RATINGS, BOT_ACCURACY } from './constants.js';
+import { botSkillFor } from './game/bot-logic.js';
 import {
   supabase,
   fetchProfile,
@@ -213,7 +214,7 @@ let _profileCardInjected = false;
  */
 export async function showProfileCard({ userId, displayName, avatarColor, avatarEmoji, title, roomId,
                                         viewerPlayerId = null, isRoomHost = false,
-                                        roleActions = null }) {
+                                        roleActions = null, isBot = false }) {
   if (!_profileCardInjected) {
     _injectProfileCard();
     _profileCardInjected = true;
@@ -226,7 +227,12 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
   const avatarHtml = renderAvatar({ displayName, avatarColor, avatarEmoji, size: '56px' });
 
   let nameTag = escapeHtml(displayName);
-  let profileTitle = title || 'Novice';
+  // A BOT HOLDS NO RANK. "Novice" is the bottom rung of a ladder players climb
+  // by answering questions, and a bot's answers are recorded nowhere — so
+  // showing it one states a thing that can never change and reads as a player
+  // who has never played. Same call as the lobby row saying "Guest" rather than
+  // "Novice" for somebody who is not on the ladder at all.
+  let profileTitle = isBot ? '' : (title || 'Novice');
   let statsHtml = '';
   let actionsHtml = '';
   let reportHtml = '';
@@ -392,6 +398,40 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
           <p class="profile-card__report-done" id="profile-card-report-done"></p>
         </div>`;
     }
+  } else if (isBot) {
+    // THE BOT'S CHART COMES FROM ITS SKILL, NOT FROM ITS HISTORY, and that is
+    // the whole design rather than a shortcut.
+    //
+    // A bot has no account and — by the owner's own rule — nothing it does is
+    // ever recorded, which is what keeps its coin flips out of question_stats
+    // and answer_tally, the evidence used to decide whether a question has a
+    // bad answer key. So there is no history to draw from and there never will
+    // be: a chart built to wait for data would stay empty for ever. The owner
+    // expected it to accumulate; it does not, and that was worth saying rather
+    // than shipping a permanently blank card.
+    //
+    // What a bot DOES have is a stated skill. Today that is one number applied
+    // to every category (BOT_ACCURACY), so the chart draws an even twelve-sided
+    // shape — honest, and not very interesting. The day bots gain per-category
+    // strengths, this reads them and the shape changes with nothing rewired,
+    // which is exactly what the owner asked for.
+    //
+    // NOTHING HERE IS INVENTED. BOT_ACCURACY is the number the bot actually
+    // plays by, and docs/BOTS.md marks the per-category table as the owner's to
+    // write. A model-chosen strength profile is precisely what this project has
+    // deleted twice.
+    const byCategory = {};
+    for (const key of Object.keys(CATEGORY_META)) byCategory[key] = botSkillFor(key, BOT_ACCURACY);
+    const axesInput = Object.entries(CATEGORY_META)
+      .map(([key, meta]) => ({ key, label: meta.label, emoji: meta.emoji || meta.icon }));
+    const { axes, anyData } = buildRadarAxes(axesInput, byCategory);
+    const pct = Math.round(BOT_ACCURACY * 100);
+    statsHtml = `
+      ${anyData ? `<div class="profile-card__radar radar">${renderRadarSvg(axes)}</div>` : ''}
+      <p class="profile-card__guest-hint">
+        Practice bot &middot; gets about ${pct}% right, across every subject.
+        Nothing it plays is recorded.
+      </p>`;
   } else {
     // Guest player
     statsHtml = `<p class="profile-card__guest-hint">Guest player</p>`;
@@ -430,7 +470,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     <div class="profile-card__header">
       <div class="profile-card__avatar">${avatarHtml}</div>
       <div class="profile-card__name">${nameTag}</div>
-      <div class="profile-card__title">${escapeHtml(profileTitle)}</div>
+      ${profileTitle ? `<div class="profile-card__title">${escapeHtml(profileTitle)}</div>` : ''}
     </div>
     ${statsHtml}
     ${roleHtml}
@@ -2508,6 +2548,8 @@ export function attachProfileCardHandler(container, getPlayers, roomId = null, g
       // Is the person being looked at the host of this room? The report control
       // only makes sense for them, and only from inside their game.
       isRoomHost: !!(player && player.is_host && !player.is_bot),
+      // A bot has no account and records nothing — see showProfileCard.
+      isBot: !!player?.is_bot,
       roleActions: (typeof getRoleActions === 'function' && player) ? getRoleActions(player) : null,
     });
   });

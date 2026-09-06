@@ -80,3 +80,29 @@ export function chooseBotAnswer({ correctAnswer = '', incorrectAnswers = [] } = 
   if (pool.length === 0) return { text: '', isCorrect: false };
   return { text: pool[Math.floor(rand() * pool.length)], isCorrect: false };
 }
+
+/**
+ * HOW GOOD IS THIS BOT AT THIS SUBJECT, as a fraction from 0 to 1.
+ *
+ * The one place that answers that question, so the chart on a bot's card and
+ * the answers it actually gives can never drift apart. Today it is a flat
+ * `accuracy` for every category — which is exactly what the bot does, a coin
+ * flip on everything — so the card draws an even twelve-sided shape.
+ *
+ * `strengths` is where per-category numbers will go when they exist. THEY ARE
+ * THE OWNER'S TO WRITE: docs/BOTS.md marks the skill table as theirs, and two
+ * drafts of model-invented bot numbers have already been deleted at their
+ * instruction. This function is the seam that makes adding them a data change
+ * rather than a code change — nothing that reads a bot's skill needs to know
+ * they arrived.
+ *
+ * Clamped, because a value outside 0..1 would draw an axis outside the chart's
+ * own box and be silently clipped on a phone.
+ */
+export function botSkillFor(category, accuracy = 0.5, strengths = null) {
+  const raw = (strengths && typeof strengths[category] === 'number')
+    ? strengths[category]
+    : accuracy;
+  if (!Number.isFinite(raw)) return 0;
+  return Math.min(1, Math.max(0, raw));
+}

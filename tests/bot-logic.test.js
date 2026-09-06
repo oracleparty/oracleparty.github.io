@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickBotWager, chooseBotAnswer, lowestUnusedWager } from '../js/game/bot-logic.js';
+import { pickBotWager, chooseBotAnswer, lowestUnusedWager, botSkillFor } from '../js/game/bot-logic.js';
 
 // ============================================
 // pickBotWager
@@ -145,5 +145,30 @@ describe('lowestUnusedWager', () => {
     expect(used.has(low)).toBe(false);
     expect(low).toBeGreaterThanOrEqual(1);
     expect(low).toBeLessThanOrEqual(total);
+  });
+});
+
+describe('botSkillFor', () => {
+  it('is the bot\'s flat accuracy when no per-category strengths exist', () => {
+    // Today a bot is a coin flip on everything, so every axis of its chart is
+    // the same number. The chart is honest and not very interesting, which is
+    // the true state of the feature.
+    expect(botSkillFor('science', 0.5)).toBe(0.5);
+    expect(botSkillFor('sports', 0.5)).toBe(0.5);
+  });
+
+  it('reads a per-category strength when one is given', () => {
+    // The seam that makes bot characters a DATA change rather than a code one.
+    // The numbers themselves are the owner's to write — see docs/BOTS.md.
+    const strengths = { science: 0.9, sports: 0.2 };
+    expect(botSkillFor('science', 0.5, strengths)).toBe(0.9);
+    expect(botSkillFor('sports', 0.5, strengths)).toBe(0.2);
+    expect(botSkillFor('food', 0.5, strengths)).toBe(0.5);
+  });
+
+  it('clamps, because an axis outside 0..1 is drawn outside the chart', () => {
+    expect(botSkillFor('x', 0.5, { x: 1.4 })).toBe(1);
+    expect(botSkillFor('x', 0.5, { x: -3 })).toBe(0);
+    expect(botSkillFor('x', 0.5, { x: NaN })).toBe(0);
   });
 });
