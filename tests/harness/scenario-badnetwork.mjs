@@ -164,6 +164,8 @@ try {
   const waitingAfterReveal = [];   // a row that outlived the reveal
   const consoleErrors = [];
   const navigations = [];
+  const roomTimeline = [];
+  let lastStamp = null;
   const bootAt = Date.now();
 
   // BOTH KINDS. The first version listened to `console` only and reported
@@ -212,6 +214,14 @@ try {
     if (!room?.game_phase) return;
     const phase = room.game_phase;
     phasesVisited.add(phase);
+    // The room's STATUS is a separate column from its phase, and two different
+    // handlers navigate on it. Recording both is what makes "who moved this
+    // phone" answerable instead of arguable.
+    const stamp = `${phase}/${room.status}`;
+    if (stamp !== lastStamp) {
+      lastStamp = stamp;
+      roomTimeline.push(`${stamp} at ${Date.now() - bootAt}ms`);
+    }
     if (phase !== currentPhase) {
       currentPhase = phase;
       phaseStartedAt = Date.now();
@@ -384,13 +394,20 @@ try {
     await host.page.waitForTimeout(400);
   }
 
-  await host.page.waitForTimeout(2500);
+  // GENEROUS ON PURPOSE. showResultsScreen() awaits updateScores() AND
+  // archiveChatMessages() before it switches the screen, so on a 1500ms link
+  // the last phone needs several seconds after the room reaches results. A
+  // 2.5s wait reported that as "never showed the results screen", which is the
+  // scenario's own impatience wearing the costume of a product fault — the
+  // thing this project has done more often than the app has misbehaved.
+  await host.page.waitForTimeout(12000);
   clearInterval(watcher);
 
   // ============================================================
   // WHAT THE GAME DID
   // ============================================================
   note(`phases the room visited: ${[...phasesVisited].join(', ')}`);
+  note(`room timeline (phase/status): ${roomTimeline.join('  |  ')}`);
   for (const n of navigations) note(`navigation: ${n}`);
   for (const r of everyone) {
     note(`${r.name} worst screen lag ${worstLagMs[r.name]}ms; screens ${[...screensShown[r.name]].join(', ') || '(none)'}`);

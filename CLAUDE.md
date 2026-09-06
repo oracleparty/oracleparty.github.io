@@ -588,6 +588,70 @@
 > until the end is a rebuild nobody can test, and doing Title Words first means
 > the owner can start writing this week.
 
+> ## 2026-09-06 — the host was navigated out of their own results screen
+>
+> **Bug 1 of the two the bad-network scenario left open, and it is FIXED. The
+> attempt to fix its root cause was REVERTED TWICE and that is the more useful
+> half of this entry.**
+>
+> ### What it was
+>
+> On a 1500ms link the host never reached the results screen and landed in the
+> lobby instead — 3 runs out of 3, clean at no lag. Measured with the room's
+> phase and status timeline recorded: the room's status stayed `playing` all
+> game, so this was never Play Again. It was `_showNewGameNotice`.
+>
+> `showResultsScreen()` awaits `updateScores()` AND `archiveChatMessages()`
+> before it switches the screen, so on a slow link `#results-screen` is still
+> hidden for SECONDS after the client has decided the game is over. Both notice
+> functions ask **"is `#results-screen` currently visible?"** as a proxy for
+> "where is this game", read the hidden screen as "we are mid-game, get out",
+> and navigate the host away from their own results.
+>
+> `state.gamePhase` already says where the game is, and does not wait on a
+> network call. **The screen catching up is not a fact about the game.** Both
+> functions consult it now.
+>
+> **The comment above `_showNewGameNotice` describes this exact fault and says
+> it was fixed** — by adding `game_phase !== 'results'`, which only protects
+> against the echo of the host's own results write. A STALE EARLIER phase
+> arriving late satisfies it perfectly. One rule, two functions, and the
+> visibility flaw was left in both.
+>
+> ### THE ROOT CAUSE IS REAL AND MY FIX FOR IT WAS WRONG TWICE
+>
+> Both this and the scoreboard stall come from the same thing: **Realtime
+> delivers a room event describing a moment the client has already passed, and
+> nothing checks.** The rule for it already exists in `init.js` — *"don't sync
+> backwards, only advance to later phases"* — behind a `wasHidden` guard, so the
+> live path never had it.
+>
+> I lifted that list into a shared module. **It broke the game twice:**
+>
+> | attempt | what broke |
+> |---|---|
+> | the flat list from `init.js` | a round goes `final_question` -> `answer_reveal`, and on that list `answer_reveal` ranks EARLIER — so the final round's reveal was discarded and nobody was offered the host rating. `scenario-fullgame` caught it |
+> | per-round STAGES instead | `final_wager` and `scores_reveal` share a round number, so the final wager screen was discarded as stale and every game stalled before the last question |
+>
+> **CLAUDE.md already warned about this in as many words**, under migration 060:
+> *"DELIBERATELY NOT A TRANSITION WHITELIST... a wrong entry does not fail
+> loudly, it makes a game unplayable at one specific moment."* I wrote one
+> anyway, twice, and it failed in exactly that way both times. **The list in
+> `init.js` is also wrong for the same reason** — rarely hit, because that path
+> needs a phone backgrounded across the final round.
+>
+> Reverted in full rather than patched a third time. The symptom fix above is
+> narrow, addresses the measured failure, and does not require anybody to have
+> the phase graph correct in their head.
+>
+> ### Where it stands, honestly
+>
+> `fullgame`, `nasty` and 706 unit tests pass. `scenario-badnetwork --lag=1500`
+> **passes 1 run in 2** — the other stalls at the FINAL scoreboard, which is a
+> different stall from the one fixed earlier today and is intermittent. A flaky
+> failure is a real failure with a timing condition attached, and it is written
+> down as open rather than dressed up.
+>
 > ## 2026-09-06 — a whole game on a bad link, and the guard that could not recover
 >
 > **The owner could not playtest and asked whether a machine could do anything.**

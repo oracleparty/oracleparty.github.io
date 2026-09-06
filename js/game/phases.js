@@ -379,6 +379,19 @@ export function handleRoomChange(payload) {
  * Players can choose when to follow — they're not auto-yanked.
  */
 function _showLobbyReturnNotice() {
+  // "AM I ON RESULTS?" IS A QUESTION THE APP CAN ANSWER, AND THIS ASKED THE DOM.
+  //
+  // `showResultsScreen()` awaits updateScores() AND archiveChatMessages()
+  // before it switches the screen, so on a slow link `#results-screen` is still
+  // hidden for SECONDS after the client has decided the game is over. Reading
+  // that hidden screen as "we are not on results, get out" navigated the host
+  // away from their own results into the lobby — measured on a 1500ms link,
+  // 3 runs out of 3, and clean at no lag.
+  //
+  // `state.gamePhase` already says where the game is and does not wait on a
+  // network call. The screen catching up is not a fact about the game.
+  const reallyOnResults = state.gamePhase === 'results';
+
   const existing = document.getElementById('lobby-return-notice');
   if (existing) return; // Already showing
 
@@ -386,7 +399,7 @@ function _showLobbyReturnNotice() {
   // to 'lobby' during gameplay (shouldn't happen, but guard against it),
   // just auto-navigate instead of showing a notice on an invisible screen.
   const resultsScreen = document.querySelector('#results-screen');
-  if (!resultsScreen || resultsScreen.style.display === 'none') {
+  if (!reallyOnResults && (!resultsScreen || resultsScreen.style.display === 'none')) {
     setIsLeaving(true);
     try { if (_cleanup) _cleanup(); } catch (_) {}
     sessionStorage.setItem('oracle_party_returning_from_game', '1');
@@ -427,8 +440,21 @@ function _showNewGameNotice() {
   const existing = document.getElementById('new-game-notice');
   if (existing) return;
 
+  // "AM I ON RESULTS?" IS A QUESTION THE APP CAN ANSWER, AND THIS ASKED THE DOM.
+  //
+  // `showResultsScreen()` awaits updateScores() AND archiveChatMessages()
+  // before it switches the screen, so on a slow link `#results-screen` is still
+  // hidden for SECONDS after the client has decided the game is over. Reading
+  // that hidden screen as "we are not on results, get out" navigated the host
+  // away from their own results into the lobby — measured on a 1500ms link,
+  // 3 runs out of 3, and clean at no lag.
+  //
+  // `state.gamePhase` already says where the game is and does not wait on a
+  // network call. The screen catching up is not a fact about the game.
+  const reallyOnResults = state.gamePhase === 'results';
+
   const resultsScreen = document.querySelector('#results-screen');
-  if (!resultsScreen || resultsScreen.style.display === 'none') {
+  if (!reallyOnResults && (!resultsScreen || resultsScreen.style.display === 'none')) {
     // Not on results — auto-navigate to join the new game
     setIsLeaving(true);
     if (_cleanup) _cleanup();
