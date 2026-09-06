@@ -2398,10 +2398,25 @@ body::after {
 .player-item__role {
   order: 0;
   flex: 0 0 auto;
-  width: 1.3rem;
+  /* WIDE ENOUGH FOR THE BIGGER CROWN. The column was 21px and the host's crown
+     renders 24px, so it overflowed its own cell and started a pixel LEFT of it
+     while the co-host's 20px crown sat a pixel right — the two crowns were
+     centred on different lines and the list stopped reading as a column.
+     Measured at 375px: role column left 268 on every row, host crown at 267,
+     co-host at 269. The column was aligned; the glyphs inside it were not.
+     Reported from a photograph, which is the only thing that could have caught
+     a two-pixel difference the emoji font exaggerates on a real device. */
+  width: 1.6rem;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* Both crowns share one centre line whatever their size. The size difference is
+   deliberate — it is half of what tells a host from a co-host without relying on
+   colour — so the cell absorbs it rather than the row. */
+.player-item__role .role-crown {
+  display: block;
+  text-align: center;
 }
 
 /* THE HOSTS LIST NO LONGER STACKS, and the whole reason is gone with it: the
@@ -3077,14 +3092,26 @@ body::after {
 }
 
 .settings-modal {
-  max-height: calc(85dvh - env(safe-area-inset-bottom, 0px));
+  /* Was 85dvh, and the sheet was cut mid-section with the lobby's gold Start
+     Game button showing through the scrim right under the cut — which reads as
+     a broken panel rather than as "scroll for more". More height and less space
+     between the groups is what makes it FIT, which is what was asked for. */
+  max-height: calc(92dvh - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   text-align: left;
+  padding: var(--space-xl) var(--space-lg);
 }
 
+/* SIX GROUPS AT var(--space-xl) APART IS MORE GAP THAN CONTENT. Category, who
+   can join, questions, timer, auto-proceed and Done — the sheet was mostly air,
+   and air is what pushed the last two off the bottom of a phone. */
 .settings-modal .settings-group {
   max-width: 100%;
+  margin-bottom: var(--space-md);
 }
+.settings-modal .modal__title { margin-bottom: var(--space-md); }
+.settings-modal .settings-group__hint { margin-top: 2px; }
+.settings-modal #btn-close-settings { margin-top: var(--space-md) !important; }
 
 .settings-modal .category-sheet-row__label {
   white-space: nowrap;
@@ -3092,10 +3119,16 @@ body::after {
   text-overflow: ellipsis;
 }
 
+/* ONE ROW, FULL WIDTH — not a grid cell.
+   This carries `.category-grid`, which is two columns of category CARDS, and it
+   holds exactly one `.category-sheet-row`. So the row was handed half the sheet
+   and its label ellipsised at three characters: "Animals" rendered as "Ani…" on
+   a photograph from a real phone, with the rest of the width sitting empty
+   beside it. It also inherited a 200px scroll box for a single 44px row.
+   The class is kept for the picker it shares styling with; this override is
+   what the settings sheet actually needs. */
 .settings-category-grid {
-  max-height: 200px;
-  overflow-y: auto;
-  gap: var(--space-sm) !important;
+  display: block;
 }
 
 .settings-category-grid .category-card {

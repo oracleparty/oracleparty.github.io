@@ -256,6 +256,45 @@ export const STATES = {
   // ==========================================
   // LOBBY.HTML
   // ==========================================
+  // THE LOBBY'S GAME SETTINGS SHEET, which had no mock at all — so nothing had
+  // ever rendered it and two faults shipped: the category row was dropped into
+  // a TWO-COLUMN grid and ellipsised "Animals" to "Ani…", and six groups spaced
+  // at --space-xl ran the sheet past the bottom of a phone, cut mid-section with
+  // the lobby's gold Start Game button showing through the scrim underneath.
+  // Both were photographed on a real device. "A page with no mock is a page
+  // nobody is checking" — this file records that three times already.
+  'lobby-settings': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const modal = document.getElementById('settings-modal');
+      if (!modal) return;
+      modal.style.display = '';
+      modal.classList.add('active');
+      // Mirrors renderSettingsCategory() in js/lobby.js — one row, tapped to
+      // open the picker. Change them together.
+      const grid = document.getElementById('settings-category-grid');
+      if (grid) {
+        grid.innerHTML = `
+          <div class="category-sheet-row selected" id="settings-category-tap" style="cursor:pointer;">
+            <span class="category-sheet-row__icon">\u{1F981}</span>
+            <span class="category-sheet-row__label">Animals</span>
+            <span class="category-sheet-row__chevron">\u203A</span>
+          </div>`;
+      }
+      // One option selected in each group, as the real sheet always has.
+      const pick = { whoCanJoin: 'anyone', questionsPerGame: '10', questionTimer: '30', autoProceed: '0' };
+      for (const [group, value] of Object.entries(pick)) {
+        const g = document.querySelector(`.toggle-group[data-setting="${group}"]`);
+        if (!g) continue;
+        g.querySelectorAll('.toggle-option').forEach(b => {
+          b.classList.toggle('active', b.dataset.value === value);
+        });
+      }
+    },
+  },
+
   'lobby-waiting': {
     page: 'lobby',
     screen: 'lobby-screen',

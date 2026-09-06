@@ -247,17 +247,33 @@ export function renderRevealAnswers(answers) {
     // the whole round on the one player that had certainly finished, and told
     // the host the round was not done when it was.
     const isEmptyRow = answer && !(answer.submitted_answer || '').trim() && !player.is_bot;
-    const stillWaiting = !answer
-      || ((isPlaceholder || isEmptyRow) && !state.resultsRevealed);
+    // ONCE THE ANSWERS ARE REVEALED, NOBODY IS STILL WAITING.
+    //
+    // `!answer` used to mean "waiting" unconditionally, so a player with no row
+    // at all sat on "Waiting..." for the rest of the round — through the reveal,
+    // through the verdicts, through the scoreboard. Reported from a live game:
+    // "a player's answer kept saying waiting… even after the time was up and
+    // answers revealed."
+    //
+    // Before the reveal the guess is right and stays: a real answer may be in
+    // flight behind the blank fill, and WAITING is the reading that never shows
+    // somebody a verdict on an answer they did send. Afterwards the round is
+    // closed and there is nothing left to be in flight, so no row means exactly
+    // what an empty row means — no answer.
+    const stillWaiting = (!answer || isPlaceholder || isEmptyRow) && !state.resultsRevealed;
     const isDisqualified = state.disqualifiedQuestions?.has(state.currentQuestion);
 
     if (!stillWaiting) {
-      row.dataset.answerId = answer.id;
-      const rawText = (answer.submitted_answer || '').trim();
+      // EVERY READ HERE IS OPTIONAL NOW. The branch above could only be reached
+      // with a row before; after the reveal it is also reached WITHOUT one, and
+      // an unguarded `answer.id` would throw and take the whole reveal down —
+      // trading a stuck label for a blank screen.
+      if (answer?.id) row.dataset.answerId = answer.id;
+      const rawText = (answer?.submitted_answer || '').trim();
       const submittedText = isPlaceholder ? '' : rawText;
       const isEmpty = !submittedText;
-      const isCorrect = answer.is_correct || false;
-      const wager = answer.wager || 0;
+      const isCorrect = answer?.is_correct || false;
+      const wager = answer?.wager || 0;
 
       // Answer text color: only colored post-reveal (doReveal animates this)
       const colorClass = state.resultsRevealed
@@ -270,7 +286,10 @@ export function renderRevealAnswers(answers) {
       // out. Marking somebody correct in a disqualified round would award
       // points for a question the host has just declared did not happen —
       // the score would move and the reason would be invisible.
-      const toggleHtml = (canControlGame() && state.resultsRevealed && !isDisqualified)
+      // No row means nothing to flip, so the host is offered no toggle. A
+      // control bound to an id that does not exist is the dead button this
+      // project keeps finding.
+      const toggleHtml = (answer?.id && canControlGame() && state.resultsRevealed && !isDisqualified)
         ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
              <div class="answer-toggle__thumb"></div>
            </div>`
@@ -306,7 +325,7 @@ export function renderRevealAnswers(answers) {
       // the ANSWER that has not arrived.
       const hostBadge = player.is_host ? '<span class="badge badge--host">Host</span>' : '';
       const wagerHtml = isPlaceholder
-        ? `<span class="answer-row__wager">${answer.wager || 0}</span>`
+        ? `<span class="answer-row__wager">${answer?.wager || 0}</span>`
         : '';
       row.innerHTML = `
         <div class="answer-row__top">

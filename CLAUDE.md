@@ -212,6 +212,77 @@
 > **Still open from that report**: the rerolled difficulty and the locked prior
 > answer are not explained by this, and are not fixed.
 
+> ## 2026-09-06 — a row that waited forever, and two things a photograph found
+>
+> ### "Waiting…" outlived the reveal
+>
+> **Reported: "a player's answer kept saying waiting… even after the time was up
+> and answers revealed. Shouldn't it at the very least say no answer?"** Yes, and
+> the rule was already written down — it was applied to two cases out of three.
+>
+> ```js
+> const stillWaiting = !answer
+>   || ((isPlaceholder || isEmptyRow) && !state.resultsRevealed);
+> ```
+>
+> A placeholder row and an empty row both stop waiting once the answers are
+> revealed. **`!answer` never did.** So a player with no row at all sat on
+> "Waiting…" through the reveal, the verdicts and the scoreboard.
+>
+> The guess itself is right and stays: before the reveal a real answer may still
+> be in flight behind the blank fill, and WAITING is the reading that never shows
+> somebody a verdict on an answer they did send. **Afterwards there is nothing
+> left to be in flight**, so no row means exactly what an empty row means.
+>
+> **Every read of `answer` in that branch is optional now.** It could only be
+> reached WITH a row before; it is reached without one now, and an unguarded
+> `answer.id` would throw and take the whole reveal screen down — trading a stuck
+> label for a blank screen. The host's correct/incorrect toggle is suppressed
+> too: a control bound to an id that does not exist is the dead button this
+> project keeps finding.
+>
+> **WHY that player had no row is NOT established.** The display is now honest
+> whatever the cause; that is a smaller claim than "fixed" and it is the true one.
+>
+> ### The crowns were two pixels apart, and a photograph is what caught it
+>
+> The lobby's role column is aligned — measured at 375px, `left: 268` on every
+> single row. **The crowns inside it were not.** The host's renders 24px in a
+> 21px cell, so it overflowed and started a pixel LEFT of the column; the
+> co-host's 20px crown sat a pixel right. Two pixels, which the emoji font
+> exaggerates on a real device into something clearly visible in a photo.
+>
+> The cell is 1.6rem now and both crowns are centred in it — measured, both on
+> 276. **The size difference stays**: it is half of what tells a host from a
+> co-host without relying on colour, which a colour-blind player cannot use. The
+> cell absorbs the difference rather than the row.
+>
+> ### The settings sheet had no mock, and shipped two faults because of it
+>
+> Photographed: **"Animals" rendered as "Ani…"** with two thirds of the sheet
+> empty beside it, and the sheet cut mid-section with the lobby's gold Start Game
+> button showing through the scrim right under the cut.
+>
+> - `#settings-category-grid` carries `.category-grid`, which is **two columns of
+>   category CARDS**, and it holds exactly one `.category-sheet-row`. The row got
+>   half the sheet and ellipsised at three characters. It also inherited a 200px
+>   scroll box for a single 44px row. `display: block` is the whole fix.
+> - **Six groups at `--space-xl` apart is more gap than content.** The sheet was
+>   mostly air, and the air is what pushed Auto-Proceed and Done off the bottom.
+>   `--space-md` between groups and 92dvh instead of 85 fits the whole thing on a
+>   375x812 phone with the Done button visible.
+>
+> **`lobby-settings` is a mock state now.** Nothing had ever rendered this sheet —
+> the fourth time this file records "a page with no mock is a page nobody is
+> checking", and the second time the consequence was text truncated to nothing.
+>
+> ### The habit, again
+>
+> Three faults, and the measurements were clean for all three. The role column
+> was aligned. The sheet was inside its max-height. The reveal threw no error.
+> **Every one was found by a person looking at a screen**, which is what this
+> file has asked for since it was written.
+
 > ## 2026-09-06 (later) — three conditions, two branches, and a screen that never moved
 >
 > **The fourth report of the same bug, and the first one I could reproduce
