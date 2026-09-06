@@ -193,6 +193,20 @@ export function showQuestionScreen() {
       answerForBots();
 
       if (state.room.isHost) {
+        // THE STAMP, AND NOTHING ELSE, WAITS FOR THE ROUND'S ROOM WRITES.
+        //
+        // op_start_clock checks the phase it is given against the ROOM's, so a
+        // stamp sent before the phase has landed is refused no matter how long
+        // we wait for it — and a refusal falls back to this phone's own
+        // estimate, which the room write's `question_started_at: null` would
+        // then wipe. Waiting here is what handleRevealFinalQuestion's awaits
+        // used to do by accident, before the screen stopped queueing behind
+        // them. Everything a player sees is already revealed above this line.
+        if (state._roomWritePending) {
+          const pending = state._roomWritePending;
+          state._roomWritePending = null;
+          await pending.catch(() => {});
+        }
         // THE FINAL ROUND'S PHASE IS 'final_question', NOT 'question'. This
         // screen renders both, and op_start_clock checks the phase it is given
         // against the room's — so passing 'question' here made the final round

@@ -92,7 +92,20 @@ export class Robot {
     this.table = table;
     this.consoleErrors = [];
     this.failedRequests = [];
+    this.latencyMs = 0;
   }
+
+  /**
+   * Give THIS phone a bad connection, and nobody else.
+   *
+   * Every other slowness knob in this harness lives on the store, so it slows
+   * the room, and a screen that waits on a network call still arrives when
+   * everybody else's does. Real bad connections belong to one person. Use this
+   * whenever a report says one player saw something and another did not.
+   */
+  slowConnection(ms) { this.latencyMs = ms; }
+  /** Undo slowConnection. */
+  normalConnection() { this.latencyMs = 0; }
 
   async goto(pagePath) {
     await this.page.goto(`${this.table.baseUrl}/${pagePath}`, { waitUntil: 'domcontentloaded' });
@@ -229,15 +242,38 @@ export class PlaytestTable {
     });
     page.on('pageerror', err => robot.consoleErrors.push(String(err)));
 
-    // Bridge: page -> shared store
-    await context.exposeFunction('__dbOp', op => this.store.execute(op));
+    // Bridge: page -> shared store.
+    //
+    // ONE PHONE CAN BE SLOW WHILE THE OTHERS ARE NOT — see robot.slowConnection.
+    // Everything else in this harness slows the SERVER, which slows the whole
+    // room equally, so a screen gated on a network call still lines up with
+    // everybody else's and looks fine. A real bad connection belongs to one
+    // person, and that asymmetry is what a report like "the player could answer
+    // but the host couldn't see the question" is made of.
+    //
+    // Half the delay before the store runs and half after, because a slow link
+    // is slow in both directions: the request takes a while to arrive, the
+    // server acts (and Realtime tells everyone else at once), and the reply
+    // takes a while to come back. So the room genuinely moves on without this
+    // phone, which an all-before or all-after delay cannot produce.
+    const lag = () => new Promise(r => setTimeout(r, robot.latencyMs / 2));
+    await context.exposeFunction('__dbOp', async op => {
+      if (!robot.latencyMs) return this.store.execute(op);
+      await lag();
+      const result = await this.store.execute(op);
+      await lag();
+      return result;
+    });
     await context.exposeFunction('__dbSubscribe', cfg => {
       let subId;
       subId = this.store.subscribe({
         table: cfg.table,
         filter: cfg.filter,
         events: cfg.events,
-        deliver: payload => {
+        deliver: async payload => {
+          // A slow link delays what ARRIVES as well as what is sent, or the
+          // phone would be slow to ask and instant to hear, which is no phone.
+          if (robot.latencyMs) await lag();
           // subId is assigned before any event can fire. Page may have
           // navigated or closed, in which case dropping the event is correct.
           page.evaluate(

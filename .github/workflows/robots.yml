@@ -96,6 +96,14 @@ jobs:
       - name: Accuracy — an override is not a second attempt, a disqualified round is none
         run: node tests/harness/scenario-accuracy.mjs
 
+      # THE ONLY SCENARIO WITH A BAD CONNECTION ON ONE PHONE. Every other knob
+      # in the harness slows the SERVER, which slows the room equally, so a
+      # screen queued behind a network call still lands when everybody else's
+      # does and looks fine. Real bad connections belong to one person, and
+      # three live reports about the final question were all that asymmetry.
+      - name: Final question — the host reveals it on a bad connection
+        run: node tests/harness/scenario-finalq.mjs
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.

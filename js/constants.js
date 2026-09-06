@@ -37,6 +37,23 @@ export const PHASE_BACKSTOP_POLL_MS = 3000;
 // better at, and because the stamp normally lands in well under a second.
 export const CLOCK_STAMP_TIMEOUT_MS = 4000;
 
+// HOW LONG THE FINAL QUESTION'S DIFFICULTY SWAP MAY TAKE BEFORE WE GIVE UP ON IT.
+//
+// The last question is swapped for one matching the room's difficulty vote, and
+// that fetch was an un-timed await standing between pressing "Reveal Question"
+// and ANY feedback at all — the button hides itself and the slot machine has
+// not started yet, so a slow read is a press that visibly did nothing.
+//
+// The swap has always been optional: the pre-fetched question is the fallback,
+// and the code has read `if (q)` since it was written. So the only thing a
+// timeout costs is that the last question may not match the vote, which nobody
+// can tell from the outside. What it buys is that the press always does
+// something immediately.
+//
+// It runs UNDER the six-second reveal animation rather than before it, so on any
+// ordinary connection this timeout is never reached and nothing waits at all.
+export const FINAL_QUESTION_SWAP_TIMEOUT_MS = 6000;
+
 // HOW STALE A ROUND CLOCK MAY LOOK BEFORE THIS PHONE REFUSES IT.
 //
 // Realtime sends the WHOLE room row on every update, so every unrelated write —

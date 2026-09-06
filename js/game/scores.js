@@ -5,7 +5,7 @@
 
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
 import { logger } from '../logger.js';
-import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS, FINAL_WAGER_TIMER_SECONDS } from '../constants.js';
+import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS, FINAL_WAGER_TIMER_SECONDS, FINAL_QUESTION_SWAP_TIMEOUT_MS } from '../constants.js';
 import {
   supabase,
   updateGameState,
@@ -848,12 +848,27 @@ export async function handleRevealFinalQuestion() {
   const voted = allowedDifficulties(tally);
   state.votedDifficulty = winner;
 
-  // Try to fetch a question matching the voted difficulty (optional — pre-fetched is fallback)
-  try {
-    const usedIds = state.questions.map(q => q.id);
-    const q = await fetchQuestionByDifficulty(state.room.category, winner, usedIds, state.room.subcategory || null);
-    if (q) state.questions[state.totalQuestions] = q;
-  } catch (e) { /* Use pre-fetched question */ }
+  // THE SWAP RUNS UNDER THE ANIMATION, NOT BEFORE IT.
+  //
+  // This was an un-timed await sitting between the press and any feedback at
+  // all: the button hides itself first, and the slot machine has not started
+  // yet, so on a slow phone pressing "Reveal Question" visibly did nothing —
+  // for as long as one read of the question bank took.
+  //
+  // Measured in the harness with a 12-second round trip on the HOST's phone
+  // alone (robot.slowConnection): 35 seconds from the press to the room moving,
+  // the host never seeing the question at all, and the room left with no clock.
+  // That is the live report — "the player could answer but host couldn't see
+  // the question till after the timer? Then it rerolled the difficulty".
+  //
+  // Started here and collected AFTER the animation, so it gets the animation's
+  // six seconds for free and costs nothing on an ordinary connection. The
+  // pre-fetched question has always been the fallback, so a slow read costs a
+  // difficulty match and never the round.
+  const usedIds = state.questions.map(q => q.id);
+  const swap = fetchQuestionByDifficulty(
+    state.room.category, winner, usedIds, state.room.subcategory || null
+  ).catch(() => null);
 
   // Broadcast the slot-machine reveal to all clients via the existing vote
   // channel BEFORE we start the local animation, so non-hosts get the same
@@ -873,6 +888,15 @@ export async function handleRevealFinalQuestion() {
   // Animate the dramatic reveal locally (slot-machine cycle, settle on most-
   // voted, comedic last-second switch if randomness defied the votes).
   await playDifficultyRevealAnimation(mostVoted, winner, voted);
+
+  // Collect the swap now the animation has had its say. Bounded, because a
+  // promise that never settles cannot be caught by try/catch and this one
+  // decides the last question of the game.
+  const swapped = await Promise.race([
+    swap,
+    new Promise(resolve => setTimeout(() => resolve(null), FINAL_QUESTION_SWAP_TIMEOUT_MS)),
+  ]);
+  if (swapped) state.questions[state.totalQuestions] = swapped;
 
   // Clean up vote channel
   if (state.difficultyVoteChannel) { try { supabase.removeChannel(state.difficultyVoteChannel); } catch (e) {} state.difficultyVoteChannel = null; }
@@ -920,15 +944,24 @@ export async function handleRevealFinalQuestion() {
   // "the screen must show the question the room is asking" records, which
   // migration 046 made far worse by judging against the ROOM's question.
   const questionIds = state.questions.map(qn => qn.id);
-  await updateGameState(state.room.id, { question_ids: questionIds, question_started_at: null });
-
-  if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
-                              'final_question', state.totalQuestions)) {
-    await updateGameState(state.room.id, {
-      game_phase: 'final_question',
-      current_question: state.totalQuestions,
-    });
-  }
+  // CHAINED, SO THE ORDER HOLDS — but not awaited before the screen, because
+  // this phone already knows everything it needs to draw one. See below.
+  const roomWrite = (async () => {
+    await updateGameState(state.room.id, { question_ids: questionIds, question_started_at: null });
+    if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
+                                'final_question', state.totalQuestions)) {
+      await updateGameState(state.room.id, {
+        game_phase: 'final_question',
+        current_question: state.totalQuestions,
+      });
+    }
+  })();
+  // The clock stamp — and ONLY the clock stamp — waits for those writes.
+  // op_start_clock checks the phase it is given against the ROOM's, so a stamp
+  // sent before the phase lands is refused however long we wait; gating it here
+  // is what the awaits used to do by accident. Everything the player sees is
+  // already past this point in showQuestionScreen.
+  state._roomWritePending = roomWrite;
 
   // THE SCREEN COMES LAST, AND THAT IS THE WHOLE FIX.
   //
@@ -949,10 +982,25 @@ export async function handleRevealFinalQuestion() {
   // op_start_clock cannot tell those apart — both are "you are not where you
   // think you are".
   //
-  // The cost is that the host's question screen waits on one ordinary phase
-  // write, which is what every other round already does. The 2026-08-30 rule is
-  // about an UNBOUNDED call gating the screen, and this is not one.
+  // AND THAT WAS TRUE OF THE ORDER AND WRONG ABOUT THE WAIT. Writing the phase
+  // before the screen is right; AWAITING it before the screen is the 2026-08-30
+  // fault again — an unbounded network call standing between a person and their
+  // own question — and this comment said it was not one.
+  //
+  // On the presser's phone those two writes are the whole round trip twice
+  // over, on top of a question-bank read, on top of the six-second animation.
+  // Measured with a 12-second round trip on the host alone: the host never saw
+  // the final question at all, was left showing question 1 while the room asked
+  // question 40, and the round had no clock. Everybody else was answering.
+  //
+  // So the writes keep their order and the screen no longer queues behind them.
+  // state._roomWritePending gates the one thing that genuinely cannot go first.
   _showQuestionScreen();
+  // Awaited so the handler does not resolve before the room has actually moved,
+  // and caught because two places await this promise now — the stamp gate is
+  // the other — and an unhandled rejection would be reported as a page error.
+  // setPhaseOnServer has already told the player if the write failed.
+  await roomWrite.catch(err => logger.error('Game', 'final question room write failed', err));
 }
 
 /**

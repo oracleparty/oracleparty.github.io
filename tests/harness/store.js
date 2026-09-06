@@ -62,6 +62,7 @@ export class FakeStore {
     this._missing = new Set();     // tables that answer as if they do not exist
     this._hiddenFunctions = new Set();  // RPCs that answer PGRST202
     this._slowFunctions = new Map();    // RPC -> ms before it answers
+    this._slowReplies = new Map();      // RPC -> ms AFTER it has run, before it answers
     this._failedFunctions = new Map();  // RPC -> the error it answers with
     this._checks = new Map();      // table -> [{ predicate, name }], simulating CHECK constraints
     // Doors the LIVE database has shut, so the fake refuses what it refuses.
@@ -344,6 +345,23 @@ export class FakeStore {
   slowFunction(name, ms) { this._slowFunctions.set(name, ms); }
   /** Undo slowFunction. */
   normalFunction(name) { this._slowFunctions.delete(name); }
+  /**
+   * Make one RPC's REPLY slow while the call itself lands immediately.
+   *
+   * THE FOURTH SHAPE, and it is the one a flaky phone actually produces most
+   * often: the request goes up, the server does the work, Realtime tells
+   * everybody else about it — and the ACK comes back over a connection that has
+   * since stalled. slowFunction models the opposite (nothing has happened yet),
+   * so under it every phone waits together and a caller gated on the reply
+   * looks fine. Under this one the room moves on WITHOUT the caller, which is
+   * what "the player could answer but the host couldn't see the question" is.
+   *
+   * Anything that awaits a write before drawing its own screen is broken by
+   * this and by nothing else in this file.
+   */
+  slowFunctionReply(name, ms) { this._slowReplies.set(name, ms); }
+  /** Undo slowFunctionReply. */
+  normalFunctionReply(name) { this._slowReplies.delete(name); }
   /**
    * Make one RPC FAIL — reached the server, and the server said no.
    *
@@ -826,7 +844,13 @@ export class FakeStore {
         // the caller must not respond by writing directly. See failFunction.
         const failure = this._failedFunctions.get(table);
         if (failure) return { data: null, error: { ...failure } };
-        return { data: this._rpc(table, payload), error: null };
+        // RUN IT, THEN STALL THE ANSWER. _rpc broadcasts, so the rest of the
+        // room hears about this write straight away and only the caller is left
+        // waiting. See slowFunctionReply.
+        const result = this._rpc(table, payload);
+        const replyDelay = this._slowReplies.get(table);
+        if (replyDelay) await new Promise(r => setTimeout(r, replyDelay));
+        return { data: result, error: null };
       }
 
       return { data: null, error: { message: `unsupported action ${action}` } };

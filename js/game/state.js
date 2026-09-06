@@ -60,6 +60,10 @@ export const state = {
   // Has the final-wager screen already been drawn this game? Guards the
   // player's chosen wager against being cleared by a re-render.
   _renderedFinalWager: false,
+  // The round's room writes (question list, then phase), chained. Only the
+  // host's clock stamp waits on it — see showQuestionScreen. Null at every
+  // other moment.
+  _roomWritePending: null,
   finalWager: 20, // Default to highest — punishes indecision on final round
   finalWagerLocked: false,
   // Did the player actually TAP a wager, as opposed to inheriting the default

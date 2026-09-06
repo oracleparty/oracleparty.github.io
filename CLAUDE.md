@@ -212,6 +212,128 @@
 > **Still open from that report**: the rerolled difficulty and the locked prior
 > answer are not explained by this, and are not fixed.
 
+> ## 2026-09-06 — the final question, reproduced at last, and the instrument that was missing
+>
+> **The owner asked the right question: "I must've mentioned it countless times
+> and it hasn't been resolved? There must be a reason??? Perhaps approach it
+> from a different perspective?"** They were right on every count. The reason is
+> below, and it is about the harness rather than the game.
+>
+> The report, three times now:
+>
+> > *"Last question was gamebreaking bugged. The player could answer but host
+> > couldn't see the question till after the timer? Then it rerolled the
+> > difficulty gave the same question and the player's prior answer was locked?"*
+>
+> ### Why six sessions of reading found causes and never a reproduction
+>
+> My first guess this time was that no scenario had the HOST press Reveal.
+> **That was wrong and took one grep to disprove** — `fullgame`, `bots`,
+> `social` and `playagain` all do, and all pass.
+>
+> The real gap: **every slowness knob in this harness slows the SERVER.**
+> `slowFunction`, `slowReads`, `failFunction` — all of them live on the store,
+> which every browser shares. So they slow the whole room equally, and a screen
+> that is queued behind a network call still arrives when everybody else's does.
+> It looks fine. **A real bad connection belongs to ONE PERSON**, and every word
+> of that report is about the asymmetry: one phone had the question and the other
+> did not.
+>
+> `robot.slowConnection(ms)` in `tests/harness/harness.js` is the missing
+> instrument. It delays that page's `__dbOp` bridge and its Realtime deliveries,
+> **half before the store runs and half after** — because a slow link is slow in
+> both directions, so the request takes a while to arrive, the server acts,
+> Realtime tells everyone else *at once*, and only the reply is still in flight.
+> An all-before delay means nothing has happened yet and the room waits with you;
+> an all-after delay is not a connection. The half-and-half is what makes the
+> room genuinely move on without you.
+>
+> **With 12 seconds of round trip on the host alone, every symptom appeared on
+> the first run:**
+>
+> | | before | after |
+> |---|---|---|
+> | the host sees the final question | **never** | 12.5s |
+> | the host is shown | *"Test question 1"* while the room asks 40 | the room's question |
+> | the room reaches the final question | 35.5s after the press | 29.5s |
+> | the press produces any feedback at all | **12s of nothing** | 35ms |
+> | the round's clock | **NULL** | stamped |
+>
+> ### The cause: the presser's own screen was last in a queue of network calls
+>
+> `handleRevealFinalQuestion` ran four things in series on the phone that pressed
+> the button, and the button's own screen came after all of them:
+>
+> 1. `fetchQuestionByDifficulty` — un-timed, and **in front of the animation**;
+> 2. the six-second slot machine;
+> 3. `updateGameState` (the question list, and a null clock);
+> 4. `setPhaseOnServer` — *the write every other phone acts on*;
+> 5. `_showQuestionScreen()`.
+>
+> Step 4 is what gives everybody else the question. So on a slow phone the room
+> moved and the presser did not — **"the player could answer but host couldn't
+> see the question"**, exactly. Step 1 is why the press appeared to do nothing
+> for a full round trip before that, and why everything then happened at once,
+> late: **"then it rerolled the difficulty"** is the animation arriving after the
+> timer rather than a second reveal. And the host stayed on the question it had
+> before, which is the desync.
+>
+> **The comment above step 5 said this was safe, and named the rule it was
+> breaking.** It read: *"the host's question screen waits on one ordinary phase
+> write… the 2026-08-30 rule is about an UNBOUNDED call gating the screen, and
+> this is not one."* A phase write over a network IS one. That comment was
+> written by me a day earlier, while fixing the clock-ordering bug, and it
+> reintroduced the 2026-08-30 fault by a different road.
+>
+> ### The fix keeps the ORDER and drops the WAIT
+>
+> The two room writes still go list-then-phase — that ordering is load-bearing
+> and is not what was wrong. They are chained in one promise instead of awaited
+> one at a time, and the screen no longer queues behind them.
+>
+> **One thing genuinely cannot go first: the clock stamp.** `op_start_clock`
+> checks the phase it is given against the ROOM's, so a stamp sent before the
+> phase lands is refused however long you wait. `state._roomWritePending` gates
+> that single call inside `showQuestionScreen`, and nothing else — the card, the
+> answer box, the wager and the bot are all already revealed above that line by
+> the 2026-08-30 fix. On any ordinary connection it resolves inside the existing
+> one-second buffer and nothing waits at all.
+>
+> **And the difficulty swap runs UNDER the animation instead of in front of it**
+> (`FINAL_QUESTION_SWAP_TIMEOUT_MS`, 6s). It has always been optional — the
+> pre-fetched question is the fallback and the code has read `if (q)` since it
+> was written — so a slow read now costs a difficulty match, which nobody outside
+> can detect, instead of costing the press its only feedback.
+>
+> ### Both halves break-tested, separately
+>
+> Reverted, `scenario-finalq` reports *"the host could not see the final question
+> until 5920ms after the player could — their own screen was queued behind a
+> network write"* and *"the host pressed Reveal Question and nothing happened on
+> screen for 12041ms — the slot machine was queued behind a read of the question
+> bank"*.
+>
+> The second check is the better one and is worth copying: it measures **the gap
+> between the tap and the first pixel that moves**, which cannot be flaky and
+> does not care how many round trips the fix happens to save.
+>
+> ### What is NOT fixed, and should be said plainly
+>
+> On a 12-second link the room still takes ~29 seconds to reach the final
+> question, because the list write and the phase write are two sequential round
+> trips and the second must follow the first. Closing that needs `op_set_phase`
+> to carry the question list so it is one call — a migration, and a real one.
+> **The bug reported was the host being locked out of their own round; that is
+> gone. The slowness is not.**
+>
+> ### The habit
+>
+> **When a report says one person saw something and another did not, no
+> server-side slowness can reproduce it.** That is a whole class of bug this
+> harness was blind to, and the final question is only where it happened to
+> surface. `robot.slowConnection` applies to every screen in the app; anything
+> that awaits a write before drawing is now testable.
+
 > ## 2026-09-05 (second playtest) — the final question, the swept host, and a row that could not shrink
 >
 > Six reports. Two game-breaking, and both were about something being allowed to
@@ -5830,7 +5952,19 @@ node tests/harness/scenario-account.mjs  # profile, friends leaderboard, friends
 node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused writes
 node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
 node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
+node tests/harness/scenario-finalq.mjs   # the host reveals the final question on a bad connection
 ```
+
+**`robot.slowConnection(ms)` gives ONE phone a bad connection.** Every other
+slowness knob here lives on the store, which every browser shares, so it slows
+the whole room equally — and a screen queued behind a network call still arrives
+when everybody else's does. Real bad connections belong to one person. Half the
+delay lands before the store runs and half after, so the write really does reach
+the server and Realtime really does tell everybody else while the caller is still
+waiting; an all-before delay makes the room wait with you and reproduces nothing.
+**Reach for this whenever a report says one player saw something and another did
+not.** `store.slowFunctionReply(name, ms)` is the same idea for one RPC: it runs,
+it broadcasts, and only the answer is late.
 
 **Robots must never reach the real project.** Three beacons
 (`removePlayerBeacon`, `markDisconnectedBeacon`, `deleteRoomBeacon`) call
