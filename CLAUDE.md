@@ -696,6 +696,30 @@
 > rating at all (`row:false`), because the stuck reveal suppressed it. A screen
 > that will not repaint takes every control on it down too.
 >
+> ### The 1500ms stall has not recurred, and that is a weaker claim than fixed
+>
+> The OTHER finding `scenario-badnetwork` left open — *"passes 1 run in 2; the
+> other stalls at the FINAL scoreboard"* — was measured again after these fixes:
+> **five consecutive clean runs at `--lag=1500`.**
+>
+> That is real evidence. A failure reproducible at roughly one in two does not
+> go five for five by chance. **It is not proof and must not be written up as
+> one:** five runs cannot separate *fixed* from *made much rarer*, and NOBODY
+> ROOT-CAUSED IT. If it recurs, this entry is where to start, not a reason to
+> doubt the report.
+>
+> **The plausible link, offered as a lead rather than an explanation:** the bug
+> above left a screen that would not repaint, and a screen that will not repaint
+> takes every control on it down with it — which is one way a room stops
+> advancing. The same run that showed the stuck reveal also showed a non-host
+> being offered no host rating at all. That is a mechanism worth checking if
+> somebody ever goes looking for the cause; it is not a measurement.
+>
+> **`scenario-badnetwork` is STILL NOT IN CI.** One of its two open findings is
+> fixed and the other is only quiet. A check that fails for reasons nobody has
+> explained is one people learn to re-run, and this file records that costing
+> weeks. Wire it in after it has been quiet across a few more sessions.
+>
 > ### The habit
 >
 > **When one variable answers two questions, find the caller that needs opposite
@@ -820,6 +844,10 @@
 > failure is a real failure with a timing condition attached, and it is written
 > down as open rather than dressed up.
 >
+> **SUPERSEDED LATER THE SAME DAY: five consecutive clean runs at `--lag=1500`
+> after the reveal fixes** — see "the 1500ms stall has not recurred". Quiet is
+> not the same as understood, and it was never root-caused.
+>
 > ## 2026-09-06 — a whole game on a bad link, and the guard that could not recover
 >
 > **The owner could not playtest and asked whether a machine could do anything.**
@@ -905,6 +933,14 @@
 >
 > ### TWO FINDINGS ARE OPEN, REPRODUCED AND UNEXPLAINED
 >
+> **BOTH ARE CLOSED AS OF LATER THE SAME DAY, and the second one turned out to
+> be TWO bugs** — see *"'Waiting…' outlived the reveal, and there were two of
+> them"*. #1 was fixed by consulting `state.gamePhase` instead of asking whether
+> a screen happens to be visible. #2 was an ordering inside `doReveal` plus a
+> refused auto-submit that cancelled the reveal. Kept in full below because the
+> reasoning about how each was FOUND still stands, and because the honesty
+> markers on them ("plausible and NOT established") were the right call.
+>
 > Recorded rather than guessed at, and the scenario catches both:
 >
 > 1. **On a 1500ms link the host never reaches the results screen and lands in
@@ -923,6 +959,10 @@
 > **THE SCENARIO IS THEREFORE NOT IN CI.** A check that fails for reasons nobody
 > has explained is one people learn to re-run, and this file records that
 > costing weeks. Wire it in once both are settled.
+>
+> **STILL NOT IN CI as of the fixes above**, deliberately. One finding is fixed
+> and the other is only QUIET — five clean runs, no root cause. Give it a few
+> more sessions of silence before trusting it to gate a push.
 >
 > ## 2026-09-06 — the Question Bank, second panel of the second pass
 >
