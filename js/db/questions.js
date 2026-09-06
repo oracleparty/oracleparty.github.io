@@ -120,7 +120,7 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
 
   // If no logged-in players, just shuffle and return (guest-only game)
   if (playerUserIds.length === 0) {
-    return _shuffle(available).slice(0, limit);
+    return _fillTo(_shuffle(available).slice(0, limit), data, limit);
   }
 
   // Fetch question history for all logged-in players in the room
@@ -186,6 +186,33 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
   return selected;
 }
 
+/**
+ * Top a selection up to `limit` from a wider pool, without repeating anything
+ * already chosen.
+ *
+ * THE ROOM ASKED FOR N ROUNDS AND MUST GET N. The smart-selection path has
+ * always ended with an "absolute fallback: allow room repeats" for exactly this
+ * reason, but the guest-only paths and the wild-card path returned
+ * `slice(0, limit)` on a filtered list and simply came up short — and the game
+ * then SHRANK ITSELF silently. Reported from a real game: "we were supposed to
+ * play 10 rounds and it only did like 7."
+ *
+ * A repeat the room has already seen is a worse question than a fresh one and a
+ * better outcome than a game that quietly drops three rounds. Where even the
+ * pool cannot fill it, the caller is told (see js/game/init.js) rather than the
+ * count being changed behind the player's back.
+ */
+function _fillTo(selected, pool, limit) {
+  if (selected.length >= limit) return selected.slice(0, limit);
+  const taken = new Set(selected.map(q => q.id));
+  for (const q of _shuffle([...pool])) {
+    if (selected.length >= limit) break;
+    if (taken.has(q.id)) continue;
+    selected.push(q); taken.add(q.id);
+  }
+  return selected;
+}
+
 /** Fisher-Yates shuffle (in-place, returns same array). */
 function _shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -220,7 +247,7 @@ export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserId
   }
 
   if (playerUserIds.length === 0) {
-    return _shuffle(available).slice(0, limit);
+    return _fillTo(_shuffle(available).slice(0, limit), data, limit);
   }
 
   // Same buckets, same rule as a normal category. These two paths used to keep
@@ -272,7 +299,11 @@ export async function fetchExclusiveWildCardQuestions(limit, excludeIds = []) {
 
   const excludeSet = new Set(excludeIds);
   const available = excludeSet.size > 0 ? exclusive.filter(q => !excludeSet.has(q.id)) : [...exclusive];
-  return _shuffle(available.length > 0 ? available : exclusive).slice(0, limit);
+  const picked = _shuffle(available.length > 0 ? available : exclusive).slice(0, limit);
+  // ~19 questions exist in this mode, so a room that has played a few games
+  // runs the pool down fast. Top up from the whole exclusive set rather than
+  // handing back a short list the game will silently turn into fewer rounds.
+  return _fillTo(picked, exclusive, limit);
 }
 
 /**

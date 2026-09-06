@@ -138,6 +138,9 @@ export let _deferredPhase = null;
 export function setDeferredPhase(v) { _deferredPhase = v; }
 
 export let _screenTransitioning = false;
+// The screen most recently ASKED for. A fade that is still in flight when a cut
+// supersedes it must not re-assert its own target when it finishes.
+let _wantedScreen = null;
 export function setScreenTransitioning(v) { _screenTransitioning = v; }
 
 /**
@@ -167,6 +170,7 @@ export function setScreenTransitioning(v) { _screenTransitioning = v; }
  */
 export function showScreen(targetEl, { duration } = {}) {
   if (!targetEl) return;
+  _wantedScreen = targetEl;
   const currentScreen = document.querySelector('.screen.active');
   // Already here — but make sure it is actually VISIBLE. The hand-written
   // version this replaces cleared `display` in that case, and a screen carrying
@@ -177,10 +181,20 @@ export function showScreen(targetEl, { duration } = {}) {
     return;
   }
 
+  // HIDE EVERY OTHER SCREEN, not just the one carrying `.active`.
+  //
+  // During a fade NO screen carries `.active` — `transitionScreens` strips it
+  // at t=0 and only adds it to the target after the delay — so mid-fade the
+  // screen being faded IN is on display while carrying nothing. Hiding only
+  // `currentScreen` (which is null in that window) left it there, and two
+  // screens ended up stacked. Reported from a real game: "screen phasing
+  // between the question page and the page before that."
   const cut = () => {
-    if (currentScreen && currentScreen !== targetEl) {
-      currentScreen.style.display = 'none';
-      currentScreen.classList.remove('active', 'fade-out');
+    for (const s of document.querySelectorAll('.screen')) {
+      if (s === targetEl) continue;
+      if (s.style.display === 'none') continue;
+      s.style.display = 'none';
+      s.classList.remove('active', 'fade-out');
     }
     targetEl.style.display = '';
     void targetEl.offsetHeight;
@@ -195,7 +209,29 @@ export function showScreen(targetEl, { duration } = {}) {
   const done = duration === undefined
     ? transitionScreens(currentScreen, targetEl)
     : transitionScreens(currentScreen, targetEl, duration);
-  return done.finally(() => { _screenTransitioning = false; });
+  return done.finally(() => {
+    _screenTransitioning = false;
+    // A CUT MID-FADE IS UNDONE BY THE FADE'S OWN ENDING, and that is the other
+    // half of the same bug. `transitionScreens` finishes by showing ITS target
+    // and marking it active — so a cut that happened while it was in flight is
+    // silently reversed a moment later, putting the player back on a screen the
+    // game has already left. Refreshing cleared it, which is what the report
+    // said. `_wantedScreen` records what was last asked for; if this fade is no
+    // longer it, re-assert.
+    if (_wantedScreen && _wantedScreen !== targetEl) {
+      const wanted = _wantedScreen;
+      for (const s of document.querySelectorAll('.screen')) {
+        if (s === wanted) continue;
+        if (s.style.display === 'none') continue;
+        s.style.display = 'none';
+        s.classList.remove('active', 'fade-out');
+      }
+      wanted.style.display = '';
+      void wanted.offsetHeight;
+      wanted.classList.remove('fade-out');
+      wanted.classList.add('active');
+    }
+  });
 }
 
 /**

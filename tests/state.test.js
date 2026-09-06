@@ -202,3 +202,60 @@ describe('resolveFieldMap and field accessors', () => {
     expect(mod.getQuestionText(q2)).toBe('');
   });
 });
+
+// ============================================
+// showScreen — a screen switch that lands mid-fade
+//
+// REPORTED FROM A REAL GAME: "when i clicked reveal next question funky things
+// happened such as screen phasing between the question page and the page before
+// that. When i refreshed it was resolved."
+//
+// Two faults, and both need the same window to be seen: `transitionScreens`
+// strips `.active` from the old screen at t=0 and only adds it to the new one
+// after the fade, so FOR THE WHOLE FADE NO SCREEN CARRIES `.active`.
+//
+//   1. `showScreen` hid only the screen carrying `.active` — which is nothing,
+//      mid-fade — leaving the screen being faded IN on display underneath the
+//      one being cut to. Two screens, stacked.
+//   2. The in-flight fade then FINISHES, showing its own target and marking it
+//      active, silently undoing the cut a moment later.
+//
+// SET, NOT RACED: the fade is started and the second call made inside it, which
+// is deterministic where waiting for a real 250ms overlap is luck.
+// ============================================
+describe('showScreen mid-fade', () => {
+  let showScreen;
+
+  beforeEach(async () => {
+    document.body.innerHTML = `
+      <div id="a" class="screen active"></div>
+      <div id="b" class="screen" style="display:none"></div>
+      <div id="c" class="screen" style="display:none"></div>`;
+    setScreenTransitioning(false);
+    ({ showScreen } = await import('../js/game/state.js'));
+  });
+
+  const visible = () => [...document.querySelectorAll('.screen')]
+    .filter(s => s.style.display !== 'none').map(s => s.id);
+  const active = () => [...document.querySelectorAll('.screen.active')].map(s => s.id);
+
+  it('leaves exactly one screen on display when a switch lands mid-fade', async () => {
+    const fading = showScreen(document.getElementById('b'));   // a -> b, in flight
+    showScreen(document.getElementById('c'));                  // supersedes it
+    await fading;
+    await new Promise(r => setTimeout(r, 50));                 // let the fade settle
+    expect(visible()).toEqual(['c']);
+    expect(active()).toEqual(['c']);
+  });
+
+  it('does not let the superseded fade re-show its own target', async () => {
+    const fading = showScreen(document.getElementById('b'));
+    showScreen(document.getElementById('c'));
+    await fading;
+    await new Promise(r => setTimeout(r, 50));
+    // The whole bug: b comes back after the cut, so the player is returned to a
+    // screen the game has already left.
+    expect(document.getElementById('b').classList.contains('active')).toBe(false);
+    expect(document.getElementById('b').style.display).toBe('none');
+  });
+});

@@ -3,7 +3,7 @@
 // Entry point, startup, cleanup, sync, lifecycle.
 // ============================================
 
-import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
+import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored, showToast } from '../utils.js';
 import { logger } from '../logger.js';
 import { presenceNeedsRebuild } from '../presence-health.js';
 import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS, AWAY_GRACE_MS } from '../constants.js';
@@ -473,8 +473,24 @@ async function initHostGame() {
   }
 
   // If we got fewer than requested, adjust totalQuestions (the extra is for final wager)
+  //
+  // AND SAY SO. This shrank the game silently: the host set 10 rounds, the
+  // category could only supply 8 questions, and everybody played 7 with nothing
+  // anywhere explaining why. Reported from a real game — "we were supposed to
+  // play 10 rounds and it only did like 7 or so" — and it is CLAUDE.md #4 in a
+  // place nobody had looked: not a failed write, just a number quietly changed
+  // behind the player's back.
+  //
+  // The fetchers now top themselves up from the wider pool (see _fillTo), so
+  // reaching this at all means the category genuinely does not hold enough
+  // questions. That is a fact about the bank, and the room is entitled to it.
+  const requestedQuestions = state.totalQuestions;
   if (questions.length <= state.totalQuestions) {
     state.totalQuestions = Math.max(1, questions.length - 1);
+  }
+  if (state.totalQuestions < requestedQuestions) {
+    logger.warn('Game', `Only ${questions.length} questions available; playing ${state.totalQuestions} rounds instead of ${requestedQuestions}`);
+    showToast(`Only enough questions for ${state.totalQuestions} rounds — playing ${state.totalQuestions} instead of ${requestedQuestions}.`);
   }
   state.questions = questions;
   resolveFieldMap(questions[0]);

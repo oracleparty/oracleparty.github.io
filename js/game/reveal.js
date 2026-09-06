@@ -239,6 +239,18 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
     const row = document.createElement('div');
     row.className = 'answer-row' + (isPlayerAway(player.id) ? ' answer-row--away' : '');
     row.dataset.playerId = player.id;
+    // A SEAT ID OPENS THE CARD, a user id merely fills it in.
+    //
+    // These rows carried ONLY `data-profile-user-id`, and a bot has no user_id
+    // — `addBot` does not write one — so tapping a bot on the reveal matched
+    // neither selector in attachProfileCardHandler and the card never opened.
+    // Reported from a real game: "cant tap bot profile". The same hole swallows
+    // any guest whose anonymous sign-in did not land.
+    //
+    // The lobby was converted to `data-profile-player-id` for exactly this
+    // reason, and its comment says so. The four in-game surfaces were not —
+    // the same rule stated N times and followed N-4.
+    row.dataset.profilePlayerId = player.id;
     if (player.user_id) row.dataset.profileUserId = player.user_id;
 
     const titleHtml = player.title ? `<span class="player-title">${escapeHtml(player.title)}</span>` : '';

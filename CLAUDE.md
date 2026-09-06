@@ -726,6 +726,124 @@
 > answers to them.** That caller will have resolved it with an ordering, and the
 > ordering will be right for one question and silently wrong for the other.
 
+> ## 2026-09-07 — a real playtest, six reports, and a screen that undid its own fix
+>
+> **The first real game since the desktop pass.** Six things reported; four were
+> bugs, one was a design question the owner settled, one was already correct.
+>
+> ### "Cant tap bot profile" — and it was never only the bot
+>
+> `attachProfileCardHandler` opens on `data-profile-player-id` OR
+> `data-profile-user-id`. **A bot has no user id** — `addBot` does not write one
+> — so its row matched neither selector and the card could not open.
+>
+> **The LOBBY was converted to the seat id for exactly this reason**, and the
+> comment in `profile.js` spells it out: *"a user id is missing whenever
+> anonymous sign-in did not land, and keying the whole card on it would make
+> that player untappable."* **All four in-game surfaces were left on the user-id
+> hook** — the reveal rows, the animated scoreboard, the final-wager list and
+> the results rows. The same rule stated N times and followed N−4, which is the
+> shape this file records more than any other.
+>
+> So the bot was the visible half. The invisible half is **any guest whose
+> anonymous sign-in failed**, on every screen in the game — and that is the case
+> the lobby fix was written for.
+>
+> `scenario-bots` checks it STRUCTURALLY rather than by clicking: a click test
+> passes if any one row happens to work, while asserting that every row carries
+> the seat hook catches the class, including the guest case that cannot be
+> produced on demand.
+>
+> ### "His answer said waiting… until I clicked reveal"
+>
+> An UPDATE for a row the client does not have cached fell through to
+> `renderRevealAnswers(state.currentAnswers)` — **a re-render of a cache that,
+> by definition of `idx === -1`, does not contain the row the event is about.**
+> The event arrived, the screen redrew, and nothing changed.
+>
+> It bites hardest on the FINAL round: every player holds a `__WAGER_LOCKED__`
+> placeholder, so a real answer arrives as an UPDATE rather than an INSERT, and
+> a cache taken before that row existed has nowhere to put it. **Clicking Reveal
+> re-fetches, which is exactly why that fixed it and waiting never did** — the
+> owner's own description contained the diagnosis.
+>
+> ### The screen that undid its own fix
+>
+> *"Screen phasing between the question page and the page before that. When I
+> refreshed it was resolved."* **Two faults, and the second is the interesting
+> one.**
+>
+> `transitionScreens` strips `.active` at t=0 and adds it to the target only
+> after the fade, so **for the whole fade no screen carries `.active`.**
+>
+> 1. `showScreen`'s cut hid only the screen carrying `.active` — nothing,
+>    mid-fade — leaving the screen being faded IN on display underneath the one
+>    being cut to. Two screens, stacked.
+> 2. **The in-flight fade then FINISHES and re-shows its own target**, silently
+>    reversing the cut a moment later and putting the player back on a screen the
+>    game had already left.
+>
+> `showScreen` was written on 2026-09-06 to make "I cannot fade right now" mean
+> a hard cut rather than nothing. **It did not consider that the fade it was
+> superseding would keep running.** `_wantedScreen` records what was last asked
+> for, and a fade that is no longer it re-asserts the right screen when it ends.
+>
+> **Unit tested, not raced.** `tests/state.test.js` starts a fade and calls
+> `showScreen` for a third screen inside it — deterministic where waiting for a
+> real 250ms overlap is luck. Verified by reverting each half: both checks fail.
+> `state.js` pulls no Supabase, which is what makes this testable in Node at all.
+>
+> ### "We were supposed to play 10 rounds and it only did like 7"
+>
+> **The game shrank itself and said nothing.** `initHostGame` requests
+> `totalQuestions + 1` questions and, on getting fewer, quietly lowers
+> `totalQuestions`. That is #4 in a place nobody had looked: not a failed write,
+> just a number changed behind the player's back.
+>
+> Two halves:
+>
+> - **The fetchers now top up.** The smart-selection path has always ended with
+>   an *"absolute fallback: allow room repeats"*; the two guest-only paths and
+>   the wild-card path returned `slice(0, limit)` on a filtered list and simply
+>   came up short. `_fillTo` is the one rule, applied in all three. A repeat is
+>   a worse question and a better outcome than a game that drops three rounds.
+> - **And it SAYS SO** when the bank genuinely cannot fill the count. Reaching
+>   that now means a fact about the question bank, and the room is entitled to it.
+>
+> **Used question ids persist across Play Again**, so a room that plays several
+> games in one sitting runs its own category down — which is how a healthy
+> category still ends up short.
+>
+> ### SETTLED BY THE OWNER: the 5% upset stays
+>
+> *"If I select easy and my friend's hard, and no one medium, the visual
+> shouldn't cycle through medium right?"* — **it should, because Medium can
+> genuinely win.** Measured from `pickWeightedDifficulty` with `{easy:1,
+> hard:1}`: an unvoted level carries weight 0.1 against 1, so the real odds are
+> **Easy ≈48%, Hard ≈48%, Medium ≈5%.**
+>
+> The owner's instinct was right — *"I thought it was a small random chance"* —
+> and they chose to **keep it**. So the wheel is honest and nothing changes.
+>
+> **DO NOT NARROW THE WHEEL.** This has now flip-flopped three times. The rule
+> is: `allowedDifficulties` governs what can HAPPEN, the wheel shows exactly
+> that, and hiding a reachable outcome is the only version that lies.
+>
+> ### Already correct: a bot never touches the difficulty
+>
+> *"Even tho bot is recorded it shouldn't factor into the difficulty of
+> course."* It does not. `recordCurrentQuestionOutcomes` skips a row it cannot
+> attribute and any row whose player `is_bot`, so nothing a bot answers reaches
+> `question_stats` or `answer_tally` — the two tables the difficulty band reads.
+> Verified by reading, and `scenario-bots` fails by name if the guard is removed.
+>
+> ### The habit
+>
+> **A fix that changes what a screen does must account for what the OLD path is
+> still doing when it lands.** The mid-fade bug is the 2026-09-06 fix arriving
+> one layer down: it correctly decided to cut, and never asked what the thing it
+> was cutting past would do when it finished.
+
 > ## 2026-09-06 — Chat Archive, the last desktop-only panel
 >
 > **Sixth time this file records *a page with no mock is a page nobody is

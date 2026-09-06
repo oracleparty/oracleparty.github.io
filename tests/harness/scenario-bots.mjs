@@ -437,6 +437,49 @@ try {
   // ============================================================
   // THE BOT PLAYED EVERY ROUND, AND SPENT EACH WAGER ONCE
   // ============================================================
+  // ============================================================
+  // CAN YOU TAP THE BOT?
+  //
+  // Reported from a real game: "cant tap bot profile."
+  //
+  // attachProfileCardHandler opens on `data-profile-player-id` OR
+  // `data-profile-user-id`, and A BOT HAS NO USER ID — addBot does not write
+  // one. The four in-game surfaces carried only the user-id hook, so a bot's
+  // row matched neither selector and the card could never open. The LOBBY was
+  // converted to the seat id for exactly this reason and its comment says so;
+  // the game screens were not.
+  //
+  // CHECKED STRUCTURALLY, not by clicking. A click test passes if any one row
+  // happens to work; asserting that EVERY row carries the seat-id hook catches
+  // the whole class — the bot, and any guest whose anonymous sign-in did not
+  // land, who is the other half of this hole and cannot be produced on demand.
+  // ============================================================
+  heading('a bot can be tapped like anybody else');
+  {
+    const hooks = await host.page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#reveal-answers .answer-row')];
+      return rows.map(r => ({
+        name: (r.querySelector('.answer-row__name')?.textContent || '?').trim().slice(0, 14),
+        seat: !!r.dataset.profilePlayerId,
+        user: !!r.dataset.profileUserId,
+      }));
+    }).catch(() => null);
+
+    if (!hooks || hooks.length === 0) {
+      note('no answer rows on screen at this moment — tap hooks not measured');
+    } else {
+      note(`reveal rows: ${JSON.stringify(hooks)}`);
+      const unopenable = hooks.filter(h => !h.seat && !h.user);
+      const seatless = hooks.filter(h => !h.seat);
+      if (unopenable.length) {
+        problems.push(`${unopenable.length} row(s) on the reveal open no profile card at all: ${JSON.stringify(unopenable.map(h => h.name))}`);
+      }
+      if (seatless.length) {
+        problems.push(`${seatless.length} row(s) are keyed only on a user id, so anybody without one — every bot, and any guest whose sign-in did not land — is untappable: ${JSON.stringify(seatless.map(h => h.name))}`);
+      }
+    }
+  }
+
   heading('the bot played a full game');
   const botAnswers = botRow
     ? table.store.table('answers').filter(a => String(a.player_id) === String(botRow.id))

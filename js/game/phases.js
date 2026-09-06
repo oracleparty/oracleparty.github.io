@@ -960,7 +960,23 @@ export function handleAnswerChange(payload) {
       }
       return;
     }
-    // Fallback: full re-render
+    // AN UPDATE FOR A ROW WE DO NOT HAVE IS NEW INFORMATION, NOT A REDRAW.
+    //
+    // This fell through to re-rendering the cache — which, by definition of
+    // `idx === -1`, does not contain the row the event is about. So the event
+    // arrived, the screen redrew, and nothing changed: the player kept reading
+    // "Waiting...".
+    //
+    // It bites hardest on the FINAL round. Every player holds a
+    // __WAGER_LOCKED__ placeholder, so their real answer arrives as an UPDATE
+    // rather than an INSERT; if this client's cache was taken before that row
+    // existed, the update had nowhere to land. Reported from a real game: "my
+    // friend's answer said waiting... until I clicked reveal and his answer
+    // showed up" — clicking Reveal re-fetches, which is why that fixed it and
+    // waiting never did.
+    if (idx === -1 && payload.new.question_number === state.currentQuestion) {
+      state.currentAnswers = currentGameAnswers([...state.currentAnswers, payload.new]);
+    }
     renderRevealAnswers(state.currentAnswers);
     return;
   }

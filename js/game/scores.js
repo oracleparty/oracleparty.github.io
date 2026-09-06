@@ -192,7 +192,7 @@ export async function showScoresScreen() {
     const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
-      <div class="score-anim-row${isPlayerAway(p.id) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
+      <div class="score-anim-row${isPlayerAway(p.id) ? ' score-anim-row--away' : ''}" data-player-id="${p.id}" data-new-score="${newScore}" data-profile-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         <div class="avatar-wrap">
           ${avatarHtml}
           ${honkBadge}
@@ -800,7 +800,7 @@ function renderFinalWagerPlayers(lockedWagers) {
     const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
-      <div class="fw-player-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
+      <div class="fw-player-row" data-player-id="${p.id}" data-profile-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         ${avatarHtml}
         <div class="name-stack">
           <span class="fw-player-row__name">${escapeHtml(p.display_name)}</span>
@@ -1450,7 +1450,7 @@ export async function showResultsScreen() {
     const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
-      <div class="results-row" data-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
+      <div class="results-row" data-player-id="${p.id}" data-profile-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         <span class="results-row__place ${placeClass}">${placeLabel}</span>
         <div class="avatar-wrap">
           ${avatarHtml}
