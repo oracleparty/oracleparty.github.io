@@ -2473,6 +2473,21 @@ export function attachProfileCardHandler(container, getPlayers, roomId = null, g
     const target = e.target.closest('[data-profile-player-id], [data-profile-user-id]');
     if (!target) return;
 
+    // THE FACE OPENS THE CARD, NOT THE WHOLE ROW.
+    //
+    // The owner's words: "it should be from tapping the player icon not the
+    // whole bar otherwise it is clunky." A row-wide tap target on a row that
+    // also holds a honk button and a status dot means every near-miss opens a
+    // sheet over the lobby — and the sheet is now a big one, with a chart in it.
+    //
+    // FALLS BACK TO THE ROW where there is no avatar to aim at. This handler is
+    // also attached on the reveal and the scoreboard, and a row without one
+    // would otherwise stop opening the card at all — "a control that only moved
+    // out of somewhere is a control that was deleted", which is the trap this
+    // file records more than any other.
+    const avatar = target.querySelector('.avatar-wrap, .avatar');
+    if (avatar && !e.target.closest('.avatar-wrap, .avatar')) return;
+
     const userId = target.dataset.profileUserId || null;
     const playerId = target.dataset.profilePlayerId || null;
     const players = typeof getPlayers === 'function' ? getPlayers() : [];

@@ -489,7 +489,8 @@ try {
       const row = document.querySelector('#reveal-answers [data-profile-user-id]')
         || document.querySelector('[data-profile-user-id]');
       if (!row) return { tappable: false };
-      row.click();
+      // The FACE opens the card now, not the whole row.
+      (row.querySelector('.avatar-wrap, .avatar') || row).click();
       await new Promise(r => setTimeout(r, 1500));
       return {
         tappable: true,

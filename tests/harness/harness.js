@@ -56,9 +56,14 @@ function startServer() {
  * ABSENCE of an offer as easily as on pressing one.
  */
 export async function pressPlayerCardAction(page, playerId, labelRe) {
+  // AIM AT THE FACE. The card opens from the avatar now, not from anywhere on
+  // the row — so a scenario that clicks the row would report "the card does not
+  // open" for a control that merely moved its target.
   const row = page.locator(`[data-profile-player-id="${playerId}"]`).first();
   if (!await row.isVisible().catch(() => false)) return { opened: false, labels: [], pressed: false };
-  await row.click().catch(() => {});
+  const face = row.locator('.avatar-wrap, .avatar').first();
+  const target = await face.isVisible().catch(() => false) ? face : row;
+  await target.click().catch(() => {});
   await page.waitForTimeout(700);
   const labels = await page.evaluate(() => {
     const sheet = document.querySelector('#profile-card-sheet');

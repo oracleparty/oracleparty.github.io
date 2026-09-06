@@ -72,6 +72,56 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-05 — Ready Up reported success and wrote nothing
+>
+> **Reported: "left and rejoined and it didn't show me in the lobby till I
+> refreshed even tho I could send a message in the chat (not showing my icon).
+> Also had to leave and rejoin in order to even ready up and have the game
+> start."** Three symptoms, and they are one fact: **the returning client held a
+> seat the room did not have.** The list cannot draw a row that is not there,
+> the chat cannot find an avatar for it, and Ready Up writes to it.
+>
+> `toggleReady` was a bare UPDATE whose result was thrown away. **An update
+> against a row that no longer exists matches ZERO ROWS and returns NO ERROR**,
+> so the button flipped, the list redrew optimistically, and nothing was
+> written. That is #4 and #5 in the one place a player is most certain they
+> pressed something.
+>
+> It reports a THIRD answer now — `missing`, kept apart from both success and
+> failure, because the caller can do something about this one that it cannot do
+> about a dropped connection: **take a seat again and retry once**, which is
+> exactly what leaving and rejoining did by hand. Only if that also fails does
+> anything reach the player.
+>
+> ### TWO REPRODUCTIONS PASSED, AND THAT IS WHY THE CHECK DRIVES THE STATE
+>
+> `scenario-lobby` now leaves and rejoins **through the join screen** — nothing
+> had ever done that; `scenario-nasty` reloads the page, which is a different
+> path. It passed. So did a second one that rejoins WITHOUT waiting for the
+> leave to settle, racing the removal. **Neither reproduced it.**
+>
+> So the check sets the state instead: it removes the row underneath the client
+> and presses Ready Up. That is the position a returning player was in, and it
+> is deterministic where a race is not. Verified by deleting the repair: *"the
+> press reported success and did nothing"*.
+>
+> **The root cause of the stale seat is still not found.** What is fixed is that
+> the client no longer believes a write that wrote nothing — which is the
+> symptom that cost a game.
+>
+> ### The face opens the card, not the whole row
+>
+> Asked for in the same message: *"it should be from tapping the player icon not
+> the whole bar otherwise it is clunky."* A row-wide target on a row that also
+> holds a honk button and a status dot means every near-miss opens a sheet over
+> the lobby — and that sheet is a big one now.
+>
+> **It FALLS BACK to the row where there is no avatar to aim at.** The same
+> handler is attached on the reveal and the scoreboard, and a row without one
+> would otherwise stop opening the card at all. Three scenarios clicked the row
+> and now aim at the face; a check that reaches for a control by its old target
+> reports "gone" for one that merely moved.
+
 > ## 2026-09-05 — a sheet sized in the wrong viewport
 >
 > **Photographed on a real phone: the profile card ran off the bottom of the

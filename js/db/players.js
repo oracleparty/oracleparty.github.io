@@ -525,14 +525,39 @@ export async function fetchPlayers(roomId) {
 /**
  * Toggle a player's ready status.
  */
+/**
+ * Ready up, and SAY SO when the seat is not there.
+ *
+ * This was a bare UPDATE whose result was thrown away. An update against a row
+ * that no longer exists matches ZERO ROWS and returns NO ERROR — so the button
+ * flipped, the list redrew, and nothing was written. Reported from a live game
+ * as "had to leave and rejoin in order to even ready up and have the game
+ * start": the client was holding a seat the room did not have, and every press
+ * reported success.
+ *
+ * `missing` is a THIRD answer, kept apart from both success and failure,
+ * because the caller can do something about this one that it cannot do about a
+ * dropped connection: take a seat again and try once more.
+ */
 export async function toggleReady(playerId, isReady) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('players')
     .update({ is_ready: isReady })
-    .eq('id', playerId);
+    .eq('id', playerId)
+    .select('id');
 
-  reportWriteFailure('Ready toggle', error, "Couldn't update your ready status");
-  return { error };
+  if (error) {
+    reportWriteFailure('Ready toggle', error, "Couldn't update your ready status");
+    return { error };
+  }
+  // No error and no row is the silence this whole codebase is built around
+  // noticing. Deliberately NOT toasted here — the caller repairs the seat and
+  // retries, and a message for something it is about to fix is noise.
+  if (!data || data.length === 0) {
+    logger.warn('Supabase', 'toggleReady matched no row — this seat is not in the room', { playerId });
+    return { error: null, missing: true };
+  }
+  return { error: null };
 }
 
 // ============================================

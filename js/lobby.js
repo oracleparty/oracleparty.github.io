@@ -1531,7 +1531,22 @@ async function handleToggleReady() {
   }
 
   try {
-    await toggleReady(room.playerId, isReady);
+    const res = await toggleReady(room.playerId, isReady);
+    // THE SEAT IS GONE. Not an error — an update matching no rows returns none
+    // — so nothing downstream would ever have noticed, and the player pressed a
+    // button that reported success and did nothing. Take a seat again and try
+    // once, which is exactly what leaving and rejoining did by hand.
+    if (res?.missing) {
+      logger.warn('Lobby', 'ready toggle hit a seat that is not in the room — reclaiming');
+      await loadPlayers();
+      await ensureCurrentPlayer();
+      const retry = await toggleReady(room.playerId, isReady);
+      if (retry?.missing) {
+        showToast("Couldn't update your ready status — try leaving and rejoining", 'error');
+      } else {
+        await loadPlayers();
+      }
+    }
   } catch (err) {
     logger.error('Lobby', 'toggleReady failed', err);
     // Revert optimistic UI update

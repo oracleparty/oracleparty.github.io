@@ -258,7 +258,8 @@ try {
   const guestCard = await host.page.evaluate(async () => {
     const row = document.querySelector('[data-profile-user-id]');
     if (!row) return { tappable: false };
-    row.click();
+    // The FACE opens the card now, not the whole row.
+    (row.querySelector('.avatar-wrap, .avatar') || row).click();
     await new Promise(r => setTimeout(r, 1500));
     const sheet = document.querySelector('#profile-card-sheet');
     return {
@@ -415,6 +416,125 @@ try {
       problems.push('a player pressed Leave and their seat stayed in the room — nobody can leave, and the lobby will keep listing them forever');
     } else if (after >= before) {
       problems.push(`pressing Leave removed nobody (${before} -> ${after})`);
+    }
+  }
+
+  // ============================================================
+  // LEAVING AND COMING BACK
+  // ============================================================
+  //
+  // Reported from a live game: "left and rejoined and it didn't show me in the
+  // lobby till I refreshed even tho I could send a message in the chat (not
+  // showing my icon). Also had to leave and rejoin in order to even ready up
+  // and have the game start."
+  //
+  // Three symptoms, and they are one fact: the returning player's own client
+  // does not have their seat. The list cannot draw them, the chat cannot find
+  // their avatar, and Ready Up writes to a row the client does not believe in.
+  //
+  // Nothing had ever driven a rejoin THROUGH THE JOIN SCREEN in the lobby —
+  // scenario-nasty reloads the page, which is a different path — so this walks
+  // the one a person actually takes.
+  console.log('\n=== leaving, then coming back through the join screen ===');
+  {
+    const back = joiners[joiners.length - 1];
+    await back.goto('join.html').catch(() => {});
+    await back.page.waitForSelector('#code-input', { timeout: 15000 }).catch(() => {});
+    await back.page.fill('#code-input', code).catch(() => {});
+    await back.page.click('#btn-join').catch(() => {});
+    await back.page.waitForURL('**/lobby.html*', { timeout: 20000 }).catch(() => {});
+    await back.page.waitForTimeout(3000);
+
+    const view = await back.page.evaluate(() => {
+      const stored = JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}');
+      const rows = [...document.querySelectorAll('#player-list .player-item, #host-list .player-item')];
+      return {
+        seatId: stored.playerId || null,
+        names: rows.map(r => (r.querySelector('.player-item__name') || {}).textContent?.trim()),
+        // The row this client believes is its own — what Ready Up writes to.
+        seatOnScreen: !!document.querySelector(`[data-profile-player-id="${stored.playerId}"]`),
+        readyVisible: !document.getElementById('btn-ready')?.classList.contains('hidden'),
+      };
+    }).catch(e => ({ err: String(e).slice(0, 120) }));
+    console.log(`   · after rejoining: ${JSON.stringify(view)}`);
+
+    const seatInDb = view.seatId
+      && table.store.table('players').some(p => String(p.id) === String(view.seatId));
+    console.log(`   · that seat exists in the room: ${seatInDb}`);
+
+    if (!view.seatId) {
+      problems.push('a returning player has no seat id at all — Ready Up and every heartbeat write to nothing');
+    } else if (!seatInDb) {
+      problems.push('a returning player holds a seat id that is not in the room — that is what Ready Up writes to, so readying up does nothing until they leave and come back again');
+    }
+    if (view.names && !view.seatOnScreen) {
+      problems.push(`a returning player cannot see THEMSELVES in the lobby list (${JSON.stringify(view.names)}) — reported as "it didn't show me till I refreshed"`);
+    }
+
+    // AND AGAIN WITHOUT WAITING FOR THE LEAVE TO SETTLE.
+    //
+    // The clean version above passes, so whatever was reported needs a
+    // condition it does not have. Leaving is not instant — the row goes by an
+    // awaited call OR by an unload beacon that fires after navigation — and a
+    // person who taps Leave and rejoins straight away races their own removal.
+    // If the new seat is adopted and the late delete then takes it, the client
+    // holds an id that is not in the room: invisible in the list, no avatar on
+    // their chat, and Ready Up writing to nothing. All three reported symptoms
+    // from one fact.
+    await back.page.locator('#btn-leave').click().catch(() => {});
+    await back.goto('join.html').catch(() => {});
+    await back.page.waitForSelector('#code-input', { timeout: 15000 }).catch(() => {});
+    await back.page.fill('#code-input', code).catch(() => {});
+    await back.page.click('#btn-join').catch(() => {});
+    await back.page.waitForURL('**/lobby.html*', { timeout: 20000 }).catch(() => {});
+    await back.page.waitForTimeout(3500);
+
+    const fast = await back.page.evaluate(() => {
+      const stored = JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}');
+      return {
+        seatId: stored.playerId || null,
+        seatOnScreen: !!document.querySelector(`[data-profile-player-id="${stored.playerId}"]`),
+        rows: document.querySelectorAll('#player-list .player-item, #host-list .player-item').length,
+      };
+    }).catch(e => ({ err: String(e).slice(0, 120) }));
+    const fastSeatInDb = fast.seatId
+      && table.store.table('players').some(p => String(p.id) === String(fast.seatId));
+    console.log(`   · leaving and rejoining immediately: ${JSON.stringify(fast)}, seat in room: ${fastSeatInDb}`);
+    if (fast.seatId && !fastSeatInDb) {
+      problems.push('after a quick leave-and-rejoin the client holds a seat that is NOT in the room — invisible in the list, no avatar on their chat, and Ready Up writes to nothing');
+    }
+    if (fast.seatId && !fast.seatOnScreen) {
+      problems.push('after a quick leave-and-rejoin the player cannot see themselves in the lobby');
+    }
+
+    // READY UP WHEN THE SEAT IS NOT THERE.
+    //
+    // Neither rejoin above reproduced what was reported, so this drives the
+    // STATE rather than trying to reach it by playing — the same call
+    // scenario-nasty makes about a closed round, and for the same reason: a
+    // check that needs a race to land is one people learn to re-run.
+    //
+    // The row is removed underneath the client, which is the position a
+    // returning player was in. The update then matches zero rows and returns NO
+    // ERROR, so before this the button flipped, the list redrew, and nothing was
+    // written — "had to leave and rejoin in order to even ready up".
+    const myId = await back.page.evaluate(() =>
+      JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId).catch(() => null);
+    const rows = table.store.table('players');
+    const at = rows.findIndex(p => String(p.id) === String(myId));
+    if (at !== -1) {
+      rows.splice(at, 1);
+      await back.page.locator('#btn-ready').click().catch(() => {});
+      await back.page.waitForTimeout(3500);
+      const after = await back.page.evaluate(() =>
+        JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId).catch(() => null);
+      const seated = table.store.table('players').find(p => String(p.id) === String(after));
+      console.log(`   · readying up on a seat that was gone: new seat ${after ? 'taken' : 'NONE'}, is_ready=${seated?.is_ready}`);
+      if (!seated) {
+        problems.push('pressing Ready Up on a seat the room no longer has left the player with no seat at all — the press reported success and did nothing');
+      } else if (!seated.is_ready) {
+        problems.push('pressing Ready Up on a seat the room no longer has did not make them ready — the write matched zero rows, returned no error, and the button flipped anyway');
+      }
     }
   }
 
