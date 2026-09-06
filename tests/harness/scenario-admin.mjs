@@ -833,6 +833,100 @@ try {
     problems.push('the review does not say these are candidates rather than mistakes');
   }
 
+  // ============================================================
+  // THE QUESTION BANK IS A TABLE AND A FORM, NOT ONE STRETCHED COLUMN
+  //
+  // The desktop shell moved this panel into a work area four times as wide as
+  // a phone and it went on rendering the phone layout: an answer field the
+  // width of a monitor holding two words, a Search button that wrapped onto a
+  // line of its own, and results that read as a stack of paragraphs instead of
+  // something an eye can run down while looking for a misfiled question.
+  //
+  // Measured rather than eyeballed. Reverting the desktop rules fails the
+  // column, cap and side-by-side checks by name. THE WRAP CHECK DOES NOT FIRE
+  // ON THAT REVERT and is not claimed to: the row wrapped during an
+  // intermediate version of this work, not in the layout that shipped before
+  // it. It is a forward guard against the next control that grows, and it is
+  // labelled as one rather than counted as proof.
+  // ============================================================
+  heading('the question bank on a computer');
+  // The answer-key review leaves ONE row on screen, and one row can never show
+  // that columns line up. Search the bank again for a full list.
+  await admin.page.fill('#q-search', '').catch(() => {});
+  await admin.page.click('#btn-search-questions').catch(() => {});
+  await admin.page.waitForTimeout(1200);
+  // Every editor is closed on a fresh list, and a `display:none` element
+  // measures zero — which would make the width cap pass on a build that has no
+  // cap at all. Open one first.
+  await admin.page.locator('#question-results .admin-q-row__summary').first()
+    .click().catch(() => {});
+  await admin.page.waitForTimeout(400);
+  const qbank = await admin.page.evaluate(() => {
+    const round = n => Math.round(n);
+    const filters = document.querySelector('#panel-questions .admin-filters');
+    const rows = [...document.querySelectorAll('#panel-questions .admin-q-row__summary')];
+    const edit = document.querySelector('#panel-questions .admin-q-row__edit');
+    const body = document.getElementById('panel-questions');
+    const fieldX = sel => {
+      const el = edit?.querySelector(sel);
+      const label = el?.closest('label');
+      if (!label) return null;
+      const b = label.getBoundingClientRect();
+      return { x: round(b.x), y: round(b.y), w: round(b.width) };
+    };
+    return {
+      filterLines: filters ? new Set([...filters.children]
+        .map(el => round(el.getBoundingClientRect().y))).size : -1,
+      filterKids: filters ? filters.children.length : 0,
+      metaColumns: rows.map(r => [...r.querySelectorAll('.admin-q-row__meta span')]
+        .map(sp => round(sp.getBoundingClientRect().x)).join('|')),
+      rowCount: rows.length,
+      editWidth: edit ? round(edit.getBoundingClientRect().width) : -1,
+      // The PANEL BODY, not the work area. A first version compared against
+      // `.admin-work`, whose clientWidth includes its padding — so an entirely
+      // uncapped editor measured 932 inside 1012 and the check passed on the
+      // build it was written to catch.
+      bodyWidth: body ? round(body.getBoundingClientRect().width) : -1,
+      answer: fieldX('.admin-q-edit__answer'),
+      alts: fieldX('.admin-q-edit__alts'),
+    };
+  }).catch(() => null);
+
+  if (!qbank) {
+    problems.push('could not measure the question bank layout at all');
+  } else {
+    note(`filters: ${qbank.filterKids} controls on ${qbank.filterLines} line(s)`);
+    note(`result rows: ${qbank.rowCount}; meta columns: ${JSON.stringify([...new Set(qbank.metaColumns)])}`);
+    note(`editor ${qbank.editWidth}px inside a ${qbank.bodyWidth}px panel`);
+
+    if (qbank.filterKids > 0 && qbank.filterLines !== 1) {
+      problems.push(`the search row wrapped onto ${qbank.filterLines} lines — a search box, two menus and a button fit on one at this width`);
+    }
+    // `display: contents` promotes the meta spans to grid items, so every row
+    // puts category, format and difficulty at the same x. Without it each row
+    // clusters them under its own question and the list stops being scannable.
+    const distinct = new Set(qbank.metaColumns.filter(Boolean));
+    if (qbank.rowCount < 2) {
+      problems.push('fewer than two result rows on screen, so column alignment was never tested');
+    } else if (distinct.size !== 1) {
+      problems.push(`the result rows do not share their columns — ${distinct.size} different layouts across ${qbank.rowCount} rows: ${JSON.stringify([...distinct])}`);
+    }
+    // An input is only as readable as it is long. The cap is what stops a
+    // two-word answer sitting in a box the width of the monitor.
+    if (qbank.editWidth <= 0) {
+      problems.push('no editor was open, so nothing about the form was measured');
+    } else if (qbank.editWidth >= qbank.bodyWidth) {
+      problems.push(`the editor fills its ${qbank.bodyWidth}px panel — it is not capped, so every field is as wide as the monitor allows`);
+    }
+    // Answer and Alternates belong side by side; if the `:has()` placement is
+    // gone they stack and the form is the phone's single column again.
+    if (!qbank.answer || !qbank.alts) {
+      problems.push('the editor has no Answer / Alternates fields to measure');
+    } else if (qbank.answer.y !== qbank.alts.y) {
+      problems.push('Answer and Alternates are on separate lines — the editor is still one stretched column');
+    }
+  }
+
   // Tapping the open one again closes it. Whichever one is open — the
   // section above leaves the question bank showing, and hardcoding a panel
   // name here made this report "does not close" when it had merely opened a

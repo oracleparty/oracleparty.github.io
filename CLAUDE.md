@@ -581,6 +581,93 @@
 > until the end is a rebuild nobody can test, and doing Title Words first means
 > the owner can start writing this week.
 
+> ## 2026-09-06 — the Question Bank, second panel of the second pass
+>
+> **The panel that most needed a computer was the one still wearing a phone.**
+> Title Words was converted first; this is the other job a phone cannot do, and
+> it had been sitting in a work area four times as wide as the layout it was
+> drawn for.
+>
+> ### THE SCREENSHOT TOOL WAS SHOWING A LAYOUT THAT DOES NOT SHIP
+>
+> Found before a line of CSS was written, and it is the same fault the sweep
+> already grew a guard for. `scripts/screenshot.js` renders at **375px unless
+> told otherwise**, and it ignored `STATES[name].widths` entirely — so
+> photographing `admin-question-edit`, a `data-desktop-only` panel, produced a
+> phone with a note saying the panel lives on a computer. **A picture of a
+> layout that never ships, offered as the review of it.** It honours the
+> declaration now; an explicit `--width` still wins, because asking for a size
+> is asking for that size.
+>
+> That is #6 in a new place: the sweep exits 2 rather than measure a desktop
+> state at 375, and the tool beside it had no such guard at all.
+>
+> ### The list is a table; the editor is a form
+>
+> Those are different shapes and the phone layout had to be one thing for both.
+>
+> | | before | after |
+> |---|---|---|
+> | Search, two menus, a button | the button **wrapped to its own line** | one row, 900px |
+> | a result row | question, then its meta clustered under it | four columns, at one x on **every** row |
+> | the editor | one column, 932px wide, an answer field the width of a monitor holding two words | six tracks, capped at 900 |
+>
+> **`display: contents` on the meta is what makes the list scannable.** It
+> promotes the three spans to grid items, so category, format and difficulty run
+> straight down the page and a misfiled question is visible without reading a
+> word. Measured: `855|1055|1145` on all five rows; without it, two different
+> layouts across the same five.
+>
+> **Scoped to `#panel-questions`, not to `.admin-q-row`.** Recent Games, Chat
+> Archive and Error Logs share that class with a different number of meta spans,
+> so a fixed column set would land their text in the wrong columns. The scope
+> also picks up the answer-key review, which builds its rows through the same
+> function — which is right, and is why the review note needs `grid-column:
+> 1 / -1` or it drops into the category column.
+>
+> ### Placed by the controls already there, not by new classes
+>
+> `label:has(.admin-q-edit__answer)` and friends. **Both `js/admin.js` and
+> `scripts/mock-states.js` build this markup**, so a class added for layout is
+> two files to keep in step — the drift this file records more than any other.
+> `:has()` reads what the row already carries, and a browser without it drops
+> those selectors, keeps `span 6` on everything, and renders the single column
+> that ships today: worse-looking, never broken.
+>
+> ### Two things that had to be moved before they could be styled
+>
+> - **Inline `style="flex:2"` beats a stylesheet whatever its specificity.** The
+>   three filter controls carried their widths inline, so the desktop shell could
+>   not reproportion them without `!important`. Same values, stated in CSS.
+> - **`var(--text-md)` does not exist in this project.** I wrote it three times;
+>   the scale is `--text-base`. An undefined custom property is not an error, it
+>   is a declaration that quietly computes to something else — caught by grepping
+>   the token list rather than by looking at the result.
+>
+> ### The check, and one assertion that is honestly labelled
+>
+> `scenario-admin` measures the panel on the desktop robot **after a fresh
+> search**, because the answer-key review leaves ONE row on screen and one row
+> can never show that columns line up. Reverting the desktop rules fails three
+> by name: the columns, the cap, and Answer/Alternates side by side.
+>
+> **THE FIRST CAP CHECK COULD NOT FAIL.** It compared the editor against
+> `.admin-work`, whose `clientWidth` includes its padding — so a completely
+> uncapped editor measured **932 inside 1012** and passed. Against the panel
+> body it is 932 inside 932, and fails. The check was written, run against the
+> revert, seen to agree with me, and rewritten.
+>
+> **The wrap check does not fire on that revert and is not claimed to.** The row
+> wrapped during an intermediate version of this work, not in the layout that
+> shipped before it. It is a forward guard against the next control that grows,
+> and the comment says so rather than counting it as proof.
+>
+> ### Still to do
+>
+> Question Health and Chat Archive are the two remaining desktop-only panels, and
+> Recent Games / Error Logs are phone-kept but shown here too. One panel at a
+> time, still.
+
 > ## 2026-09-06 — the final question, reproduced at last, and the instrument that was missing
 >
 > **The owner asked the right question: "I must've mentioned it countless times
@@ -6684,8 +6771,9 @@ Known and deliberate, and reported every run: `.mastery-group`,
 are grouping wrappers the JS queries by (`closest`, `querySelector`) and shows
 or hides inline — there is nothing for CSS to say about them.
 `.feedback-btn--flag` has no rule (the flag button falls
-back to the shared `.feedback-btn` look), the seven `.admin-q-edit__*` classes
-are JS query hooks on elements already styled by `.input` and `.btn`, and
+back to the shared `.feedback-btn` look), **`.admin-q-edit__text`** is a JS query
+hook on an element already styled by `.input` (it was seven of these until the
+desktop Question Bank started placing the others by name), and
 `watermark-all` is excluded
 — it is a glyph-calibration state whose cards differ by design.
 

@@ -6586,6 +6586,13 @@ body::after {
   font-size: var(--text-sm);
   padding: var(--space-xs) var(--space-sm);
 }
+/* These three were inline `style="flex:2"` / `flex:1` on the elements. Inline
+   beats a stylesheet whatever its specificity, so the desktop shell could not
+   reproportion them without `!important`. Same widths as before, stated where
+   a media-scoped rule can win. */
+.admin-filters #q-search { flex: 2; }
+.admin-filters #q-category,
+.admin-filters #q-format { flex: 1; }
 
 .admin-q-row {
   border-bottom: 1px solid var(--color-bg-deep);
@@ -8223,6 +8230,134 @@ body.kb-open #question-screen #answer-form {
 
 /* Two subjects side by side would halve the scrolling and destroy the column
    alignment that makes a missing word visible. One column, wide. */
+
+/* --- Question Bank, the other job a phone cannot do ---
+
+   ~4,859 questions, and the work is two different things: FIND one, then FIX
+   it. The phone layout does neither here — it stretched a single column across
+   1500px, so an answer field held "Mandarin Chinese" in a box the width of a
+   monitor, and a list of results was a stack of paragraphs rather than
+   something the eye can run down.
+
+   THE LIST IS A TABLE AND THE EDITOR IS A FORM. Those are different shapes and
+   the phone had to use one for both. */
+
+/* Scoped to the panel, not to `.admin-q-row`, because Recent Games, Chat
+   Archive and Error Logs share that class with a different number of meta
+   spans — a fixed column set would land their text in the wrong columns.
+   `#panel-questions` also covers the answer-key review, which builds its rows
+   through the same function. */
+.admin-desktop #panel-questions .admin-q-row {
+  padding: 5px 0;
+}
+.admin-desktop #panel-questions .admin-q-row__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px 80px 90px;
+  gap: var(--space-sm);
+  align-items: baseline;
+  padding: 3px var(--space-xs);
+  border-radius: var(--radius-sm);
+}
+.admin-desktop #panel-questions .admin-q-row__summary:hover {
+  background: var(--color-surface);
+}
+/* `display: contents` promotes the three meta spans to grid items, so category,
+   format and difficulty line up down the whole result list instead of
+   clustering under each question. That column alignment is the entire reason
+   this is a grid: a misfiled question is visible without reading a word. */
+.admin-desktop #panel-questions .admin-q-row__meta {
+  display: contents;
+}
+.admin-desktop #panel-questions .admin-q-row__text {
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The review note is a fourth child of the summary, so it would otherwise drop
+   into the category column and wrap to nothing. */
+.admin-desktop #panel-questions .admin-review__note {
+  grid-column: 1 / -1;
+}
+
+/* THE EDITOR IS CAPPED AND LAID OUT IN COLUMNS. An input is only as readable
+   as it is long: at 1450px the cursor is a hike from the text. Six tracks so
+   the three-up row (subcategory, format, difficulty) and the two-up row
+   (answer, alternates) both divide evenly. */
+.admin-desktop #panel-questions .admin-q-row__edit {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-sm) var(--space-md);
+  align-items: end;
+  max-width: 900px;
+  padding: var(--space-sm) var(--space-xs) var(--space-lg);
+}
+/* PLACED BY THE CONTROLS THAT ARE ALREADY THERE, not by new classes. Both
+   js/admin.js and scripts/mock-states.js build this markup, so a class added
+   for layout is two files to keep in step — the drift this project records more
+   than any other fault. `:has()` reads what the row already carries.
+
+   IT DEGRADES TO WHAT SHIPS TODAY. A browser without `:has()` drops those
+   selectors as invalid, every child keeps `span 6`, and the form is the single
+   column it has always been — worse-looking, never broken. */
+.admin-desktop #panel-questions .admin-q-row__edit > * {
+  grid-column: span 6;
+}
+.admin-desktop #panel-questions .admin-q-row__edit > label:has(.admin-q-edit__answer),
+.admin-desktop #panel-questions .admin-q-row__edit > label:has(.admin-q-edit__alts) {
+  grid-column: span 3;
+}
+.admin-desktop #panel-questions .admin-q-row__edit > label:has(.admin-q-edit__subcategory),
+.admin-desktop #panel-questions .admin-q-row__edit > label:has(.admin-q-edit__format),
+.admin-desktop #panel-questions .admin-q-row__edit > label:has(.admin-q-edit__difficulty) {
+  grid-column: span 2;
+}
+.admin-desktop #panel-questions .admin-q-edit__save {
+  grid-column: span 2;
+  justify-self: start;
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-base);
+}
+.admin-desktop #panel-questions .admin-q-edit__status {
+  grid-column: span 4;
+  align-self: center;
+}
+
+/* A search box, two menus and a button, sized for a mouse rather than a thumb.
+   Left-aligned because `.input` centres its text, which is right for a
+   four-letter room code and wrong for a sentence you are typing into. */
+.admin-desktop .admin-filters {
+  max-width: 900px;
+  gap: var(--space-sm);
+  align-items: stretch;
+}
+.admin-desktop .admin-filters .input {
+  text-align: left;
+  padding: var(--space-sm);
+}
+.admin-desktop .admin-filters #q-search { flex: 1 1 240px; }
+.admin-desktop .admin-filters #q-category,
+.admin-desktop .admin-filters #q-format { flex: 0 1 10rem; }
+.admin-desktop .admin-filters .btn {
+  flex: 0 0 auto;
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-base);
+}
+/* `btn-block` is a phone rule: a control the width of a monitor reads as a
+   banner rather than a button. */
+.admin-desktop #btn-review-answers {
+  width: auto;
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-base);
+}
+.admin-desktop #btn-load-more,
+.admin-desktop #btn-load-more-games,
+.admin-desktop #btn-load-more-errors,
+.admin-desktop #btn-load-more-chats {
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-base);
+}
+.admin-desktop .admin-review__summary { max-width: 900px; }
 
 /* ============================================
    THE PHONE KEEPS THE EMERGENCY HALF

@@ -42,6 +42,7 @@ for (const a of args) {
   }
 }
 
+const widthGiven = flags.width !== undefined;
 const width = parseInt(flags.width) || 375;
 const height = parseInt(flags.height) || 812;
 const fullPage = flags.full === true;
@@ -74,12 +75,20 @@ function startServer() {
 }
 
 // Take a single screenshot
-async function screenshotPage(browser, port, { page, screen, inject, injectArgs, inherits, outName }) {
+async function screenshotPage(browser, port, { page, screen, inject, injectArgs, inherits, outName, widths }) {
   const url = `http://127.0.0.1:${port}/${page}.html`;
   const outPath = `/tmp/screenshot-${outName}.png`;
 
+  // A state that declares its own widths is built for a viewport 375px cannot
+  // show — admin.html's desktop panels. Photographing it at the default is a
+  // picture of a layout that never ships, which is exactly the hole
+  // layout-sweep grew a guard for and this tool still had. An explicit
+  // --width still wins: asking for a size is asking for that size.
+  const shotWidth = (!widthGiven && Array.isArray(widths) && widths.length)
+    ? widths[0] : width;
+
   const context = await browser.newContext({
-    viewport: { width, height },
+    viewport: { width: shotWidth, height },
     deviceScaleFactor: 2,
   });
   const p = await context.newPage();
