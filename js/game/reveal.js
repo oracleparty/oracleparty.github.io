@@ -209,7 +209,25 @@ function submittedCount(answers) {
   return countAnswersFrom(answers, state.players);
 }
 
-export function renderRevealAnswers(answers) {
+/**
+ * Draw one row per player on the reveal screen.
+ *
+ * `holdColours` exists because `state.resultsRevealed` was answering TWO
+ * different questions and doReveal() needed opposite answers to them at the
+ * same moment:
+ *
+ *   1. HAS THE ROUND CLOSED?  -> nobody is still waiting
+ *   2. SHOULD COLOURS BE PAINTED NOW?  -> no, hold them one frame so the CSS
+ *      transition fires when doReveal's requestAnimationFrame adds the class
+ *
+ * doReveal used to answer both by rendering BEFORE flipping the flag, which
+ * got (2) right and (1) wrong — see the comment at its call site.
+ */
+export function renderRevealAnswers(answers, { holdColours = false } = {}) {
+  // Colours are painted when the round is revealed AND the caller is not
+  // holding them back for the reveal animation. `stillWaiting` deliberately
+  // does NOT read this: a round that has closed has closed, animation or not.
+  const paintColours = state.resultsRevealed && !holdColours;
   const container = $('#reveal-answers');
 
   // Remove old click listener to avoid duplicates
@@ -285,7 +303,7 @@ export function renderRevealAnswers(answers) {
       const wager = answer?.wager || 0;
 
       // Answer text color: only colored post-reveal (doReveal animates this)
-      const colorClass = state.resultsRevealed
+      const colorClass = paintColours
         ? (isCorrect ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect')
         : '';
       const emptyClass = isEmpty ? ' answer-row__answer--empty' : '';
@@ -298,14 +316,14 @@ export function renderRevealAnswers(answers) {
       // No row means nothing to flip, so the host is offered no toggle. A
       // control bound to an id that does not exist is the dead button this
       // project keeps finding.
-      const toggleHtml = (answer?.id && canControlGame() && state.resultsRevealed && !isDisqualified)
+      const toggleHtml = (answer?.id && canControlGame() && paintColours && !isDisqualified)
         ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
              <div class="answer-toggle__thumb"></div>
            </div>`
         : '';
 
       // Wager badge: colored after reveal, neutral before
-      const wagerColorClass = state.resultsRevealed
+      const wagerColorClass = paintColours
         ? (isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect')
         : '';
 
@@ -460,11 +478,29 @@ export function doReveal() {
   // room still has it on the reveal where 059 put it.
   placeHostReview('reveal-host-review-slot');
 
-  // Render immediately with cached answers (Realtime keeps these up-to-date).
-  renderRevealAnswers(state.currentAnswers);
-
-  // Now mark revealed — subsequent renders will apply colors immediately
+  // THE ROUND IS CLOSED BEFORE THE COLOURS ARE PAINTED, and this used to be
+  // the other way round.
+  //
+  // `renderRevealAnswers` ran first and the flag was set after it, so THIS
+  // render — the reveal's own — computed `stillWaiting` with the flag still
+  // false. Any row without a real answer was drawn as "Waiting..." and nothing
+  // re-rendered afterwards, so it read "Waiting..." through the verdicts and
+  // the scoreboard. The requestAnimationFrame below cannot rescue it: it adds
+  // a colour class to a row, and a waiting row has no answer in it to colour.
+  //
+  // INVISIBLE ON EVERY ROUND BUT THE LAST. A regular round blank-fills its
+  // non-submitters into real (empty) rows first, so they read "No answer".
+  // On the FINAL round every player holds a __WAGER_LOCKED__ placeholder from
+  // the moment they lock a wager, and handleRevealResults deliberately uses
+  // ON CONFLICT DO NOTHING so those placeholders SURVIVE — so every row in the
+  // room was a placeholder and every row said "Waiting...". Reproduced at zero
+  // lag on untouched code: "Alice showed 3 rows reading Waiting... for over 3s
+  // after the reveal, though every player already has an answer stored".
+  //
+  // The flag moves up; `holdColours` keeps the animation, which is the only
+  // thing the old order was buying.
   state.resultsRevealed = true;
+  renderRevealAnswers(state.currentAnswers, { holdColours: true });
 
   // Record the round's history (fire-and-forget).
   //

@@ -299,6 +299,33 @@ try {
     // deleted" trap, with nothing watching the half that matters. Reported from
     // a live game: "is the host rating even working? I don't think my friend
     // even encountered that option."
+    // NOBODY IS STILL WAITING ONCE THE ROUND HAS BEEN REVEALED, and on the
+    // FINAL round nothing had ever checked it.
+    //
+    // `state.resultsRevealed` was answering two questions at once — "has the
+    // round closed" and "paint the colours now" — and doReveal needed opposite
+    // answers to them, so it rendered BEFORE flipping the flag. Every row
+    // without a real answer was drawn as "Waiting..." and nothing re-rendered
+    // afterwards. Invisible on a regular round, where non-submitters are
+    // blank-filled into real rows first; on the final round every player holds
+    // a __WAGER_LOCKED__ placeholder that the reveal deliberately preserves, so
+    // EVERY row said "Waiting..." through the verdicts and the scoreboard.
+    //
+    // Sampled on every phone rather than asserted at the end: the final
+    // reveal is a screen the game passes THROUGH.
+    if (screen === 'reveal-screen') {
+      const stuck = await r.page.evaluate(() => {
+        if (!window.__state?.resultsRevealed) return null;
+        return {
+          q: window.__state.currentQuestion,
+          waiting: document.querySelectorAll('.answer-row__answer--waiting').length,
+        };
+      }).catch(() => null);
+      if (stuck && stuck.waiting > 0) {
+        waitingAfterReveal.push(`${r.name} had ${stuck.waiting} row(s) reading "Waiting..." on round ${stuck.q} AFTER the reveal`);
+      }
+    }
+
     if (r !== host && screen === 'reveal-screen') {
       const onFinal = await r.page.evaluate(() =>
         (window.__state?.currentQuestion ?? -1) >= (window.__state?.totalQuestions ?? 0)).catch(() => false);
@@ -326,6 +353,7 @@ try {
   }
 
   const hostReviewOnFinalRound = {};
+  const waitingAfterReveal = [];
   let round = 0;
   let lastQuestionSeen = -1;
   let reachedResults = false;
@@ -548,6 +576,11 @@ try {
     // rate the host is a whole feature that is quietly not there, and it looks
     // identical to one working correctly until somebody plays a game and says
     // they never saw it.
+    note(`rows still reading "Waiting..." after a reveal: ${waitingAfterReveal.length}`);
+    // A reveal that leaves somebody on "Waiting..." is telling the room a
+    // player never answered when the round is over and the answer is stored.
+    for (const w of new Set(waitingAfterReveal)) problems.push(w);
+
     note(`host review on the final round: ${JSON.stringify(hostReviewOnFinalRound)}`);
     const raters = Object.entries(hostReviewOnFinalRound).filter(([, v]) => v.row && v.up && v.down);
     if (raters.length === 0) {

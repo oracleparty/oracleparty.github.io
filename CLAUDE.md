@@ -621,6 +621,87 @@
 > the reason this panel exists and only appears when a row is opened, so a
 > closed list would review markup that never shows the thing it is for.
 >
+> ## 2026-09-06 — "Waiting…" outlived the reveal, and there were TWO of them
+>
+> **The finding `scenario-badnetwork` left open, reproduced at ZERO LAG on
+> untouched code — so it was never about a bad connection.** It is the owner's
+> oldest surviving report: *"a player's answer kept saying waiting… even after
+> the time was up and answers revealed."* The September fix made the display
+> honest for a player with NO ROW. This is the case where they had a row.
+>
+> ### One flag was answering two questions
+>
+> `state.resultsRevealed` means both:
+>
+> | | |
+> |---|---|
+> | **has the round closed?** | → nobody is still waiting |
+> | **paint the colours now?** | → no, hold one frame so the CSS transition fires |
+>
+> `doReveal` needed OPPOSITE answers to those at the same moment, and resolved
+> it by rendering BEFORE flipping the flag — which gets the second right and the
+> first wrong. So the reveal's own render drew every row without a real answer
+> as "Waiting…", and nothing re-rendered afterwards. **The
+> `requestAnimationFrame` cannot rescue it**: it adds a colour class to a row,
+> and a waiting row has no answer in it to colour.
+>
+> **INVISIBLE ON EVERY ROUND BUT THE LAST.** A regular round blank-fills its
+> non-submitters into real (empty) rows first, so they read "No answer". On the
+> FINAL round every player holds a `__WAGER_LOCKED__` placeholder from the
+> moment they lock a wager, and `handleRevealResults` deliberately uses
+> `ON CONFLICT DO NOTHING` so those placeholders SURVIVE — that is the guard
+> that stops a host revealing early from turning somebody's 20 into a blank. So
+> every row in the room was a placeholder and every row said "Waiting…".
+>
+> `holdColours` splits the two meanings. The flag moves above the render;
+> `stillWaiting` reads the flag, the colours read the option. Break-tested:
+> reverted, `scenario-badnetwork --lag=0` reports *"Alice showed 3 rows reading
+> Waiting… for over 3s after the reveal"* and exits 1.
+>
+> ### THE FIRST FIX WAS NOT THE WHOLE BUG, and the new check is what said so
+>
+> With only the reorder shipped, `scenario-fullgame` reported it again on **Bob,
+> a non-host** — and a second run at the same commit did NOT. **Intermittent,
+> which is a real failure with a timing condition attached**, and the condition
+> is whether the auto-submit gets refused.
+>
+> `doSubmitAnswer` has THREE early returns — already submitted, no question
+> loaded, the write failed — and every one of them skips the
+> `_showRevealScreen()` at its bottom. **That was the phase handler's only route
+> to the reveal screen.** On the final round the commonest auto-submit is an
+> empty string from a player already holding a placeholder row: the server
+> refuses it as late, and the fallback upsert cannot write either because 049
+> revoked UPDATE on `answers`.
+>
+> **THAT REFUSAL IS THE SYSTEM WORKING** — this file has a whole section saying
+> so. What was wrong is that it also silently cancelled the reveal, leaving
+> `resultsRevealed` true over rows drawn while it was false.
+>
+> `thenShowReveal: false` lets a caller own the screen, and both phase handlers
+> (`reveal` and `answer_reveal`) now paint unconditionally. **Whether this
+> phone's answer landed and whether the room has revealed are two different
+> facts**, and the screen follows the room.
+>
+> ### The check, and what it honestly is
+>
+> `scenario-fullgame` samples EVERY phone on EVERY reveal and fails if any row
+> reads "Waiting…" while `resultsRevealed` is true. It is deterministic for the
+> ordering bug and **PROBABILISTIC for the refused-submit one** — it caught that
+> in one run of two. Said plainly rather than dressed up, the same call the
+> third blank-fill site got. A deterministic version needs the refusal driven
+> directly, and this file records what a new synthetic section in
+> `scenario-feedback` cost last time: three checks broken three sections away.
+>
+> It also caught something for free: in the failing run Bob was offered no host
+> rating at all (`row:false`), because the stuck reveal suppressed it. A screen
+> that will not repaint takes every control on it down too.
+>
+> ### The habit
+>
+> **When one variable answers two questions, find the caller that needs opposite
+> answers to them.** That caller will have resolved it with an ordering, and the
+> ordering will be right for one question and silently wrong for the other.
+
 > ## 2026-09-06 — Chat Archive, the last desktop-only panel
 >
 > **Sixth time this file records *a page with no mock is a page nobody is

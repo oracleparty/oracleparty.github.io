@@ -640,7 +640,18 @@ async function handleSubmitAnswer() {
   await doSubmitAnswer(raw.trim());
 }
 
-export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
+/**
+ * Record this player's answer, and — unless the caller says otherwise — move
+ * them to the reveal screen.
+ *
+ * `thenShowReveal: false` is for callers that own the screen themselves. This
+ * function has THREE early returns (already submitted, no question loaded, and
+ * the write failed) and every one of them skips the transition at the bottom.
+ * That is right for a player pressing Submit — a refused answer should leave
+ * them where they are — and WRONG for a phase handler, where the room has
+ * already moved and this phone's late auto-submit is a separate question.
+ */
+export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowReveal = true } = {}) {
   if (state.hasSubmitted) return;
   state.hasSubmitted = true;
 
@@ -785,6 +796,6 @@ export async function doSubmitAnswer(answer, { autoSubmit = false } = {}) {
     incrementQuestionsAnswered(state.room.id, state.room.playerId);
   }
 
-  // Immediately transition to reveal screen
-  if (_showRevealScreen) _showRevealScreen();
+  // Immediately transition to reveal screen — unless the caller owns it.
+  if (thenShowReveal && _showRevealScreen) _showRevealScreen();
 }

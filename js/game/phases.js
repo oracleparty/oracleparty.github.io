@@ -604,8 +604,14 @@ export async function handlePhaseTransition(phase) {
         const timerEl = document.querySelector('.timer');
         if (timerEl) { timerEl.textContent = "Time's up!"; timerEl.classList.add('timer--expired'); }
         const currentAnswer = ($('#answer-input')?.value || '').trim();
-        await doSubmitAnswer(currentAnswer, { autoSubmit: true });
-      } else if (!state.onRevealScreen) {
+        await doSubmitAnswer(currentAnswer, { autoSubmit: true, thenShowReveal: false });
+      }
+      // THE ROUND HAS ENDED FOR THE WHOLE ROOM, whether or not this phone's own
+      // late answer landed. This used to hang off doSubmitAnswer's success
+      // path — and its three early returns (already submitted, no question,
+      // the write failed) all skip that transition, so a refused auto-submit
+      // left the player sitting on the question screen with the room gone.
+      if (!state.onRevealScreen) {
         showRevealScreen();
       }
       break;
@@ -625,9 +631,24 @@ export async function handlePhaseTransition(phase) {
       if (!state.hasSubmitted) {
         // Auto-submit whatever the player has typed (host revealed early)
         const currentAnswer = ($('#answer-input')?.value || '').trim();
-        await doSubmitAnswer(currentAnswer, { autoSubmit: true });
-        // showRevealScreen() → doReveal() will follow since resultsRevealed is true
-      } else if (!state.onRevealScreen) {
+        await doSubmitAnswer(currentAnswer, { autoSubmit: true, thenShowReveal: false });
+      }
+      // THE ROOM HAS REVEALED WHETHER OR NOT THIS PHONE'S LATE ANSWER LANDED,
+      // and painting it used to be doSubmitAnswer's job on the branch above.
+      //
+      // That function returns early when the write fails — and on the FINAL
+      // round the commonest auto-submit is an empty string from a player who
+      // already holds a __WAGER_LOCKED__ row, which the server refuses as late
+      // and the fallback upsert cannot write either (049 revoked UPDATE on
+      // `answers`). THAT REFUSAL IS THE SYSTEM WORKING; what was wrong is that
+      // it also silently cancelled the reveal. `resultsRevealed` was left true
+      // over rows drawn while it was false, so every placeholder row read
+      // "Waiting..." through the verdicts and the scoreboard — reported from a
+      // live game, and caught by scenario-fullgame on a non-host.
+      //
+      // Whether this player's answer landed and whether the room has revealed
+      // are two different facts. The screen follows the room.
+      if (!state.onRevealScreen) {
         showRevealScreen(); // will call doReveal() since resultsRevealed is true
       } else {
         // Already on reveal screen — re-fetch answers before revealing
