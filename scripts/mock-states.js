@@ -1489,6 +1489,79 @@ export const STATES = {
     },
   },
 
+  // CHAT ARCHIVE HAD NO MOCK EITHER. Nothing had ever rendered a transcript, and
+  // this is a panel of TWO shapes at once — a list of rooms you scan, and a
+  // conversation you read — so getting it wrong is invisible until somebody
+  // opens one.
+  //
+  // One room is OPEN, for the same reason Question Health opens a row: a closed
+  // list reviews markup that never shows the thing the panel is for.
+  'admin-chat-archive': {
+    page: 'admin',
+    screen: null,
+    widths: [1280],   // `data-desktop-only` — see admin-title-words
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const loading = document.getElementById('admin-loading');
+      if (loading) loading.style.display = 'none';
+      const content = document.getElementById('admin-content');
+      if (content) content.style.display = '';
+
+      const head = document.querySelector('.admin-panel__head[data-panel="chat"]');
+      if (head) head.setAttribute('aria-expanded', 'true');
+      const body = document.getElementById('panel-chat');
+      if (body) body.hidden = false;
+      if (window.buildAdminShell) window.buildAdminShell();
+
+      const list = document.getElementById('chat-archive');
+      if (!list) return;
+
+      // The same markup js/admin.js emits, so the preview cannot disagree with
+      // what ships. Four meta spans, which is why the Question Bank's column
+      // grid is scoped to its own panel rather than to `.admin-q-row`.
+      const msg = (name, text, time) => `
+        <div class="admin-chat-msg">
+          <span class="admin-chat-msg__name">${name}</span>
+          <span class="admin-chat-msg__text">${text}</span>
+          <span class="admin-chat-msg__time">${time}</span>
+        </div>`;
+
+      // FOUR SPANS ON EVERY ROW, with an em-dash where the archive carries
+      // nothing — the same fallback js/admin.js emits. On a desktop these are
+      // grid columns, and a row that skips one shoves every column after it.
+      const room = (r, open) => `
+        <div class="admin-q-row">
+          <div class="admin-q-row__summary admin-chat-summary">
+            <div class="admin-q-row__text">${r.code} — ${r.category}</div>
+            <div class="admin-q-row__meta">
+              <span>${r.host || '—'}</span><span>${r.players ? r.players + ' players' : '— players'}</span>
+              <span>${r.msgs} msgs</span><span>${r.date}</span>
+            </div>
+          </div>
+          <div class="admin-q-row__edit admin-chat-messages" style="display:${open ? '' : 'none'};">
+            ${open ? [
+              msg('QuizMasterMax', 'right who is ready then', '20:14:02'),
+              msg('Anna', 'give me a sec, kettle on', '20:14:19'),
+              msg('TimeTraveler42', 'I have been ready since Tuesday', '20:14:31'),
+              msg('Anna', 'that is a genuinely long message typed by somebody who had a lot to say about the last answer and wanted everyone to know it', '20:15:44'),
+              msg('QuizMasterMax', '🦆', '20:15:58'),
+            ].join('') : ''}
+          </div>
+        </div>`;
+
+      list.innerHTML = [
+        room({ code: 'ZMSJ', category: 'History — Ancient', host: 'QuizMasterMax',
+               players: 4, msgs: 27, date: '06/09/2026, 20:14:02' }, true),
+        // Archived with no host name and no player count — the row that used
+        // to emit two spans and land its date under another room's msg count.
+        room({ code: 'KAYS', category: 'Science', host: null,
+               players: null, msgs: 8, date: '06/09/2026, 19:02:11' }, false),
+        room({ code: 'EXWZ', category: 'Pop Culture — Movies & TV', host: 'TimeTraveler42',
+               players: 6, msgs: 112, date: '05/09/2026, 22:41:50' }, false),
+      ].join('');
+    },
+  },
+
   'admin-question-edit': {
     page: 'admin',
     screen: null,

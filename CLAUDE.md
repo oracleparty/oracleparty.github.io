@@ -621,6 +621,60 @@
 > the reason this panel exists and only appears when a row is opened, so a
 > closed list would review markup that never shows the thing it is for.
 >
+> ## 2026-09-06 — Chat Archive, the last desktop-only panel
+>
+> **Sixth time this file records *a page with no mock is a page nobody is
+> checking*, and the mock found two faults before a line of CSS was written.**
+> Measured on a 1280px robot:
+>
+> | | before | after |
+> |---|---|---|
+> | the room list's four meta columns | **three different sets of x positions across three rooms** | one, on every row |
+> | a message | the full 932px panel — about a hundred characters a line | capped at 780 |
+> | where the message TEXT starts | **428, 398, 427** on consecutive lines | 427, every line |
+>
+> ### The grid has to be on the TRANSCRIPT, not on the message
+>
+> The first attempt put `grid-template-columns` on `.admin-chat-msg` and it
+> changed nothing — text still began at 428, 356, 427. **A grid aligns columns
+> only within ONE container**, so a grid per row lines each row up with itself
+> and with nothing else. `display: contents` on the row promotes its three spans
+> into the transcript's own grid, which is the move `.admin-q-row__meta` already
+> makes one panel up.
+>
+> `fit-content(170px)` then sizes the name column to the LONGEST name in that
+> room and no wider — a `min-width` could only ever set a floor, which is
+> exactly why the names grew past the old one. The per-message border goes with
+> it: a `display: contents` element paints nothing, and a rule broken by the
+> column gaps would look worse than the row gap replacing it. A chat log is
+> separated by its names.
+>
+> ### A row that skipped a column was shoving every column after it
+>
+> `renderChatArchive` emitted its meta spans conditionally — no `host_name`, no
+> span; no `player_count`, no span. On a phone that is a tidy inline list. As
+> grid columns it means **a room archived without a host puts its message count
+> under another room's host and its date under their player count.** Four spans
+> always now, with an em-dash where the archive has nothing, which is also the
+> more honest reading: a missing player count is a fact worth seeing.
+>
+> **The seeded data is what found it.** `chat_archive` had never been seeded at
+> all, so that panel opened, printed "No archived chats." and passed every check
+> ever written about it. The second seeded room deliberately carries no host and
+> no count.
+>
+> ### Both halves break-tested, separately
+>
+> Removing the CSS block fails three by name — the columns, the cap, and the
+> ragged left edge. Restoring the conditional spans fails two, reporting
+> `[4,2]`. Either check alone would pass on a build the other one catches: a cap
+> with no alignment is a ragged pile in a narrow box, and alignment with no cap
+> reads across the whole monitor.
+>
+> **The desktop pass is finished for the four `data-desktop-only` panels.**
+> Recent Games and Error Logs are phone-kept and shown on both, and have not
+> been given desktop treatment — they are the next candidates, not a gap.
+
 > ## 2026-09-06 — the host was navigated out of their own results screen
 >
 > **Bug 1 of the two the bad-network scenario left open, and it is FIXED. The
@@ -872,9 +926,9 @@
 >
 > ### Still to do
 >
-> Question Health and Chat Archive are the two remaining desktop-only panels, and
-> Recent Games / Error Logs are phone-kept but shown here too. One panel at a
-> time, still.
+> **Done as of later the same day** — Question Health and Chat Archive both have
+> their own entries above. Recent Games and Error Logs are phone-kept but shown
+> here too, and have had no desktop treatment. One panel at a time, still.
 
 > ## 2026-09-06 — the final question, reproduced at last, and the instrument that was missing
 >

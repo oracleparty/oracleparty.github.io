@@ -1098,11 +1098,21 @@ function appendChatArchive(chats) {
     const messages = Array.isArray(c.messages) ? c.messages : [];
     const row = document.createElement('div');
     row.className = 'admin-q-row';
-    const metaParts = [];
-    if (c.host_name) metaParts.push(escapeText(c.host_name));
-    if (c.player_count) metaParts.push(`${c.player_count} players`);
-    metaParts.push(`${messages.length} msgs`);
-    metaParts.push(date);
+    // EVERY COLUMN IS EMITTED ON EVERY ROW, even when the archive does not
+    // carry the value. On a desktop these four spans are grid columns, and a
+    // column that only exists on some rows is not a column — it shifts the
+    // date under the message count on the one row that is missing a host. It
+    // is also the more honest reading: an archive with no player count is a
+    // fact worth seeing rather than a gap that looks like a tidy row.
+    const metaParts = [
+      c.host_name ? escapeText(c.host_name) : '—',
+      // `!= null` rather than a truth test: a room archived with 0 players is
+      // a fact, and "— players" means we do not know. Conflating them is the
+      // same mistake as reading a missing timestamp as "gone".
+      c.player_count != null ? `${c.player_count} players` : '— players',
+      `${messages.length} msgs`,
+      date,
+    ];
     row.innerHTML = `
       <div class="admin-q-row__summary admin-chat-summary">
         <div class="admin-q-row__text">${escapeText(c.room_code || '?')} — ${escapeText(c.category || '?')}</div>

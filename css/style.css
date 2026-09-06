@@ -8411,6 +8411,90 @@ body.kb-open #question-screen #answer-form {
 }
 .admin-desktop .admin-review__summary { max-width: 900px; }
 
+/* --- Chat Archive: a room list you scan, and a transcript you read ---
+
+   Two shapes again, and the same two treatments as the Question Bank and
+   Question Health. MEASURED on a 1280px robot before any of this was written:
+
+   - the room's host, player count, message count and date sat at THREE
+     different sets of x positions across three rooms, because they are inline
+     spans that simply follow whatever the name before them happened to need;
+   - a message ran the full 932px panel, and the speaker's name column had a
+     `min-width` it grew past — so the message TEXT started at 428, 398 and 427
+     on consecutive lines. A transcript is read straight down, and a ragged
+     left edge is the one thing that makes that hard.
+
+   SCOPED TO `#panel-chat`, never to `.admin-q-row`. Recent Games and Error
+   Logs share that class with a different number of meta spans, so a column set
+   fixed here would land their text under the wrong headings — the same reason
+   the Question Bank's grid is scoped to its own panel. */
+.admin-desktop #panel-chat .admin-chat-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px 90px 90px 170px;
+  gap: var(--space-sm);
+  align-items: baseline;
+  padding: 3px var(--space-xs);
+  border-radius: var(--radius-sm);
+}
+.admin-desktop #panel-chat .admin-chat-summary:hover {
+  background: var(--color-surface);
+}
+.admin-desktop #panel-chat .admin-chat-summary .admin-q-row__meta {
+  display: contents;
+}
+.admin-desktop #panel-chat .admin-chat-summary .admin-q-row__text {
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A LINE OF CHAT IS NOT A LINE OF DATA. 932px is about a hundred characters,
+   and the eye loses its place returning to the start of the next one. 780 is
+   the cap Question Health already uses for the same reason, and sharing it is
+   deliberate — two panels on one page that disagree about measure read as two
+   pages.
+
+   THE GRID IS ON THE TRANSCRIPT, NOT ON THE MESSAGE, and that distinction is
+   the whole fix. A grid aligns columns only within ONE container, so a grid per
+   message row lines each row up with itself and with nothing else — measured,
+   that left the text starting at 428, 356 and 427 on consecutive lines, which
+   is the ragged edge it was meant to remove. `display: contents` on the row
+   promotes its three spans into the transcript's own grid, which is the same
+   move `.admin-q-row__meta` makes one panel up.
+
+   `fit-content` then sizes the name column to the LONGEST name in the room and
+   no wider, so a 20-character display name cannot push the words off the
+   screen. A `min-width` could only ever set a floor, which is why the names
+   grew past the old one.
+
+   The per-message rule goes with it: a `display: contents` element paints no
+   border, and a horizontal line broken by the column gaps would look worse
+   than the row gap that replaces it. A chat log is separated by its names. */
+.admin-desktop #panel-chat .admin-chat-messages {
+  display: grid;
+  grid-template-columns: fit-content(170px) minmax(0, 1fr) auto;
+  column-gap: var(--space-sm);
+  row-gap: var(--space-xs);
+  align-items: baseline;
+  max-width: 780px;
+}
+.admin-desktop #panel-chat .admin-chat-msg {
+  display: contents;
+}
+.admin-desktop #panel-chat .admin-chat-msg__name {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.admin-desktop #panel-chat .admin-chat-msg__time {
+  text-align: right;
+}
+/* The empty-transcript line is a fourth kind of child and would otherwise sit
+   in the name column. */
+.admin-desktop #panel-chat .admin-chat-messages > p {
+  grid-column: 1 / -1;
+}
+
 /* ============================================
    THE PHONE KEEPS THE EMERGENCY HALF
 

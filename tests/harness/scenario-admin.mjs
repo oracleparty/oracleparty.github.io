@@ -142,6 +142,33 @@ try {
       type: 'onerror', message: 'from an hour ago', severity: 'error' },
   ]);
 
+  // THE CHAT ARCHIVE HAD NEVER BEEN SEEDED, so that panel opened, printed
+  // "No archived chats." and passed every check ever written about it. An
+  // empty panel opens exactly as happily as a working one — the same shape as
+  // "it opened" not being "it works".
+  //
+  // Three rooms, because column alignment cannot be established from one; and
+  // the SECOND carries no host name and no player count, which is the shape
+  // js/admin.js emits fewer meta spans for. On a desktop those spans are grid
+  // columns, so a row that skips one puts its date under another row's message
+  // count.
+  table.store.seed('chat_archive', [
+    { id: 'chat-1', room_code: 'ZMSJ', category: 'history', host_name: 'Roman',
+      player_count: 4, archived_at: new Date(now - 3600000).toISOString(),
+      messages: [
+        { player_name: 'Roman', message: 'right who is ready then', timestamp: new Date(now - 3600000).toISOString() },
+        { player_name: 'Dana', message: 'give me a sec, kettle on', timestamp: new Date(now - 3599000).toISOString() },
+        { player_name: 'TimeTraveler42', message: 'I have been ready since Tuesday', timestamp: new Date(now - 3598000).toISOString() },
+        { player_name: 'Dana', message: 'that is a genuinely long message typed by somebody who had a lot to say about the last answer and wanted everybody in the room to know it', timestamp: new Date(now - 3597000).toISOString() },
+      ] },
+    { id: 'chat-2', room_code: 'KAYS', category: 'science',
+      archived_at: new Date(now - 7200000).toISOString(),
+      messages: [{ player_name: 'Anna', message: 'good game', timestamp: new Date(now - 7200000).toISOString() }] },
+    { id: 'chat-3', room_code: 'EXWZ', category: 'pop-culture', host_name: 'TimeTraveler42',
+      player_count: 6, archived_at: new Date(now - 86400000).toISOString(),
+      messages: [{ player_name: 'TimeTraveler42', message: 'same time next week', timestamp: new Date(now - 86400000).toISOString() }] },
+  ]);
+
   table.store.seed('rooms', [
     { id: 'room-live-1', code: 'AAAA', host_name: 'Roman', category: 'history', status: 'playing',
       who_can_join: 'anyone', questions_per_game: 5, question_timer: 30, created_at: new Date().toISOString() },
@@ -974,6 +1001,93 @@ try {
       problems.push('the editor has no Answer / Alternates fields to measure');
     } else if (qbank.answer.y !== qbank.alts.y) {
       problems.push('Answer and Alternates are on separate lines — the editor is still one stretched column');
+    }
+  }
+
+  // ============================================================
+  // THE CHAT ARCHIVE ON A COMPUTER
+  //
+  // The last `data-desktop-only` panel, and it is two shapes: a room LIST you
+  // scan and a transcript you READ. Measured before any CSS was written, at
+  // 1280px, both were wrong in the way this page keeps being wrong —
+  //
+  //   * the four meta spans sat at THREE different sets of x positions across
+  //     three rooms, because they are inline spans that follow whatever the
+  //     name before them happened to need;
+  //   * a message ran the full 932px panel, and the speaker name column had a
+  //     `min-width` that names grew past — so the message TEXT began at 428,
+  //     398 and 427 on consecutive lines.
+  //
+  // BOTH HALVES ARE CHECKED. Asserting only the cap passes on a build whose
+  // transcript is a ragged pile inside a narrow box, and asserting only the
+  // alignment passes on one that reads across the whole monitor.
+  // ============================================================
+  heading('the chat archive on a computer');
+  await admin.page.click('.admin-panel__head[data-panel="chat"]').catch(() => {});
+  await admin.page.waitForTimeout(600);
+  // Every transcript is closed on arrival and a `display:none` element
+  // measures zero, which would make the width cap pass on a build that has no
+  // cap at all. Open the first room.
+  await admin.page.locator('#chat-archive .admin-chat-summary').first()
+    .click().catch(() => {});
+  await admin.page.waitForTimeout(400);
+
+  const chat = await admin.page.evaluate(() => {
+    const round = n => Math.round(n);
+    const rooms = [...document.querySelectorAll('#chat-archive .admin-chat-summary')];
+    const open = [...document.querySelectorAll('#chat-archive .admin-chat-messages')]
+      .find(el => el.offsetParent !== null);
+    const body = document.getElementById('panel-chat');
+    return {
+      roomCount: rooms.length,
+      metaColumns: rooms.map(r => [...r.querySelectorAll('.admin-q-row__meta span')]
+        .map(sp => round(sp.getBoundingClientRect().x)).join('|')),
+      metaCounts: rooms.map(r => r.querySelectorAll('.admin-q-row__meta span').length),
+      transcriptWidth: open ? round(open.getBoundingClientRect().width) : -1,
+      bodyWidth: body ? round(body.getBoundingClientRect().width) : -1,
+      textX: open ? [...open.querySelectorAll('.admin-chat-msg__text')]
+        .map(t => round(t.getBoundingClientRect().x)) : [],
+      msgCount: open ? open.querySelectorAll('.admin-chat-msg').length : 0,
+    };
+  }).catch(() => null);
+
+  if (!chat) {
+    problems.push('could not measure the chat archive layout at all');
+  } else {
+    note(`rooms: ${chat.roomCount}, meta spans per row: ${JSON.stringify(chat.metaCounts)}`);
+    note(`meta columns: ${JSON.stringify([...new Set(chat.metaColumns)])}`);
+    note(`transcript ${chat.transcriptWidth}px inside a ${chat.bodyWidth}px panel, ${chat.msgCount} messages`);
+    note(`message text starts at: ${JSON.stringify([...new Set(chat.textX)])}`);
+
+    if (chat.roomCount < 2) {
+      problems.push('fewer than two archived rooms on screen, so column alignment was never tested');
+    } else {
+      // A column that only exists on some rows is not a column, it is a shove:
+      // a room archived without a host name would otherwise put its date under
+      // another room's message count.
+      const counts = new Set(chat.metaCounts);
+      if (counts.size !== 1) {
+        problems.push(`archived rooms emit different numbers of meta spans (${JSON.stringify([...counts])}) — a row missing a host shifts every column after it`);
+      }
+      const distinct = new Set(chat.metaColumns.filter(Boolean));
+      if (distinct.size !== 1) {
+        problems.push(`the room rows do not share their columns — ${distinct.size} different layouts across ${chat.roomCount} rooms: ${JSON.stringify([...distinct])}`);
+      }
+    }
+    // A LINE OF CHAT IS NOT A LINE OF DATA. Uncapped, a message runs the whole
+    // panel and the eye loses its place returning to the next one.
+    if (chat.transcriptWidth <= 0) {
+      problems.push('no transcript was open, so nothing about the messages was measured');
+    } else if (chat.transcriptWidth >= chat.bodyWidth) {
+      problems.push(`the transcript fills its ${chat.bodyWidth}px panel — it is not capped, so every message is a line the width of the monitor`);
+    }
+    // The grid has to be on the TRANSCRIPT, not on each message: a grid aligns
+    // columns only within one container, so a grid per row lines each row up
+    // with itself and nothing else.
+    if (chat.msgCount < 3) {
+      problems.push(`only ${chat.msgCount} messages in the open transcript, so the ragged left edge could not have been seen`);
+    } else if (new Set(chat.textX).size !== 1) {
+      problems.push(`the messages do not share a left edge — text begins at ${JSON.stringify([...new Set(chat.textX)])}, so the speaker column is sized per row instead of across the transcript`);
     }
   }
 
