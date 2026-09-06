@@ -248,6 +248,53 @@ BEGIN
   n := op_fill_blank_answers(rid, 3);
   INSERT INTO result (check_name, got, want) VALUES
     ('a locked wager still needs a blank answer', n::text, '2');
+
+  -- ---- A ROW LEFT OVER FROM A FINISHED GAME --------------------------------
+  -- A room survives Play Again, and the clear-out that deletes the last game's
+  -- answers is HOST-GATED — so a room that returns to the lobby without its
+  -- host keeps them. The client already refuses to count such a row
+  -- (answersForCurrentGame filters on question_id), which fixed the score
+  -- leaking between games and created a worse hole: the row is invisible AND
+  -- it occupies (room, player, round), so the blank fill's ON CONFLICT finds
+  -- it, sees it is not a placeholder, and leaves it alone.
+  --
+  -- The player then has no visible answer for the round, reads "Waiting..."
+  -- for ever, and scores nothing. Reported from a live game: "a player's
+  -- answer kept saying waiting… even after the time was up and answers
+  -- revealed."
+  --
+  -- A row whose question_id is not the one the room is asking is scratch from
+  -- a game that no longer exists. Overwriting it with a blank is exactly what
+  -- the client already decided about it, and it is the only way that player
+  -- gets a row for THIS round at all.
+  DELETE FROM answers WHERE room_id = rid AND question_number = 3;
+  INSERT INTO answers (room_id, player_id, question_number, question_id,
+                       submitted_answer, wager, score_earned)
+  VALUES (rid, alice, 3, gen_random_uuid(), 'last game''s answer', 7, 7);
+  n := op_fill_blank_answers(rid, 3);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a leftover row from the last game is filled, not skipped', n::text, '2');
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and the points it was carrying do not survive into this game',
+         score_earned::text, '0'
+  FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 3;
+  INSERT INTO result (check_name, got, want)
+  SELECT 'and it now names the question this room is actually asking',
+         (question_id = (SELECT question_ids[4] FROM rooms WHERE id = rid))::text, 'true'
+  FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 3;
+
+  -- AND A REAL ANSWER TO THIS ROUND IS STILL NEVER TOUCHED, which is the whole
+  -- reason the fill is so careful. Without this half the rule above would pass
+  -- on a fill that overwrote everything.
+  DELETE FROM answers WHERE room_id = rid AND question_number = 3;
+  INSERT INTO answers (room_id, player_id, question_number, question_id,
+                       submitted_answer, wager, score_earned)
+  SELECT rid, alice, 3, question_ids[4], 'a real answer', 10, 10 FROM rooms WHERE id = rid;
+  n := op_fill_blank_answers(rid, 3);
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a real answer to THIS round is still never overwritten',
+         submitted_answer, 'a real answer'
+  FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 3;
 END $$;
 
 -- ============================================

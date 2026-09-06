@@ -1648,12 +1648,31 @@ export class FakeStore {
           const existing = rows.find(a => String(a.room_id) === String(room.id)
             && String(a.player_id) === String(p.id) && a.question_number === qnum);
           if (existing) {
-            // Only a placeholder is converted. A real answer is never
-            // overwritten by a blank — the race that once destroyed answers
-            // people had typed.
-            if (String(existing.submitted_answer || '').trim() !== '__WAGER_LOCKED__') continue;
+            // Only a placeholder is converted, OR a row left over from a game
+            // this room has already finished — see migration 066.
+            //
+            // A real answer to THIS round is never overwritten by a blank: that
+            // is the race which once destroyed answers people had typed. But a
+            // row naming a DIFFERENT question belongs to a previous game, the
+            // client already refuses to count it (answersForCurrentGame), and
+            // while it sits on this key the fill cannot give the player a row
+            // at all — so they read "Waiting..." for ever and score nothing.
+            const isPlaceholder = String(existing.submitted_answer || '').trim() === '__WAGER_LOCKED__';
+            // NULL is not stale. The client KEEPS a row with no question_id,
+            // because it cannot tell which game it belongs to and dropping a
+            // real answer costs somebody their score. So it is visible, and
+            // overwriting it here would destroy something that shows on screen.
+            const isStale = existing.question_id != null
+              && String(existing.question_id) !== String(qid);
+            if (!isPlaceholder && !isStale) continue;
             const before = { ...existing };
             existing.submitted_answer = '';
+            if (isStale) {
+              // It names this round's question now, or the client would go on
+              // filtering out the blank we just wrote.
+              existing.question_id = qid;
+              existing.wager = null;
+            }
             // KEEP THE WAGER THAT IS ALREADY THERE. Migration 050 writes
             // `wager = COALESCE(answers.wager, EXCLUDED.wager)` precisely so a
             // locked final wager survives the fill — zeroing it is the "I bet

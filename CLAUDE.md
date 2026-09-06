@@ -212,6 +212,75 @@
 > **Still open from that report**: the rerolled difficulty and the locked prior
 > answer are not explained by this, and are not fixed.
 
+> ## 2026-09-06 — a leftover row made a player invisible (migration 066)
+>
+> **The cause behind "a player's answer kept saying waiting… even after the time
+> was up and answers revealed."** The display was made honest earlier the same
+> day; this is why that player had no row at all, and it costs a score rather
+> than a label.
+>
+> ### A fix made it, which is the part worth reading
+>
+> A room survives Play Again, and `deleteAnswersByRoom` is **host-gated** — so a
+> room that returns to the lobby without its host keeps the last game's answers.
+> `answersForCurrentGame` was written for exactly that: it refuses any row whose
+> `question_id` is not what the room is asking at that round number, which
+> stopped last game's points being counted again in this one.
+>
+> **That fixed the score and created something worse.** The leftover row still
+> occupies `(room_id, player_id, question_number)` — the key the blank fill
+> conflicts on — and the fill only ever converted a `__WAGER_LOCKED__`
+> placeholder. So the row was:
+>
+> | | |
+> |---|---|
+> | invisible to the client | `answersForCurrentGame` filters it out |
+> | unfillable by the server | the `ON CONFLICT ... WHERE` does not match it |
+>
+> The player therefore had **no answer for the round at all**: "Waiting…" for
+> ever, and a score of nothing. Belt and braces, and the braces strangled
+> somebody.
+>
+> ### Written as failing rules FIRST, against a real Postgres
+>
+> Four rules went into `tests/sql/game-rules.sql` before a line of the migration
+> existed. **Three failed** — the leftover row is skipped, its points survive
+> into the new game, and it still names the old question. The fourth, *"a real
+> answer to THIS round is still never overwritten"*, passed, which is what proved
+> the protective half was intact and the rules were not simply too broad.
+>
+> With 066 applied: **all 207 hold.** That order matters — a rule written after
+> the fix is a rule that has never been seen to fail.
+>
+> ### What 066 does and, more importantly, does not
+>
+> The fill now also converts a row naming a DIFFERENT question from the one this
+> round is asking. Such a row belongs to a game that no longer exists, the client
+> has already decided it is not an answer, and overwriting it is the only way
+> that player gets a row for THIS round.
+>
+> **Three things it deliberately leaves alone:**
+>
+> - **A real answer to this round** — the question_id matches, the WHERE misses
+>   it. That is the race that once destroyed answers people had typed.
+> - **A row with a NULL question_id.** The client KEEPS those, because it cannot
+>   tell which game they belong to and dropping a real answer costs somebody
+>   their score. They are visible, so overwriting them would destroy something
+>   on screen. `IS NOT NULL` is what separates "stale" from "cannot tell", which
+>   is this project's oldest rule wearing another hat.
+> - **The `__WAGER_LOCKED__` rule**, unchanged and still needed: that row names
+>   the right question and still is not an answer.
+>
+> The fake store mirrors all three, so the harness cannot go on allowing what the
+> live database now refuses.
+>
+> ### The habit
+>
+> **After a fix that makes the client IGNORE something, ask what still holds the
+> space it used to occupy.** Filtering a row out of a view does not remove it
+> from a unique key, and the second half of that sentence is where this lived for
+> as long as Play Again has existed.
+
 > ## 2026-09-06 — the bot has a chart, and it is a circle on purpose
 >
 > **Asked for by the owner: "give the bot its own proficiency chart… later when

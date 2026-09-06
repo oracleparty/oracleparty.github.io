@@ -82,6 +82,7 @@ const MIGRATIONS = [
   '063_title_words_are_content.sql',
   '064_title_word_placeholders.sql',
   '065_the_host_can_remove_a_player.sql',
+  '066_a_leftover_answer_cannot_block_a_round.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.
