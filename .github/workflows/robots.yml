@@ -104,6 +104,15 @@ jobs:
       - name: Final question — the host reveals it on a bad connection
         run: node tests/harness/scenario-finalq.mjs
 
+      # THE SAME GAME WITH A SCREEN TRANSITION IN FLIGHT. showQuestionScreen and
+      # showFinalWagerScreen each wrote their own screen switch with three
+      # conditions and two branches, so a fade already running meant the screen
+      # never changed — while the round advanced underneath it. Reported four
+      # times as "it didn't move me (host) to another page. The other player was
+      # able to advance."
+      - name: Final question — with a screen transition in flight
+        run: node tests/harness/scenario-finalq.mjs --lag=0 --stuck
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.

@@ -51,7 +51,7 @@ import {
   getQuestionText, getCorrectAnswer,
   _lastScoresRenderedForQuestion, setLastScoresRendered,
   _isLeaving, setIsLeaving,
-  _screenTransitioning, setScreenTransitioning,
+  showScreen,
   _qbFeedback,
   beginRoundClock,
 } from './state.js';
@@ -616,12 +616,9 @@ export function showFinalWagerScreen() {
   hideChatBar();
 
   // Transition
-  const currentScreen = document.querySelector('.screen.active');
-  const fwScreen = $('#final-wager-screen');
-  if (currentScreen && currentScreen !== fwScreen && !_screenTransitioning) {
-    setScreenTransitioning(true);
-    transitionScreens(currentScreen, fwScreen).finally(() => { setScreenTransitioning(false); });
-  }
+  // Same hole as the question screen had, and worse: no else at all, so with a
+  // transition in flight the final-wager screen never appeared either.
+  showScreen($('#final-wager-screen'));
 
   showHostSettingsGear();
 }

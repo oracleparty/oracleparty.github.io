@@ -212,6 +212,82 @@
 > **Still open from that report**: the rerolled difficulty and the locked prior
 > answer are not explained by this, and are not fixed.
 
+> ## 2026-09-06 (later) — three conditions, two branches, and a screen that never moved
+>
+> **The fourth report of the same bug, and the first one I could reproduce
+> exactly:** *"Selected the difficulty. Immediately after it didn't move me
+> (host) to another page. The other player was able to advance."*
+>
+> **The fix earlier the same day was real and was not this.** That one was about
+> the presser's screen queueing behind two network writes, measured and
+> break-tested. It shipped, and the bug survived it — which is the useful fact,
+> because it meant a SECOND cause, not a bad fix.
+>
+> ### The hole, stated exactly
+>
+> `showQuestionScreen` switched screens like this:
+>
+> ```js
+> if (currentScreen && currentScreen !== questionScreen && !_screenTransitioning) {
+>   …fade…
+> } else if (!currentScreen || currentScreen === questionScreen) {
+>   …show…
+> }
+> ```
+>
+> **Three conditions, two branches.** A screen is active, it is not the target,
+> and a transition is already in flight — that case falls through BOTH arms and
+> the screen simply does not change. And nothing stops: the rest of the function
+> reveals the question card, starts the timer, stamps the round clock and lets
+> the room advance. **Everything works except the one thing the player can see.**
+>
+> `showFinalWagerScreen` had the same shape and worse — no `else` at all — so a
+> transition in flight meant the final-wager screen never appeared either.
+>
+> **The other four screen switches in `js/game/` are fine**, and the difference
+> is the tell: they have two conditions and two branches. The hole exists in
+> exactly the two places that added the `_screenTransitioning` guard. *A guard
+> added to N places introduced the same unhandled case in all N.*
+>
+> ### Reproduced, by setting the state rather than racing for it
+>
+> `scenario-finalq --lag=0 --stuck` sets `_screenTransitioning` through the app's
+> own setter and has the host press Reveal. Before the fix:
+>
+> ```
+> Alice could answer the final question NEVER
+> Bob   could answer the final question 6547ms after the press
+> room asks "Test question 39?" — and everybody agrees
+> ```
+>
+> The room moved, took a clock, and agreed on the question. Only the host's
+> screen stayed put. That is the report word for word.
+>
+> **SET, NOT RACED, deliberately.** Reaching this by playing needs a fade and a
+> phase change inside the same ~250ms, which is luck rather than a check, and a
+> flaky check is one people learn to re-run.
+>
+> ### The fix: a transition in flight is a reason to CUT, never to stay
+>
+> `showScreen(targetEl)` in `js/game/state.js`, beside the flag it reads. It
+> fades when it can and hard-cuts when it cannot, and it can never do nothing.
+> Both call sites go through it.
+>
+> The guard itself is kept — two fades fighting over one pair of screens is a
+> real fault. What was wrong was the answer to "I cannot fade right now":
+> arriving instantly is a visual compromise, staying behind is a broken game.
+>
+> **One function, because this rule was written out twice and followed zero
+> times** — the shape this file records more than any other, arriving with both
+> copies wrong rather than N-1.
+>
+> ### What is NOT established
+>
+> **What set `_screenTransitioning` in the owner's game is unknown**, and this
+> file is not going to guess. The class of fault is removed whatever the trigger
+> was; that is a weaker claim than "the cause is found" and it is the true one.
+> If a screen ever fails to move again, this is no longer a candidate.
+
 > ## 2026-09-06 — the admin page is a workbench, and workbenches are not phones
 >
 > **The owner's call, and the reasoning is theirs:** *"the admin page, which has

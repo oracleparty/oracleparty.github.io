@@ -4,7 +4,7 @@
 // ============================================
 
 import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
-         _screenTransitioning, setScreenTransitioning, _isLeaving } from './state.js';
+         showScreen, _isLeaving } from './state.js';
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger } from '../logger.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
@@ -139,18 +139,10 @@ export function showQuestionScreen() {
     $('.timer').style.visibility = 'hidden';
   }
 
-  const currentScreen = document.querySelector('.screen.active');
-  const questionScreen = $('#question-screen');
-  if (currentScreen && currentScreen !== questionScreen && !_screenTransitioning) {
-    setScreenTransitioning(true);
-    transitionScreens(currentScreen, questionScreen).finally(() => {
-      setScreenTransitioning(false);
-    });
-  } else if (!currentScreen || currentScreen === questionScreen) {
-    questionScreen.style.display = '';
-    void questionScreen.offsetHeight;
-    questionScreen.classList.add('active');
-  }
+  // showScreen ALWAYS puts the screen up — see state.js. This was written out by
+  // hand here and in showFinalWagerScreen, and both copies skipped the switch
+  // entirely when a transition was already in flight.
+  showScreen($('#question-screen'));
 
   showHostSettingsGear();
 

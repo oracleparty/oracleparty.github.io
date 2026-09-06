@@ -6,6 +6,7 @@
 import { CATEGORY_META, resolveCategoryLabel } from '../categories.js';
 import { answersForCurrentGame } from './scoring-helpers.js';
 import { AWAY_GRACE_MS } from '../constants.js';
+import { transitionScreens } from '../utils.js';
 
 // --- State ---
 export const state = {
@@ -138,6 +139,64 @@ export function setDeferredPhase(v) { _deferredPhase = v; }
 
 export let _screenTransitioning = false;
 export function setScreenTransitioning(v) { _screenTransitioning = v; }
+
+/**
+ * PUT THIS SCREEN UP. Always.
+ *
+ * Two callers wrote this by hand and both wrote the same hole: three conditions
+ * (a screen is active, it is not the target, no transition is in flight) and
+ * only two branches, so the case "a transition IS in flight" fell through both
+ * and the screen simply did not change. Everything after it still ran — the
+ * question card revealed, the timer started, the clock stamped, the room
+ * advanced — on a screen the player never saw.
+ *
+ * Reported four times, most recently in exactly these words: "it didn't move me
+ * (host) to another page. The other player was able to advance." Reproduced in
+ * scenario-finalq with `--stuck`: the host NEVER reaches the final question
+ * while everybody else does.
+ *
+ * A TRANSITION IN FLIGHT IS A REASON TO CUT, NEVER A REASON TO STAY. The guard
+ * exists so two fades do not fight over the same pair of screens, and that is
+ * worth keeping — but the answer to "I cannot fade right now" is to arrive
+ * instantly, not to stay behind. A hard cut is a visual compromise; not moving
+ * is a broken game.
+ *
+ * One function, because this rule was stated twice and followed zero times, and
+ * "the same rule stated N times and followed N-1" is the fault this project
+ * records more than any other.
+ */
+export function showScreen(targetEl, { duration } = {}) {
+  if (!targetEl) return;
+  const currentScreen = document.querySelector('.screen.active');
+  // Already here — but make sure it is actually VISIBLE. The hand-written
+  // version this replaces cleared `display` in that case, and a screen carrying
+  // `.active` with `display: none` is exactly the state a half-finished
+  // transition leaves behind.
+  if (currentScreen === targetEl) {
+    targetEl.style.display = '';
+    return;
+  }
+
+  const cut = () => {
+    if (currentScreen && currentScreen !== targetEl) {
+      currentScreen.style.display = 'none';
+      currentScreen.classList.remove('active', 'fade-out');
+    }
+    targetEl.style.display = '';
+    void targetEl.offsetHeight;
+    targetEl.classList.remove('fade-out');
+    targetEl.classList.add('active');
+  };
+
+  if (!currentScreen) { cut(); return; }
+  if (_screenTransitioning) { cut(); return; }
+
+  _screenTransitioning = true;
+  const done = duration === undefined
+    ? transitionScreens(currentScreen, targetEl)
+    : transitionScreens(currentScreen, targetEl, duration);
+  return done.finally(() => { _screenTransitioning = false; });
+}
 
 /**
  * A NEW ROUND STARTS ON THIS PHONE.

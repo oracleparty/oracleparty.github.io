@@ -31,7 +31,13 @@ const QUESTIONS = 5;
 // pass cannot be the animation finishing early. Shorter than the question timer
 // (30s), so "the host got there before the round ended" is a real result rather
 // than the round having been abandoned.
-const SLOW_MS = 12000;
+// 0 runs the ORDINARY case — nobody slow, which is the game the owner actually
+// played when they reported this a fourth time. Pass --lag=0 for it.
+const LAG_FLAG = process.argv.find(a => a.startsWith('--lag='));
+// --stuck leaves a screen transition in flight over the reveal. See the block
+// that sets it for why that is the reported bug rather than a contrived state.
+const STUCK_FLAG = process.argv.includes('--stuck');
+const SLOW_MS = LAG_FLAG ? Number(LAG_FLAG.split('=')[1]) : 12000;
 const problems = [];
 const note = m => console.log('   ·', m);
 const heading = m => console.log(`\n=== ${m} ===`);
@@ -211,8 +217,33 @@ try {
               }).observe(fin, { attributes: true, attributeFilter: ['class'] });
             }).catch(() => {});
           }
-          host.slowConnection(SLOW_MS);
-          note(`the HOST's phone now takes ${SLOW_MS}ms a round trip; Bob's is fine`);
+          if (SLOW_MS) {
+            host.slowConnection(SLOW_MS);
+            note(`the HOST's phone now takes ${SLOW_MS}ms a round trip; Bob's is fine`);
+          } else {
+            note('nobody is slow — the ordinary case');
+          }
+          // A TRANSITION ALREADY IN FLIGHT WHEN THE ROUND CHANGES.
+          //
+          // showQuestionScreen's screen switch has three conditions and only
+          // two branches: with a screen active, a different target, and
+          // _screenTransitioning true, NEITHER arm runs and the screen simply
+          // does not change — while the rest of the function reveals the card,
+          // starts the timer, stamps the clock and advances the room. That is
+          // the fourth report of this bug, word for word: "it didn't move me
+          // (host) to another page. The other player was able to advance."
+          //
+          // SET, NOT RACED. Reaching it by playing needs a fade and a phase
+          // change to land in the same ~250ms, which is luck rather than a
+          // check — and a flaky check is one people learn to re-run. The flag
+          // is one the app sets itself, through its own setter.
+          if (STUCK_FLAG) {
+            await host.page.evaluate(async () => {
+              const st = await import('/js/game/state.js');
+              st.setScreenTransitioning(true);
+            }).catch(e => note(`could not set the flag: ${e.message}`));
+            note('the host has a screen transition in flight');
+          }
           revealPressedAt = Date.now();
           if (await clickIfReady(host, '#btn-fw-reveal')) {
             note('the host pressed Reveal Question');
