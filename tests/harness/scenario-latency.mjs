@@ -135,8 +135,17 @@ try {
   await timeTap(host, 'open a player profile card',
     async () => { await host.page.locator('#player-list .player-item .avatar-wrap').first().click().catch(() => {}); },
     SCREEN_PROBE);
-  await host.page.keyboard.press('Escape').catch(() => {});
-  await host.page.waitForTimeout(400);
+  // CLOSE IT PROPERLY. Escape did not, and the sheet then sat over Start Game
+  // and swallowed every press after it — the run reported "nothing changed"
+  // for three controls that were never actually tapped. The harness lying
+  // about the app, for the second time in this file.
+  await host.page.locator('#profile-card-backdrop').click({ force: true }).catch(() => {});
+  await host.page.waitForTimeout(600);
+  const stillOpen = await host.page.evaluate(() => !!document.querySelector('#profile-card-sheet'));
+  if (stillOpen) {
+    await host.page.evaluate(() => document.querySelector('#profile-card-sheet')?.remove());
+    note('the profile sheet would not close on its own — removed it so the rest can be measured');
+  }
 
   await timeTap(bob, 'press Ready Up',
     async () => { await bob.page.locator('#btn-ready').click().catch(() => {}); },
