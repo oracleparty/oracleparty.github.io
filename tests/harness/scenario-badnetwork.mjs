@@ -22,6 +22,7 @@
 //
 // Run: node tests/harness/scenario-badnetwork.mjs [--lag=1500] [--on=Alice]
 import { PlaytestTable } from './harness.js';
+import { isStaleRoomEvent } from '../../js/game/phase-order.js';
 
 const CATEGORY = 'history';
 const QUESTIONS = 5;             // + 1 final wager question — 5 is the SMALLEST
@@ -161,6 +162,14 @@ try {
   const screensShown = { Alice: new Set(), Bob: new Set(), Carol: new Set() };
   const worstLagMs = { Alice: 0, Bob: 0, Carol: 0 };
   const waitingStreak = { Alice: 0, Bob: 0, Carol: 0 };
+  // Where each phone was last seen, and every time it moved to somewhere the
+  // app's own rule calls a step BACKWARDS.
+  const lastSeenPhase = { Alice: null, Bob: null, Carol: null };
+  const wentBackwards = { Alice: [], Bob: [], Carol: [] };
+  // Every phase each phone actually passed through, in order. A "went
+  // backwards" line names two points; this is what says whether the phone got
+  // there the long way round or really did jump.
+  const phoneTimeline = { Alice: [], Bob: [], Carol: [] };
   const waitingAfterReveal = [];   // a row that outlived the reveal
   const consoleErrors = [];
   const navigations = [];
@@ -236,9 +245,43 @@ try {
         // is most likely to be missing.
         revealed: !!window.__state?.resultsRevealed,
         stuckWaiting: document.querySelectorAll('.answer-row__answer--waiting').length,
+        phase: window.__state?.gamePhase || null,
+        question: Number.isInteger(window.__state?.currentQuestion)
+          ? window.__state.currentQuestion : null,
       })).catch(() => null);
       if (!seen?.screen) continue;
       screensShown[r.name].add(seen.screen);
+
+      // DID THIS PHONE GO BACKWARDS?
+      //
+      // The finding this scenario recorded and CLAUDE.md carried as "established
+      // and NOT fixed": a Realtime room event that left the server before the
+      // one already applied arrives after it and drags the screen back through a
+      // phase the client has passed.
+      //
+      //     phase-in answer_reveal   a STALE event, 1500ms late, arrives while
+      //                              the client is already on scores_reveal
+      //
+      // Reported from a real game a day later, without any bad connection:
+      // "one of the later questions was buggy and jumped to a different screen
+      // then back to the question."
+      //
+      // It asks the SAME rule the app now asks (isStaleRoomEvent), against this
+      // phone's own observed history rather than against any event — so it is
+      // measuring where the client ENDED UP, not what it was told.
+      const was = lastSeenPhase[r.name];
+      if (seen.phase && was?.phase && (seen.phase !== was.phase || seen.question !== was.question)) {
+        if (isStaleRoomEvent({
+          incomingPhase: seen.phase, incomingQuestion: seen.question,
+          currentPhase: was.phase, currentQuestion: was.question,
+        })) {
+          wentBackwards[r.name].push(`${was.phase}@${was.question} -> ${seen.phase}@${seen.question}`);
+        }
+      }
+      if (seen.phase && (seen.phase !== was?.phase || seen.question !== was?.question)) {
+        phoneTimeline[r.name].push(`${seen.phase}@${seen.question}`);
+      }
+      if (seen.phase) lastSeenPhase[r.name] = { phase: seen.phase, question: seen.question };
 
       if (want && seen.screen === want && !arrivedThisPhase.has(r.name)) {
         arrivedThisPhase.add(r.name);
@@ -466,6 +509,22 @@ try {
       if (!screensShown[r.name].has(want)) {
         problems.push(`the room reached "${phase}" and ${r.name}'s screen NEVER showed ${want} — the room moved on without them`);
       }
+    }
+  }
+
+  // NO PHONE WENT BACKWARDS THROUGH ITS OWN GAME.
+  //
+  // The reported symptom in one line: "jumped to a different screen then back
+  // to the question". A late Realtime room event describing a moment this
+  // client had already passed used to be applied unconditionally — the phase
+  // AND state.currentQuestion — so the screen was dragged back until the next
+  // event or the 60-second poll pulled it forward again.
+  for (const r of everyone) {
+    if (wentBackwards[r.name].length) {
+      problems.push(`${r.name}'s game went BACKWARDS ${wentBackwards[r.name].length} time(s): ${wentBackwards[r.name].slice(0, 4).join(', ')}`);
+      // THE WHOLE ROUTE, because two points cannot say whether a phone jumped
+      // or merely arrived by a path this rule does not expect.
+      note(`${r.name}'s phases: ${phoneTimeline[r.name].join(' -> ')}`);
     }
   }
 

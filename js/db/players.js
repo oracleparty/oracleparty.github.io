@@ -11,13 +11,35 @@ import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
  * Add a player to a room.
  */
 export async function addPlayer(roomId, displayName, isHost = false, userId = null, extras = {}) {
-  // Deliberately does NOT set last_seen_at. That column is missing from the
-  // live players table, and Postgres rejects an entire INSERT for an unknown
-  // column — writing it here would stop anyone joining at all, exactly as the
-  // same mistake silently killed every game_plays insert. The staleness check
-  // falls back to joined_at instead, so a missing column cannot get anyone
-  // kicked. Add it here once migration 027 is confirmed applied.
-  const payload = { room_id: roomId, display_name: displayName, is_host: isHost, joined_at: new Date().toISOString() };
+  // last_seen_at IS WRITTEN HERE NOW, and the comment it replaces was stale in
+  // the dangerous direction.
+  //
+  // It said the column was missing from the live table and that writing it
+  // would stop anyone joining. That was true when it was written and is not
+  // now: migration 058 ran `GRANT UPDATE (last_seen_at, ...) ON players` on the
+  // live database and its verification block came back ok — a grant naming a
+  // column that does not exist raises an error, so that IS the measurement.
+  // 058 narrowed UPDATE only; INSERT was left alone, so no grant refuses this.
+  //
+  // WHY IT MATTERS, and it is not tidiness. op_sweep_rooms (048) deletes a room
+  // where every human has been silent for twenty minutes — and it reads a NULL
+  // last_seen_at as "cannot tell", which PROTECTS the room. That rule is right
+  // for a live game and it made an abandoned one immortal: a row that was
+  // inserted and never heartbeated (a phone that joined and closed, a page that
+  // froze before its first beat) has NULL for ever, so rule 3 can never fire,
+  // rule 1 sees a player row, and rule 2 only touches lobbies. The room is
+  // listed as an active game until somebody ends it by hand.
+  //
+  // Stamping it at INSERT is also just true: they are here, that is what
+  // joining means. Nothing downstream changes, because every reader already
+  // falls back to joined_at when it is absent.
+  const payload = {
+    room_id: roomId,
+    display_name: displayName,
+    is_host: isHost,
+    joined_at: new Date().toISOString(),
+    last_seen_at: new Date().toISOString(),
+  };
   if (userId) payload.user_id = userId;
   if (extras.avatarColor) payload.avatar_color = extras.avatarColor;
   if (extras.avatarEmoji) payload.avatar_emoji = extras.avatarEmoji;

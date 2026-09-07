@@ -500,6 +500,18 @@ try {
     const fastSeatInDb = fast.seatId
       && table.store.table('players').some(p => String(p.id) === String(fast.seatId));
     console.log(`   · leaving and rejoining immediately: ${JSON.stringify(fast)}, seat in room: ${fastSeatInDb}`);
+    // A SECTION THAT SILENTLY STOPS RUNNING IS WORSE THAN ONE THAT FAILS.
+    // Everything below needs this player to be seated, and when the rejoin
+    // fell over the whole block was skipped with a cheerful pass. Say where
+    // the page actually ended up.
+    if (!fast.seatId) {
+      const where = await back.page.evaluate(() => ({
+        url: location.pathname + location.search,
+        screen: document.querySelector('.screen.active')?.id || null,
+        stored: sessionStorage.getItem('oracle_party_room'),
+      })).catch(e => ({ err: String(e).slice(0, 120) }));
+      problems.push(`the quick leave-and-rejoin never got back into the room: ${JSON.stringify(where)}`);
+    }
     if (fast.seatId && !fastSeatInDb) {
       problems.push('after a quick leave-and-rejoin the client holds a seat that is NOT in the room — invisible in the list, no avatar on their chat, and Ready Up writes to nothing');
     }
@@ -507,17 +519,24 @@ try {
       problems.push('after a quick leave-and-rejoin the player cannot see themselves in the lobby');
     }
 
-    // READY UP WHEN THE SEAT IS NOT THERE.
+    // A SEAT THAT IS TAKEN AWAY UNDER A LIVE PAGE.
     //
     // Neither rejoin above reproduced what was reported, so this drives the
     // STATE rather than trying to reach it by playing — the same call
     // scenario-nasty makes about a closed round, and for the same reason: a
     // check that needs a race to land is one people learn to re-run.
     //
-    // The row is removed underneath the client, which is the position a
-    // returning player was in. The update then matches zero rows and returns NO
-    // ERROR, so before this the button flipped, the list redrew, and nothing was
-    // written — "had to leave and rejoin in order to even ready up".
+    // WHAT THIS ASSERTS CHANGED ON 2026-09-07, and the reason is a later
+    // report rather than a better idea. It used to require the client to take
+    // a fresh seat by itself and mark it ready. That is right when the seat
+    // never landed, and WRONG when somebody removed it — and the client cannot
+    // tell those apart, so silently reclaiming made Eject mean nothing: "my
+    // friend said he was removed but it looks like he is still in the lobby".
+    //
+    // The rule now is that a seat which was IN the room and is gone means you
+    // are out of it, and the page says so instead of papering over it. The
+    // load-bearing half of the original — the client must not believe a write
+    // that wrote nothing — is what the assertions below still pin.
     const myId = await back.page.evaluate(() =>
       JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId).catch(() => null);
     const rows = table.store.table('players');
@@ -526,14 +545,45 @@ try {
       rows.splice(at, 1);
       await back.page.locator('#btn-ready').click().catch(() => {});
       await back.page.waitForTimeout(3500);
+      const told = await back.page.evaluate(() => {
+        const m = document.getElementById('removed-modal');
+        return {
+          shown: !!m && m.classList.contains('active'),
+          title: document.getElementById('removed-title')?.textContent || '',
+          canRejoin: !document.getElementById('removed-rejoin')?.classList.contains('hidden'),
+          readyLabel: document.getElementById('btn-ready')?.textContent || '',
+        };
+      }).catch(() => null);
+      console.log(`   · seat removed under a live page: told=${told?.shown} "${told?.title}" rejoinOffered=${told?.canRejoin}`);
+      if (!told?.shown) {
+        problems.push('the room took this player\'s seat away and the page said nothing — they sit in a lobby they are not in, chatting and pressing Ready Up against a row that does not exist');
+      }
+      if (told?.shown && !told.canRejoin) {
+        problems.push('a player removed without a ban was not offered a way back in — that is what makes Eject different from Kick');
+      }
+      // AND THE BUTTON MUST NOT GO ON CLAIMING IT WORKED. This is the half of
+      // the original check that is unchanged: a write matching zero rows
+      // returns no error, and the label used to flip anyway.
+      if (told?.readyLabel === 'Not Ready') {
+        problems.push('Ready Up wrote to a seat the room does not have and still flipped its label to Not Ready — the press reported success and did nothing');
+      }
+
+      // AND COMING BACK IS ONE DELIBERATE TAP, not something the client does
+      // for you. Without this half the check would pass on a build where the
+      // notice is a dead end and the only way back is a refresh.
+      await back.page.locator('#removed-rejoin').click().catch(() => {});
+      await back.page.waitForTimeout(2500);
       const after = await back.page.evaluate(() =>
         JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId).catch(() => null);
       const seated = table.store.table('players').find(p => String(p.id) === String(after));
-      console.log(`   · readying up on a seat that was gone: new seat ${after ? 'taken' : 'NONE'}, is_ready=${seated?.is_ready}`);
+      const stillShown = await back.page.evaluate(() =>
+        !!document.getElementById('removed-modal')?.classList.contains('active')).catch(() => true);
+      console.log(`   · tapping Rejoin: seat ${seated ? 'taken' : 'NONE'}, notice ${stillShown ? 'still up' : 'cleared'}`);
       if (!seated) {
-        problems.push('pressing Ready Up on a seat the room no longer has left the player with no seat at all — the press reported success and did nothing');
-      } else if (!seated.is_ready) {
-        problems.push('pressing Ready Up on a seat the room no longer has did not make them ready — the write matched zero rows, returned no error, and the button flipped anyway');
+        problems.push('tapping Rejoin after being removed did not get the player a seat — the only way back into the room is a refresh');
+      }
+      if (stillShown) {
+        problems.push('tapping Rejoin took a seat but left the "no longer in this room" notice covering the lobby');
       }
     }
   }

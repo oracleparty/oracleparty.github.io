@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldSyncPhase } from '../js/game/phase-order.js';
+import { shouldSyncPhase, isStaleRoomEvent } from '../js/game/phase-order.js';
 
 // ============================================
 // shouldSyncPhase
@@ -81,5 +81,103 @@ describe('shouldSyncPhase', () => {
     expect(shouldSyncPhase('question', null)).toBe(false);
     expect(shouldSyncPhase('question', undefined)).toBe(false);
     expect(shouldSyncPhase('question', '')).toBe(false);
+  });
+});
+
+// ============================================
+// isStaleRoomEvent — a room event describing a moment already passed
+// ============================================
+describe('isStaleRoomEvent', () => {
+  const at = (phase, q) => ({ currentPhase: phase, currentQuestion: q });
+  const from = (phase, q) => ({ incomingPhase: phase, incomingQuestion: q });
+  const ev = (cur, inc) => isStaleRoomEvent({ ...at(...cur), ...from(...inc) });
+
+  it('refuses an earlier phase in the SAME round — the reported drag-back', () => {
+    // scenario-badnetwork's own trace, at a 1500ms round trip.
+    expect(ev(['scores_reveal', 0], ['answer_reveal', 0])).toBe(true);
+  });
+
+  it('refuses an event from a round we have already left', () => {
+    expect(ev(['question', 3], ['scores_reveal', 2])).toBe(true);
+  });
+
+  it('LETS THE NEXT ROUND THROUGH, which is what broke both earlier attempts', () => {
+    // scores_reveal -> question ranks backwards on the phase list, and a guard
+    // that consulted the list here would stall every game after round one.
+    expect(ev(['scores_reveal', 0], ['question', 1])).toBe(false);
+  });
+
+  it('lets an ordinary forward move through', () => {
+    expect(ev(['question', 2], ['reveal', 2])).toBe(false);
+    expect(ev(['reveal', 2], ['answer_reveal', 2])).toBe(false);
+  });
+
+  it('lets the same phase through, so the existing same-phase guards decide', () => {
+    expect(ev(['question', 1], ['question', 1])).toBe(false);
+  });
+
+  it('lets the FINAL round reveal through, the bug the exception exists for', () => {
+    expect(ev(['final_question', 5], ['reveal', 5])).toBe(false);
+    expect(ev(['final_question', 5], ['answer_reveal', 5])).toBe(false);
+  });
+
+  it('lets the final round build through in order', () => {
+    expect(ev(['difficulty_vote', 5], ['final_wager', 5])).toBe(false);
+    expect(ev(['final_wager', 5], ['final_question', 5])).toBe(false);
+    expect(ev(['final_question', 5], ['results', 5])).toBe(false);
+  });
+
+  it('fails OPEN on a phase it has never heard of', () => {
+    expect(ev(['question', 1], ['brand_new_phase', 1])).toBe(false);
+    expect(ev(['loading', 1], ['reveal', 1])).toBe(false);
+  });
+
+  it('fails OPEN when a round number is missing', () => {
+    expect(isStaleRoomEvent({
+      incomingPhase: 'question', incomingQuestion: undefined,
+      currentPhase: 'question', currentQuestion: 1,
+    })).toBe(false);
+  });
+
+  it('a hot-joiner at question 0 is not told the room is stale', () => {
+    expect(ev(['loading', 0], ['question', 4])).toBe(false);
+  });
+});
+
+// ============================================
+// The final round's SCOREBOARD, which the first version of the exception missed
+// ============================================
+describe('the final round runs past the end of the list, all the way to results', () => {
+  it('a phone on the final question may follow the room to the scoreboard', () => {
+    // handleShowScores writes scores_reveal after EVERY reveal, the final round
+    // included, and leaves current_question alone. With scores_reveal missing
+    // from the exception a client still on final_question refused it and sat
+    // there — the same fault the reveal itself used to have.
+    expect(shouldSyncPhase('final_question', 'scores_reveal')).toBe(true);
+    expect(shouldSyncPhase('final_wager', 'scores_reveal')).toBe(true);
+  });
+
+  it('and the room event carrying it is not called stale', () => {
+    expect(isStaleRoomEvent({
+      incomingPhase: 'scores_reveal', incomingQuestion: 5,
+      currentPhase: 'final_question', currentQuestion: 5,
+    })).toBe(false);
+  });
+
+  it('a PREVIOUS round\'s scoreboard is still stale, because the round number says so', () => {
+    expect(isStaleRoomEvent({
+      incomingPhase: 'scores_reveal', incomingQuestion: 4,
+      currentPhase: 'final_question', currentQuestion: 5,
+    })).toBe(true);
+  });
+
+  it('results is still reachable from the final question', () => {
+    expect(shouldSyncPhase('final_question', 'results')).toBe(true);
+  });
+
+  it('an ordinary round is unchanged', () => {
+    expect(shouldSyncPhase('question', 'scores_reveal')).toBe(true);
+    expect(shouldSyncPhase('scores_reveal', 'answer_reveal')).toBe(false);
+    expect(shouldSyncPhase('scores_reveal', 'question')).toBe(false);
   });
 });

@@ -273,47 +273,80 @@ try {
   // kick is just a slower eject.
   heading('ejecting and kicking');
   {
+    const tryJoin = (name, uid) => table.store.execute({
+      table: 'players', action: 'insert',
+      payload: { room_id: table.store.table('rooms')[0].id, display_name: name,
+                 user_id: uid, joined_at: new Date().toISOString() },
+    });
+
+    // ---- EJECT, on a REAL client with a browser --------------------------
     const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
-    const carolUser = table.store.table('players').find(p => p.display_name === 'Carol')?.user_id;
-    const card = await pressPlayerCardAction(host.page, carolId, /^Remove$/);
+    const card = await pressPlayerCardAction(host.page, carolId, /^Eject$/);
     note(`Carol's card offers: ${JSON.stringify(card.labels)}`);
     if (!card.pressed) {
       problems.push(`the host is offered no way to remove a player (offers: ${JSON.stringify(card.labels)})`);
     }
     const stillThere = table.store.table('players').some(p => String(p.id) === String(carolId));
     note(`Carol's seat after eject: ${stillThere ? 'still there' : 'gone'}`);
-    if (stillThere) problems.push('the host pressed Remove and the player stayed');
+    if (stillThere) problems.push('the host pressed Eject and the player stayed');
 
-    // AN EJECTED PLAYER CAN COME BACK. This is the half that makes "eject" a
-    // different word from "kick", and without it the two are the same button.
-    const tryJoin = (name, uid) => table.store.execute({
-      table: 'players', action: 'insert',
-      payload: { room_id: table.store.table('rooms')[0].id, display_name: name,
-                 user_id: uid, joined_at: new Date().toISOString() },
-    });
-    const rejoin = await tryJoin('Carol', carolUser);
-    note(`an ejected player rejoining: ${rejoin.error ? rejoin.error.code : 'allowed'}`);
-    if (rejoin.error) {
-      problems.push(`an EJECTED player was refused a seat (${rejoin.error.code}) — eject is supposed to be recoverable`);
+    // AND THE EJECTED PLAYER IS TOLD, which is the half that was missing
+    // entirely. Reported from a live game: "my friend said he was removed but
+    // it looks like he is still in the lobby." His page went on chatting and
+    // offering Ready Up around a seat the room did not have, and — worse — the
+    // next heartbeat from anybody else used to hand him a fresh seat, so Eject
+    // could not remove anybody at all.
+    await carol.page.waitForSelector('#removed-modal.active', { timeout: 8000 })
+      .catch(() => problems.push('an ejected player was never told — their page sits in a lobby they are not in'));
+
+    // AN EJECTED PLAYER CAN COME BACK, and it takes a deliberate tap. That is
+    // the half that makes "eject" a different word from "kick".
+    await carol.page.locator('#removed-rejoin').click().catch(() => {});
+    await carol.page.waitForTimeout(2500);
+    const carolBack = await carol.page.evaluate(() =>
+      JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId).catch(() => null);
+    const carolSeated = carolBack
+      && table.store.table('players').some(p => String(p.id) === String(carolBack));
+    note(`an ejected player tapping Rejoin: ${carolSeated ? 'back in' : 'STILL OUT'}`);
+    if (!carolSeated) {
+      problems.push('an EJECTED player could not get back in — eject is supposed to be recoverable');
     }
+    await host.page.waitForSelector(`[data-profile-player-id="${carolBack}"]`, { timeout: 10000 })
+      .catch(() => problems.push('the host never saw the ejected player come back into the lobby'));
+
+    // ---- KICK, on a seat with no browser behind it ------------------------
+    //
+    // NOT ON CAROL, and that is deliberate. A kick bans her auth id for the
+    // life of the room, so every later section of this scenario — the whole
+    // in-game co-host half — would be running with a player who cannot rejoin.
+    //
+    // THAT IS EXACTLY HOW THIS SECTION USED TO PASS FOR THE WRONG REASON. It
+    // kicked the real Carol and the rest of the file went on working, because
+    // an ejected client silently re-seated itself: the kick landed on a
+    // throwaway duplicate row while Carol's browser kept the seat it already
+    // had. With removal actually removing, that stops being true, and the
+    // check has to say what it means instead.
+    const mallory = await tryJoin('Mallory', 'user-mallory');
+    if (mallory.error) problems.push(`could not seat a player to kick (${mallory.error.code})`);
+    const malloryId = mallory.data?.[0]?.id || mallory.data?.id;
+    await host.page.waitForSelector(`[data-profile-player-id="${malloryId}"]`, { timeout: 10000 })
+      .catch(() => problems.push('the host never saw a player join the lobby'));
 
     // ACCEPT THE CONFIRM. Playwright DISMISSES dialogs by default, so without
     // this the kick is cancelled and every assertion below would be measuring
     // a button that was never really pressed.
     host.page.once('dialog', d => d.accept());
 
-    // KICK: gone, and refused on the way back.
-    const carolAgain = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
-    const kicked = await pressPlayerCardAction(host.page, carolAgain, /^Kick$/);
+    const kicked = await pressPlayerCardAction(host.page, malloryId, /^Kick$/);
     note(`kick pressed: ${kicked.pressed}, offers were ${JSON.stringify(kicked.labels)}`);
     if (!kicked.pressed) {
       problems.push(`the host is offered no way to kick a player (offers: ${JSON.stringify(kicked.labels)})`);
     }
-    const kickedGone = !table.store.table('players').some(p => String(p.id) === String(carolAgain));
-    note(`Carol's seat after kick: ${kickedGone ? 'gone' : 'still there'}`);
+    const kickedGone = !table.store.table('players').some(p => String(p.id) === String(malloryId));
+    note(`the kicked seat: ${kickedGone ? 'gone' : 'still there'}`);
     if (!kickedGone) problems.push('the host pressed Kick and the player stayed');
 
-    const retry = await tryJoin('Carol', carolUser);
+    const retry = await tryJoin('Mallory', 'user-mallory');
     note(`a kicked player rejoining: ${retry.error ? retry.error.code : 'ALLOWED'}`);
     if (!retry.error) {
       problems.push('a KICKED player walked straight back into the room — the ban does nothing');

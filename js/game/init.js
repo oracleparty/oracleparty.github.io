@@ -257,7 +257,20 @@ async function init() {
     if (rejoinedPlayer) {
       const changedSeat = String(rejoinedPlayer.id) !== String(prevPlayerId);
       state.room.playerId = rejoinedPlayer.id;
-      if (someoneElseIsHost) state.room.isHost = false;
+      // BELIEVE THE ROW, not our own second opinion about who is hosting.
+      //
+      // `someoneElseIsHost` is a copy of a rule claimSeat already applies, and
+      // the two can disagree: claimSeat refuses a crown whenever the room has
+      // any live host (migration 058's INSERT policy would reject it anyway),
+      // and the exact-seat branch returns whatever the row says regardless of
+      // what we asked for. So a phone demoted while it was away came back with
+      // this flag still true and drew host controls whose every write the
+      // server refuses — the dead button 062 exists to end.
+      //
+      // The lobby had the same split and it cost a game: "it showed me not as
+      // host, yet I was able to start the game". The seat is the answer.
+      state.room.isHost = !!rejoinedPlayer.is_host;
+      state.room.isCohost = !!rejoinedPlayer.is_cohost;
       sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
       state.players = await fetchPlayers(state.room.id);
 
@@ -270,10 +283,23 @@ async function init() {
     }
   }
 
-  // Detect co-host status from player record
+  // THE ROW DECIDES BOTH ROLES, not sessionStorage.
+  //
+  // Co-host was already read from the row here; the host flag was not, so a
+  // phone that arrived carrying a stale `isHost` from a previous game or a
+  // lobby it was demoted in drew the host's controls over a seat the server
+  // will refuse every write from. Same fault as the lobby's, one page along —
+  // and the rejoin branch above only ever cleared the flag, never set it, so a
+  // player PROMOTED while this page was loading did not get the controls
+  // either.
+  //
+  // `myPlayer` is missing only when the seat could not be claimed at all,
+  // which the branch above already reports; leave the stored value alone
+  // rather than silently stripping a real host of their game.
   const myPlayer = state.players.find(p => String(p.id) === String(state.room.playerId));
-  if (myPlayer?.is_cohost) {
-    state.room.isCohost = true;
+  if (myPlayer) {
+    state.room.isHost = !!myPlayer.is_host;
+    state.room.isCohost = !!myPlayer.is_cohost;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
   }
 

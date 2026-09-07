@@ -14,7 +14,9 @@
 > | | Evidence |
 > |---|---|
 > | Migrations 048–064 are applied | the owner ran each one's verification block and pasted the result; every rule read `ok`. 063 needed a follow-up REVOKE. |
-> | **Migration 066 is applied** (2026-09-06) | the owner ran its verification query and pasted `verdict: ok` — it reads `pg_proc.prosrc` for both halves of the new `ON CONFLICT` rule, so it cannot pass on a partial paste. **065 has no such confirmation and must not be assumed applied.** |
+> | **Migration 066 is applied** (2026-09-06) | the owner ran its verification query and pasted `verdict: ok` — it reads `pg_proc.prosrc` for both halves of the new `ON CONFLICT` rule, so it cannot pass on a partial paste. |
+> | **065 is applied** (inferred 2026-09-07, NOT a verification report) | the owner kicked somebody in a real game and it worked: the player left the lobby, and their client then took a screenful of identical toasts, which is the shape of `room_bans` refusing every re-seat with 42501. `kickPlayer` has no fallback, so with 065 unapplied nothing would have been removed at all. Strong, and one notch weaker than a pasted `ok`. |
+> | **067 and 068 are NOT applied.** Written 2026-09-07, verified against a real Postgres, break-tested both ways — and the owner has not run them. Until they do: an abandoned room holding only a bot is listed for ever, and a round everybody got wrong still refunds its wager. |
 > | The live database has every function and table the app needs | the CI probe on commit `18d199f`. **That tick only started meaning something on 2026-08-30** — before that the probe printed its alarm and still exited 0. |
 > | All 12 subjects have title slots (36 subject-level, 45 topics, 26 clearing the size floor) | computed from `title-tiers.js` and `CATEGORY_META` |
 > | 664 unit tests and 12 robot scenarios pass | run locally, and in CI on every push |
@@ -44,6 +46,11 @@
 > 2. **Add ~a dozen questions each to History's Ancient (58) and Medieval (52)**
 >    so they clear the 60-question floor and can carry words of their own.
 > 3. **Play a real game** and report what breaks.
+> 4. **Run migrations 067 and 068** in the Supabase SQL editor and paste back the
+>    verification rows. 068 is the one a player can feel — it is the fix for "it
+>    only said he bet 1, which he had already used". The JavaScript for both is
+>    safe to deploy before the SQL, as always here, and behaves as it did before
+>    until they are run.
 >
 > ### The three faults reported in the last playtest, and their status
 >
@@ -731,6 +738,296 @@
 > **When one variable answers two questions, find the caller that needs opposite
 > answers to them.** That caller will have resolved it with an ordering, and the
 > ordering will be right for one question and silently wrong for the other.
+
+> ## 2026-09-07 (second playtest) — the split host, and a seat nobody admitted was gone
+>
+> **Eleven things reported after one game.** Four of them are one fault, two are
+> the same fault one layer down, and the two questions in the list turned out to
+> have answers worth writing down.
+>
+> ### "It showed me not as host, yet I was able to start the game"
+>
+> The whole report, and every clause of it is one bug:
+>
+> > *"It showed me not as host, yet I was able to start the game?? Even tho I
+> > didn't seem to have other host functions? And after starting I couldn't
+> > return us to lobby like I wasn't host???"*
+>
+> `room.isHost` was written in FIVE places and only THREE of them touched the
+> buttons. The one that mattered is the rejoin: `ensureCurrentPlayer` correctly
+> believes the row it gets back — a host swept while away comes back an ordinary
+> player, which is right and the owner said so — and set the flag to false while
+> leaving Start Game on screen from the value `init()` had read out of
+> sessionStorage.
+>
+> So everything that reads the ROW said "not host": the crown, the per-player
+> controls, and the game page. One gold button left over from the old world said
+> otherwise.
+>
+> **AND IT WORKED, which is why this cost a game.** Starting is a `status` write
+> plus a phase write, and `op_may_advance` allows the phase write for anybody
+> present in a room with no live host. Returning to the lobby afterwards IS
+> host-gated, and was refused — so the room started under somebody the game
+> then treated as an ordinary player, and nobody could end it.
+>
+> `setHostRole()` is the one place the role changes now: the flag, the storage
+> and the buttons move together or not at all, and `syncHostUI()` is a function
+> OF the flag rather than a transition, so `init()` uses it too instead of
+> keeping its own copy of the rule. `handleStartGame` also refuses outright when
+> the row is not ours — a control that is merely hidden is one stale tap away
+> from being pressed, and the consequence here was a game nobody could end.
+>
+> **THE GAME PAGE HAD THE SAME SPLIT, TWICE, and both were quieter.**
+>
+> - `js/game/init.js` only ever CLEARED `isHost`, and only when its own second
+>   opinion about who was hosting said so — while `claimSeat` refuses a crown on
+>   a different rule, and its exact-seat branch returns whatever the row says
+>   regardless of what was asked for. It reads the row now, for both roles, on
+>   both the rejoin path and the ordinary one.
+> - `js/game/phases.js`'s player-UPDATE handler kept **co-host** in step with
+>   the row and left `is_host` out of it. So a player demoted MID-GAME went on
+>   believing they were host, with every advance refused by `op_may_advance`,
+>   and a player promoted mid-game got the controls only through the
+>   DELETE-driven promotion path, never from the row itself.
+>
+> Found by this project's own rule — *when fixing a bug, check whether the same
+> pattern exists elsewhere* — and it was the same rule stated in three places
+> and followed in one.
+>
+> ### A seat can be taken away and nothing said so
+>
+> Three separate reports, one fact:
+>
+> | reported | |
+> |---|---|
+> | *"my profile icon/slot was missing even tho I was on the page… when I refreshed I was back in"* | the 8-second poll redrew the room around an absent player and never repaired the seat |
+> | *"my friend said he was removed but it looks like he is still in the lobby"* | nothing tells a removed player they were removed; the page sits there chatting |
+> | *"when I kicked he got lots of repetitive popups"* | every heartbeat from anybody else brought his page through a re-seat the ban refused, one toast each |
+>
+> **`loadPlayers()` never asked whether the seat it just failed to draw was
+> ours.** That matters more than it looks: a Realtime DELETE is never delivered
+> to this handler at all — the subscription filters on `room_id` and a DELETE
+> payload carries only the primary key — so **the poll is the only thing that
+> can see a removal**, and it was the one place not looking. Everything else
+> repaired the seat as a side effect of an unrelated event.
+>
+> And the repair itself was the second bug. `handlePlayerChange` ended with an
+> unconditional `ensureCurrentPlayer()`, so an ejected player was handed a fresh
+> seat within about fifteen seconds — **Eject could not remove anybody** — and a
+> kicked one was refused by the ban and toasted, once per heartbeat, for ever.
+>
+> ### A deleted seat means you are out, and the page says so
+>
+> `#removed-modal`: "You're no longer in this room", with Rejoin and Leave. It
+> is the only way back in, deliberately.
+>
+> **WHY NOT KEEP THE SILENT REPAIR.** Because the client genuinely cannot tell
+> which removal it is. The host ejected you, the host kicked you, or another
+> client's stale sweep judged you absent — a DELETE looks identical for all
+> three, and there is no marker to ask about. Re-seating silently is right for
+> exactly one of them and makes Eject meaningless for another.
+>
+> So the decision goes to the person, which costs one tap in the innocent case
+> (a phone that sat in a pocket past the stale window) and is the honest answer
+> in the other two. A kicked player's Rejoin is refused by 065's ban and the
+> notice says so with the button gone — one sentence instead of a screenful.
+>
+> **`scenario-lobby`'s ready-up section changed with it, and that is stated
+> rather than slipped in.** It used to require the client to take a fresh seat
+> by itself and mark it ready — the 2026-09-05 fix. The load-bearing half of
+> that (the client must not believe a write that wrote nothing) is unchanged and
+> still pinned; what changed is the response, because the owner's report is that
+> a removed player must actually be removed. Verified in both directions: the
+> notice must appear, it must offer a way back for an eject, tapping Rejoin must
+> get a seat and clear the notice, and Ready Up must not go on claiming it
+> worked.
+>
+> **AND THE REVERT FOUND A SECOND BUG IN THE SAME FUNCTION.** Putting the Ready
+> Up button back was written out once and needed twice — the failure branch
+> reverted the label and the zero-rows branch reverted only the variable, so a
+> press that wrote nothing still read "Not Ready" on screen. One `revertReady()`
+> now.
+>
+> ### Wording, all three the owner's call and all three right
+>
+> - **Eject, not "Remove".** The feature has been called Eject since it was
+>   built — in the migration, in the confirm text, in every note about it — and
+>   the button was the one place saying something else.
+> - **"X was kicked", not "kicked out".** "Out" invites the question "out of
+>   what?" a beat after the screen has already named the room.
+> - **The invite drops the code.** `text: "Join with code ABCD"` beside a link
+>   that opens `join.html?code=ABCD` reads as a second, manual step the reader
+>   has to work out whether they need. The code is still on screen in the lobby
+>   for anybody typing it by hand.
+>
+> `scenario-cohost` reached for `/^Remove$/` and would have reported the control
+> as GONE — the "a control that only moved is a control that was deleted" trap,
+> caught this time because the grep was done before the rename shipped.
+>
+> ### THE EJECT CHECK WAS PASSING BECAUSE OF THE BUG
+>
+> Worth more than the fix. `scenario-cohost` ejected the real Carol, then
+> inserted a row for her and kicked THAT — and every later section went on using
+> Carol's browser as an ordinary player. It passed for years of runs.
+>
+> It passed because **an ejected client silently re-seated itself**. By the time
+> the check looked, Carol's browser already held a fresh seat, the raw insert
+> merely added a second row, and the kick landed on the throwaway. The scenario
+> was quietly asserting that removal does not remove.
+>
+> With removal actually removing, it broke in three places at once — and the
+> first instinct, that the wait was too short, was wrong: restoring the old
+> `ensureCurrentPlayer()` tail made it pass again, which is what proved the
+> cause. It now ejects a REAL client, requires that client to be TOLD, has them
+> tap Rejoin to come back, and kicks a synthetic seat instead — because a kick
+> bans an auth id for the life of the room, so kicking a robot the rest of the
+> file still needs is a scenario that can only work while the feature is broken.
+>
+> **When a check breaks because a fix landed, ask whether it was ever testing
+> what it claimed.** This one was testing the workaround.
+>
+> ### "It only said he bet 1, which he had already used" (migration 068)
+>
+> **The wager rule is the one rule this game cannot bend**: with N questions the
+> values 1..N are each used exactly once. A value handed back is a value spent
+> twice, and somebody else's ranking is wrong for the rest of the game with
+> nothing on any screen saying why.
+>
+> A disqualified round refunds its wager — that is what disqualifying MEANS.
+> **But nothing anywhere recorded that a round had been disqualified.**
+> `op_disqualify_round` (049) sets every answer in the round to
+> wrong-and-worth-nothing, and BOTH readers inferred the disqualification back
+> out of exactly those values:
+>
+> | | the test |
+> |---|---|
+> | `op_next_wager` (046) | `HAVING bool_and(NOT is_correct AND score_earned = 0)` |
+> | `buildDisqualifiedSet` (js) | `answers.every(a => !a.is_correct && !score)` |
+>
+> **A round everybody simply got wrong is indistinguishable from one that was
+> thrown out.** 046's own comment admits the flaw and ports it deliberately, so
+> that the server and the screen at least agree — which was the right call then.
+> It is still a heuristic that fires far more often than it is right: **in a
+> two-player game both players missing a question is ordinary**, and every time
+> it happened that round's wager was silently refunded and handed straight back
+> by the next blank fill.
+>
+> 068 adds `answers.disqualified`, sets it where the decision is actually made,
+> and reads it in both places. **Break-tested by restoring the old guess: `got
+> "1", want "2"`** — the reported bug, reproduced as a number.
+>
+> **THE CLIENT KEEPS THE GUESS AS A FALLBACK, and that is not timidity.**
+> Migrations here are applied by hand, so "the JavaScript is live and the SQL is
+> not" is a real state, and in it every row arrives without the column. Reading
+> a missing column as `false` would quietly stop disqualification refunding
+> anything AND stop the reveal suppressing a thrown-out round's scoring — a
+> different bug, shipped to cover this one. So it asks whether the column is
+> THERE (`Object.hasOwn`), and only guesses when it is not.
+>
+> **The fake store had NO disqualification rule at all**, so the harness was
+> quietly more correct than the live server and could not have seen this. It
+> ports the new rule now, and every answer row carries `disqualified: false` so
+> the client exercises the flag path rather than the fallback.
+>
+> ### An abandoned game that no sweep could reach (migration 067)
+>
+> *"The bugged game I left after it started keeps showing in active game
+> lobbies???"* — and there is a room shape `op_sweep_rooms` (048) cannot delete
+> at all:
+>
+> | rule | why it misses a room holding only a bot |
+> |---|---|
+> | 1. no player rows at all | a leftover bot row IS a player row |
+> | 2. a lobby older than two hours | deliberately not `playing` |
+> | 3. every HUMAN silent for 20 min | opens with `EXISTS(a human)`, which is false |
+>
+> 048's own comment says "a room of only bots is abandoned by definition" and
+> the JavaScript fallback really does treat it that way. **The SQL never did** —
+> the rule stated in two places and implemented in one, and the half that was
+> wrong is the load-bearing half, because 048 revoked DELETE on `rooms` and made
+> the function the only way a room can go. Rule 1 asks about HUMANS now.
+> Break-tested in both directions: the old rule fails "a room holding only a bot
+> is swept", and an over-broad one fails "a solo game with a bot in it survives
+> the sweep".
+>
+> **And a second road to the same place, closed client-side.** `addPlayer`
+> deliberately did not write `last_seen_at`, on a comment saying the column was
+> missing from the live table — which was true when written and stale now (058
+> ran `GRANT UPDATE (last_seen_at, …)` live and verified ok, and a grant naming
+> a column that does not exist raises). Rule 3 reads a NULL `last_seen_at` as
+> "cannot tell" and PROTECTS the room, which is right for a live game and made
+> an abandoned one **immortal**: a row inserted by a phone that closed before
+> its first heartbeat has NULL for ever. It is stamped at INSERT now, which is
+> also just true — they are here, that is what joining means.
+>
+> ### "It jumped to a different screen then back to the question"
+>
+> **The finding CLAUDE.md has carried as "established and NOT fixed" since the
+> bad-network run, reported from a real game with no bad connection at all.**
+>
+> `handleRoomChange` applied every room event unconditionally — the phase AND
+> `state.currentQuestion`. Realtime guarantees neither order nor timeliness, so
+> an event that left the server before the one already applied arrives after it
+> and drags the screen back; the next event, or the 60-second poll, drags it
+> forward again.
+>
+> **Two earlier attempts at a guard here each made the game unplayable**, and
+> both failed the same way: a flat phase list ranks `scores_reveal` after
+> `question`, so the next round's question read as backwards and every game
+> stalled at round one. `isStaleRoomEvent` in `phase-order.js` consults the
+> phase list **only within one round number**, so that transition is never even
+> asked about — the round number rises, and the event is let through untested.
+>
+> Two rules, and nothing else:
+>
+> - a `current_question` BEHIND ours can only be an echo of the past;
+> - within one round, a strictly earlier phase is stale.
+>
+> **Recoverable by construction**, which is what makes it safe to ship where the
+> earlier attempts were not: `syncToCurrentState` re-reads the room and applies
+> it WITHOUT asking this, so a client that ever did refuse a real event is
+> corrected rather than stuck.
+>
+> `scenario-badnetwork` samples every phone's own phase and question and fails
+> on any move the same rule calls backwards. **On unguarded code at `--lag=1500`
+> it reports four**, including the trace this was written from:
+>
+> ```
+> Alice's game went BACKWARDS 4 time(s): scores_reveal@2 -> answer_reveal@2,
+>   scores_reveal@3 -> answer_reveal@3, scores_reveal@4 -> answer_reveal@4,
+>   final_question@5 -> final_wager@4
+> ```
+>
+> That last one is the worse half and was invisible until now: the ROUND NUMBER
+> going backwards, which is a client re-entering a round it had finished.
+>
+> **AND WRITING THE GUARD FOUND A HOLE IN THE EXCEPTION IT REUSES.** The
+> 2026-09-07 fix taught `shouldSyncPhase` that a round's REVEAL is never
+> backwards from that round's own question, and listed `reveal` and
+> `answer_reveal`. **`scores_reveal` belongs there too and was missing.** After
+> every reveal — the final round included — the advance button reads "Show
+> Scores" and `handleShowScores` writes `game_phase = 'scores_reveal'` without
+> touching the question number, so the final round really runs
+> `final_question -> reveal -> answer_reveal -> scores_reveal -> results`. With
+> that phase missing, a phone still on `final_question` refused the scoreboard
+> as backwards and sat there — which is the identical fault, one step along, and
+> it was already live on the backgrounded-phone path this exception was written
+> for. Two tests fail by name when it is taken back out.
+>
+> ### The two questions in the list, answered
+>
+> - **A play counts only when that player reaches the RESULTS screen.**
+>   `insertGamePlay` writes the row at question 0, but
+>   `get_category_play_counts()` filters `completed = true`, and `completed` is
+>   set by `completeGamePlay` on the results screen — by each player for
+>   themselves. So starting is not enough, an abandoned game counts for nobody,
+>   and a player who leaves mid-game does not count that round. Migration 034
+>   also resets `completed` when a new game key starts, so Play Again re-arms it.
+> - **Host powers do not "split" by design — they split by ACCIDENT, and that
+>   was the bug.** There is one host and one optional co-host: the co-host helps
+>   run the GAME (advance, judge), while who is IN the room stays the host's
+>   alone, on the owner's earlier decision. What the report describes is not
+>   that split; it is one screen disagreeing with the seat, fixed above.
 
 > ## 2026-09-07 — the gap between a tap and the first pixel that moves
 >

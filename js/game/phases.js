@@ -5,6 +5,7 @@
 
 import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../utils.js';
 import { findNextAvailableWager, countAnswersFrom } from './scoring-helpers.js';
+import { isStaleRoomEvent } from './phase-order.js';
 import { getCountdownElapsed, isStampForCurrentRound } from './timer-helpers.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
 import { logger } from '../logger.js';
@@ -135,13 +136,34 @@ export async function handlePlayerChange(payload) {
       if (!state.scores[payload.new.id]) state.scores[payload.new.id] = 0;
     }
     // Detect host/co-host changes for this player
+    //
+    // THE HOST FLAG WAS MISSING FROM THIS, and it is the same asymmetry the
+    // lobby had. Co-host was kept in step with the row and `is_host` was not,
+    // so a player DEMOTED mid-game went on believing they were host — every
+    // advance refused by op_may_advance, which is the dead button 062 exists to
+    // end — and a player PROMOTED mid-game got the controls only through the
+    // DELETE-driven promotion path above, never from the row itself.
+    //
+    // Reported in the lobby as "it showed me not as host, yet I was able to
+    // start the game". The row is the answer on both pages.
     if (String(payload.new.id) === String(state.room.playerId)) {
-      if (payload.new.is_cohost && !state.room.isCohost) {
-        state.room.isCohost = true;
+      const wasHost = !!state.room.isHost;
+      const nowHost = !!payload.new.is_host;
+      const wasCohost = !!state.room.isCohost;
+      const nowCohost = !!payload.new.is_cohost;
+      if (wasHost !== nowHost || wasCohost !== nowCohost) {
+        state.room.isHost = nowHost;
+        state.room.isCohost = nowCohost;
         sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-      } else if (!payload.new.is_cohost && state.room.isCohost) {
-        state.room.isCohost = false;
-        sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+        // GAINING control needs the buttons put on screen; LOSING it needs
+        // nothing drawn, because canControlGame() now answers false and every
+        // control is re-rendered from it on the next screen. Deliberately not
+        // tearing the current screen down mid-round: a demotion is rare, and a
+        // screen rebuilt underneath somebody who is typing is worse than a
+        // button that stops working until the next one.
+        if (!wasHost && !wasCohost && (nowHost || nowCohost)) {
+          _activateHostControlsForCurrentPhase();
+        }
       }
     }
   } else if (event === 'INSERT' && payload.new) {
@@ -253,6 +275,48 @@ export function handleRoomChange(payload) {
   // lobby. Every room was left holding a finished game's state.
   if (status === 'playing' && state.gamePhase === 'results' && game_phase && game_phase !== 'results') {
     _showNewGameNotice();
+    return;
+  }
+
+  // A ROOM EVENT DESCRIBING A MOMENT WE HAVE ALREADY PASSED IS DROPPED.
+  //
+  // Reported from a live game: "one of the later questions was buggy and jumped
+  // to a different screen then back to the question." And measured, at a
+  // 1500ms round trip, by scenario-badnetwork a day earlier:
+  //
+  //     phase-in answer_reveal   a STALE event, 1500ms late, arrives while the
+  //                              client is already on scores_reveal, and drags
+  //                              the screen back to the reveal
+  //
+  // Realtime guarantees neither order nor timeliness, and everything below here
+  // used to be applied unconditionally — the phase AND `state.currentQuestion`.
+  // So a late event took the screen backwards, and the next event or the
+  // 60-second poll took it forward again. That is the jump, exactly.
+  //
+  // CLAUDE.md has carried this as "established and NOT fixed" because two
+  // earlier attempts at a phase guard each made the game unplayable at one
+  // specific moment. isStaleRoomEvent is deliberately narrower than both: it
+  // consults the phase list ONLY within one round number, so the transition
+  // that broke them — scores_reveal to the next round's question, which ranks
+  // backwards on any flat list — is never even asked about.
+  //
+  // IT IS PLACED HERE ON PURPOSE, above the clock, the question list, the
+  // current_question assignment and the phase dispatch. A stale event must not
+  // rewind the ROUND NUMBER either; that is the half that let a client re-enter
+  // a round it had finished.
+  //
+  // The failure direction is recoverable by construction: syncToCurrentState
+  // re-reads the room every STATE_SYNC_INTERVAL and applies it WITHOUT asking
+  // this, so a client that ever did refuse a real event is corrected rather
+  // than stuck. Play Again and "back to lobby" never reach here at all — both
+  // are intercepted by the status checks above.
+  if (isStaleRoomEvent({
+    incomingPhase: game_phase,
+    incomingQuestion: current_question,
+    currentPhase: state.gamePhase,
+    currentQuestion: state.currentQuestion,
+  })) {
+    logger.debug('Game', `ignoring a stale room event: ${state.gamePhase}@${state.currentQuestion} <- ${game_phase}@${current_question}`);
     return;
   }
 

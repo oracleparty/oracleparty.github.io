@@ -154,11 +154,35 @@ export function buildDisqualifiedSet(allAnswers) {
     if (!byQ[a.question_number]) byQ[a.question_number] = [];
     byQ[a.question_number].push(a);
   }
+
+  // A THROWN-OUT ROUND SAYS SO NOW (migration 068), and the guess it replaces
+  // was wrong far more often than it was right.
+  //
+  // A disqualified round refunds its wager, which is the whole point of
+  // disqualifying — but nothing recorded that a round HAD been disqualified.
+  // op_disqualify_round sets every answer in it to wrong-and-worth-nothing, and
+  // this function inferred the disqualification back out of exactly that. A
+  // round everybody simply got wrong looks identical. In a two-player game that
+  // is ordinary, so every such round silently handed its wager back — and
+  // 1..N are then no longer used exactly once.
+  //
+  // Reported: "it only said he bet 1, which he had already used."
+  //
+  // THE FALLBACK IS NOT COSMETIC. Migrations here are applied by hand, so "the
+  // JavaScript is live and the SQL is not" is a real state, and in it every row
+  // arrives WITHOUT the column. Reading a missing column as `false` would
+  // quietly stop disqualification refunding anything and stop the reveal
+  // suppressing a thrown-out round's scoring — a different bug, shipped to
+  // cover this one. So it asks whether the column is THERE, and only guesses
+  // when it is not.
+  const knowsFlag = allAnswers.some(a => a && Object.hasOwn(a, 'disqualified'));
+
   const disq = new Set();
   for (const [qNum, answers] of Object.entries(byQ)) {
-    if (answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0)) {
-      disq.add(parseInt(qNum, 10));
-    }
+    const thrownOut = knowsFlag
+      ? answers.some(a => a.disqualified === true)
+      : answers.length > 0 && answers.every(a => !a.is_correct && (a.score_earned || 0) === 0);
+    if (thrownOut) disq.add(parseInt(qNum, 10));
   }
   return disq;
 }

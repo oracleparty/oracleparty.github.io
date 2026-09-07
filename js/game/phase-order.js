@@ -28,8 +28,20 @@ const PHASE_ORDER = [
 /** The final round's own phases, which sit at the END of that list. */
 const FINAL_ROUND_PHASES = ['difficulty_vote', 'final_wager', 'final_question'];
 
-/** The phases that END a round, wherever in the list they happen to sit. */
-const REVEAL_PHASES = ['reveal', 'answer_reveal'];
+/**
+ * The phases that END a round, wherever in the list they happen to sit.
+ *
+ * `scores_reveal` BELONGS HERE and was missing, which is the same bug this
+ * exception exists for, one step further along. After EVERY reveal — the final
+ * round included — the advance button reads "Show Scores" and writes
+ * `game_phase = 'scores_reveal'` without touching the question number
+ * (`handleShowScores` in scores.js). So the final round really does run
+ * `final_question -> reveal -> answer_reveal -> scores_reveal -> results`, and
+ * with only the first two listed, a phone sitting on `final_question` refused
+ * the scoreboard as backwards and sat there — exactly what it used to do to the
+ * reveal itself.
+ */
+const REVEAL_PHASES = ['reveal', 'answer_reveal', 'scores_reveal'];
 
 /**
  * May a returning phone move from `current` to the room's `incoming` phase?
@@ -62,4 +74,54 @@ export function shouldSyncPhase(current, incoming) {
   const incomingIdx = PHASE_ORDER.indexOf(incoming);
   if (currentIdx === -1 || incomingIdx === -1) return true;
   return incomingIdx > currentIdx;
+}
+
+/**
+ * Is this room event describing a moment this client has already passed?
+ *
+ * REPORTED FROM A LIVE GAME: "during a live round, one of the later questions
+ * was buggy and jumped to a different screen then back to the question."
+ *
+ * `handleRoomChange` applied every room event unconditionally — the phase AND
+ * `state.currentQuestion`. Realtime does not guarantee order or timeliness, so
+ * an event that left the server before the one already applied could arrive
+ * after it and drag the screen backwards. `scenario-badnetwork` recorded
+ * exactly that at a 1500ms round trip:
+ *
+ *     phase-in answer_reveal   a STALE event, 1500ms late, arrives while the
+ *                              client is already on scores_reveal, and drags
+ *                              the screen back to the reveal
+ *
+ * CLAUDE.md has carried that finding as "established and NOT fixed" since,
+ * because the two previous attempts at a phase guard each made the game
+ * unplayable at one specific moment. This is deliberately narrower than both:
+ *
+ *   * A ROUND NUMBER THAT IS BEHIND OURS can only be an echo of the past. The
+ *     room never goes back a round — Play Again resets it to 0, and both
+ *     paths to that (status 'lobby', and the new-game notice) are intercepted
+ *     by the caller before this is asked.
+ *   * WITHIN ONE ROUND, and only there, the phase list is meaningful, so a
+ *     strictly earlier phase for the SAME round number is stale.
+ *
+ * EVERYTHING ELSE IS LET THROUGH, including the case that broke both earlier
+ * attempts: `scores_reveal` -> `question` for the next round carries a HIGHER
+ * question number, so the phase list is never consulted and the round advances
+ * exactly as before.
+ *
+ * The failure direction is recoverable by construction: syncToCurrentState
+ * re-reads the room and applies it without asking this, so a client that ever
+ * did wrongly refuse an event is corrected by the next poll rather than stuck.
+ */
+export function isStaleRoomEvent({ incomingPhase, incomingQuestion, currentPhase, currentQuestion }) {
+  const haveNumbers = Number.isInteger(incomingQuestion) && Number.isInteger(currentQuestion);
+
+  // A round we have already left.
+  if (haveNumbers && incomingQuestion < currentQuestion) return true;
+
+  // Within one round, an earlier phase than the one we are on.
+  const sameRound = !haveNumbers || incomingQuestion === currentQuestion;
+  if (!sameRound) return false;
+  if (!incomingPhase || !currentPhase) return false;
+  if (incomingPhase === currentPhase) return false;
+  return !shouldSyncPhase(currentPhase, incomingPhase);
 }

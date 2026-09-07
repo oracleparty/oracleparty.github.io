@@ -141,6 +141,62 @@ describe('buildDisqualifiedSet', () => {
     expect(set.has(5)).toBe(true);
     expect(set.has('5')).toBe(false);
   });
+
+  // MIGRATION 068 — THE ROUND SAYS SO INSTEAD OF BEING GUESSED AT.
+  //
+  // The three cases above describe the world BEFORE the marker column and are
+  // kept exactly as they were: they are what still has to happen on a database
+  // where 068 has not been applied, and this project ships the JavaScript
+  // first every time.
+  it('a round everybody got wrong is NOT a thrown-out round once the flag exists', () => {
+    // The reported bug in one case. Both players missed it, nobody scored — and
+    // the old rule read that as "the host threw this round out", refunded the
+    // wager, and handed it back: "it only said he bet 1, which he had already
+    // used". In a two-player game this is an ordinary round.
+    const answers = [
+      { question_number: 3, is_correct: false, score_earned: 0, disqualified: false },
+      { question_number: 3, is_correct: false, score_earned: 0, disqualified: false },
+    ];
+    expect(buildDisqualifiedSet(answers).has(3)).toBe(false);
+  });
+
+  it('a round the host really threw out is flagged however it scored', () => {
+    const answers = [
+      { question_number: 4, is_correct: false, score_earned: 0, disqualified: true },
+      { question_number: 4, is_correct: false, score_earned: 0, disqualified: true },
+    ];
+    expect(buildDisqualifiedSet(answers).has(4)).toBe(true);
+  });
+
+  it('one flagged row settles the round, because the flag is written to all of them at once', () => {
+    const answers = [
+      { question_number: 6, is_correct: false, score_earned: 0, disqualified: true },
+      { question_number: 6, is_correct: false, score_earned: 0, disqualified: false },
+    ];
+    expect(buildDisqualifiedSet(answers).has(6)).toBe(true);
+  });
+
+  it('falls back to the old guess when the column is not there at all', () => {
+    // "The JavaScript is live and the SQL is not" is a real state in this
+    // project. Reading an absent column as false would silently stop
+    // disqualification refunding anything — a different bug, shipped to cover
+    // the first one.
+    const answers = [
+      { question_number: 7, is_correct: false, score_earned: 0 },
+      { question_number: 7, is_correct: false, score_earned: 0 },
+    ];
+    expect(buildDisqualifiedSet(answers).has(7)).toBe(true);
+  });
+
+  it('a single row carrying the column switches the whole read off the guess', () => {
+    // Mixed shapes cannot happen from one select, and if they ever did the
+    // safe reading is to believe the fact rather than the inference.
+    const answers = [
+      { question_number: 8, is_correct: false, score_earned: 0, disqualified: false },
+      { question_number: 8, is_correct: false, score_earned: 0 },
+    ];
+    expect(buildDisqualifiedSet(answers).has(8)).toBe(false);
+  });
 });
 
 // ============================================

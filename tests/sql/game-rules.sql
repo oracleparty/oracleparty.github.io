@@ -363,6 +363,41 @@ BEGIN
   SELECT 'a player we cannot place protects the room', count(*)::text, '1'
   FROM rooms WHERE id = other;
 
+  -- A ROOM WITH ONLY A BOT IN IT IS ABANDONED (migration 067).
+  --
+  -- Solo practice is one human and one bot. When the human's seat goes without
+  -- op_leave_room running — a phone that died before its unload beacon, then
+  -- another client's stale sweep removing the row — what is left is a room
+  -- holding one bot. Every rule in 048 missed it: rule 1 saw a player row,
+  -- rule 2 only touches lobbies, and rule 3 opens with EXISTS(a human) and so
+  -- never considered the room at all. It was offered as an active game for
+  -- ever. Reported as "the bugged game I left keeps showing in active game
+  -- lobbies".
+  DELETE FROM rooms WHERE id = other;   -- the previous rule leaves one standing
+  INSERT INTO rooms (id, code, status, created_at)
+  VALUES (other, lpad((random()*999999)::int::text, 6, '0'), 'playing', now() - interval '5 minutes');
+  INSERT INTO players (id, room_id, display_name, last_seen_at, is_bot)
+  VALUES (gen_random_uuid(), other, 'Practice Bot', NULL, true);
+  n := op_sweep_rooms();
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a room holding only a bot is swept', count(*)::text, '0'
+  FROM rooms WHERE id = other;
+
+  -- AND THE OTHER HALF, or the rule above would pass on a sweep that deletes
+  -- every room with a bot in it — which would take a live solo game away from
+  -- the person playing it, mid-round.
+  DELETE FROM rooms WHERE id = other;
+  INSERT INTO rooms (id, code, status, created_at)
+  VALUES (other, lpad((random()*999999)::int::text, 6, '0'), 'playing', now() - interval '5 minutes');
+  INSERT INTO players (id, room_id, display_name, last_seen_at, is_bot)
+  VALUES (gen_random_uuid(), other, 'Practice Bot', NULL, true);
+  INSERT INTO players (id, room_id, display_name, last_seen_at, is_bot)
+  VALUES (gen_random_uuid(), other, 'Solo human', now(), false);
+  n := op_sweep_rooms();
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a solo game with a bot in it survives the sweep', count(*)::text, '1'
+  FROM rooms WHERE id = other;
+
   DELETE FROM rooms WHERE id = other;
 END $$;
 
@@ -443,6 +478,73 @@ BEGIN
   res := op_set_judgement(aid, true, host);
   INSERT INTO result (check_name, got, want) VALUES
     ('a round that merely went badly is not mistaken for a thrown-out one', res, 'changed');
+
+  -- ---- migration 068: a thrown-out round SAYS SO ---------------------------
+  --
+  -- Disqualifying used to record nothing at all: it zeroed the scores, and both
+  -- readers of "was this round thrown out" inferred it back out of exactly
+  -- those zeroes. A round everybody simply got wrong is identical, and in a
+  -- two-player game that is ordinary — so an ordinary round's wager was
+  -- refunded and handed out a second time. Reported as "it only said he bet 1,
+  -- which he had already used".
+  INSERT INTO result (check_name, got, want)
+  SELECT 'disqualifying a round records that it was thrown out',
+         bool_and(disqualified)::text, 'true'
+  FROM answers WHERE room_id = rid AND question_number = 0;
+END $$;
+
+-- ============================================
+-- Migration 068 — the wager rule, on a round nobody got right
+--
+-- THE WHOLE POINT IS THE PAIR. A rule that only checks the refund passes on a
+-- build where nothing is ever refunded; one that only checks the ordinary
+-- round passes on the build being replaced. Both, on the same shaped data,
+-- with one flag between them.
+-- ============================================
+DO $$
+DECLARE
+  rid   uuid := gen_random_uuid();
+  host  uuid := gen_random_uuid();
+  other uuid := gen_random_uuid();
+  qid   uuid := gen_random_uuid();
+BEGIN
+  INSERT INTO rooms (id, code, status, question_ids, current_question, game_phase)
+  VALUES (rid, lpad((random()*999999)::int::text, 6, '0'), 'playing',
+          ARRAY[qid, qid, qid, qid], 1, 'question');
+  INSERT INTO players (id, room_id, display_name, is_host, last_seen_at)
+  VALUES (host, rid, 'Host', true, now()),
+         (other, rid, 'Friend', false, now());
+
+  -- Round 0: BOTH players answered and BOTH got it wrong. Nobody scored. This
+  -- is an ordinary round, and the host spent wager 1 on it.
+  INSERT INTO answers (room_id, player_id, question_number, question_id,
+                       submitted_answer, wager, is_correct, score_earned)
+  VALUES (rid, host,  0, qid, 'wrong', 1, false, 0),
+         (rid, other, 0, qid, 'wrong', 1, false, 0);
+
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a wager spent on a round everybody got wrong is still spent',
+     op_next_wager(rid, host, 3)::text, '2');
+
+  -- Now the host really throws that round out. The wager comes back, because
+  -- that is what disqualifying MEANS — and it is the only thing that brings it
+  -- back.
+  PERFORM op_disqualify_round(rid, 0, host);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a round the host threw out gives the wager back',
+     op_next_wager(rid, host, 3)::text, '1');
+
+  -- AND IT IS THAT PLAYER'S OWN LEDGER. The friend spent wager 1 on the same
+  -- round, so the refund reaches them too — but a wager somebody ELSE spent on
+  -- a live round never does.
+  INSERT INTO answers (room_id, player_id, question_number, question_id,
+                       submitted_answer, wager, is_correct, score_earned)
+  VALUES (rid, other, 1, qid, 'right', 2, true, 2);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('one player''s spent wager is not counted against another',
+     op_next_wager(rid, host, 3)::text, '1');
+
+  DELETE FROM rooms WHERE id = rid;
 END $$;
 
 

@@ -754,7 +754,19 @@ export class FakeStore {
               message: `duplicate key value violates unique constraint on ${table} (${dup.join(', ')})`,
             } };
           }
-          const row = { id: newId(table), created_at: new Date().toISOString(), ...item };
+          const row = {
+            id: newId(table),
+            created_at: new Date().toISOString(),
+            // COLUMN DEFAULTS, so a harness row has the shape the live table
+            // has. `answers.disqualified` (migration 068) is the one that
+            // matters: buildDisqualifiedSet decides whether to trust the flag
+            // or fall back to the old everybody-was-wrong GUESS by asking
+            // whether the column is present at all, so a store that never
+            // wrote it would exercise only the fallback and leave the fix
+            // untested here.
+            ...(table === 'answers' ? { disqualified: false } : {}),
+            ...item,
+          };
           // CHECK constraints, evaluated on the row as it would be stored.
           // Postgres refuses the WHOLE statement on the first violation and
           // writes nothing, so this returns before anything is pushed.
@@ -806,7 +818,19 @@ export class FakeStore {
             result.push({ ...existing });
             this._broadcast('UPDATE', table, { ...existing }, before);
           } else {
-            const row = { id: newId(table), created_at: new Date().toISOString(), ...item };
+            const row = {
+            id: newId(table),
+            created_at: new Date().toISOString(),
+            // COLUMN DEFAULTS, so a harness row has the shape the live table
+            // has. `answers.disqualified` (migration 068) is the one that
+            // matters: buildDisqualifiedSet decides whether to trust the flag
+            // or fall back to the old everybody-was-wrong GUESS by asking
+            // whether the column is present at all, so a store that never
+            // wrote it would exercise only the fallback and leave the fix
+            // untested here.
+            ...(table === 'answers' ? { disqualified: false } : {}),
+            ...item,
+          };
             rows.push(row);
             result.push({ ...row });
             this._broadcast('INSERT', table, row, null);
@@ -1126,7 +1150,11 @@ export class FakeStore {
           if (String(a.room_id) !== String(args.p_room_id)) continue;
           if (a.question_number !== args.p_question_number) continue;
           const before = { ...a };
-          a.is_correct = false; a.score_earned = 0;
+          // THE FLAG, not just the zeroed score (migration 068). Without it
+          // nothing anywhere can tell a thrown-out round from one everybody
+          // simply got wrong, and the wager is silently refunded and spent
+          // twice — "it only said he bet 1, which he had already used".
+          a.is_correct = false; a.score_earned = 0; a.disqualified = true;
           this._broadcast('UPDATE', 'answers', { ...a }, before);
           n++;
         }
@@ -1252,6 +1280,7 @@ export class FakeStore {
         auto_correct: !!args.p_is_correct,
         score_earned: points,
         history_recorded: false,
+        disqualified: false,
         created_at: new Date().toISOString(),
       };
       answers.push(row);
@@ -1630,11 +1659,22 @@ export class FakeStore {
       // op_next_wager: the player's lowest unspent value, skipping the final
       // round's own wager space and the __WAGER_LOCKED__ placeholder.
       const nextWager = (playerId) => {
+        // A THROWN-OUT ROUND REFUNDS ITS WAGER, and this had no such rule at
+        // all — so the harness was quietly MORE correct than the live server
+        // and could not see the bug. op_next_wager (046) inferred the
+        // disqualification from "nobody right, nobody scored", which is also
+        // what an ordinary round both players missed looks like, and refunded a
+        // wager the player had really spent. Migration 068 replaced the guess
+        // with a flag; this is the port of the new rule.
+        const thrownOut = new Set(this.table('answers')
+          .filter(a => String(a.room_id) === String(room.id) && a.disqualified === true)
+          .map(a => a.question_number));
         const spent = new Set(this.table('answers')
           .filter(a => String(a.room_id) === String(room.id)
             && String(a.player_id) === String(playerId)
             && a.question_number < total
             && a.wager != null
+            && !thrownOut.has(a.question_number)
             && String(a.submitted_answer || '').trim() !== '__WAGER_LOCKED__')
           .map(a => a.wager));
         for (let i = 1; i <= total; i++) if (!spent.has(i)) return i;

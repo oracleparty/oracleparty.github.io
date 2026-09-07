@@ -903,7 +903,17 @@ const REQUIRED = {
             'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned',
             // Migration 043 — the marker that makes recording a round
             // idempotent. Nothing in js/ writes it directly; the function does.
-            'history_recorded'],
+            'history_recorded',
+            // Migration 068 — WAS THIS ROUND THROWN OUT, as a fact rather than
+            // a guess. It fails QUIETLY when missing, which is why it is worth
+            // watching: buildDisqualifiedSet falls back to the old heuristic
+            // ("nobody right, nobody scored"), and that reading cannot tell a
+            // thrown-out round from one everybody simply got wrong. In a
+            // two-player game it refunds an ordinary round's wager and hands it
+            // out a second time — "it only said he bet 1, which he had already
+            // used". Nothing in js/ writes this column; op_disqualify_round
+            // does.
+            'disqualified'],
   game_plays: ['id', 'room_id', 'player_id', 'category', 'subcategory', 'completed_at',
                'total_questions', 'questions_answered', 'final_score', 'completed'],
   question_feedback: ['id', 'question_id', 'voter_id', 'room_id', 'player_name',

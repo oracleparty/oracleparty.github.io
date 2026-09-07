@@ -149,13 +149,12 @@ async function init() {
   updateCategoryDisplay();
   lobbyCode.textContent = room.code;
 
-  // Show correct action button
-  if (room.isHost) {
-    btnStartGame.classList.remove('hidden');
-    btnSettings.classList.remove('hidden');
-  } else {
-    btnReady.classList.remove('hidden');
-  }
+  // Show the controls this role has — through the same function every later
+  // role change goes through, so the first paint and every repaint agree.
+  // This used to be its own copy of the rule and it drifted: a phone whose
+  // stored role said host got the button, and nothing took it away when the
+  // seat came back saying otherwise.
+  syncHostUI();
 
   // Load existing data.
   //
@@ -228,6 +227,11 @@ async function init() {
   // Also sends an immediate heartbeat to clear any disconnected_at from a prior refresh.
   playerHeartbeat(room.playerId).catch(() => {});
   dbHeartbeatId = setInterval(() => {
+    // A seat we have been removed from is not ours to keep warm. Without this
+    // the heartbeat goes on writing to a row that is not there — harmless in
+    // itself, and it would keep `disconnected_at` clear on a row somebody else
+    // may since have been given.
+    if (_removedFromRoom) return;
     playerHeartbeat(room.playerId).catch(() => {});
   }, HEARTBEAT_DB_INTERVAL_MS);
 
@@ -320,7 +324,13 @@ function attachListeners() {
     try {
       // Try native share first on mobile
       if (navigator.share) {
-        await navigator.share({ title: 'Join my Oracle Party game!', text: `Join with code ${room.code}`, url: joinUrl });
+        // NO CODE IN THE MESSAGE. The link IS the invitation — it opens
+        // join.html?code=… and walks straight into this room — so repeating
+        // the code beside it reads as a second, manual step the reader has to
+        // work out whether they need. The owner's call: "it seems unnecessary
+        // and will add to confusion". The code is still on screen in the lobby
+        // for anybody typing it in by hand.
+        await navigator.share({ title: 'Oracle Party', text: 'Join my Oracle Party game!', url: joinUrl });
         return;
       }
       await navigator.clipboard.writeText(joinUrl);
@@ -336,6 +346,33 @@ function attachListeners() {
       // Fallback: no-op, code is visible
     }
   });
+
+  // No longer in this room — the only way back is a deliberate tap.
+  const rejoinBtn = $('#removed-rejoin');
+  if (rejoinBtn) {
+    rejoinBtn.addEventListener('click', async () => {
+      rejoinBtn.disabled = true;
+      rejoinBtn.textContent = 'Rejoining...';
+      // Clear the flag first: ensureCurrentPlayer's failure path raises the
+      // notice again, and showRemovedNotice returns early while it is already
+      // up — so a refused rejoin would say nothing at all.
+      _removedFromRoom = false;
+      const ok = await ensureCurrentPlayer();
+      rejoinBtn.disabled = false;
+      rejoinBtn.textContent = 'Rejoin';
+      if (ok) {
+        showToast("You're back in the lobby");
+      } else if (!_removedFromRoom) {
+        // Neither seated nor refused for a reason we can name — the room may
+        // be gone, or the write failed. Say so rather than leaving a dialog
+        // that appears to have done nothing.
+        showRemovedNotice();
+        showToast("Couldn't get back in — check your connection", 'error');
+      }
+    });
+  }
+  const removedLeaveBtn = $('#removed-leave');
+  if (removedLeaveBtn) removedLeaveBtn.addEventListener('click', handleLeave);
 
   // Chat send
 
@@ -384,10 +421,8 @@ function attachListeners() {
   // Leave
   btnLeave.addEventListener('click', handleLeave);
 
-  // Settings modal (host only — listeners attached idempotently so promotion works)
-  if (room.isHost) {
-    attachSettingsListeners();
-  }
+  // (Settings listeners are attached by syncHostUI above, idempotently, so a
+  // promotion later in the lobby wires them exactly once.)
 
   // Trap browser back button — replace host/join.html in history so back always goes to index
   history.replaceState({ inLobby: true }, '');
@@ -406,6 +441,12 @@ async function loadPlayers() {
   players = await fetchPlayers(room.id);
   sortPlayers();
   renderPlayers();
+  // EVERY REFRESH OF THIS LIST IS A CHANCE TO NOTICE THE SEAT IS GONE, and
+  // until now the 8-second poll took none of them — it redrew the room around
+  // an absent player and moved on. A Realtime DELETE is never delivered here
+  // (the room_id filter cannot match a payload carrying only the primary key),
+  // so the poll is in fact the ONLY thing that can see a removal at all.
+  checkSeatStillMine();
   // Fallback host promotion: Supabase Realtime DELETE events may not arrive
   // because the room_id filter can't match DELETE payloads (default REPLICA
   // IDENTITY only sends the primary key). The 5-second poll catches this.
@@ -539,7 +580,12 @@ function roleActionsFor(p) {
   // explanations". The difference that a label used to carry is stated where it
   // actually matters instead — in the confirm that Kick asks for, and nowhere
   // else, because Remove needs no confirming.
-  actions.push({ icon: '\u2715', label: 'Remove', onClick: () => handleKick(p.id, name, false) });
+  // EJECT, not "Remove". The feature has been called Eject since it was
+  // built — it is the word in the migration, in the confirm text and in every
+  // note about it — and the button was the one place still saying something
+  // else. Two names for one control is how a host ends up unsure which of the
+  // two buttons they are pressing.
+  actions.push({ icon: '\u2715', label: 'Eject', onClick: () => handleKick(p.id, name, false) });
   actions.push({ icon: '\u26D4', label: 'Kick', kind: 'danger', onClick: () => handleKick(p.id, name, true) });
   return actions.length ? actions : null;
 }
@@ -575,11 +621,14 @@ async function handleKick(playerId, displayName, ban) {
     showToast(`${displayName} was removed, but could not be blocked from rejoining`);
     sendMessage(room.id, 'System', `${displayName} was removed from the room`);
   } else if (ban) {
-    showToast(`${displayName} was kicked out`);
-    sendMessage(room.id, 'System', `${displayName} was kicked from the room`);
+    // "was kicked", not "was kicked out". The owner's call, and it is the
+    // better reading: "out" invites the question "out of what?" a beat after
+    // the room has already been named by the screen it is written on.
+    showToast(`${displayName} was kicked`);
+    sendMessage(room.id, 'System', `${displayName} was kicked`);
   } else {
-    showToast(`${displayName} was removed`);
-    sendMessage(room.id, 'System', `${displayName} was removed from the room`);
+    showToast(`${displayName} was ejected`);
+    sendMessage(room.id, 'System', `${displayName} was ejected from the room`);
   }
 }
 
@@ -927,15 +976,10 @@ async function handlePlayerChange(payload) {
       // Detect host/cohost changes for this player
       if (String(payload.new.id) === String(room.playerId)) {
         if (payload.new.is_host && !room.isHost) {
-          room.isHost = true;
-          room.isCohost = false;
-          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-          activateHostUI();
+          setHostRole(true, { cohost: false });
           addSystemMessage('You are now the host');
         } else if (!payload.new.is_host && room.isHost) {
-          room.isHost = false;
-          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-          deactivateHostUI();
+          setHostRole(false);
         }
         // Co-host status changes
         if (payload.new.is_cohost && !room.isCohost) {
@@ -981,8 +1025,12 @@ async function handlePlayerChange(payload) {
       await loadPlayers();
     }
 
-    // If current player was removed (e.g. stale beacon from refresh), re-add
-    await ensureCurrentPlayer();
+    // WAS an unconditional ensureCurrentPlayer(), which is how a player who had
+    // just been ejected walked straight back in: every other phone heartbeats
+    // every 15 seconds, each heartbeat is an UPDATE, and every UPDATE brought
+    // this page through here to take a fresh seat. For a kicked player the same
+    // path was refused by the ban and toasted, once per heartbeat, for ever.
+    checkSeatStillMine();
   } catch (err) {
     logger.error('Lobby', 'handlePlayerChange error', err);
     // Fallback: full re-fetch on any error
@@ -1055,9 +1103,7 @@ async function handleHostPromotion() {
       renderPlayers();
       return;
     }
-    room.isHost = true;
-    room.isCohost = false;
-    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    setHostRole(true, { cohost: false });
     // Update local player state immediately so badge renders
     const localIdx = players.findIndex(p => String(p.id) === String(room.playerId));
     if (localIdx !== -1) { players[localIdx].is_host = true; players[localIdx].is_cohost = false; }
@@ -1068,6 +1114,54 @@ async function handleHostPromotion() {
     // Notify all players about the host transfer
     sendMessage(room.id, 'System', `${getDisplayName()} is now the host`);
     addSystemMessage('You are now the host');
+  }
+}
+
+/**
+ * THE ONE PLACE THE HOST ROLE CHANGES, and the only reason it exists.
+ *
+ * Reported from a live game: "It showed me not as host, yet I was able to
+ * start the game?? Even tho I didn't seem to have other host functions? And
+ * after starting I couldn't return us to lobby like I wasn't host???"
+ *
+ * All three of those are one fault. `room.isHost` was written in FIVE places
+ * and only three of them touched the buttons:
+ *
+ *   * init() shows Start Game from sessionStorage, which is what the phone
+ *     remembered from BEFORE it left;
+ *   * ensureCurrentPlayer() then believes the row it got back — correctly, a
+ *     host swept while away comes back an ordinary player — and set the flag
+ *     to false while leaving the button on screen.
+ *
+ * So the crown, the per-player controls and the game page all read the ROW and
+ * said "not host", and one gold button left over from the old world said
+ * otherwise. It even worked: starting a game is a `status` write plus a phase
+ * write that `op_may_advance` allows for anybody present in a room with no
+ * live host. Returning to the lobby afterwards is host-gated, and was refused.
+ *
+ * The rule this project keeps relearning is "one rule stated N times is
+ * followed N-1 times". So the flag, the storage and the buttons move together
+ * or not at all, and no caller may set `room.isHost` directly again.
+ */
+function setHostRole(isHost, { cohost } = {}) {
+  room.isHost = !!isHost;
+  if (cohost !== undefined) room.isCohost = !!cohost;
+  sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+  syncHostUI();
+}
+
+/**
+ * Put the controls where the role says they should be.
+ *
+ * Idempotent and safe to call at any time — it is a function OF room.isHost
+ * rather than a transition, which is what lets the rejoin path use it without
+ * knowing whether anything changed.
+ */
+function syncHostUI() {
+  if (room.isHost) {
+    activateHostUI();
+  } else {
+    deactivateHostUI();
   }
 }
 
@@ -1146,10 +1240,7 @@ async function handleTransferHost(targetPlayerId, targetDisplayName) {
     const targetIdx = players.findIndex(p => String(p.id) === String(targetPlayerId));
     if (targetIdx !== -1) players[targetIdx].is_host = true;
 
-    room.isHost = false;
-    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-
-    deactivateHostUI();
+    setHostRole(false);
     renderPlayers();
 
     sendMessage(room.id, 'System', `${getDisplayName()} transferred host to ${targetDisplayName}`);
@@ -1297,9 +1388,94 @@ function attachSettingsListeners() {
  * If missing, re-add them (handles page refresh where removePlayerBeacon
  * deleted the record) and update sessionStorage with the new player ID.
  */
+/**
+ * Has this page ever seen its own seat in the room?
+ *
+ * This is what separates "my row was DELETED" from "my row never landed", and
+ * the two want opposite answers. A seat that was in the list and is now gone
+ * means somebody removed it — the host ejected or kicked me, or a stale sweep
+ * judged me absent — and taking another one silently is what made Eject mean
+ * nothing. A seat that was NEVER in the list is the 2026-09-05 case: an INSERT
+ * that went missing, where reclaiming is the repair.
+ */
+let _seatSeen = false;
+let _removedFromRoom = false;
+
+/**
+ * My row is gone from a room I am sitting in.
+ *
+ * REPORTED, three ways, from one game: "my friend said he was removed but it
+ * looks like he is still in the lobby", "when I kicked he got lots of
+ * repetitive popups", and "my profile icon was missing even tho I was on the
+ * page — when I refreshed I was back in".
+ *
+ * All three are the same thing: NOTHING ANYWHERE TOLD A REMOVED PLAYER THEY
+ * WERE REMOVED. The page went on chatting, polling and offering Ready Up
+ * around a seat the room did not have, and the only repair was a refresh —
+ * except when a Realtime event happened to fire, in which case the client
+ * silently took a new seat and walked straight back into a room it had just
+ * been ejected from, or was refused by the kick ban and toasted once per
+ * attempt, for ever.
+ *
+ * So a deleted seat now ENDS the session in this room and says so. Coming back
+ * is one deliberate tap, which is exactly what "they can rejoin" means for an
+ * eject and is refused outright for a kick.
+ */
+function showRemovedNotice({ banned = false } = {}) {
+  if (_removedFromRoom) return;
+  _removedFromRoom = true;
+  isReady = false;
+  const modal = $('#removed-modal');
+  const title = $('#removed-title');
+  const body = $('#removed-body');
+  const rejoin = $('#removed-rejoin');
+  if (!modal) return;
+  if (banned) {
+    title.textContent = 'You were removed from this room';
+    body.textContent = 'The host kicked you out, so you cannot rejoin this room.';
+    rejoin.classList.add('hidden');
+  } else {
+    title.textContent = "You're no longer in this room";
+    body.textContent = 'You were removed from the lobby. You can ask to come back in, or leave.';
+    rejoin.classList.remove('hidden');
+  }
+  modal.classList.add('active');
+}
+
+function hideRemovedNotice() {
+  _removedFromRoom = false;
+  const modal = $('#removed-modal');
+  if (modal) modal.classList.remove('active');
+}
+
+/**
+ * Am I still in the room I think I am in?
+ *
+ * Called from every place that learns about the player list — the 8s poll
+ * included, which is the one that was missing. Before this, a seat could
+ * vanish and the ONLY things that noticed were a Realtime player event (which
+ * is not delivered for a DELETE at all, because the room_id filter cannot
+ * match a payload carrying only the primary key) and pressing Ready Up. So a
+ * player sat invisible in their own lobby until they refreshed.
+ */
+function checkSeatStillMine() {
+  if (_removedFromRoom || isLeaving) return;
+  const mine = players.some(p => String(p.id) === String(room.playerId));
+  if (mine) { _seatSeen = true; return; }
+  if (_seatSeen) showRemovedNotice();
+}
+
+/**
+ * Take a seat again, on purpose.
+ *
+ * The only automatic caller left is init(), where an absent row is this
+ * browser's OWN doing — the unload beacon fired as the page went away and the
+ * page has come back. Everything else asks the player first.
+ */
 async function ensureCurrentPlayer() {
   const me = players.find(p => String(p.id) === String(room.playerId));
   if (me) {
+    _seatSeen = true;
     // Player row exists — clear any disconnected_at from a prior refresh/unload.
     // The DB heartbeat in init() also does this, but doing it here too ensures
     // the stale check doesn't race-remove us before the heartbeat fires.
@@ -1349,7 +1525,7 @@ async function ensureCurrentPlayer() {
   // person appeared in a live lobby three times over. claimSeat takes the seat
   // that is already yours and clears the copies.
   const seatUserId = await ensureAnonymousIdentity() || rejoinUserId;
-  const { data: rejoinedPlayer, error: seatErr } = await claimSeat({
+  const { data: rejoinedPlayer, error: seatErr, banned: seatBanned } = await claimSeat({
     roomId: room.id, displayName, userId: seatUserId, isHost: room.isHost, extras,
     // Exact when it is there, and it beats every guess claimSeat would make.
     priorPlayerId: room.playerId || recallSeat(room.id),
@@ -1363,16 +1539,29 @@ async function ensureCurrentPlayer() {
     // a crown the database will refuse — and if the screen went on claiming the
     // crown anyway it would show host controls whose every write is refused,
     // which is the dead button migration 062 was written to end.
-    room.isHost = !!rejoinedPlayer.is_host;
+    // THROUGH setHostRole, because this is the site that cost a game. The row
+    // is the truth about the role and the buttons must follow it — a phone
+    // that left as host and came back an ordinary player kept a live Start
+    // Game button for the whole lobby otherwise.
+    setHostRole(!!rejoinedPlayer.is_host, { cohost: !!rejoinedPlayer.is_cohost });
     room.playerId = rejoinedPlayer.id;
     sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    _seatSeen = true;
+    hideRemovedNotice();
     await loadPlayers();
+    return true;
   } else if (seatErr) {
     // Was discarded entirely. addPlayer toasts, so the player was told SOMETHING
     // — but nothing here knew the seat had not been taken, so the lobby went on
     // polling and re-rendering around a player who was not in the room.
+    //
+    // `banned` is the one refusal with a different remedy, and it is the one
+    // that produced a screenful of identical toasts: every Realtime heartbeat
+    // from anybody else used to bring the whole page back through here.
     logger.error('Lobby', 'could not take a seat in this room', seatErr);
+    showRemovedNotice({ banned: !!seatBanned });
   }
+  return false;
 }
 
 // --- Inline Chat (always visible, no drawer toggle) ---
@@ -1552,26 +1741,12 @@ async function handleToggleReady() {
     renderPlayers();
   }
 
-  try {
-    const res = await toggleReady(room.playerId, isReady);
-    // THE SEAT IS GONE. Not an error — an update matching no rows returns none
-    // — so nothing downstream would ever have noticed, and the player pressed a
-    // button that reported success and did nothing. Take a seat again and try
-    // once, which is exactly what leaving and rejoining did by hand.
-    if (res?.missing) {
-      logger.warn('Lobby', 'ready toggle hit a seat that is not in the room — reclaiming');
-      await loadPlayers();
-      await ensureCurrentPlayer();
-      const retry = await toggleReady(room.playerId, isReady);
-      if (retry?.missing) {
-        showToast("Couldn't update your ready status — try leaving and rejoining", 'error');
-      } else {
-        await loadPlayers();
-      }
-    }
-  } catch (err) {
-    logger.error('Lobby', 'toggleReady failed', err);
-    // Revert optimistic UI update
+  // PUTTING THE BUTTON BACK IS ONE RULE, because it was written out once and
+  // needed twice — the failure branch reverted the label and the zero-rows
+  // branch reverted only the variable, so a press that wrote nothing still
+  // read "Not Ready" on screen. That is the exact lie this whole path exists
+  // to stop.
+  const revertReady = () => {
     isReady = !isReady;
     btnReady.textContent = isReady ? 'Not Ready' : 'Ready Up';
     btnReady.className = isReady
@@ -1581,6 +1756,30 @@ async function handleToggleReady() {
       me.is_ready = isReady;
       renderPlayers();
     }
+  };
+
+  try {
+    const res = await toggleReady(room.playerId, isReady);
+    if (res?.missing) {
+      // THE SEAT IS GONE. Not an error — an update matching no rows returns
+      // none — so nothing downstream would ever have noticed, and the player
+      // pressed a button that reported success and did nothing.
+      //
+      // It used to reclaim silently and retry. That is right when the seat
+      // never landed and WRONG when somebody removed it, and this button
+      // cannot tell the difference — so it hands the decision to the person,
+      // which is the same answer the poll now gives.
+      logger.warn('Lobby', 'ready toggle hit a seat that is not in the room');
+      revertReady();
+      await loadPlayers();
+      if (!players.some(p => String(p.id) === String(room.playerId))) {
+        _seatSeen = true;
+        showRemovedNotice();
+      }
+    }
+  } catch (err) {
+    logger.error('Lobby', 'toggleReady failed', err);
+    revertReady();
   }
 }
 
@@ -1590,6 +1789,22 @@ async function handleStartGame() {
   // Idempotency: rapid double-clicks would otherwise fire updateRoomStatus twice
   // and queue a second 5s navigation timeout that lands after we've already left.
   if (_isStarting) return;
+  // ONLY THE HOST STARTS, and this is a real guard rather than a tidy-up.
+  //
+  // Nothing server-side stops a non-host: `status` is an ordinary room column,
+  // and the phase write is allowed by op_may_advance for anybody present in a
+  // room with no live host. So when a leftover button survived a demotion, the
+  // press WORKED — the room started under somebody the game then treated as an
+  // ordinary player, who could not return it to the lobby afterwards.
+  //
+  // syncHostUI now hides the button, so this cannot normally be reached. It is
+  // here because a control that is merely hidden is one tap of a stale DOM away
+  // from being pressed, and the consequence was a game nobody could end.
+  if (!room.isHost) {
+    showToast('Only the host can start the game', 'error');
+    syncHostUI();
+    return;
+  }
   if (players.length < 2) {
     showToast('Need at least 2 players to start!', 'error');
     return;

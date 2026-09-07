@@ -446,6 +446,50 @@ export const STATES = {
     },
   },
 
+  // NO LONGER IN THIS ROOM.
+  //
+  // Seventh time this file gets a state because CLAUDE.md keeps recording that
+  // a page with no mock is a page nobody is checking. This sheet is the only
+  // thing a removed player ever sees, it carries the longest strings the lobby
+  // has, and it has to fit alongside the two buttons under it.
+  'lobby-removed': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const modal = document.getElementById('removed-modal');
+      if (!modal) return;
+      // The base lobby state hides every .modal-overlay inline, and an inline
+      // display:none beats the .active class whatever the stylesheet says —
+      // the same thing that made a first version of this mock render a lobby
+      // with no sheet on it at all.
+      modal.style.display = '';
+      document.getElementById('removed-title').textContent = "You're no longer in this room";
+      document.getElementById('removed-body').textContent =
+        'You were removed from the lobby. You can ask to come back in, or leave.';
+      modal.classList.add('active');
+    },
+  },
+
+  // ...and the kicked half, which is a DIFFERENT sheet: a longer sentence and
+  // no way back. Both, because a mock of only one passes on a build where the
+  // ban is never reported and every removal offers a Rejoin button.
+  'lobby-kicked': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const modal = document.getElementById('removed-modal');
+      if (!modal) return;
+      modal.style.display = '';
+      document.getElementById('removed-title').textContent = 'You were removed from this room';
+      document.getElementById('removed-body').textContent =
+        'The host kicked you out, so you cannot rejoin this room.';
+      document.getElementById('removed-rejoin').classList.add('hidden');
+      modal.classList.add('active');
+    },
+  },
+
   'lobby-ready': {
     page: 'lobby',
     screen: 'lobby-screen',
