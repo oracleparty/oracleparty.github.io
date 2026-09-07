@@ -248,62 +248,32 @@ describe('modalDifficulty', () => {
 });
 
 // ============================================
-// allowedDifficulties
+// allowedDifficulties + pickWeightedDifficulty
 //
-// This is what the slot-machine wheel cycles through, and it has been wrong in
-// both directions. It first cycled all three levels regardless of votes, which
-// teased outcomes that could not happen; the fix made it cycle only the VOTED
-// levels, which stopped it spinning at all whenever a small room agreed — the
-// bug reported from a real two-player game as "it doesn't cycle, it just
-// chooses". The set that is both honest and dramatic is the set of possible
-// outcomes, so this asserts it agrees with pickWeightedDifficulty exactly.
+// THE UPSET IS ALWAYS 1 IN 20. The owner's rule, replacing one where the odds
+// moved around: an unvoted level used to carry a fixed WEIGHT of 0.1 against
+// the raw vote counts, so a surprise got rarer the more people voted (8.4% each
+// in a room of one, 4.5% with two, 3.1% with three) and vanished entirely when
+// a room agreed on Hard, because the vote was also a FLOOR and nothing sat
+// above it.
+//
+// Now the voted levels share 95% in proportion to their votes, and the levels
+// nobody voted for share 5% between them. The floor is gone with it, so every
+// level is always reachable — which is why the wheel honestly shows three.
+//
+// These tests replace six that pinned the floor. They were not wrong when
+// written; the design under them changed, and a test that goes on asserting a
+// rule the owner has replaced is a test that will be "fixed" back into the old
+// behaviour by somebody trusting it.
 // ============================================
 describe('allowedDifficulties', () => {
-  it('all-Easy leaves every level in play, so the wheel has three to spin', () => {
-    expect(allowedDifficulties({ easy: 3, medium: 0, hard: 0 }))
-      .toEqual(['easy', 'medium', 'hard']);
+  it('is every level, whatever the room voted — nothing is impossible now', () => {
+    for (const tally of [{ easy: 3 }, { medium: 2 }, { hard: 4 }, { easy: 1, hard: 1 }, {}, null]) {
+      expect(allowedDifficulties(tally)).toEqual(['easy', 'medium', 'hard']);
+    }
   });
 
-  it('all-Medium drops Easy — it is below the floor and cannot come up', () => {
-    expect(allowedDifficulties({ easy: 0, medium: 2, hard: 0 }))
-      .toEqual(['medium', 'hard']);
-  });
-
-  it('all-Hard is a certainty, and a wheel that spins would be lying', () => {
-    expect(allowedDifficulties({ easy: 0, medium: 0, hard: 4 })).toEqual(['hard']);
-  });
-
-  it('no votes leaves everything open', () => {
-    expect(allowedDifficulties({})).toEqual(['easy', 'medium', 'hard']);
-    expect(allowedDifficulties(null)).toEqual(['easy', 'medium', 'hard']);
-  });
-
-  // The wheel collapsing to a single pill is what "it doesn't cycle" looks
-  // like, and in a TWO-PLAYER game a tie is the common case rather than an
-  // edge one: any two people who disagree produce one. Taking the highest
-  // tied level made the outcome certain and killed the spin — and made the
-  // lower voter's vote do nothing at all, every time.
-  it('a tie keeps every tied level in play, so the wheel still spins', () => {
-    expect(allowedDifficulties({ easy: 1, medium: 0, hard: 1 }))
-      .toEqual(['easy', 'medium', 'hard']);
-    expect(allowedDifficulties({ easy: 0, medium: 2, hard: 2 }))
-      .toEqual(['medium', 'hard']);
-    expect(allowedDifficulties({ easy: 1, medium: 1, hard: 1 }))
-      .toEqual(['easy', 'medium', 'hard']);
-  });
-
-  // allowedDifficulties answers what can HAPPEN, and for a room unanimous on
-  // hard the answer really is one thing.
-  //
-  // The WHEEL no longer follows it. The owner settled that separately: it now
-  // spins through all three whatever the room voted, because a slot machine
-  // showing symbols it will not land on is not lying, it is a slot machine.
-  // The reels are theatre; the landing is this function.
-  it('reports one level when the room is unanimous on hard', () => {
-    expect(allowedDifficulties({ easy: 0, medium: 0, hard: 3 })).toEqual(['hard']);
-  });
-
-  it('never returns a level pickWeightedDifficulty cannot actually produce', () => {
+  it('never offers a level pickWeightedDifficulty cannot produce', () => {
     const tallies = [
       { easy: 3, medium: 0, hard: 0 },
       { easy: 0, medium: 2, hard: 0 },
@@ -315,8 +285,7 @@ describe('allowedDifficulties', () => {
     for (const tally of tallies) {
       const allowed = new Set(allowedDifficulties(tally));
       const seen = new Set();
-      for (let i = 0; i < 4000; i++) seen.add(pickWeightedDifficulty(tally));
-      // Every outcome the picker produces must be on the wheel...
+      for (let i = 0; i < 20000; i++) seen.add(pickWeightedDifficulty(tally));
       for (const d of seen) expect(allowed.has(d)).toBe(true);
       // ...and every pill on the wheel must be reachable, or it is a tease.
       for (const d of allowed) expect(seen.has(d)).toBe(true);
@@ -324,27 +293,78 @@ describe('allowedDifficulties', () => {
   });
 });
 
-// ============================================
-// pickWeightedDifficulty (deterministic via injected randFn)
-// ============================================
 describe('pickWeightedDifficulty', () => {
-  // Helper: drive the function with a fixed sequence of "random" values.
   const fixed = (v) => () => v;
+  // Share of N trials that came out as `want`.
+  const rate = (tally, want, n = 60000) => {
+    let hits = 0;
+    for (let i = 0; i < n; i++) if (pickWeightedDifficulty(tally) === want) hits++;
+    return hits / n;
+  };
 
-  it('respects the floor — all-Hard never goes Easy or Medium', () => {
-    const tally = { easy: 0, medium: 0, hard: 5 };
-    // No matter what r is, only "hard" should be in the candidate list.
-    expect(pickWeightedDifficulty(tally, fixed(0))).toBe('hard');
-    expect(pickWeightedDifficulty(tally, fixed(0.5))).toBe('hard');
-    expect(pickWeightedDifficulty(tally, fixed(0.999))).toBe('hard');
+  // THE HEADLINE RULE, and it is checked at several room sizes precisely
+  // because the old rule's upset shrank as votes piled up. One number
+  // everywhere is the whole point.
+  it('gives an unvoted level the same 5% however many people voted', () => {
+    for (const votes of [1, 2, 3, 8]) {
+      const upset = rate({ easy: votes }, 'medium') + rate({ easy: votes }, 'hard');
+      expect(upset).toBeGreaterThan(0.035);
+      expect(upset).toBeLessThan(0.065);
+    }
   });
 
-  it('respects the floor — all-Medium never goes Easy', () => {
-    const tally = { easy: 0, medium: 4, hard: 0 };
-    // Should be medium (overwhelmingly) or hard (small floor chance), never easy.
-    for (const r of [0, 0.1, 0.5, 0.9, 0.99]) {
-      const result = pickWeightedDifficulty(tally, fixed(r));
-      expect(result === 'medium' || result === 'hard').toBe(true);
+  // ONE voter deliberately: this is where the old fixed-weight rule was most
+  // wrong, handing each unvoted level 8.3%. At four voters it happened to land
+  // near 2.4% and a check written there could not tell the two rules apart.
+  it('splits the 5% evenly when two levels went unvoted — 2.5% each', () => {
+    expect(rate({ easy: 1 }, 'medium')).toBeGreaterThan(0.015);
+    expect(rate({ easy: 1 }, 'medium')).toBeLessThan(0.035);
+    expect(rate({ easy: 1 }, 'hard')).toBeGreaterThan(0.015);
+    expect(rate({ easy: 1 }, 'hard')).toBeLessThan(0.035);
+  });
+
+  // THREE against three, not one against one. With a single vote each side the
+  // old rule also produced ~4.8% here and a check could not tell them apart;
+  // with three it produced ~1.6%, because the upset was a fixed weight against
+  // a growing pile of votes rather than a fixed share.
+  it('gives the whole 5% to the one level nobody picked', () => {
+    expect(rate({ easy: 3, hard: 3 }, 'medium')).toBeGreaterThan(0.035);
+    expect(rate({ easy: 3, hard: 3 }, 'medium')).toBeLessThan(0.065);
+    // ...and the vote is still an even split of what is left.
+    expect(rate({ easy: 3, hard: 3 }, 'easy')).toBeGreaterThan(0.42);
+    expect(rate({ easy: 3, hard: 3 }, 'easy')).toBeLessThan(0.53);
+  });
+
+  // THE FLOOR IS GONE. A room unanimous on Hard used to be a certainty — one
+  // pill, no surprise available — which is the asymmetry the owner removed:
+  // voting Hard opted you out of the upset entirely.
+  it('lets a room unanimous on Hard still be surprised', () => {
+    const upset = rate({ hard: 5 }, 'easy') + rate({ hard: 5 }, 'medium');
+    expect(upset).toBeGreaterThan(0.035);
+    expect(upset).toBeLessThan(0.065);
+  });
+
+  it('lets a room unanimous on Medium still fall to Easy', () => {
+    expect(rate({ medium: 4 }, 'easy')).toBeGreaterThan(0.015);
+    expect(rate({ medium: 4 }, 'easy')).toBeLessThan(0.035);
+  });
+
+  // The votes still count against each other in proportion; only the leftover
+  // 5% is fixed.
+  it('splits the 95% in proportion to the votes', () => {
+    expect(rate({ easy: 2, hard: 1 }, 'easy')).toBeGreaterThan(0.58);
+    expect(rate({ easy: 2, hard: 1 }, 'easy')).toBeLessThan(0.69);
+    expect(rate({ easy: 2, hard: 1 }, 'hard')).toBeGreaterThan(0.27);
+    expect(rate({ easy: 2, hard: 1 }, 'hard')).toBeLessThan(0.37);
+  });
+
+  // NOTHING LEFT TO BE SURPRISED BY. A room that voted for every level gets no
+  // upset, which is correct rather than an edge case.
+  it('has no upset to give when every level got a vote', () => {
+    const tally = { easy: 1, medium: 1, hard: 1 };
+    for (const d of ['easy', 'medium', 'hard']) {
+      expect(rate(tally, d)).toBeGreaterThan(0.30);
+      expect(rate(tally, d)).toBeLessThan(0.37);
     }
   });
 
@@ -352,29 +372,6 @@ describe('pickWeightedDifficulty', () => {
     expect(pickWeightedDifficulty({}, fixed(0))).toBe('easy');
     expect(pickWeightedDifficulty({}, fixed(0.5))).toBe('medium');
     expect(pickWeightedDifficulty({}, fixed(0.99))).toBe('hard');
-  });
-
-  it('weights toward the most-voted within allowed levels', () => {
-    // 100 trials, easy:3 should win heavily over the 0.1-floor medium and hard.
-    const tally = { easy: 3, medium: 0, hard: 0 };
-    let easyCount = 0;
-    for (let i = 0; i < 1000; i++) {
-      if (pickWeightedDifficulty(tally) === 'easy') easyCount++;
-    }
-    // Probability ~ 3/3.2 = 93.75% — allow generous noise band
-    expect(easyCount).toBeGreaterThan(850);
-  });
-
-  it('zero-vote levels at-or-above floor still get a small chance', () => {
-    // tally = all medium; over many trials some hard outcomes should occur
-    const tally = { easy: 0, medium: 5, hard: 0 };
-    let hardCount = 0;
-    for (let i = 0; i < 5000; i++) {
-      if (pickWeightedDifficulty(tally) === 'hard') hardCount++;
-    }
-    // Probability ~ 0.1/5.1 ≈ 1.96% — over 5000 trials, expect ~98 hard wins
-    expect(hardCount).toBeGreaterThan(20);
-    expect(hardCount).toBeLessThan(300);
   });
 });
 

@@ -814,7 +814,57 @@
 > games in one sitting runs its own category down — which is how a healthy
 > category still ends up short.
 >
-> ### SETTLED BY THE OWNER: the 5% upset stays
+> ### THE UPSET IS NOW ALWAYS 1 IN 20 (owner's rule, 2026-09-07)
+>
+> **The owner's follow-up question is what found the real fault:** *"If only one
+> difficulty is selected, the 5% is split between the other two right? Like 2.5
+> and 2.5?"* Measured, the answer was no — and the numbers were worse than that.
+>
+> An unvoted level carried a fixed WEIGHT of 0.1 against the raw vote counts, so
+> the chance of a surprise depended on how many people had voted:
+>
+> | | easy | medium | hard | upset |
+> |---|---|---|---|---|
+> | 1 votes Easy | 83.3% | 8.4% | 8.4% | **16.8%** |
+> | 2 vote Easy | 90.9% | 4.5% | 4.5% | 9.0% |
+> | 3 vote Easy | 93.7% | 3.1% | 3.1% | 6.2% |
+> | 4 vote **Hard** | — | — | **100%** | **0%** |
+>
+> **That last row is the one nobody had noticed.** The vote was also a FLOOR, so
+> nothing sat above Hard and a room agreeing on Hard got no surprise at all —
+> while Easy voters got the most. **Voting Hard opted you out of the upset.**
+>
+> The owner's rule replaces it: *"the surprise upset should always be 1/20 —
+> that's a lot of games needed to be played, but not negligible."* The voted
+> levels share 95% in proportion to their votes; the unvoted levels share 5%
+> between them. **The floor goes with it**, so every level is always reachable
+> and the wheel honestly shows three pills in every room.
+>
+> | | easy | medium | hard | upset |
+> |---|---|---|---|---|
+> | any number vote Easy | 95% | 2.5% | 2.5% | **5%** |
+> | 1 Easy + 1 Hard | 47.5% | 5% | 47.5% | **5%** |
+> | 2 Easy + 1 Hard | 63.3% | 5% | 31.7% | **5%** |
+> | any number vote Hard | 2.5% | 2.5% | 95% | **5%** |
+> | one of each | 33% | 33% | 33% | 0% — nothing left to be surprised by |
+>
+> **SIX TESTS THAT PINNED THE FLOOR WERE REPLACED, NOT PATCHED.** They were not
+> wrong when written; the design under them changed. A test that goes on
+> asserting a rule the owner has replaced is one somebody will later "fix" the
+> code back to.
+>
+> **The first break test only caught 1 of 8**, and that is the part worth
+> keeping. Reverting the WEIGHTING alone left most checks passing, because at
+> the particular vote counts they used the two rules happen to agree — `{easy:4}`
+> gives 2.4% under the old rule and 2.5% under the new one. The checks were
+> rewritten at vote counts where the rules genuinely diverge (one voter, where
+> the old rule gave 8.3%; three-against-three, where it gave 1.6%). Against the
+> true original — floor AND fixed weight — **six of eight fail.**
+>
+> **A check that passes on the code you are replacing is not coverage**, and the
+> only way to find that out is to revert the whole change rather than half of it.
+>
+> ### SUPERSEDED: the earlier decision to keep it as it was
 >
 > *"If I select easy and my friend's hard, and no one medium, the visual
 > shouldn't cycle through medium right?"* — **it should, because Medium can
@@ -823,11 +873,15 @@
 > **Easy ≈48%, Hard ≈48%, Medium ≈5%.**
 >
 > The owner's instinct was right — *"I thought it was a small random chance"* —
-> and they chose to **keep it**. So the wheel is honest and nothing changes.
+> and at that point they chose to keep it. **Their next question then found the
+> real fault** (the odds moved with the room size, and a Hard room got no upset
+> at all), and the rule above replaces this decision. Kept because the REASONING
+> still holds and is the thing that keeps being got wrong.
 >
-> **DO NOT NARROW THE WHEEL.** This has now flip-flopped three times. The rule
-> is: `allowedDifficulties` governs what can HAPPEN, the wheel shows exactly
-> that, and hiding a reachable outcome is the only version that lies.
+> **DO NOT NARROW THE WHEEL.** This has flip-flopped three times. The rule is:
+> `allowedDifficulties` governs what can HAPPEN, the wheel shows exactly that,
+> and hiding a reachable outcome is the only version that lies. Under the 1-in-20
+> rule everything is always reachable, so the wheel is always three.
 >
 > ### Already correct: a bot never touches the difficulty
 >

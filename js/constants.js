@@ -259,6 +259,19 @@ export const BOT_AVATAR_COLOR = '#6b7280';
 export const BOT_AVATAR_EMOJI = '\u{1F916}';
 export const MAX_BOTS_PER_ROOM = 1;
 
+// THE FINAL QUESTION'S UPSET IS ALWAYS 1 IN 20.
+//
+// The owner's rule, and it replaces one where the odds moved around: an
+// unvoted level used to carry a fixed WEIGHT of 0.1 against the votes, so the
+// chance of a surprise depended on how many people had voted — 17% in a room
+// of one, 9% with two, 6% with three — and a room unanimous on Hard got no
+// surprise at all, because the vote was also a floor and nothing sat above it.
+//
+// Their reasoning: "that's a lot of games needed to be played, but not
+// negligible." One number, the same in every room, at a rate you meet
+// occasionally rather than plan around.
+export const DIFFICULTY_UPSET_CHANCE = 0.05;
+
 // === UI ===
 export const PULL_REFRESH_THRESHOLD = 60;
 export const MASTERY_TREE_BASE_INDENT = 12;

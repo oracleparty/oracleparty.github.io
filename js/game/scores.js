@@ -867,16 +867,18 @@ export async function handleRevealFinalQuestion() {
   $('#btn-fw-reveal')?.classList.add('hidden');
 
   // Vote acts as a FLOOR: result can be at-or-above the most-voted, never
-  // lower. Unvoted-but-allowed levels keep a 0.1 weight so an all-Easy room
-  // still has a small comedic chance of jumping to Medium or Hard.
+  // lower. Levels nobody voted for share a fixed 1-in-20 between them, so every
+  // room has the same small chance of an upset whatever it agreed on.
   const tally = tallyDifficultyVotes(state.difficultyVotes);
   const mostVoted = modalDifficulty(tally); // null if no votes
   const winner = pickWeightedDifficulty(tally);
-  // The wheel visits every level the result could actually be, which is the
-  // most-voted one and everything harder (the vote is a floor). Cycling only
-  // the VOTED levels stopped the wheel dead whenever a small room agreed —
-  // three people picking Easy left one pill to cycle through, so it looked
-  // like the game just decided on its own. See allowedDifficulties.
+  // The wheel visits every level the result could actually be — which is now
+  // ALL THREE, always, because an unvoted level always carries a share of the
+  // 1-in-20 upset. There is no longer a floor and no longer a one-pill case.
+  //
+  // Cycling only the VOTED levels stopped the wheel dead whenever a small room
+  // agreed — three people picking Easy left one pill, so it looked like the
+  // game just decided on its own. See allowedDifficulties.
   const voted = allowedDifficulties(tally);
   state.votedDifficulty = winner;
 

@@ -3,6 +3,8 @@
 // Pure functions for score calculation, wager selection, vote tallying.
 // ============================================
 
+import { DIFFICULTY_UPSET_CHANCE } from '../constants.js';
+
 /**
  * Compute points earned for a single answer.
  * Regular rounds: correct = +wager, incorrect = 0.
@@ -214,74 +216,70 @@ export function modalDifficulty(tally) {
 }
 
 /**
- * Every difficulty the final question could actually turn out to be, given
- * the votes — the most-voted level and everything harder, since the vote acts
- * as a floor. With no votes at all, anything is possible.
+ * Every difficulty the final question could actually turn out to be.
  *
- * This exists so the slot-machine wheel and the thing that picks the winner
- * cannot disagree about what is on the table. The wheel used to cycle all
- * three regardless of votes, which teased levels that could never come up; the
- * fix for that made it cycle only the VOTED levels, which was wrong in the
- * other direction — a room where everyone picks Easy has all three genuinely
- * in play, and showing one pill meant the wheel stopped spinning at all in the
- * commonest case of a small room agreeing. Possible outcomes is the set that
- * is both honest and dramatic.
+ * IT IS ALWAYS ALL THREE NOW, and that is a consequence of the owner's upset
+ * rule rather than a shortcut. An unvoted level carries a fixed share of
+ * DIFFICULTY_UPSET_CHANCE, so nothing is ever impossible and the wheel showing
+ * three pills is the honest picture in every room.
+ *
+ * It used to be "the most-voted level and everything harder", because the vote
+ * acted as a FLOOR. That had two consequences the owner did not want: a room
+ * unanimous on Medium could never get Easy, and a room unanimous on Hard had no
+ * surprise available at all — the wheel showed one pill and the outcome was
+ * certain. The upset is the same 1 in 20 everywhere now, so the floor is gone.
+ *
+ * The function stays rather than being inlined: it is the one place that
+ * answers "what can happen", and the wheel and the picker must not be able to
+ * disagree about it. That was the whole reason it was extracted.
  */
-export function allowedDifficulties(tally) {
-  const order = ['easy', 'medium', 'hard'];
-  const counts = order.map(d => (tally && tally[d]) || 0);
-  const max = Math.max(...counts);
-  if (max === 0) return [...order];
-  // A TIE TAKES THE LOWEST LEVEL AS THE FLOOR, and this is the opposite of
-  // modalDifficulty on purpose. The two answer different questions:
-  // modalDifficulty asks "which single level should the wheel appear to settle
-  // on", and breaking that toward the harder one is a deliberate, tested
-  // choice. This asks "what could the result possibly BE", and a tie means
-  // more than one level genuinely could be.
-  //
-  // Taking the highest tied level here was never decided — it was inherited
-  // from modalDifficulty's loop when this function was extracted — and in a
-  // two-player game it is the common case, not an edge one: any two people who
-  // disagree produce a tie. One Easy vote and one Hard vote collapsed the floor
-  // to Hard, which made the outcome certain, which left ONE pill on the wheel.
-  // The owner reported the wheel not cycling, for the second time.
-  //
-  // It also made a tie no tie at all: the Easy voter's vote did nothing, every
-  // time. Now both stay in play and pickWeightedDifficulty weights them
-  // equally, which is what a tied vote should mean.
-  let floorIdx = 0;
-  for (let i = 0; i < order.length; i++) {
-    if (counts[i] === max) { floorIdx = i; break; }
-  }
-  return order.slice(floorIdx);
+export function allowedDifficulties(_tally) {
+  return ['easy', 'medium', 'hard'];
 }
 
 /**
  * Pick the actual final-question difficulty from a vote tally.
  *
- * The vote acts as a FLOOR: the result can never be EASIER than the most-
- * voted level. (If everyone votes Hard, you get Hard.) Above the floor,
- * each allowed difficulty's weight is its vote count, with a 0.1 minimum so
- * unvoted-but-allowed levels keep a small comedic chance of springing up.
+ * THE UPSET IS ALWAYS 1 IN 20. The levels somebody voted for share
+ * (1 - DIFFICULTY_UPSET_CHANCE) in proportion to their votes; the levels
+ * nobody voted for share DIFFICULTY_UPSET_CHANCE equally between them.
  *
- *   votes={easy:3,medium:0,hard:0}  → floor=easy → ~94% easy, ~3% medium, ~3% hard
- *   votes={easy:0,medium:3,hard:0}  → floor=medium → ~97% medium, ~3% hard
- *   votes={easy:0,medium:0,hard:5}  → floor=hard → 100% hard
+ *   votes={easy:1}                  → easy 95%,  medium 2.5%, hard 2.5%
+ *   votes={easy:3}                  → easy 95%,  medium 2.5%, hard 2.5%
+ *   votes={easy:1,hard:1}           → easy 47.5%, hard 47.5%, medium 5%
+ *   votes={easy:2,hard:1}           → easy 63.3%, hard 31.7%, medium 5%
+ *   votes={hard:4}                  → hard 95%,  easy 2.5%,  medium 2.5%
+ *   every level voted for           → proportional, no upset left to give
  *   no votes                        → uniform over all three
+ *
+ * WHY A FIXED SHARE RATHER THAN A FIXED WEIGHT. The old rule gave an unvoted
+ * level a weight of 0.1 against the raw vote counts, so the surprise got rarer
+ * the more people voted — 8.4% each in a room of one, 4.5% with two, 3.1% with
+ * three — and vanished entirely when the room agreed on Hard, because the vote
+ * was also a floor. The owner asked for one number that holds everywhere:
+ * "that's a lot of games needed to be played, but not negligible."
+ *
+ * A ROOM THAT VOTED FOR EVERY LEVEL GETS NO UPSET, and that is correct rather
+ * than an edge case: there is nothing left to be surprised by. The votes are
+ * simply proportional.
  *
  * Pass `randFn` to make this deterministic in tests.
  */
 export function pickWeightedDifficulty(tally, randFn = Math.random) {
-  const allowed = allowedDifficulties(tally);
-  if (allowed.length === 3 && Math.max(...['easy', 'medium', 'hard'].map(d => tally[d] || 0)) === 0) {
-    return allowed[Math.floor(randFn() * 3)];
-  }
-  const weights = allowed.map(d => Math.max(tally[d] || 0, 0.1));
-  const total = weights.reduce((a, b) => a + b, 0);
-  let r = randFn() * total;
-  for (let i = 0; i < allowed.length; i++) {
+  const order = ['easy', 'medium', 'hard'];
+  const counts = order.map(d => (tally && tally[d]) || 0);
+  const votes = counts.reduce((a, b) => a + b, 0);
+  if (votes === 0) return order[Math.floor(randFn() * 3)];
+
+  const unvoted = counts.filter(c => c === 0).length;
+  const upsetEach = unvoted > 0 ? DIFFICULTY_UPSET_CHANCE / unvoted : 0;
+  const votedShare = unvoted > 0 ? 1 - DIFFICULTY_UPSET_CHANCE : 1;
+  const weights = counts.map(c => (c === 0 ? upsetEach : votedShare * (c / votes)));
+
+  let r = randFn();
+  for (let i = 0; i < order.length; i++) {
     r -= weights[i];
-    if (r <= 0) return allowed[i];
+    if (r <= 0) return order[i];
   }
-  return allowed[allowed.length - 1];
+  return order[order.length - 1];
 }
