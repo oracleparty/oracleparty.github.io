@@ -237,6 +237,34 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
   let actionsHtml = '';
   let reportHtml = '';
 
+  // OPEN THE SHEET NOW, WITH WHAT WE ALREADY HAVE.
+  //
+  // Everything below fetches, and the card was inserted only at the very end —
+  // so tapping a face did nothing at all until the network answered. Measured
+  // with scenario-latency on a 300ms link: 343ms before a single pixel moved,
+  // against 31ms for Start Game. The owner's own hunch, before any of this was
+  // measured: "clicking profile might lag a tad".
+  //
+  // Nothing here needs waiting for. The name, avatar and title are ARGUMENTS —
+  // the row that was tapped already had them on screen — so the header can be
+  // drawn immediately and is not a guess about anything.
+  //
+  // The stats block is left out rather than faked with zeros. A card that
+  // shows "0 games" and then changes to 47 has told the reader something
+  // false; an empty space that fills in has not. Same rule as the count chips
+  // on the admin page, where a failed count renders "?" and never "0".
+  //
+  // The full render below overwrites this, so there is one template for the
+  // finished card and this cannot drift into a second one.
+  content.innerHTML = `
+    <div class="profile-card__header">
+      <div class="profile-card__avatar">${avatarHtml}</div>
+      <div class="profile-card__name">${nameTag}</div>
+      ${profileTitle ? `<div class="profile-card__title">${escapeHtml(profileTitle)}</div>` : ''}
+    </div>
+  `;
+  sheet.classList.add('active');
+
   if (userId) {
     // Fetch profile + stats
     const [{ data: profile }, stats] = await Promise.all([

@@ -603,7 +603,54 @@ export function doReveal() {
   });
 }
 
+/**
+ * True while handleRevealResults is doing its network work.
+ *
+ * IT DOES TWO ROUND TRIPS BEFORE ANYTHING APPEARS, and nothing stopped a second
+ * press. Measured with scenario-latency on a 300ms link: 625ms — 2.1 round
+ * trips — from tap to the first pixel that moves, against 31ms for Start Game,
+ * which disables itself and says "Starting..." before it touches the network.
+ *
+ * A control that shows nothing for two round trips is a control somebody taps
+ * again, and this file already records that exact sequence costing a game on
+ * the final question: "six seconds of nothing happening on a phone is a person
+ * tapping again, and this is the button that picks the last question."
+ */
+let _revealingResults = false;
+
 async function handleRevealResults() {
+  // ONE PRESS, AND IT ANSWERS IMMEDIATELY.
+  //
+  // The blank fill below cannot move: absent players must be closed out BEFORE
+  // the reveal or they show wrong, so the round trips are load-bearing and
+  // reordering them is not the fix. Saying so on the button is.
+  if (_revealingResults) return;
+  _revealingResults = true;
+  const revealBtn = $('#btn-next-question');
+  const revealLabel = revealBtn ? revealBtn.textContent : '';
+  if (revealBtn) {
+    revealBtn.disabled = true;
+    revealBtn.style.opacity = '0.6';
+    revealBtn.textContent = 'Revealing...';
+  }
+  const restoreRevealBtn = () => {
+    _revealingResults = false;
+    if (!revealBtn) return;
+    revealBtn.disabled = false;
+    revealBtn.style.opacity = '1';
+    // doReveal() re-labels this button for what comes next; only put the old
+    // text back if nothing else has claimed it, or a successful reveal would
+    // read "Reveal Results" again.
+    if (revealBtn.textContent === 'Revealing...') revealBtn.textContent = revealLabel;
+  };
+
+  // TRY/FINALLY, because the alternative is a permanently dead button.
+  //
+  // fetchAllAnswers and insertBlankAnswers are not otherwise guarded, and a
+  // throw anywhere below would leave the guard latched and the control
+  // disabled for the rest of the game — trading a slow button for one that
+  // does nothing, which is the fault this project keeps finding.
+  try {
   // Cancel any running auto-proceed timer (host may return to judging from scores)
   if (_clearAutoProceed) _clearAutoProceed();
 
@@ -694,6 +741,9 @@ async function handleRevealResults() {
     })
     .catch(err => logger.error('Game', 'Failed to broadcast answer_reveal phase', err));
   doReveal();
+  } finally {
+    restoreRevealBtn();
+  }
 }
 
 export async function handleJudgmentOverride(e) {
