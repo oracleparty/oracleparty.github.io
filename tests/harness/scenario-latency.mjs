@@ -52,18 +52,40 @@ const note = m => console.log('   ·', m);
  * `settled` is polled every 16ms — one frame — so the number is the delay a
  * person would actually see rather than the delay of the next poll.
  */
-async function timeTap(robot, label, press, settled) {
+async function timeTap(robot, label, press, probe) {
+  // SNAPSHOT FIRST, THEN WAIT FOR IT TO DIFFER.
+  //
+  // The first version of this named the state it expected to END in, and got
+  // three of them wrong — reporting "no visible change" for Start Game, which
+  // certainly navigates. A predicate that names an end state is a guess about
+  // markup; asking whether ANYTHING the probe can see has changed is not, and
+  // it is the same measure either way: the first pixel that moves.
+  const before = await robot.page.evaluate(probe).catch(() => null);
   const t0 = Date.now();
   await press();
   let ms = null;
   while (Date.now() - t0 < BUDGET_MS) {
-    if (await robot.page.evaluate(settled).catch(() => false)) { ms = Date.now() - t0; break; }
+    const now = await robot.page.evaluate(probe).catch(() => null);
+    if (now !== null && now !== before) { ms = Date.now() - t0; break; }
     await robot.page.waitForTimeout(16);
   }
-  results.push({ label, ms });
-  note(`${label.padEnd(34)} ${ms === null ? `no visible change in ${BUDGET_MS}ms` : ms + 'ms'}`);
+  results.push({ label, ms, before });
+  note(`${label.padEnd(34)} ${ms === null ? `NOTHING CHANGED in ${BUDGET_MS}ms (was: ${String(before).slice(0, 60)})` : ms + 'ms'}`);
   return ms;
 }
+
+/** What the screen looks like, as one comparable string. */
+const SCREEN_PROBE = () => JSON.stringify({
+  path: location.pathname.split('/').pop(),
+  screen: document.querySelector('.screen.active')?.id || null,
+  sheets: [...document.querySelectorAll('.bottom-sheet, .modal-overlay')]
+    .filter(el => el.offsetParent !== null || el.classList.contains('active')).map(el => el.id),
+  ready: document.querySelector('#btn-ready')?.textContent?.trim() || null,
+  advance: document.querySelector('#btn-next-question')?.textContent?.trim() || null,
+  advanceOff: !!document.querySelector('#btn-next-question')?.disabled,
+  correctShown: (() => { const c = document.querySelector('.reveal__correct');
+    return !!c && c.style.display !== 'none'; })(),
+});
 
 const table = await PlaytestTable.open();
 
@@ -77,13 +99,20 @@ try {
   await host.goto('host.html');
   await host.page.waitForSelector('.category-card', { timeout: 15000 });
   await host.page.click(`.category-card[data-category="${CATEGORY}"]`);
-  await host.page.waitForTimeout(600);
-  await host.page.click('.subcategory-sheet__row, .category-sheet-row').catch(() => {});
-  await host.page.waitForTimeout(600);
-  await host.page.click('#btn-create-room').catch(() => {});
+  // Picking a category opens a subcategory sheet; "All <Category>" plays the
+  // whole category. Same sequence as scenario-lobby.
+  await host.page.waitForTimeout(800);
+  await host.page.click('text=/^All /', { timeout: 15000 });
+  await host.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
+  await host.page.click('#btn-host-game');
   await host.page.waitForURL('**/lobby.html*', { timeout: 20000 });
+  await host.page.waitForTimeout(1500);
 
-  const code = (await host.textOf('#lobby-code')) || '';
+  const code = (await host.textOf('#lobby-code')) || (await host.page.evaluate(() => {
+    const el = document.querySelector('[id*="code"]');
+    return el ? el.textContent.trim() : null;
+  })) || '';
+  if (!code) throw new Error('could not read the room code');
   const bob = await table.seat('Bob');
   await bob.page.addInitScript(() =>
     localStorage.setItem('oracle_party_display_name', 'Bob'));
@@ -105,23 +134,18 @@ try {
   // showProfileCard, after its fetches.
   await timeTap(host, 'open a player profile card',
     async () => { await host.page.locator('#player-list .player-item .avatar-wrap').first().click().catch(() => {}); },
-    () => !!document.querySelector('.profile-card, .modal-overlay .profile-card'));
+    SCREEN_PROBE);
   await host.page.keyboard.press('Escape').catch(() => {});
   await host.page.waitForTimeout(400);
 
   await timeTap(bob, 'press Ready Up',
     async () => { await bob.page.locator('#btn-ready').click().catch(() => {}); },
-    () => {
-      const b = document.querySelector('#btn-ready');
-      return !!b && /ready/i.test(b.textContent || '') && b.classList.length > 0
-        && (b.disabled || /not ready/i.test(b.textContent) === false);
-    });
+    SCREEN_PROBE);
   await bob.page.waitForTimeout(800);
 
   await timeTap(host, 'press Start Game',
     async () => { await host.page.locator('#btn-start-game').click().catch(() => {}); },
-    () => location.pathname.includes('game.html')
-      || !!document.querySelector('#countdown-screen.active'));
+    SCREEN_PROBE);
 
   await host.page.waitForURL('**/game.html*', { timeout: 25000 }).catch(() => {});
   await bob.page.waitForURL('**/game.html*', { timeout: 25000 }).catch(() => {});
@@ -141,16 +165,12 @@ try {
   // button disable and no re-entry guard.
   await timeTap(host, 'press Reveal Results',
     async () => { await host.page.locator('#btn-next-question').click().catch(() => {}); },
-    () => {
-      const c = document.querySelector('.reveal__correct');
-      const btn = document.querySelector('#btn-next-question');
-      return (!!c && c.style.display !== 'none') || (!!btn && btn.disabled);
-    });
+    SCREEN_PROBE);
   await host.page.waitForTimeout(1500);
 
   await timeTap(host, 'press Next / Show Scores',
     async () => { await host.page.locator('#btn-next-question').click().catch(() => {}); },
-    () => !!document.querySelector('#scores-screen.active'));
+    SCREEN_PROBE);
 
   console.log('\n=== how long the screens take to fade ===');
   const fade = await host.page.evaluate(async () => {
