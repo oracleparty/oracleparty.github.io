@@ -726,6 +726,62 @@
 > answers to them.** That caller will have resolved it with an ordering, and the
 > ordering will be right for one question and silently wrong for the other.
 
+> ## 2026-09-07 — the final round ran off the end of the phase list
+>
+> **The latent bug this file has flagged twice and nobody had fixed.** It was
+> recorded as *"the list in `init.js` is also wrong for the same reason — rarely
+> hit, because that path needs a phone backgrounded across the final round."*
+> **"Rarely" was wrong.** `_wasHidden` fires on ANY backgrounding: a locked
+> phone, a notification, switching apps. In a party game that is ordinary.
+>
+> ### What it did
+>
+> `syncToCurrentState` refuses to sync BACKWARDS, comparing two phases against a
+> flat list. Traced, one transition family is broken:
+>
+> | from | to | |
+> |---|---|---|
+> | question → reveal → answer_reveal → scores_reveal | | fine |
+> | final_wager → final_question | | fine |
+> | **final_question → reveal** | | **REFUSED** |
+> | **final_question → answer_reveal** | | **REFUSED** |
+> | final_question → results | | fine |
+>
+> A round's reveal comes AFTER its question — but on the final round the
+> question is `final_question` (index 7) while the reveal is `reveal` (2) or
+> `answer_reveal` (3). So a phone backgrounded across the final question came
+> back, read the room's real phase, and refused it as backwards. **It sat on the
+> final question through the entire reveal — nobody's answers, no verdicts, no
+> host rating — and only escaped when the room reached `results`.**
+>
+> ### Fixed as an EXCEPTION, never as a reordered list
+>
+> Reordering breaks the regular rounds that work, and this file records two
+> attempts at a phase graph — one flat, one per-round — that each made the game
+> unplayable at one specific moment. **A wrong entry does not fail loudly; it
+> silently discards the one event that mattered.**
+>
+> So the rule is stated as: *a round's reveal is never backwards from that
+> round's own question*. It changes exactly the two transitions traced above and
+> leaves every regular round byte-identical.
+>
+> ### THE REAL REASON IT SURVIVED: it could not be tested
+>
+> The guard was inline in `init.js`, and **everything in `js/game/` pulls the
+> Supabase client from esm.sh, so that module cannot be imported in Node.** The
+> rule was therefore unreachable by any unit test, and no scenario backgrounds a
+> phone across the final round.
+>
+> `js/game/phase-order.js` is a no-import module holding `shouldSyncPhase`, the
+> same pattern as `bot-logic.js`, `honeycomb.js` and `timer-helpers.js` — and
+> this file already says why those exist. Nine tests; removing the exception
+> fails two by name while the seven pinning existing behaviour still pass, which
+> is what says the fix is narrow rather than a licence to sync anywhere.
+>
+> **The habit: when a rule has been wrong for months and nothing caught it, ask
+> whether anything COULD have. If the answer is no, move the rule before fixing
+> it.**
+
 > ## 2026-09-07 — a real playtest, six reports, and a screen that undid its own fix
 >
 > **The first real game since the desktop pass.** Six things reported; four were
@@ -1003,6 +1059,9 @@
 > anyway, twice, and it failed in exactly that way both times. **The list in
 > `init.js` is also wrong for the same reason** — rarely hit, because that path
 > needs a phone backgrounded across the final round.
+>
+> **FIXED 2026-09-07, and "rarely" was wrong** — `_wasHidden` fires on any
+> backgrounding. See "the final round ran off the end of the phase list".
 >
 > Reverted in full rather than patched a third time. The symptom fix above is
 > narrow, addresses the measured failure, and does not require anybody to have
@@ -3112,6 +3171,7 @@ not build it on `game_history.score`.
 │   │   ├── answer-health.js      which answer keys need a human (admin + probe)
 │   │   ├── presence-health.js    is the presence channel still joined
 │   │   ├── title-tiers.js        which tiers a topic offers, and at what count
+│   │   ├── game/phase-order.js  may a returning phone follow the room's phase
 │   │   └── game/bot-logic.js     bot decisions
 │   └── constants.js    All timing + threshold values
 ├── migrations/         Hand-applied SQL (see #7 above)

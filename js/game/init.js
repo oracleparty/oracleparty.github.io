@@ -6,6 +6,7 @@
 import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, notifyConnectionRestored, showToast } from '../utils.js';
 import { logger } from '../logger.js';
 import { presenceNeedsRebuild } from '../presence-health.js';
+import { shouldSyncPhase } from './phase-order.js';
 import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS, AWAY_GRACE_MS } from '../constants.js';
 import {
   setPhaseOnServer,
@@ -947,11 +948,13 @@ async function syncToCurrentState() {
       if (wasHidden && roomData.game_phase && roomData.game_phase !== state.gamePhase) {
         // Don't sync backwards — only advance to later phases.
         // This prevents a stale DB read from regressing local state.
-        const PHASE_ORDER = ['countdown', 'question', 'reveal', 'answer_reveal', 'scores_reveal', 'difficulty_vote', 'final_wager', 'final_question', 'results'];
-        const currentIdx = PHASE_ORDER.indexOf(state.gamePhase);
-        const serverIdx = PHASE_ORDER.indexOf(roomData.game_phase);
-        // If server phase isn't in our ordering (unknown phase), allow sync
-        if (serverIdx > currentIdx || currentIdx === -1 || serverIdx === -1) {
+        // THE RULE LIVES IN phase-order.js, and it is there rather than here
+        // because it could not be tested here: everything in js/game/ pulls the
+        // Supabase client from esm.sh, so init.js cannot be imported in Node
+        // and this guard went unchecked. It had a real bug in it — a phone
+        // backgrounded across the FINAL question refused the room's reveal as
+        // "backwards" and sat out the whole thing. See shouldSyncPhase.
+        if (shouldSyncPhase(state.gamePhase, roomData.game_phase)) {
           // Sync timestamps before transitioning
           if (roomData.question_started_at) state.questionStartedAt = roomData.question_started_at;
           if (roomData.countdown_started_at) state.countdownStartedAt = roomData.countdown_started_at;
