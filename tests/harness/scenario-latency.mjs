@@ -81,8 +81,16 @@ const SCREEN_PROBE = () => JSON.stringify({
   sheets: [...document.querySelectorAll('.bottom-sheet, .modal-overlay')]
     .filter(el => el.offsetParent !== null || el.classList.contains('active')).map(el => el.id),
   ready: document.querySelector('#btn-ready')?.textContent?.trim() || null,
+  // THE PRESSED BUTTON'S OWN STATE COUNTS AS FEEDBACK, and leaving it out
+  // reported Start Game as 7.9 round trips of nothing when it in fact disables
+  // itself and says "Starting..." before it touches the network. That is the
+  // difference between "the control answered" and "the work finished", and
+  // only the first one is what a person is waiting for.
+  start: (() => { const b = document.querySelector('#btn-start-game');
+    return b ? `${b.textContent.trim()}|${b.disabled}` : null; })(),
   advance: document.querySelector('#btn-next-question')?.textContent?.trim() || null,
   advanceOff: !!document.querySelector('#btn-next-question')?.disabled,
+  advanceBusy: document.querySelector('#btn-next-question')?.className || null,
   correctShown: (() => { const c = document.querySelector('.reveal__correct');
     return !!c && c.style.display !== 'none'; })(),
 });
