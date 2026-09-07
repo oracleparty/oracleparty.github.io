@@ -120,6 +120,19 @@ export async function handlePlayerChange(payload) {
     const idx = state.players.findIndex(p => String(p.id) === String(payload.new.id));
     if (idx !== -1) {
       state.players[idx] = payload.new;
+    } else {
+      // AN UPDATE FOR A PLAYER WE DO NOT HAVE IS ONE WE MISSED, NOT ONE TO DROP.
+      //
+      // Discarding it meant a seat whose INSERT never arrived — a dropped
+      // Realtime event, a backgrounded tab, a channel mid-resubscribe — could
+      // never be recovered by any later event about that player. They stayed
+      // absent from `state.players`, which is what draws the reveal rows, the
+      // scoreboard and the results, and what host promotion counts.
+      //
+      // Same rule as the answers handler below, and for the same reason: an
+      // UPDATE means the row exists on the server.
+      state.players.push(payload.new);
+      if (!state.scores[payload.new.id]) state.scores[payload.new.id] = 0;
     }
     // Detect host/co-host changes for this player
     if (String(payload.new.id) === String(state.room.playerId)) {

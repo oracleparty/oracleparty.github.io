@@ -538,6 +538,61 @@ try {
     }
   }
 
+  // ============================================================
+  // A SEAT WHOSE ARRIVAL WE MISSED
+  //
+  // An UPDATE for a player the local list does not have used to be DISCARDED.
+  // Everything in that branch — including renderPlayers() and the host/co-host
+  // detection for YOURSELF — sat inside `if (idx !== -1)`, so a seat whose
+  // INSERT never landed could never be recovered by any later event about it.
+  // The player stayed invisible until a refresh.
+  //
+  // DRIVEN WITH store.dropEvents, not raced. Swallowing the INSERT is exactly
+  // what a dropped Realtime frame does, and it is deterministic where waiting
+  // for a real one to go missing is not.
+  // ============================================================
+  console.log('\n=== a seat whose arrival the host missed ===');
+  {
+    const before = await host.page.evaluate(() =>
+      [...document.querySelectorAll('#player-list .player-item, #host-list .player-item')].length
+    ).catch(() => -1);
+
+    // The host will not hear this player arrive.
+    table.store.dropEvents('players', 1);
+    const ghost = await table.seat('Latecomer');
+    await ghost.page.addInitScript(n =>
+      localStorage.setItem('oracle_party_display_name', n), 'Latecomer');
+    await ghost.goto('join.html');
+    await ghost.page.waitForSelector('#code-input', { timeout: 15000 });
+    await ghost.page.fill('#code-input', code);
+    await ghost.page.click('#btn-join');
+    await ghost.page.waitForURL('**/lobby.html*', { timeout: 20000 });
+    await host.page.waitForTimeout(1500);
+
+    const missed = await host.page.evaluate(() =>
+      [...document.querySelectorAll('#player-list .player-item, #host-list .player-item')]
+        .map(el => el.querySelector('.player-item__name')?.textContent || '').join('|')
+    ).catch(() => '');
+    console.log(`   · after the dropped INSERT, host sees: ${missed}`);
+
+    // Now something about that player CHANGES — they ready up. The host gets an
+    // UPDATE for a row it has never seen.
+    await ghost.page.locator('#btn-ready').click().catch(() => {});
+    await host.page.waitForTimeout(2500);
+
+    const after = await host.page.evaluate(() =>
+      [...document.querySelectorAll('#player-list .player-item, #host-list .player-item')]
+        .map(el => el.querySelector('.player-item__name')?.textContent || '').join('|')
+    ).catch(() => '');
+    console.log(`   · after the UPDATE, host sees: ${after}`);
+
+    if (before < 0) {
+      console.log('   · could not read the host list — not measured');
+    } else if (!after.includes('Latecomer')) {
+      problems.push('a player whose arrival the host missed is still invisible after an update about them — the event was discarded and only a refresh would show them');
+    }
+  }
+
   for (const r of [host, ...joiners]) {
     if (r.consoleErrors.length) {
       problems.push(`${r.name} had ${r.consoleErrors.length} console error(s): ${r.consoleErrors[0].slice(0, 120)}`);

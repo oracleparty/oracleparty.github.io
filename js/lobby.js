@@ -898,34 +898,56 @@ async function handlePlayerChange(payload) {
       }
     } else if (event === 'UPDATE' && payload.new) {
       const idx = players.findIndex(p => String(p.id) === String(payload.new.id));
+      // AN UPDATE FOR A ROW WE DO NOT HAVE IS A ROW WE MISSED, NOT ONE TO DROP.
+      //
+      // Everything below used to sit inside `if (idx !== -1)`, INCLUDING
+      // renderPlayers() and the host/co-host detection for THIS player. So a
+      // seat missing from the local list — one whose INSERT was dropped, or
+      // arrived while the tab was backgrounded or the channel resubscribing —
+      // could never be recovered by any later event about it:
+      //
+      //   * the player stayed invisible in the list, because nothing redrew;
+      //   * and if the row was YOURS, you never learned you had been made host
+      //     or co-host, because activateHostUI() is in here too.
+      //
+      // That is the shape of a report this file has open: "left and rejoined
+      // and it didn't show me in the lobby till I refreshed even tho I could
+      // send a message in the chat (not showing my icon)." CLAUDE.md records
+      // the root cause of that stale seat as NOT FOUND. This is at least one
+      // road to it, and it is provable by reading rather than inferred.
+      //
+      // An UPDATE means the row exists on the server. Adding it is the only
+      // reading that can be right.
       if (idx !== -1) {
         players[idx] = payload.new;
-
-        // Detect host/cohost changes for this player
-        if (String(payload.new.id) === String(room.playerId)) {
-          if (payload.new.is_host && !room.isHost) {
-            room.isHost = true;
-            room.isCohost = false;
-            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-            activateHostUI();
-            addSystemMessage('You are now the host');
-          } else if (!payload.new.is_host && room.isHost) {
-            room.isHost = false;
-            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-            deactivateHostUI();
-          }
-          // Co-host status changes
-          if (payload.new.is_cohost && !room.isCohost) {
-            room.isCohost = true;
-            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-            addSystemMessage('You are now co-host');
-          } else if (!payload.new.is_cohost && room.isCohost) {
-            room.isCohost = false;
-            sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-          }
-        }
-        renderPlayers();
+      } else {
+        players.push(payload.new);
+        sortPlayers();
       }
+      // Detect host/cohost changes for this player
+      if (String(payload.new.id) === String(room.playerId)) {
+        if (payload.new.is_host && !room.isHost) {
+          room.isHost = true;
+          room.isCohost = false;
+          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+          activateHostUI();
+          addSystemMessage('You are now the host');
+        } else if (!payload.new.is_host && room.isHost) {
+          room.isHost = false;
+          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+          deactivateHostUI();
+        }
+        // Co-host status changes
+        if (payload.new.is_cohost && !room.isCohost) {
+          room.isCohost = true;
+          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+          addSystemMessage('You are now co-host');
+        } else if (!payload.new.is_cohost && room.isCohost) {
+          room.isCohost = false;
+          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+        }
+      }
+      renderPlayers();
     } else if (event === 'DELETE' && payload.old) {
       const deletedId = String(payload.old.id);
 
