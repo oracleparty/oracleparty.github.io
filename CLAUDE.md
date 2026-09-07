@@ -732,6 +732,92 @@
 > answers to them.** That caller will have resolved it with an ordering, and the
 > ordering will be right for one question and silently wrong for the other.
 
+> ## 2026-09-07 — the gap between a tap and the first pixel that moves
+>
+> **Asked for as a precaution, not as a report:** *"What about the smoothness of
+> the game… lag when clicking a button or changing pages. Not saying there is an
+> issue. But clean and crisp is always better right?"* — with one hunch attached,
+> *"clicking profile might lag a tad idk"*, which turned out to be the worse of
+> the two faults found and was right before anything had been measured.
+>
+> ### Nothing in this harness is slow, which is why nobody had ever looked
+>
+> The store is in memory, so every request answers instantly and every control
+> in every scenario is perfect. `robot.slowConnection(ms)` — built for the final
+> question — is what makes the question askable at all: give ONE phone a real
+> round trip and a button that does three of them before it draws costs three
+> times a button that does none.
+>
+> **So the numbers below are round trips wearing a clock, not milliseconds
+> anybody will experience.** What matters is the RATIO between controls, and
+> whether a control moves at all before its network work is done.
+>
+> `tests/harness/scenario-latency.mjs --lag=N` (default 300) presses what a
+> player presses and fails anything taking longer than **1.5 injected round
+> trips to show anything**. The exact millisecond count is not the fault;
+> waiting on the network before drawing is.
+>
+> | on a 300ms link | before | after |
+> |---|---|---|
+> | press Reveal Results | **625ms** | 14ms |
+> | open a player's profile card | **343ms** | 102ms |
+> | press Ready Up | 54ms | already correct |
+> | press Start Game | 31ms | already correct |
+> | press Next / Show Scores | 322ms | the screen changes first |
+>
+> ### The profile card drew nothing until its fetches returned
+>
+> And it never needed to. **The name, the avatar and the title are ARGUMENTS** —
+> the row that was tapped had them on screen a moment earlier — so the header is
+> drawn immediately and the stats fill in when they land.
+>
+> **The stats block is left OUT of that first paint rather than filled with
+> zeros.** A card reading "0 games" that then flips to 47 has told the reader
+> something false; a space that fills in has not. Same rule as the admin count
+> chips, which render `?` and never `0`.
+>
+> ### Reveal Results: the round trips cannot move, so the button says so
+>
+> Two round trips, no feedback, no re-entry guard. Absent players must be closed
+> out BEFORE the reveal or they show wrong, so reordering is not available — it
+> disables, reads "Revealing…", and refuses a second press. **This file already
+> records the other shape of that costing a game:** *"six seconds of nothing
+> happening on a phone is a person tapping again, and this is the button that
+> picks the last question."*
+>
+> **MY FIRST VERSION OF IT WAS WORSE THAN THE BUG.** It restored the button at
+> the END of the function, so a throw in `fetchAllAnswers` or
+> `insertBlankAnswers` — neither otherwise guarded — would have left the guard
+> latched and the control **disabled for the rest of the game**. It is a
+> `try/finally` now. A slow button is a nuisance; a dead one is the fault this
+> project keeps finding.
+>
+> ### THE PROBE WAS WRONG FOUR TIMES AND THE APP ONCE
+>
+> Worth more than either fix, because every wrong version read as a finding:
+>
+> | reported | what it really was |
+> |---|---|
+> | the profile card never opens | the predicate named `.profile-card`; the sheet's root is `#profile-card-sheet` |
+> | three later taps do nothing | the card stayed OPEN and swallowed them — Escape does not close it |
+> | Start Game takes **2371ms** | it was timing COMPLETION, not feedback. The button disables and says "Starting…" in **31ms** |
+> | Reveal Results answered instantly | measured against a probe state an earlier tap had already changed |
+>
+> The fix is that it names no end state at all. It snapshots a GENERIC page
+> probe — path, active screen, open sheets, every button's label and disabled
+> state — and waits for any of it to differ. **A predicate naming where a tap
+> should end is a guess about the app, and four of mine were wrong.**
+>
+> ### NOT IN CI, and the fade is the owner's call
+>
+> It needs a lag injected to mean anything and it measures a ratio rather than a
+> rule, so it is a tool to reach for after changing a control, not a gate.
+>
+> Measured on the way and deliberately NOT changed: the screen fade is **500ms**
+> and the page transition **260ms**. I had assumed 250. Whether 500 is right is a
+> judgement about how the game feels in a hand, which is the owner's — *working
+> code calibrated on a real device must not be "improved" on a hunch.*
+
 > ## 2026-09-07 — a player whose arrival we missed could never be recovered
 >
 > **Found by the sweep this file says pays off most: after a fix, look for every
@@ -7086,6 +7172,7 @@ node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, nev
 node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
 node tests/harness/scenario-finalq.mjs   # the host reveals the final question on a bad connection
 node tests/harness/scenario-badnetwork.mjs --lag=1500  # a WHOLE game on a bad link (NOT in CI — see below)
+node tests/harness/scenario-latency.mjs --lag=300      # tap-to-first-pixel on every control (NOT in CI)
 ```
 
 **`robot.slowConnection(ms)` gives ONE phone a bad connection.** Every other
