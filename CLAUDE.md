@@ -110,6 +110,12 @@
 > the client no longer believes a write that wrote nothing — which is the
 > symptom that cost a game.
 >
+> **A ROAD TO IT WAS FOUND 2026-09-07** — a discarded Realtime UPDATE meant a
+> seat whose INSERT went missing could never be recovered, and in the lobby that
+> same branch also held `renderPlayers()` and the host/co-host detection for
+> yourself. See "a player whose arrival we missed". **Still not claimed as THE
+> cause**: nothing has reproduced the original report.
+>
 > ### The face opens the card, not the whole row
 >
 > Asked for in the same message: *"it should be from tapping the player icon not
@@ -725,6 +731,56 @@
 > **When one variable answers two questions, find the caller that needs opposite
 > answers to them.** That caller will have resolved it with an ordering, and the
 > ordering will be right for one question and silently wrong for the other.
+
+> ## 2026-09-07 — a player whose arrival we missed could never be recovered
+>
+> **Found by the sweep this file says pays off most: after a fix, look for every
+> other place with the same shape.** The playtest fix was *"a Realtime UPDATE for
+> a row we do not have cached redraws stale data"*, in the answers handler. Both
+> PLAYER handlers had it too, and the lobby's was worse.
+>
+> | | what a discarded UPDATE cost |
+> |---|---|
+> | `js/game/phases.js` | the seat stayed absent from `state.players` — which draws the reveal rows, the scoreboard and the results, and is what host promotion counts |
+> | `js/lobby.js` | the same, **plus `renderPlayers()` and the host/co-host detection for YOURSELF sat inside the discarded branch** |
+>
+> So a seat whose INSERT never landed — a dropped Realtime frame, a backgrounded
+> tab, a channel mid-resubscribe — **could never be recovered by any later event
+> about it.** Only a refresh fixed it. And if the missing row was YOURS, you
+> never learned you had been made host or co-host, because `activateHostUI()` is
+> in there too.
+>
+> **THAT IS THE SHAPE OF AN OPEN REPORT**, the 2026-09-05 one this file records
+> as *"the root cause of the stale seat is still not found"*: *"left and
+> rejoined and it didn't show me in the lobby till I refreshed even tho I could
+> send a message in the chat (not showing my icon). Also had to leave and rejoin
+> in order to even ready up."* A road to exactly those symptoms, found by
+> reading. **NOT claimed to be the cause** — that session could not reproduce it
+> and neither can I — but a real defect either way.
+>
+> An UPDATE means the row exists on the server. Adding it is the only reading
+> that can be right.
+>
+> ### I nearly threw the check away for looking broken
+>
+> `store.dropEvents` swallows the INSERT — exactly what a dropped frame does,
+> and deterministic where waiting for a real one is not. On the passing run it
+> printed:
+>
+> ```
+> after the dropped INSERT, host sees: Bob|Alice (You)|Carol|Latecomer
+> ```
+>
+> **Latecomer was already visible, so I read the check as inert** and said so.
+> Wrong: the break test prints `Bob|Alice (You)|Carol` at the same point and
+> fails by name. The drop worked — **the FIX had already recovered them from the
+> very next event** (a heartbeat UPDATE) before the check reached its ready-up.
+>
+> **A check whose intermediate state looks wrong is not the same as a check that
+> cannot fail, and only the break test tells them apart.** This file is full of
+> checks deleted for agreeing whatever you do; the opposite error — deleting a
+> good one on a glance — costs just as much and reads exactly the same from the
+> outside.
 
 > ## 2026-09-07 — the final round ran off the end of the phase list
 >
