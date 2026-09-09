@@ -32,6 +32,7 @@ import {
   promoteToCohost,
   kickPlayer,
   isBannedFromRoom,
+  deleteAnswersByRoom,
   demoteCohost,
   toggleReady,
   updateRoomStatus,
@@ -1868,11 +1869,33 @@ async function handleStartGame() {
     // here — syncToCurrentState returns early on a falsy phase and
     // handleRoomChange skips the transition entirely — so the function was
     // taught to CLEAR a phase rather than the app quietly substituting one.
-    await updateGameState(room.id, {
-      question_ids: [],
-      question_started_at: null,
-      countdown_started_at: null
-    });
+    // AND THE LAST GAME'S ANSWERS GO HERE, NOT ONLY WHEN IT ENDED.
+    //
+    // Play Again clears them, and a write that was still in flight when it ran
+    // lands AFTER the delete and survives. On a phone with a real connection
+    // that is an ordinary straggler — a final-round auto-submit or a locked
+    // wager, one round trip late — and it leaves a row nobody can see: the
+    // client filters it out as belonging to a finished game, and it still
+    // occupies the (room, player, round) key the next game's blank fill needs.
+    // That player then has NO ANSWER AT ALL for that round: "Waiting…" through
+    // the reveal and a score of nothing. Migration 066 taught the server to
+    // overwrite such a row, and this stops it existing in the first place.
+    //
+    // Reproduced by scenario-sitting with one phone on an 800ms link: four
+    // games in one room, and game three inherited a row from game two.
+    //
+    // CLEARING AT THE START RATHER THAN THE END is the whole point. A late
+    // write can land after a game finishes; it cannot land after the next one
+    // is announced, because that is seconds of lobby later. Both run: this is
+    // the belt, and Play Again's is the braces.
+    await Promise.all([
+      updateGameState(room.id, {
+        question_ids: [],
+        question_started_at: null,
+        countdown_started_at: null
+      }),
+      deleteAnswersByRoom(room.id, room.playerId),
+    ]);
     if (!await setPhaseOnServer(room.id, room.playerId, null, null, 0)) {
       await updateGameState(room.id, { game_phase: null, current_question: 0 });
     }

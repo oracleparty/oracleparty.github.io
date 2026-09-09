@@ -1758,10 +1758,18 @@ export class FakeStore {
             if (!isPlaceholder && !isStale) continue;
             const before = { ...existing };
             existing.submitted_answer = '';
+            // IT NAMES THIS ROUND'S QUESTION NOW, whichever branch got us here,
+            // exactly as the migration's `question_id = EXCLUDED.question_id`
+            // does unconditionally. This fake only stamped it for a STALE row,
+            // so a __WAGER_LOCKED__ placeholder carrying no question id at all —
+            // which is what locking a final wager writes, since the final
+            // question is not chosen until after the wagers are in — came out of
+            // the fill still unnamed. Harmless for the client, which keeps a
+            // null, and a divergence from the live server either way.
+            existing.question_id = qid;
             if (isStale) {
-              // It names this round's question now, or the client would go on
-              // filtering out the blank we just wrote.
-              existing.question_id = qid;
+              // A row from a finished game brought a wager that was spent in
+              // that game. Null it so the value for THIS round is recomputed.
               existing.wager = null;
             }
             // KEEP THE WAGER THAT IS ALREADY THERE. Migration 050 writes

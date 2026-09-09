@@ -938,9 +938,144 @@
 > and every other tally here (`question_stats`, `answer_tally`, host ratings) is
 > deliberately about the material or the role.
 >
+> ### "It kept accumulating" — a whole sitting, measured
+>
+> **The owner's answer to the one question worth asking was the useful part:**
+> one room the whole evening, Play Again between games, and *"I feel like it
+> kept accumulating."* Every scenario in this repo plays ONE game;
+> `scenario-playagain` plays two. **A fault that grows a little each game is
+> invisible at one or two**, which is why nothing here had ever seen it.
+>
+> `tests/harness/scenario-sitting.mjs` plays N games in one room and takes a
+> census after every one: answers left over from a finished game, seats, rounds
+> actually answered, `used_question_ids`, Realtime channels per phone, and
+> console errors **per game rather than in total** — a total can only rise, so a
+> rising total says nothing; a rising RATE is the accumulation.
+>
+> **A HEALTHY SITTING IS CLEAN, and that is a real result rather than a null
+> one.** Four games: answers 18 → 18 → 18 → 18, seats 3 → 3 → 3 → 3, rounds
+> 6 → 6 → 6 → 6, channels flat, no errors. Nothing leaks on its own, so whatever
+> the owner saw needed a condition — which is this file's own rule arriving
+> again: *a scenario that plays a healthy game proves nothing about a sick one.*
+>
+> ### The condition was one phone on a real connection
+>
+> `--lag=800 --on=Bob` for the WHOLE sitting — `scenario-badnetwork` does that
+> for a single game and nothing had ever carried it across Play Again. Four
+> games, and **game three inherited an answer from game two.**
+>
+> Play Again clears the room's answers; a write that was **still in flight when
+> it ran lands after the delete and survives**. On a real phone that is an
+> ordinary straggler — a final-round auto-submit or a locked wager, one round
+> trip late. What it leaves is the worst possible row:
+>
+> | | |
+> |---|---|
+> | invisible on every screen | `answersForCurrentGame` filters out a row naming a finished game |
+> | still occupying `(room, player, round)` | which is the key the next game's blank fill conflicts on |
+>
+> So that player has **no answer at all** for that round — "Waiting…" through the
+> reveal and a score of nothing. That is migration 066's exact subject, and
+> **066 is the weakest applied-claim in this file**: the owner says they ran it,
+> and no verification rows were ever pasted. Its protection cannot be assumed.
+>
+> ### The fix clears at the START of a game, not only at the end of one
+>
+> `handleStartGame` already empties `question_ids` and both clocks; it clears
+> the answers now too, in the same `Promise.all`, so it costs no extra round
+> trip. **A late write can land after a game finishes. It cannot land after the
+> next one is announced**, because that is a lobby and several seconds later.
+> Play Again's clear-out stays — this is the belt and that is the braces.
+>
+> **SET, NOT RACED, for the check.** The lag run reproduced it once in four
+> games, which is a real failure with a timing condition attached and a check
+> nobody would trust. `--straggler` writes exactly what a late phone leaves,
+> after Play Again, and the assertion is taken at the **START** of the next game
+> — the only moment it is visible, because 066's blank fill converts the row as
+> soon as a round runs and the end-of-game census can no longer see what the
+> beginning inherited. Break-tested: without the clear, *"game 2 STARTED holding
+> 1 answer(s) from a finished game"*, and game 3 as well.
+>
+> ### AND THE ROW IT CAUGHT WAS NOT A STRAGGLER AT ALL
+>
+> The first fix was right and was not the whole thing. Two more runs kept
+> reporting a leftover, and the check had been taught to NAME the row rather
+> than count it — because "an answer naming a question the room is not asking"
+> has two very different causes and the count cannot tell them apart:
+>
+> ```
+> game 3 left behind: Bob round 5 names q51 (answer "__WAGER_LOCKED", room is asking q20)
+> game 4 left behind: Bob round 5 names q45 (answer "__WAGER_LOCKED", room is asking q11)
+> ```
+>
+> **Round 5 is the FINAL round, and that is a locked wager.** `lockInFinalWager`
+> stamped the placeholder with `state.questions[totalQuestions]` — the final
+> question as that phone knew it. **The final question is REPLACED after the
+> wagers are locked**: `handleRevealFinalQuestion` picks one by difficulty and
+> writes a new `question_ids`. So the placeholder named a question the room was
+> about to stop asking, and on a phone that locks before the swap lands — which
+> a real connection makes ordinary — the row was wrong from the moment it was
+> written.
+>
+> What that costs, and the second half is the worse one:
+>
+> - **`answersForCurrentGame` filtered it out.** A row naming a question the room
+>   is not asking belongs to a finished game as far as the client can tell. So
+>   the locked wager was invisible to everybody, the reveal drew that player as
+>   "Waiting…", and the row was not in the scoring.
+> - **AND 066's OWN `CASE` THEN DESTROYED THE WAGER.** Its rule is `WHEN
+>   answers.question_id IS DISTINCT FROM EXCLUDED.question_id AND
+>   answers.question_id IS NOT NULL THEN EXCLUDED.wager` — the stale-row branch —
+>   and for the final round `EXCLUDED.wager` is **0**. A row naming q51 while the
+>   room asks q20 takes that branch, so somebody who deliberately locked 20 was
+>   filled in at 0. **That is "I bet 20 and it wagered 0" arriving by a road
+>   migration 050 never closed**, on the one round that subtracts.
+>
+> **NULL IS THE TRUE VALUE, not a missing one.** At the moment a wager is locked
+> nobody knows which question it is being locked against — that is the design.
+> And null is already what every rule here treats as *cannot tell, keep it*:
+> `answersForCurrentGame` keeps such a row, and 066's stale clause requires
+> `question_id IS NOT NULL` precisely so it cannot destroy one. The
+> `__WAGER_LOCKED__` clause still converts it into a blank at the right moment,
+> which is its job, and stamps the real question id on the way.
+>
+> **The fake store was stamping that id only on the STALE branch**, so a
+> placeholder came out of the fill still unnamed — harmless for the client and a
+> divergence from the migration, which does it unconditionally. Corrected in the
+> same commit.
+>
+> **THE EVIDENCE, STATED AS WHAT IT IS.** Before the fix, two of three
+> four-game laggy sittings reported it; after, three consecutive clean runs.
+> That is real — a failure at roughly two in three does not go three for three
+> by chance — and it is **not proof**. Three runs cannot separate *fixed* from
+> *made rarer*, and this file records exactly that distinction being blurred
+> before. What IS proved by reading is the mechanism: a placeholder naming a
+> question the room has swapped away takes 066's stale branch, and that branch
+> writes `EXCLUDED.wager`, which on the final round is 0.
+>
+> ### And the chat archive was written once per PHONE, per game
+>
+> Found by reading while the sitting ran, and it is the same shape one table
+> along. `archiveChatMessages` runs inside the results screen's per-device
+> block, and it takes no cut-off — deliberately, because the archive is the
+> ROOM's record rather than one player's view of it. So it copies the whole
+> transcript **every time, from every phone**: three people playing five games
+> in one room wrote FIFTEEN archive rows, each a superset of the last, the final
+> few holding everything said all evening.
+>
+> It also cost every phone a hundred-message read, a player fetch and an insert
+> on the results screen, awaited, **growing with the transcript** — which is
+> what "it kept accumulating" feels like from the inside even when nothing
+> visibly breaks.
+>
+> `recordsForTheRoom()` is now the single rule for both things at the end of a
+> game that belong to the ROOM rather than to a player — the running tally and
+> the archive. The other two things in that block are per-PLAYER facts and stay
+> per-player.
+>
 > ### The lobby flake is still there, at the same rate
 >
-> `scenario-lobby`'s quick leave-and-rejoin failed once in five runs this
+> `scenario-lobby`'s quick leave-and-rejoin failed twice in eight runs this
 > session — `{"url":"/join.html","screen":"join-screen","stored":null}`, the
 > same words and the same place as the baseline measured on 2026-09-07 (one
 > failure in four runs, with and without that session's changes). Four passes
@@ -7690,6 +7825,8 @@ node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused wr
 node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
 node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
 node tests/harness/scenario-finalq.mjs   # the host reveals the final question on a bad connection
+node tests/harness/scenario-sitting.mjs --games=4        # SEVERAL games in ONE room — what grows between them
+node tests/harness/scenario-sitting.mjs --games=4 --lag=800 --on=Bob   # ...with one phone on a real link
 node tests/harness/scenario-badnetwork.mjs --lag=1500  # a WHOLE game on a bad link (NOT in CI — see below)
 node tests/harness/scenario-latency.mjs --lag=300      # tap-to-first-pixel on every control (NOT in CI)
 ```

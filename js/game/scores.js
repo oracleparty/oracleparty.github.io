@@ -791,12 +791,39 @@ async function lockInFinalWager() {
   // second lock must not move the number — and a placeholder must never
   // overwrite a real answer or a blank the fill has already written. A write
   // that can only ever ADD is exactly what this needs.
-  const q = state.questions[state.totalQuestions];
+  // NO QUESTION ID, AND THAT IS THE HONEST VALUE RATHER THAN A MISSING ONE.
+  //
+  // This stamped `state.questions[totalQuestions]` — the final question as this
+  // phone knows it. But the final question is REPLACED after the wagers are
+  // locked: handleRevealFinalQuestion picks one by difficulty and writes a new
+  // question_ids. So the placeholder named a question the room was about to
+  // stop asking, and from that moment:
+  //
+  //   * answersForCurrentGame FILTERED IT OUT — a row naming a question the
+  //     room is not asking belongs to a finished game as far as the client can
+  //     tell. So the locked wager was invisible to everybody, the reveal drew
+  //     that player as "Waiting…", and the row was not in the scoring;
+  //   * and it still occupied (room, player, final round), so the blank fill
+  //     could not add one either. Migration 066 taught the server to overwrite
+  //     a row naming a different question — which here would DESTROY a wager
+  //     somebody had deliberately locked, on the one round that subtracts.
+  //
+  // Caught by scenario-sitting with one phone on an 800ms link: "Bob round 5
+  // names q51 (answer __WAGER_LOCKED__, room is asking q20)". It needs the
+  // phone to lock its wager before the swap lands, which a real connection
+  // makes ordinary.
+  //
+  // NULL IS THE TRUE ANSWER: at the moment a wager is locked, nobody knows
+  // which question it is being locked against. And null is already the value
+  // every rule here treats as "cannot tell, keep it" — answersForCurrentGame
+  // keeps such a row, and 066's stale clause requires `question_id IS NOT NULL`
+  // precisely so it cannot destroy one. The `__WAGER_LOCKED__` clause still
+  // converts it into a blank at the right moment, which is its job.
   await insertAnswersIfAbsent([{
     roomId: state.room.id,
     playerId: state.room.playerId,
     questionNumber: state.totalQuestions,
-    questionId: q ? q.id : null,
+    questionId: null,
     wager: state.finalWager,
     submittedAnswer: '__WAGER_LOCKED__',
     isCorrect: false,
@@ -1354,18 +1381,36 @@ async function openScoreEditQuestion(questionNumber) {
  * leaves and recreated when they return, so the id is not stable across the
  * very event this is meant to survive, and guests have no account to key on.
  */
+/**
+ * IS THIS PHONE THE ONE THAT WRITES THE ROOM'S RECORD OF THIS GAME?
+ *
+ * Two things at the end of a game belong to the ROOM rather than to a player —
+ * the running tally and the chat archive — and every device computes or holds
+ * the same thing, so letting all of them write multiplies the result by the
+ * number of phones. Normally that is the host.
+ *
+ * THE FALLBACK IS FOR A ROOM WITH NO HOST AT ALL, not for a host who is merely
+ * slow. A host can be swept mid-game without the crown moving, and host-only
+ * then means NOBODY writes it and nothing says so. The earliest-joined present
+ * human is a rule every phone computes the same way from the same list, so
+ * exactly one of them takes it. Two phones can only both write if they
+ * disagree about whether a host exists, and a doubled line is the right way
+ * round from a record that silently never appears.
+ */
+function recordsForTheRoom() {
+  if (state.room.isHost) return true;
+  if (state.players.some(p => p.is_host)) return false;
+  const humans = getHumans(state.players).filter(p => !isPlayerAway(p.id));
+  const pool = humans.length ? humans : getHumans(state.players);
+  const first = [...pool].sort((a, b) =>
+    String(a.joined_at || '').localeCompare(String(b.joined_at || ''))
+    || String(a.id).localeCompare(String(b.id)))[0];
+  return !!first && String(first.id) === String(state.room.playerId);
+}
+
 function writeRoomScores() {
   if (state._cumulativeScoresWritten) return;
-  const roomHasHost = state.players.some(p => p.is_host);
-  const iAmCaretaker = !roomHasHost && (() => {
-    const humans = getHumans(state.players).filter(p => !isPlayerAway(p.id));
-    const pool = humans.length ? humans : getHumans(state.players);
-    const first = [...pool].sort((a, b) =>
-      String(a.joined_at || '').localeCompare(String(b.joined_at || ''))
-      || String(a.id).localeCompare(String(b.id)))[0];
-    return first && String(first.id) === String(state.room.playerId);
-  })();
-  if (!state.room.isHost && !iAmCaretaker) return;
+  if (!recordsForTheRoom()) return;
 
   state._cumulativeScoresWritten = true;
   const earned = {};
@@ -1407,8 +1452,21 @@ export async function showResultsScreen() {
       playerId: state.room.playerId,
       finalScore: state.scores[state.room.playerId] || 0
     });
-    // Archive chat messages before room might be deleted
-    await archiveChatMessages(state.room.id);
+    // ONE ARCHIVE PER GAME, AND THIS RAN ON EVERY PHONE.
+    //
+    // archiveChatMessages takes no cut-off — deliberately, because the archive
+    // is the ROOM's record rather than one player's view of it — so it copies
+    // the whole transcript every time. Per device, in a room that plays several
+    // games in one sitting, that is players x games rows, each one a superset
+    // of the last: three people playing five games wrote FIFTEEN copies of a
+    // conversation that happened once, the last few holding everything said all
+    // evening. It also cost every phone a hundred-message read and an insert on
+    // the results screen, awaited, growing with the transcript — which is what
+    // "it kept accumulating" feels like from the inside.
+    //
+    // Same rule and the same one writer as the room tally beside it. The other
+    // two things in this block are per-PLAYER facts and stay that way.
+    if (recordsForTheRoom()) await archiveChatMessages(state.room.id);
 
     // Write game_history and evaluate title unlocks for authenticated users.
     // player_stats is now a computed view — no manual writes needed.
