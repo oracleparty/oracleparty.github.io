@@ -412,8 +412,20 @@ export const STATES = {
             + '<span class="heart-count' + (hearts ? '' : ' hidden') + '">' + (hearts || 0) + '</span>'
             + '</div></div></div>';
         }
+        // A LONG URL IS IN HERE ON PURPOSE. A link has no spaces, so its
+        // min-content width is the whole string, and the message pane scrolls
+        // on the X axis rather than wrapping unless the text is told it may
+        // break anywhere. Reported from a live game: "when a long url is posted
+        // in the chatbox u can drag all the way to the right but it shouldn't
+        // be scrollable." Nothing had ever previewed a message longer than a
+        // sentence, so nothing could measure it.
+        //
+        // THE PATH SEGMENT IS ONE UNBROKEN RUN OF LETTERS AND DIGITS ON
+        // PURPOSE. Chromium will happily break a URL after a "/" or a "-", so a
+        // realistic-looking link with hyphens in it wraps by itself and the
+        // check passes whatever the CSS says. This one has nowhere to break.
         chat.innerHTML = bubble(P[2], 'Ready to go! 🎉', 2)
-          + bubble(P[0], 'Waiting for one more...', 0)
+          + bubble(P[0], 'https://oracleparty.github.io/j/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfGhIjKl', 0)
           + bubble(P[5], "Let's do this! 💪", 1);
       }
 

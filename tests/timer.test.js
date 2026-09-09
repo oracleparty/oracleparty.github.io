@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getServerTimeLeft, getCountdownElapsed, isStampForCurrentRound } from '../js/game/timer-helpers.js';
+import { getServerTimeLeft, getCountdownElapsed, isStampForCurrentRound, shouldAdoptRoomClock } from '../js/game/timer-helpers.js';
 
 // ============================================
 // getServerTimeLeft
@@ -165,5 +165,62 @@ describe('isStampForCurrentRound', () => {
   it('ignores the round number when the row does not carry one', () => {
     expect(isStampForCurrentRound({ ...fresh, rowQuestion: undefined })).toBe(true);
     expect(isStampForCurrentRound({ ...fresh, rowQuestion: null })).toBe(true);
+  });
+});
+
+
+// ============================================
+// shouldAdoptRoomClock — may a phone that has just re-read the room take the
+// room's clock stamp?
+//
+// syncToCurrentState took it unconditionally and then told the phase router to
+// KEEP it, so a stamp left over from the last round opened the new one already
+// expired: showQuestionScreen reads a non-null stamp as a reconnect, starts the
+// timer at once, and half a second later the host writes `reveal` for the whole
+// room. Reported from a live game as a question that "only seconds in advanced
+// us without allowing us to type answers".
+// ============================================
+describe('shouldAdoptRoomClock', () => {
+  const T = 30;
+  const ago = s => new Date(Date.now() - s * 1000).toISOString();
+
+  it('refuses a stamp that has already run out while the room is still asking', () => {
+    expect(shouldAdoptRoomClock({
+      phase: 'question', stampedAt: ago(90), serverTimeOffset: 0, timerSeconds: T,
+    })).toBe(false);
+  });
+
+  it('refuses it on the final question too — the round that subtracts', () => {
+    expect(shouldAdoptRoomClock({
+      phase: 'final_question', stampedAt: ago(45), serverTimeOffset: 0, timerSeconds: T,
+    })).toBe(false);
+  });
+
+  it('takes a stamp with time left, which is the ordinary reconnect', () => {
+    expect(shouldAdoptRoomClock({
+      phase: 'question', stampedAt: ago(20), serverTimeOffset: 0, timerSeconds: T,
+    })).toBe(true);
+  });
+
+  it('takes an old stamp for a phase that is not a question at all', () => {
+    // The reveal and the scoreboard read the same column and are not timed by
+    // it, so refusing there would break a reconnect for no gain.
+    expect(shouldAdoptRoomClock({
+      phase: 'reveal', stampedAt: ago(600), serverTimeOffset: 0, timerSeconds: T,
+    })).toBe(true);
+  });
+
+  it('has nothing to take when the room carries no stamp', () => {
+    expect(shouldAdoptRoomClock({
+      phase: 'question', stampedAt: null, serverTimeOffset: 0, timerSeconds: T,
+    })).toBe(false);
+  });
+
+  it('reads the clock through the server offset, not this phone\'s', () => {
+    // A stamp 40s old measured against a phone running 20s slow still has time
+    // left on a 30s timer once the offset is applied.
+    expect(shouldAdoptRoomClock({
+      phase: 'question', stampedAt: ago(40), serverTimeOffset: -20000, timerSeconds: T,
+    })).toBe(true);
   });
 });

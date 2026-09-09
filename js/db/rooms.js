@@ -674,13 +674,27 @@ export async function addRoomScores(roomId, earned) {
     cumulative[name] = (cumulative[name] || 0) + (points || 0);
   }
 
-  const { error } = await supabase
+  // .select(), BECAUSE A REFUSED UPDATE RETURNS NO ERROR AND ZERO ROWS.
+  //
+  // Reported from a live game: "after we finished the round the room scores
+  // were not updated." This was a bare update whose result was thrown away, so
+  // a refusal, a vanished room and a successful write were the same silence —
+  // #4 in the one place a group's running tally lives.
+  const { data: written, error } = await supabase
     .from('rooms')
     .update({ room_scores: cumulative })
-    .eq('id', roomId);
+    .eq('id', roomId)
+    .select('id');
 
-  if (error) logger.error('Supabase', 'addRoomScores write failed', error);
-  return { error };
+  if (error) {
+    logger.error('Supabase', 'addRoomScores write failed', error);
+    return { error };
+  }
+  if (!written || written.length === 0) {
+    logger.error('Supabase', 'addRoomScores wrote nothing — the room tally is unchanged');
+    return { error: { message: 'no rows' } };
+  }
+  return { error: null };
 }
 
 /**

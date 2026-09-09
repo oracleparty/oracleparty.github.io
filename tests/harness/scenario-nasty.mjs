@@ -925,6 +925,58 @@ async function aClosedRoundReleasesThePlayer() {
       if (seen && seen.canType) {
         problems.push(`the round is over and Bob can still type into it — everything he sends now is refused as late, and the blank already filled in for him is the answer that stands`);
       }
+
+      // AND THE TIMER SURVIVES IT.
+      //
+      // Bob has just taken the one branch that writes "Time's up!" — the reveal
+      // arriving while he has not submitted — and that line used to be
+      // `document.querySelector('.timer').textContent = "Time's up!"`. `.timer`
+      // is the WRAPPER: it holds #timer-bar and #timer-text, so setting its
+      // textContent DELETED BOTH, permanently. Nothing ever put them back, and
+      // updateTimerDisplay looks them up by id, finds null and quietly does
+      // nothing — so every later round drew a fresh question screen with the
+      // words "Time's up!" standing where its countdown should be, on a clock
+      // that could not move. Photographed on question 13 of 15: "later on the
+      // timer was not working and said timer is up".
+      //
+      // THIS IS THE PLACE FOR IT because it is the only check in the repo that
+      // deliberately closes a round under somebody who has not answered.
+      // scenario-fullgame samples every question screen for the same thing and
+      // never fires, because everybody there submits.
+      const nextQ = (roomRow(table).current_question || 0) + 1;
+      const row2 = roomRow(table);
+      const before2 = { ...row2 };
+      row2.game_phase = 'question';
+      row2.current_question = nextQ;
+      row2.question_started_at = null;
+      table.store._broadcast('UPDATE', 'rooms', row2, before2);
+      await bob.page.waitForTimeout(3000);
+
+      const timer = await bob.page.evaluate(() => {
+        const wrap = document.querySelector('#question-screen .timer');
+        return {
+          screen: document.querySelector('.screen.active')?.id || null,
+          bar: !!document.getElementById('timer-bar'),
+          text: !!document.getElementById('timer-text'),
+          says: (wrap?.textContent || '').trim().slice(0, 24),
+          expired: !!wrap?.classList.contains('timer--expired'),
+        };
+      }).catch(() => null);
+      note(`Bob's timer on the next question: ${JSON.stringify(timer)}`);
+
+      if (!timer || timer.screen !== 'question-screen') {
+        problems.push(`Bob did not reach the next question, so the timer check below proves nothing (${JSON.stringify(timer)})`);
+      } else {
+        if (!timer.bar || !timer.text) {
+          problems.push(`the next question opened with the timer gone from the DOM (bar:${timer.bar} text:${timer.text}) — "Time's up!" was written over the element that holds them, and nothing puts them back for the rest of the game`);
+        }
+        if (/time/i.test(timer.says)) {
+          problems.push(`a fresh question screen still reads ${JSON.stringify(timer.says)} where its countdown should be`);
+        }
+        if (timer.expired) {
+          problems.push('a fresh question screen still carries the expired-timer flash from the round before');
+        }
+      }
     }
   } catch (err) {
     problems.push(`closed-round scenario threw: ${err.message.split('\n')[0]}`);

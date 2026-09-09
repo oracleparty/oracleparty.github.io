@@ -1136,7 +1136,8 @@ export class FakeStore {
     //
     // The POINTS are recomputed from the answer's own wager, never taken from
     // the caller — that is the difference the migration exists to make.
-    if (name === 'op_set_judgement' || name === 'op_disqualify_round') {
+    if (name === 'op_set_judgement' || name === 'op_disqualify_round'
+        || name === 'op_undisqualify_round') {
       const players = this.table('players');
       const answers = this.table('answers');
       const isHost = (roomId, playerId) => players.some(p =>
@@ -1155,6 +1156,35 @@ export class FakeStore {
           // simply got wrong, and the wager is silently refunded and spent
           // twice — "it only said he bet 1, which he had already used".
           a.is_correct = false; a.score_earned = 0; a.disqualified = true;
+          this._broadcast('UPDATE', 'answers', { ...a }, before);
+          n++;
+        }
+        return n;
+      }
+
+      // ---- migration 070: a disqualification can be undone ----------------
+      //
+      // The verdict comes back from auto_correct, which 049 deliberately never
+      // touches, and the score is recomputed from the wager by op_set_judgement's
+      // own rule. Only a round that was ACTUALLY thrown out is touched, or a
+      // mistyped round number would rewrite live host overrides.
+      if (name === 'op_undisqualify_round') {
+        if (!isHost(args?.p_room_id, args?.p_caller_id)) return -1;
+        const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
+        if (!room) return -1;
+        const total = Math.max(1, (room.question_ids || []).length - 1);
+        const isFinal = args.p_question_number >= total;
+        let n = 0;
+        for (const a of answers) {
+          if (String(a.room_id) !== String(args.p_room_id)) continue;
+          if (a.question_number !== args.p_question_number) continue;
+          if (!a.disqualified) continue;
+          const before = { ...a };
+          const correct = !!a.auto_correct;
+          a.is_correct = correct;
+          a.score_earned = correct ? (a.wager || 0) : (isFinal ? -(a.wager || 0) : 0);
+          a.disqualified = false;
+          a.history_recorded = false;
           this._broadcast('UPDATE', 'answers', { ...a }, before);
           n++;
         }
@@ -1424,7 +1454,28 @@ export class FakeStore {
       const expected = args?.p_expected_phase ?? null;
       if (expected !== null && (room.game_phase ?? null) !== expected) return 'already moved';
 
+      // A GAME NEVER JUMPS A ROUND (migration 069). "Next Question" reads the
+      // client's round number and adds one, so a second press landing inside
+      // the screen fade announced N+2 — reported from a live game as "question
+      // 2 was skipped entirely".
+      if (args?.p_question !== null && args?.p_question !== undefined
+          && Number(args.p_question) > Number(room.current_question ?? 0) + 1) {
+        return 'skips a round';
+      }
+
       const before = { ...room };
+      const nextQuestion = (args.p_question !== null && args.p_question !== undefined)
+        ? args.p_question : room.current_question;
+      // ENTERING A NEW ROUND CLEARS THAT ROUND'S CLOCK (migration 069), in the
+      // same statement as the phase. The client used to clear it with a
+      // separate fire-and-forget write racing this one, and losing that race
+      // left the room announcing round N+1 while still holding round N's
+      // stamp — a deadline already in the past, so the first backstop poll
+      // ended the round before anybody had typed.
+      if ((args.p_to_phase === 'question' || args.p_to_phase === 'final_question')
+          && (room.game_phase !== args.p_to_phase || room.current_question !== nextQuestion)) {
+        room.question_started_at = null;
+      }
       room.game_phase = args.p_to_phase;
       if (args.p_question !== null && args.p_question !== undefined) {
         room.current_question = args.p_question;

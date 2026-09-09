@@ -7,6 +7,7 @@ import { $, navigateWithFade, navigateWithFadeReplace, notifyConnectionLost, not
 import { logger } from '../logger.js';
 import { presenceNeedsRebuild } from '../presence-health.js';
 import { shouldSyncPhase } from './phase-order.js';
+import { shouldAdoptRoomClock } from './timer-helpers.js';
 import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS, AWAY_GRACE_MS } from '../constants.js';
 import {
   setPhaseOnServer,
@@ -982,7 +983,10 @@ async function syncToCurrentState() {
         // "backwards" and sat out the whole thing. See shouldSyncPhase.
         if (shouldSyncPhase(state.gamePhase, roomData.game_phase)) {
           // Sync timestamps before transitioning
-          if (roomData.question_started_at) state.questionStartedAt = roomData.question_started_at;
+          if (shouldAdoptRoomClock({ phase: roomData.game_phase, stampedAt: roomData.question_started_at,
+                                     serverTimeOffset: state.serverTimeOffset, timerSeconds: state.timerSeconds })) {
+            state.questionStartedAt = roomData.question_started_at;
+          }
           if (roomData.countdown_started_at) state.countdownStartedAt = roomData.countdown_started_at;
           if (['final_wager', 'final_question', 'difficulty_vote'].includes(roomData.game_phase)) {
             state.isFinalWagerRound = true;
@@ -997,8 +1001,17 @@ async function syncToCurrentState() {
     if (roomData.current_question !== undefined) {
       state.currentQuestion = roomData.current_question;
     }
-    if (roomData.question_started_at) {
+    // A STAMP THAT HAS ALREADY RUN OUT IS NOT THE STAMP FOR A ROUND THE ROOM
+    // IS STILL ASKING. Taken unconditionally, and combined with the
+    // `gamePhase = 'loading'` below (which tells the phase router to KEEP it),
+    // it opened the new round with an expired clock — half a second later the
+    // host wrote `reveal` and the round was over before anybody typed.
+    // See shouldAdoptRoomClock.
+    if (shouldAdoptRoomClock({ phase: roomData.game_phase, stampedAt: roomData.question_started_at,
+                               serverTimeOffset: state.serverTimeOffset, timerSeconds: state.timerSeconds })) {
       state.questionStartedAt = roomData.question_started_at;
+    } else {
+      state.questionStartedAt = null;
     }
     if (roomData.countdown_started_at) {
       state.countdownStartedAt = roomData.countdown_started_at;

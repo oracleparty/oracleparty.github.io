@@ -10,9 +10,9 @@ import { state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLab
          _qbFeedback, setQbFeedback } from './state.js';
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast } from '../utils.js';
 import { logger } from '../logger.js';
-import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS } from '../constants.js';
+import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
-         disqualifyRoundOnServer, updateGameState, setPhaseOnServer,
+         disqualifyRoundOnServer, undisqualifyRoundOnServer, updateGameState, setPhaseOnServer,
          upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
          upsertQuestionFeedback, deleteQuestionFeedbackByVoter, sendMessage,
   rateHost, fetchHostReputations, hostRatingsAvailable,
@@ -20,7 +20,8 @@ import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
   recordQuestionOutcome, recordAnswerText, fetchQuestionPlayStats,
 } from '../supabase.js';
 import { describeDifficulty } from '../difficulty-band.js';
-import { countAnswersFrom, findNextAvailableWager } from './scoring-helpers.js';
+import { countAnswersFrom, findNextAvailableWager, answersForCurrentGame,
+         buildDisqualifiedSet, buildUsedWagersMap } from './scoring-helpers.js';
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
@@ -55,6 +56,7 @@ export async function showRevealScreen() {
   // Reset disqualify button for this round
   const dqBtn = $('#btn-disqualify-round');
   if (dqBtn) { dqBtn.classList.add('hidden'); dqBtn.disabled = false; dqBtn.textContent = 'Disqualify Round'; }
+  _undisqualifyUnavailable = false;
 
   const q = state.questions[state.currentQuestion];
   if (!q) return;
@@ -581,12 +583,7 @@ export function doReveal() {
     btn.onclick = () => { if (_handleShowScores) _handleShowScores(); };
     btn.disabled = false;
     btn.style.opacity = '1';
-    // Show disqualify button (only if not already disqualified)
-    const dqBtn = $('#btn-disqualify-round');
-    if (dqBtn && !state.disqualifiedQuestions.has(state.currentQuestion)) {
-      dqBtn.classList.remove('hidden');
-      dqBtn.onclick = handleDisqualifyRound;
-    }
+    renderDisqualifyButton();
   }
 
   // Background re-fetch to catch any answers missed by Realtime
@@ -806,6 +803,113 @@ export async function handleJudgmentOverride(e) {
   }
 }
 
+/**
+ * Has op_undisqualify_round (migration 070) answered "not installed"?
+ *
+ * The undo has NO fallback and cannot have one: 049 revoked UPDATE on
+ * `answers`, so a direct write would match zero rows and report success — the
+ * round would go back on screen and stay thrown out in the database. So the
+ * control is hidden rather than offered and refused, and this remembers the
+ * answer for the round so the button does not flicker back on a re-render.
+ */
+let _undisqualifyUnavailable = false;
+
+/**
+ * ONE PLACE DECIDES WHAT THAT BUTTON SAYS, because it now has three states —
+ * offered, undoable, and gone — and this file draws it from two directions (the
+ * reveal render and the press itself). Two copies of a three-state rule is how
+ * a control ends up saying one thing and doing another.
+ */
+function renderDisqualifyButton() {
+  const dqBtn = $('#btn-disqualify-round');
+  if (!dqBtn || !canControlGame()) return;
+  const thrownOut = state.disqualifiedQuestions.has(state.currentQuestion);
+  if (!thrownOut) {
+    dqBtn.classList.remove('hidden');
+    dqBtn.disabled = false;
+    dqBtn.textContent = 'Disqualify Round';
+    dqBtn.onclick = handleDisqualifyRound;
+    return;
+  }
+  if (_undisqualifyUnavailable) {
+    // The server cannot put it back, so say what happened and stop offering.
+    dqBtn.classList.remove('hidden');
+    dqBtn.disabled = true;
+    dqBtn.textContent = 'Round Disqualified';
+    dqBtn.onclick = null;
+    return;
+  }
+  dqBtn.classList.remove('hidden');
+  dqBtn.disabled = false;
+  dqBtn.textContent = 'Undo Disqualify';
+  dqBtn.onclick = handleUndisqualifyRound;
+}
+
+/**
+ * PUT A ROUND BACK (migration 070). Asked for by the owner: "need to be able to
+ * un disqualify round if done by accident."
+ *
+ * Disqualifying is one unconfirmed tap and it is the most consequential thing a
+ * host can do to a round — every answer set to wrong and worth nothing, every
+ * wager handed back. There was no way out of a mis-tap from any screen.
+ *
+ * The verdicts come back from `auto_correct`, which 049 deliberately never
+ * touches, and the scores are recomputed from the wager by the same rule
+ * op_set_judgement uses. A HOST OVERRIDE MADE BEFORE THE DISQUALIFICATION IS
+ * NOT RESTORED — that verdict was overwritten and only the machine's survived —
+ * so the host flips it again from this same screen. Said out loud rather than
+ * papered over with a third copy of the verdict.
+ */
+async function handleUndisqualifyRound() {
+  if (!canControlGame()) return;
+  const qNum = state.currentQuestion;
+  if (!state.disqualifiedQuestions.has(qNum)) return;
+
+  const dqBtn = $('#btn-disqualify-round');
+  if (dqBtn) { dqBtn.disabled = true; dqBtn.textContent = 'Restoring...'; }
+
+  const served = await undisqualifyRoundOnServer(state.room.id, qNum, state.room?.playerId);
+  if (!served.ok) {
+    if (served.unavailable) _undisqualifyUnavailable = true;
+    else showToast("Couldn't put that round back — try again", 'error');
+    renderDisqualifyButton();
+    return;
+  }
+
+  state.disqualifiedQuestions.delete(qNum);
+
+  // The rows the server just rewrote, read back rather than guessed at — the
+  // verdict it restored came from auto_correct and the score from the wager,
+  // and reproducing that arithmetic here would be a second copy of the rule.
+  try {
+    state.currentAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, qNum));
+  } catch (_) { /* the reveal's background fetch will catch up */ }
+
+  // The wagers this player spent, rebuilt from what is actually stored. The
+  // disqualification deleted them from the local map by hand; rebuilding is the
+  // only version that cannot drift from the server's own op_next_wager.
+  try {
+    const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
+    const mine = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
+    state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
+    state.usedWagers = buildUsedWagersMap(mine, state.totalQuestions, state.disqualifiedQuestions);
+  } catch (_) { /* the next sync rebuilds both */ }
+
+  renderRevealAnswers(state.currentAnswers);
+  renderDisqualifyButton();
+
+  // Mastery, re-recorded. op_undisqualify_round clears `history_recorded` for
+  // the round precisely so this can run — the exact mirror of the revoke that
+  // disqualifying performs.
+  const q = state.questions[qNum];
+  if (q?.id) recordRoundHistory(state.room.id, q.id);
+
+  if (_updateScores) await _updateScores();
+
+  await sendMessage(state.room.id, 'System',
+    `Host put Q${qNum + 1} back — its scores count again.`);
+}
+
 async function handleDisqualifyRound() {
   if (!canControlGame()) return;
   const qNum = state.currentQuestion;
@@ -843,18 +947,23 @@ async function handleDisqualifyRound() {
       if (answer.id) updates.push(updateAnswerJudgment(answer.id, false, 0));
     }
   } else if (!servedDq.ok) {
+    // AND PUT THE ROUND BACK LOCALLY. The set is marked optimistically at the
+    // top so the screen reacts at once, and it was never unmarked on a real
+    // refusal — so the button would have gone on to offer "Undo Disqualify"
+    // for a round the database never threw out, and the wagers would have read
+    // as refunded on this phone alone. Mattered less when the failure branch
+    // left a dead label; it matters now that the label is a working control.
+    state.disqualifiedQuestions.delete(qNum);
     logger.error('Game', 'the server refused to disqualify the round');
     showToast("Couldn't disqualify that round — try again", 'error');
   }
   // Re-render immediately
   renderRevealAnswers(state.currentAnswers);
 
-  // Hide the disqualify button and show confirmation
-  const dqBtn = $('#btn-disqualify-round');
-  if (dqBtn) {
-    dqBtn.textContent = 'Round Disqualified';
-    dqBtn.disabled = true;
-  }
+  // The button becomes the way back rather than a dead label. It said "Round
+  // Disqualified" and disabled itself, which was the whole of the problem: one
+  // unconfirmed tap with nothing on any screen to undo it.
+  renderDisqualifyButton();
 
   // Persist to DB (fires Realtime updates to all clients)
   await Promise.all(updates);
@@ -948,6 +1057,33 @@ function recordCurrentQuestionOutcomes() {
 }
 
 export async function handleNextQuestion() {
+  // A ROUND IS ADVANCED OUT OF EXACTLY ONCE.
+  //
+  // This function reads state.currentQuestion, adds one, and writes that. It
+  // had no re-entry guard and the button it hangs off was never disabled, so a
+  // second tap landing inside the ~500ms screen fade read the number the first
+  // tap had ALREADY INCREMENTED and announced N+2. Nobody was ever asked round
+  // N+1: no question on any screen, no answer row for anybody, and one wager
+  // left unspent for the rest of the game. Reported from a live game as
+  // "question 2 was skipped entirely", and the owner's reading of it is the
+  // right one — two people pressing Next should simply proceed normally.
+  //
+  // The latch catches a second call while the first is still writing; the
+  // round number catches one that arrives after it finished. Neither alone is
+  // enough, because the write takes a round trip and the button lives on for a
+  // fade after that.
+  if (state._advanceInFlight) return;
+  const advancingFrom = state.currentQuestion;
+  if (state._advancedFrom === advancingFrom) return;
+  state._advanceInFlight = true;
+  try {
+    await _advanceFromRound(advancingFrom);
+  } finally {
+    state._advanceInFlight = false;
+  }
+}
+
+async function _advanceFromRound(advancingFrom) {
   // Record how this question performed before moving on. Host only, so counts
   // are not multiplied by the number of devices in the room.
   recordCurrentQuestionOutcomes();
@@ -975,17 +1111,44 @@ export async function handleNextQuestion() {
     // harmless direction. Fire-and-forget: it is a tidy-up, and the round must
     // not wait on it. isStampForCurrentRound covers the case where it does not
     // land at all.
-    updateGameState(state.room.id, { question_started_at: null })
-      .catch(err => logger.warn('Game', 'Could not clear the previous round clock', err));
-    state.currentQuestion = state.currentQuestion + 1;
+    // AND IT IS WAITED FOR NOW, which is the half that was missing.
+    //
+    // Fire-and-forget made this a RACE with the phase write, and the two are
+    // separate requests with no ordering between them. Lose it and the room
+    // reads `question@N+1` while still holding round N's stamp — at which
+    // point op_advance_deadline() is already in the past, and the first phone
+    // whose backstop polls ends the round on the spot. Reported from a live
+    // game: "one of the questions only seconds in advanced us without allowing
+    // us to type answers. It just said waiting."
+    //
+    // BOUNDED, because a promise that never settles cannot be caught and this
+    // one now gates the round for the whole room. Timing out proceeds on the
+    // old behaviour rather than stalling; migration 069 makes op_set_phase
+    // clear the stamp in the same statement as the phase, which closes the
+    // window by construction and leaves this as belt and braces.
+    state.currentQuestion = advancingFrom + 1;
+    const roomWrite = (async () => {
+      await Promise.race([
+        updateGameState(state.room.id, { question_started_at: null })
+          .catch(err => logger.warn('Game', 'Could not clear the previous round clock', err)),
+        new Promise(resolve => setTimeout(resolve, CLOCK_STAMP_TIMEOUT_MS)),
+      ]);
+      if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
+                                  'question', state.currentQuestion)) {
+        await updateGameState(state.room.id, {
+          game_phase: 'question',
+          current_question: state.currentQuestion,
+          question_started_at: null
+        });
+      }
+    })();
+    // showQuestionScreen's clock stamp is the ONE thing that waits on this —
+    // op_start_clock checks the phase it is given against the room's, so
+    // stamping before the phase lands is refused however long you wait.
+    state._roomWritePending = roomWrite;
+    state._advancedFrom = advancingFrom;
     if (_handlePhaseTransition) _handlePhaseTransition('question');
-    if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
-                                'question', state.currentQuestion)) {
-      await updateGameState(state.room.id, {
-        game_phase: 'question',
-        current_question: state.currentQuestion
-      });
-    }
+    await roomWrite;
   }
 }
 

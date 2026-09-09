@@ -313,6 +313,30 @@ try {
     //
     // Sampled on every phone rather than asserted at the end: the final
     // reveal is a screen the game passes THROUGH.
+    // THE TIMER MUST STILL BE A TIMER.
+    //
+    // The reveal used to write "Time's up!" into `.timer` with textContent —
+    // and `.timer` is the WRAPPER, holding #timer-bar and #timer-text. That
+    // deleted both, permanently, the first time this phone reached a reveal
+    // without having submitted. Every later round then drew a question screen
+    // with the words "Time's up!" where its countdown should be, on a clock
+    // that could not move because there was nothing left to move.
+    // Photographed on question 13 of 15.
+    if (screen === 'question-screen') {
+      const t = await r.page.evaluate(() => {
+        const wrap = document.querySelector('#question-screen .timer');
+        return {
+          bar: !!document.getElementById('timer-bar'),
+          text: !!document.getElementById('timer-text'),
+          says: (wrap?.textContent || '').trim().slice(0, 20),
+          q: window.__state?.currentQuestion ?? -1,
+        };
+      }).catch(() => null);
+      if (t && (!t.bar || !t.text)) {
+        timerBroken.push(`${r.name} reached question ${t.q} with the timer gone from the DOM (bar:${t.bar} text:${t.text}) — it reads ${JSON.stringify(t.says)}`);
+      }
+    }
+
     if (screen === 'reveal-screen') {
       const stuck = await r.page.evaluate(() => {
         if (!window.__state?.resultsRevealed) return null;
@@ -354,6 +378,7 @@ try {
 
   const hostReviewOnFinalRound = {};
   const waitingAfterReveal = [];
+  const timerBroken = [];
   let round = 0;
   let lastQuestionSeen = -1;
   let reachedResults = false;
@@ -361,10 +386,46 @@ try {
   // second into it, which is inside a turn, and a between-turns sample misses
   // the window entirely.
   const lastStampByPhase = new Map();
+  // TWO MORE THINGS THIS SAMPLER CAN SEE, and both were reported from a live
+  // game as separate faults that turned out to share a screen.
+  //
+  //  * A ROUND NUMBER THAT JUMPS. "Next Question" reads the client's round
+  //    number and adds one, and nothing latched it or disabled the button, so
+  //    a second tap inside the screen fade announced N+2 — a round nobody was
+  //    ever asked. "Question 2 was skipped entirely."
+  //
+  //  * A ROUND THAT OPENS ON THE LAST ONE'S CLOCK. op_advance_deadline is
+  //    `question_started_at + timer + 8s`, so a stamp left over from the
+  //    previous round puts the deadline in the past and the first phone to
+  //    poll ends the round on the spot. "One of the questions only seconds in
+  //    advanced us without allowing us to type answers."
+  const skippedRounds = [];
+  const staleRoundClocks = [];
+  let sampledRound = -1;
+  let roundEnteredAt = 0;
   const clockSampler = setInterval(() => {
     const rm = table.store.table('rooms')[0];
-    if (rm?.question_started_at && rm.game_phase) {
+    if (!rm) return;
+    if (rm.question_started_at && rm.game_phase) {
       lastStampByPhase.set(rm.game_phase, rm.question_started_at);
+    }
+    if (rm.game_phase !== 'question' && rm.game_phase !== 'final_question') return;
+    const q = Number(rm.current_question);
+    if (q !== sampledRound) {
+      if (sampledRound !== -1 && q > sampledRound + 1) {
+        skippedRounds.push(`the room went from round ${sampledRound} straight to round ${q} — nobody was ever asked the ones in between`);
+      }
+      sampledRound = q;
+      roundEnteredAt = Date.now();
+    }
+    if (rm.question_started_at) {
+      // Generous, because the sampler only looks every 100ms and the store's
+      // stamps are wall-clock. A stamp seconds OLDER than the moment the round
+      // was announced can only be the previous round's.
+      const age = roundEnteredAt - new Date(rm.question_started_at).getTime();
+      if (age > 3000) {
+        staleRoundClocks.push(`round ${q} opened on a clock stamped ${Math.round(age / 1000)}s before the round was announced`);
+      }
     }
   }, 100);
   let waitedOutWagerClock = false;
@@ -580,6 +641,12 @@ try {
     // A reveal that leaves somebody on "Waiting..." is telling the room a
     // player never answered when the round is over and the answer is stored.
     for (const w of new Set(waitingAfterReveal)) problems.push(w);
+
+    note(`rounds the room actually asked: ${sampledRound + 1} of ${QUESTIONS + 1}`);
+    for (const sk of new Set(skippedRounds)) problems.push(sk);
+    for (const st of new Set(staleRoundClocks)) problems.push(st);
+    note(`timer element intact on every question screen: ${timerBroken.length === 0}`);
+    for (const t of new Set(timerBroken)) problems.push(t);
 
     note(`host review on the final round: ${JSON.stringify(hostReviewOnFinalRound)}`);
     const raters = Object.entries(hostReviewOnFinalRound).filter(([, v]) => v.row && v.up && v.down);

@@ -16,7 +16,8 @@
 > | Migrations 048–064 are applied | the owner ran each one's verification block and pasted the result; every rule read `ok`. 063 needed a follow-up REVOKE. |
 > | **Migration 066 is applied** (2026-09-06) | the owner ran its verification query and pasted `verdict: ok` — it reads `pg_proc.prosrc` for both halves of the new `ON CONFLICT` rule, so it cannot pass on a partial paste. |
 > | **065 is applied** (inferred 2026-09-07, NOT a verification report) | the owner kicked somebody in a real game and it worked: the player left the lobby, and their client then took a screenful of identical toasts, which is the shape of `room_bans` refusing every re-seat with 42501. `kickPlayer` has no fallback, so with 065 unapplied nothing would have been removed at all. Strong, and one notch weaker than a pasted `ok`. |
-> | **067 and 068 are NOT applied.** Written 2026-09-07, verified against a real Postgres, break-tested both ways — and the owner has not run them. Until they do: an abandoned room holding only a bot is listed for ever, and a round everybody got wrong still refunds its wager. |
+> | **067 and 068: the owner says they ran them** (2026-09-09, "just ran the sql now"). **NO VERIFICATION ROWS WERE PASTED**, so this is one notch weaker than every other applied migration in this table — a paste that stopped halfway would look identical from here. Ask for the rows before relying on either. |
+> | **069 and 070 are NOT applied.** Written 2026-09-09, verified against a real Postgres, break-tested both ways. 069 stops a round opening on the previous round's clock and stops a double-press skipping a question; 070 is what makes "Undo Disqualify" work at all — until it is run the button hides itself and a mis-tap is still permanent. |
 > | The live database has every function and table the app needs | the CI probe on commit `18d199f`. **That tick only started meaning something on 2026-08-30** — before that the probe printed its alarm and still exited 0. |
 > | All 12 subjects have title slots (36 subject-level, 45 topics, 26 clearing the size floor) | computed from `title-tiers.js` and `CATEGORY_META` |
 > | 664 unit tests and 12 robot scenarios pass | run locally, and in CI on every push |
@@ -46,11 +47,12 @@
 > 2. **Add ~a dozen questions each to History's Ancient (58) and Medieval (52)**
 >    so they clear the 60-question floor and can carry words of their own.
 > 3. **Play a real game** and report what breaks.
-> 4. **Run migrations 067 and 068** in the Supabase SQL editor and paste back the
->    verification rows. 068 is the one a player can feel — it is the fix for "it
->    only said he bet 1, which he had already used". The JavaScript for both is
->    safe to deploy before the SQL, as always here, and behaves as it did before
->    until they are run.
+> 4. **Run migrations 069 and 070** in the Supabase SQL editor and paste back the
+>    verification rows. 069 closes the round-clock and skipped-round faults at
+>    the source rather than in the client; 070 is the whole of Undo Disqualify.
+>    The JavaScript for both is safe to deploy before the SQL, as always here.
+> 5. **Paste back the verification rows for 067 and 068** — they were run on
+>    2026-09-09 and nothing here has seen the result.
 >
 > ### The three faults reported in the last playtest, and their status
 >
@@ -738,6 +740,226 @@
 > **When one variable answers two questions, find the caller that needs opposite
 > answers to them.** That caller will have resolved it with an ordering, and the
 > ordering will be right for one question and silently wrong for the other.
+
+> ## 2026-09-09 (third playtest) — the timer that was deleted, and the round that ended before it began
+>
+> **Nine things reported after one game, two of them photographed.** Three are
+> one family — the round's clock — and the photograph of question 13 turned out
+> to be the plainest bug in this file: a line that deleted the timer out of the
+> DOM and never put it back.
+>
+> ### "The timer was not working and said timer is up"
+>
+> Photographed on **question 13 of 15**: the words "Time's up!" standing at the
+> top of a fresh question screen, above an empty answer box and a full wager
+> grid. One line, in the `reveal` branch of `handlePhaseTransition`:
+>
+> ```js
+> const timerEl = document.querySelector('.timer');
+> if (timerEl) { timerEl.textContent = "Time's up!"; ... }
+> ```
+>
+> **`.timer` IS THE WRAPPER.** It holds `#timer-bar` and `#timer-text`, and
+> `textContent` on a parent deletes its children. So the first time this phone
+> reached a reveal without having submitted, both were destroyed — permanently,
+> because nothing anywhere recreates them. `updateTimerDisplay` looks them up by
+> id, finds null, and quietly does nothing, so **every later round drew a
+> question screen with no countdown at all** and the leftover words where it
+> should have been.
+>
+> The stylesheet has always said what was meant: `.timer--expired .timer__text`
+> exists and colours the NUMBER red. Only the text was ever supposed to change.
+> `showTimerExpired()` in `question.js` does that, and `showQuestionScreen`
+> clears it for a new round — nothing else did, and the sync buffer means the
+> first real paint is a second away.
+>
+> **`scenario-fullgame` could not see it and still cannot.** Everybody there
+> submits, so nobody takes the branch. The check that fails is in
+> `scenario-nasty`, which is the only place in the repo that deliberately closes
+> a round under somebody who has not answered: it then moves the room to the
+> next question and requires the timer to still be a timer. Verified by putting
+> the old line back.
+>
+> ### "Only seconds in it advanced us without allowing us to type"
+>
+> Photographed: the reveal screen on question 9 of 15 with every human reading
+> "Waiting…". `op_advance_deadline` (056) is
+> `question_started_at + question_timer + 8s`, so **a room that announces round
+> N+1 while still holding round N's stamp has a deadline already in the past**,
+> and the first phone whose backstop polls ends the round on the spot.
+>
+> Two roads to that state, and both are closed:
+>
+> - **The clock clear was FIRE-AND-FORGET and raced the phase write.**
+>   `handleNextQuestion` issued `question_started_at: null` and then wrote the
+>   phase, on two separate requests with no ordering between them. It is awaited
+>   now (bounded, and hung off `state._roomWritePending` so the host's own stamp
+>   still waits for it), and **migration 069 makes `op_set_phase` clear the stamp
+>   in the same statement as the phase**, which closes the window rather than
+>   narrowing it. Only on entry to a DIFFERENT round — re-announcing the round
+>   the room is on must not wipe a clock that is legitimately running.
+> - **`syncToCurrentState` adopted the room's stamp unconditionally** and then
+>   set `state.gamePhase = 'loading'` so the phase router would KEEP it. On a
+>   stale value that is catastrophic: `showQuestionScreen` reads a non-null stamp
+>   as a reconnect, starts the timer at once, and an expired clock fires inside
+>   half a second — on the host, that writes `reveal` for the whole room.
+>   `shouldAdoptRoomClock` in `timer-helpers.js` refuses a stamp that has already
+>   run out **while the room is still asking a question**, which is a
+>   contradiction rather than a guess: if the round were really over the room
+>   would not still be on it.
+>
+> ### "Question 2 was skipped entirely" — and it needs only one person
+>
+> The owner's reading was the right one: *"I'm confused why two people pressing
+> next at the same time would skip a question? Shouldn't it just proceed
+> normally? So that's a bug right?"* Yes.
+>
+> `handleNextQuestion` reads `state.currentQuestion`, adds one, and writes that.
+> **Nothing latched the function and nothing disabled the button**, and the
+> scores screen stays up for the ~500ms screen fade — so a second tap read the
+> number the first tap had ALREADY INCREMENTED and announced **N+2**. No
+> question on any screen, no answer row for anybody, and one wager left unspent
+> for the rest of the game. Two people are not required; a double-tap does it.
+>
+> Three guards, because they catch different things:
+>
+> | | |
+> |---|---|
+> | `state._advanceInFlight` | a second call while the first is still writing |
+> | `state._advancedFrom` | a later one, after it finished |
+> | migration 069 | `op_set_phase` refuses a question number more than one past the room's — the case neither client guard can see, two different phones |
+>
+> The button also disables itself on press and comes back in a `finally`, which
+> is the half a person can see. **A control that stays dead is worse than one
+> that is slow**, and the screen has moved on by the time it is restored.
+>
+> **THE CO-HOST KEEPS ITS POWERS**, on the owner's decision. The fix is that
+> advancing twice is impossible, not that fewer people may advance.
+>
+> ### "Room scores were not updated"
+>
+> Two faults, and the second is the one that made the first invisible.
+>
+> - **`addRoomScores` was a bare `.update()` whose result was thrown away**, so a
+>   refusal, a vanished room and a successful write were the same silence. #4 in
+>   the one place a group's running tally lives. It `.select()`s now and says so
+>   in the log when it wrote nothing.
+> - **It sat below four awaits that can each throw** — `archiveChatMessages`,
+>   `fetchAllAnswers` and two more inside the signed-in branch — so any one of
+>   them failing took the tally with it, having already drawn the results. It
+>   runs directly after `updateScores()` now: the first moment the numbers exist
+>   and the last moment nothing can have gone wrong.
+>
+> **And a room with NO HOST AT ALL wrote nothing and said nothing.** The write is
+> host-gated so a shared total is not multiplied by the number of phones — but a
+> host can be swept mid-game without the crown moving, and then nobody wrote it.
+> The earliest-joined present human is the fallback: a rule every phone computes
+> the same way from the same list, so exactly one takes it. Two phones can only
+> both write if they disagree about whether a host exists, and a doubled line is
+> the right way round from a tally that silently never appears.
+>
+> ### "Couldn't be promoted to host"
+>
+> **A regression from the previous session's own fix.** `handlePlayerChange` used
+> to end in `ensureCurrentPlayer()`, which read the role off the row; replacing
+> that with `checkSeatStillMine()` left the Realtime UPDATE handler as the ONLY
+> thing that could notice a promotion. A dropped frame, a backgrounded tab or a
+> channel mid-resubscribe — all of which this file has a section about — and the
+> 8-second poll drew the new crown on somebody's row while leaving the person it
+> belonged to reading as an ordinary player.
+>
+> `syncRoleFromRow` is the one rule now, and both the poll and the Realtime
+> handler go through it. **The same gap existed one page along**:
+> `checkStalePresence` in `phases.js` re-fetches every player every 30 seconds
+> and never looked at its own row either. It does now.
+>
+> ### The kick notice said the wrong thing
+>
+> *"I thought I saw the eject notification but when I clicked rejoin it said I
+> was kicked."* An eject, a kick and a stale sweep all look identical from
+> outside — a seat that is gone — and only the middle one is permanent. The
+> notice guessed the recoverable one and offered Rejoin to everybody.
+>
+> Guessing was never necessary: `op_is_banned` is callable by clients for exactly
+> this, and `addPlayer` has asked it on a refusal since 065. The notice asks the
+> same question one step earlier, before anything reaches the screen, bounded by
+> `REMOVAL_REASON_TIMEOUT_MS`. **A timeout lands on the recoverable wording**,
+> whose Rejoin is refused with an honest message anyway.
+>
+> ### A long URL made the whole chat draggable sideways
+>
+> A URL has no spaces, so its min-content width is the whole string — and
+> `.chat-bubble__text` is `flex: 1` with the default `min-width: auto`, which
+> cannot go below that. The pane has `overflow-y: auto`, and per CSS that
+> computes `overflow-x: auto` too, so the overflow became a horizontal scroll.
+>
+> `overflow-wrap: anywhere` is the one that fixes the SIZING as well as the
+> painting: unlike `break-word` it lowers the element's min-content width, so the
+> flex item can shrink and there is nothing left to scroll to.
+>
+> **THE FIRST BREAK TEST PASSED AND THE MOCK WAS THE PROBLEM.** The URL I seeded
+> had hyphens and slashes in it, and Chromium breaks a URL at both — so it
+> wrapped by itself and the check agreed with me whatever the CSS said. With one
+> unbroken run of letters and digits, reverting the rule reports it exactly as
+> the owner described it: `SCROLLS-X div.lobby-chat__messages scrollW=564
+> clientW=327 overflow-x=auto`.
+>
+> ### A disqualification can be undone (migration 070)
+>
+> Asked for: *"need to be able to un disqualify round if done by accident."*
+> Disqualifying is one unconfirmed tap, it sets every answer in the round to
+> wrong and worth nothing, and there was no way back from it on any screen — the
+> button read "Round Disqualified" and disabled itself.
+>
+> **It is possible only because 049 refused to touch `auto_correct`.** That
+> column holds the machine's verdict at submit time, kept so the gap between it
+> and `is_correct` can be read as `times_overridden`; it is also the only copy of
+> the original verdict that survives a disqualification. The score is recomputed
+> from the wager by op_set_judgement's own rule rather than remembered, because a
+> stored "score before" would be a second copy of that rule.
+>
+> **WHAT IT DOES NOT RESTORE, said plainly:** a host override made BEFORE the
+> disqualification. That verdict was overwritten and only the machine's survived,
+> so undoing puts the machine's back and the host flips it again from the same
+> screen. Storing a third copy of the verdict to cover one rare sequence would be
+> wrong every other time an answer is edited.
+>
+> `history_recorded` is cleared by the same statement, which is the exact mirror
+> of the revoke that disqualifying performs — without it the marker would still
+> read "already counted" and the attempt would stay revoked for ever.
+>
+> ### NOT BUILT: a favourite-answer vote
+>
+> Raised in the same message and explicitly as a discussion first: *"was
+> wondering if there should be an optional Favorite answer vote? But this would
+> have to be thought thru well with discussion first."* Nothing was built. The
+> thing worth deciding before anything is: a vote on somebody's typed answer is
+> the first mechanic in this game that is about a PERSON rather than a question,
+> and every other tally here (`question_stats`, `answer_tally`, host ratings) is
+> deliberately about the material or the role.
+>
+> ### The lobby flake is still there, at the same rate
+>
+> `scenario-lobby`'s quick leave-and-rejoin failed once in five runs this
+> session — `{"url":"/join.html","screen":"join-screen","stored":null}`, the
+> same words and the same place as the baseline measured on 2026-09-07 (one
+> failure in four runs, with and without that session's changes). Four passes
+> either side of it. **Recorded rather than re-diagnosed**: it is not new, it is
+> not caused by anything here, and the diagnostic that prints the page's real
+> state is what makes it possible to say so in one line instead of an evening.
+>
+> ### The habit
+>
+> **A method that writes to a parent writes over its children.**
+> `textContent` on a wrapper is a delete, and the deleted thing was the one
+> element the next fifteen minutes of the game depended on. Nothing threw,
+> nothing logged, and every check in the repo went on passing — because the only
+> place that branch runs is a phone that did not answer, and every robot answers.
+>
+> **AND A `git checkout` OF A FILE MID-SESSION IS NOT A REVERT OF ONE CHANGE.**
+> Restoring `js/game/reveal.js` to HEAD to undo a break test threw away every
+> other edit in it. Break tests belong on a copy (`cp file /tmp/file.bak`), which
+> is what the rest of this session used.
 
 > ## 2026-09-07 (second playtest) — the split host, and a seat nobody admitted was gone
 >

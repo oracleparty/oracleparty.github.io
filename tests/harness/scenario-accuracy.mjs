@@ -362,6 +362,70 @@ try {
         problems.push(`${name} was still charged ${row.times_seen} attempt(s) for a disqualified round — a round the host threw out is dragging their accuracy down`);
       }
     }
+
+    // ----------------------------------------------------------
+    // 2b. AND IT CAN BE PUT BACK (migration 070).
+    //
+    // Asked for by the owner: "need to be able to un disqualify round if done
+    // by accident." Disqualifying is one unconfirmed tap and it was the only
+    // thing a host could do to a round with no way out of it.
+    //
+    // The button IS the way back now — it used to read "Round Disqualified"
+    // and disable itself, so the check is that it offers something and that
+    // pressing it actually restores the stored rows, not just the label.
+    // ----------------------------------------------------------
+    heading('and the host can put the round back');
+    const undoLabel = await host.page.locator('#btn-disqualify-round')
+      .textContent().catch(() => '');
+    note(`the disqualify button now reads: ${JSON.stringify((undoLabel || '').trim())}`);
+    const dqRowsBefore = table.store.table('answers')
+      .filter(a => a.question_number === 0 && a.disqualified).length;
+    if (dqRowsBefore === 0) {
+      problems.push('nothing in the room was marked disqualified, so the undo below proves nothing');
+    }
+    const undoOffered = await host.page.locator('#btn-disqualify-round:not([disabled])')
+      .isVisible().catch(() => false);
+    if (!undoOffered) {
+      problems.push('after disqualifying a round the host was offered no way to undo it');
+    } else {
+      await host.page.click('#btn-disqualify-round');
+      await host.page.waitForTimeout(2000);
+      const still = table.store.table('answers')
+        .filter(a => a.question_number === 0 && a.disqualified);
+      if (still.length) {
+        problems.push(`the host pressed Undo Disqualify and ${still.length} answer(s) are still thrown out`);
+      }
+      // THE VERDICT AND THE POINTS, NOT ONLY THE FLAG. Clearing the flag alone
+      // would leave every answer in the round reading wrong and worth nothing,
+      // which is the half a player actually feels.
+      const restored = table.store.table('answers')
+        .filter(a => a.question_number === 0 && a.auto_correct);
+      const notRestored = restored.filter(a => !a.is_correct || (a.score_earned || 0) <= 0);
+      note(`answers the machine judged correct in that round: ${restored.length}, still unpaid after the undo: ${notRestored.length}`);
+      if (restored.length === 0) {
+        problems.push('nobody in that round was judged correct by the machine, so the restore proves nothing');
+      } else if (notRestored.length) {
+        problems.push(`${notRestored.length} correct answer(s) came back from the undo still marked wrong or worth nothing`);
+      }
+
+      // AND THROW IT BACK OUT, because the section after this one asserts that
+      // a disqualified round is never recorded in question_stats — a premise
+      // the undo has just removed. Pressing it a second time also establishes
+      // that the control really does toggle rather than being a one-way trip.
+      const backOut = await host.page.locator('#btn-disqualify-round')
+        .textContent().catch(() => '');
+      if ((backOut || '').trim() !== 'Disqualify Round') {
+        problems.push(`after undoing, the button reads ${JSON.stringify((backOut || '').trim())} instead of offering to disqualify again`);
+      }
+      await host.page.click('#btn-disqualify-round');
+      await host.page.waitForTimeout(1500);
+      const outAgain = table.store.table('answers')
+        .filter(a => a.question_number === 0 && a.disqualified).length;
+      note(`answers thrown out again after a second press: ${outAgain}`);
+      if (outAgain === 0) {
+        problems.push('the round could not be disqualified again after being put back');
+      }
+    }
   }
 
   // ------------------------------------------------------------

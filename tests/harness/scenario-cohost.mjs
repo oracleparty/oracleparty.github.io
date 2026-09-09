@@ -98,8 +98,24 @@ try {
   // ============================================================
   heading('promoting a co-host');
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
+  // THE ROLE MUST FOLLOW THE ROW EVEN WHEN THE REALTIME EVENT NEVER ARRIVES.
+  //
+  // Reported from a live game: "couldn't be promoted to host." The Realtime
+  // player-UPDATE handler was the ONLY thing reading the role off the row once
+  // handlePlayerChange stopped ending in ensureCurrentPlayer(), so a dropped
+  // frame, a backgrounded tab or a channel mid-resubscribe — all of which this
+  // file has a section about — left the 8-second poll drawing the new crown on
+  // somebody's row in the list while the person it belonged to went on reading
+  // as an ordinary player.
+  //
+  // dropEvents swallows the UPDATE, which is exactly what a dropped frame does
+  // and is deterministic where waiting for a real one is not. Everything below
+  // then has to be recovered by the poll alone.
+  table.store.dropEvents('players', 1);
   // THE CONTROL LIVES IN THE PLAYER'S CARD NOW, not on the row.
   const promoted = await pressPlayerCardAction(host.page, bobId, /^Co-host$/i);
+  // Long enough for one lobby poll (LOBBY_POLL_INTERVAL) to come round.
+  await bob.page.waitForTimeout(11000);
   note(`Bob's card offers: ${JSON.stringify(promoted.labels)}`);
   if (!promoted.pressed) {
     problems.push(`the host is not offered "Make co-host" on another player's card (offers: ${JSON.stringify(promoted.labels)})`);
@@ -313,6 +329,59 @@ try {
     }
     await host.page.waitForSelector(`[data-profile-player-id="${carolBack}"]`, { timeout: 10000 })
       .catch(() => problems.push('the host never saw the ejected player come back into the lobby'));
+
+    // ---- AND A KICKED PLAYER IS TOLD SOMETHING DIFFERENT ------------------
+    //
+    // Reported from a live game: "I thought I saw the eject notification but
+    // when I clicked rejoin it said I was kicked." A vanished seat looks the
+    // same for an eject, a kick and a stale sweep, so the notice guessed the
+    // recoverable one and offered Rejoin to everybody — and only the tap told
+    // the truth. It asks op_is_banned now, before anything reaches the screen.
+    //
+    // SET, NOT PRESSED. The state a kicked player is in is "seat gone AND auth
+    // id banned", and driving it directly is deterministic where racing the
+    // host's confirm dialog is not — and it leaves Carol's browser usable,
+    // which pressing Kick would not: a kick bans her for the life of the room
+    // and every later section here needs her.
+    {
+      const roomId = table.store.table('rooms')[0].id;
+      const carolUid = table.store.table('players')
+        .find(p => String(p.id) === String(carolBack))?.user_id || null;
+      table.store._bans = table.store._bans || new Set();
+      table.store._bans.add(`${roomId}::${carolUid}`);
+      const seats = table.store.table('players');
+      const idx = seats.findIndex(p => String(p.id) === String(carolBack));
+      if (idx !== -1) seats.splice(idx, 1);
+
+      const notice = await carol.page.waitForSelector('#removed-modal.active', { timeout: 15000 })
+        .then(() => carol.page.evaluate(() => ({
+          title: (document.getElementById('removed-title')?.textContent || '').trim(),
+          body: (document.getElementById('removed-body')?.textContent || '').trim(),
+          rejoin: !document.getElementById('removed-rejoin')?.classList.contains('hidden'),
+        })))
+        .catch(() => null);
+      note(`what a KICKED player is told: ${JSON.stringify(notice)}`);
+      if (!notice) {
+        problems.push('a kicked player was never told anything at all');
+      } else {
+        if (!/kick/i.test(notice.body)) {
+          problems.push(`a kicked player was shown the EJECT wording (${JSON.stringify(notice.body)}) — they only find out it is permanent by tapping Rejoin and being refused`);
+        }
+        if (notice.rejoin) {
+          problems.push('a kicked player was offered a Rejoin button that cannot work');
+        }
+      }
+
+      // Put her back so the rest of this file has a third player. The ban's own
+      // behaviour is checked below on a seat with no browser behind it.
+      table.store._bans.delete(`${roomId}::${carolUid}`);
+      await carol.page.locator('#removed-rejoin').click().catch(() => {});
+      await carol.page.evaluate(() => {
+        const m = document.getElementById('removed-modal');
+        if (m) m.classList.remove('active');
+      }).catch(() => {});
+      await carol.page.waitForTimeout(2500);
+    }
 
     // ---- KICK, on a seat with no browser behind it ------------------------
     //

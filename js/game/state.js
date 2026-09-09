@@ -65,6 +65,22 @@ export const state = {
   // host's clock stamp waits on it — see showQuestionScreen. Null at every
   // other moment.
   _roomWritePending: null,
+  // WHICH ROUND HAS ALREADY BEEN ADVANCED OUT OF, and whether an advance is
+  // in flight right now.
+  //
+  // "Next Question" reads state.currentQuestion, adds one, and writes that.
+  // Nothing disabled the button and nothing latched the function, so a second
+  // tap arriving before the screen finished fading read the ALREADY INCREMENTED
+  // number and wrote N+2 — a round nobody was ever asked, with no answer row
+  // for anybody in it. Reported from a live game as "question 2 was skipped
+  // entirely", and reachable by one person double-tapping as easily as by a
+  // host and a co-host pressing together.
+  //
+  // Two guards because they catch different things: the latch stops a second
+  // call while the first is still writing, and _advancedFrom stops a later one
+  // that arrives after it finished. Reset when a game starts at question 0.
+  _advanceInFlight: false,
+  _advancedFrom: null,
   finalWager: 20, // Default to highest — punishes indecision on final round
   finalWagerLocked: false,
   // Did the player actually TAP a wager, as opposed to inheriting the default

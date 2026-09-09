@@ -21,14 +21,14 @@ export {
 
 // --- Players & Answers ---
 export {
-  addPlayer, claimSeat, addBot, promoteToHost, demoteHost, promoteToCohost, demoteCohost,
+  addPlayer, claimSeat, addBot, isBannedFromRoom, promoteToHost, demoteHost, promoteToCohost, demoteCohost,
   removePlayer, kickPlayer, removePlayerBeacon, markDisconnectedBeacon, playerHeartbeat,
   fetchPlayers, toggleReady,
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
   fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers, botAnswerOnServer,
   submitAnswerViaServer, fillBlankAnswersViaServer,
-  setJudgementOnServer, disqualifyRoundOnServer,
+  setJudgementOnServer, disqualifyRoundOnServer, undisqualifyRoundOnServer,
   deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
 } from './db/players.js';
 

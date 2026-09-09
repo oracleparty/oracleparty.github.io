@@ -40,7 +40,7 @@ import {
 } from './state.js';
 import { showChatBar, hideChatBar } from './chat.js';
 import { initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear } from './host.js';
-import { showQuestionScreen, doSubmitAnswer, startTimer } from './question.js';
+import { showQuestionScreen, doSubmitAnswer, startTimer, showTimerExpired } from './question.js';
 import {
   showRevealScreen, renderRevealAnswers, enableRevealButton,
   updateRevealButtonText, handleJudgmentOverride, doReveal,
@@ -606,6 +606,10 @@ export async function handlePhaseTransition(phase) {
       setLastScoresRendered(-1);
       state._gamePlayCompleted = false;
       state._cumulativeScoresWritten = false;
+      // A new game replays round 0, so last game's "already advanced out of
+      // round 0" must not refuse the first Next Question of this one.
+      state._advancedFrom = null;
+      state._advanceInFlight = false;
       state.usedWagers = new Map();
       state.disqualifiedQuestions = new Set();
       // Track game play start
@@ -678,8 +682,10 @@ export async function handlePhaseTransition(phase) {
         // BUG 2 FIX: Show "Time's up!" feedback so the player knows why their answer
         // was auto-submitted. Without this, the screen just jumps to reveal with no
         // explanation, making it feel like the game "skipped".
-        const timerEl = document.querySelector('.timer');
-        if (timerEl) { timerEl.textContent = "Time's up!"; timerEl.classList.add('timer--expired'); }
+        // showTimerExpired, NOT `.timer`.textContent — that wiped #timer-bar
+        // and #timer-text out of the DOM for the rest of the game. See
+        // showTimerExpired in question.js.
+        showTimerExpired();
         const currentAnswer = ($('#answer-input')?.value || '').trim();
         await doSubmitAnswer(currentAnswer, { autoSubmit: true, thenShowReveal: false });
       }
@@ -1218,6 +1224,18 @@ export async function checkStalePresence() {
   const freshPlayers = await fetchPlayers(state.room.id);
   if (freshPlayers.length > 0) {
     state.players = freshPlayers;
+    // AND THE ROLE FOLLOWS THE ROW HERE TOO. The Realtime player-UPDATE handler
+    // is the only other place that reads it, and a promotion or demotion whose
+    // event went missing had nothing else to pick it up — the same gap the
+    // lobby had, one page along. syncHostControls does not re-render anything
+    // by itself, so this is a state correction rather than a redraw.
+    const myRow = freshPlayers.find(p => String(p.id) === String(state.room.playerId));
+    if (myRow) {
+      const wasHost = !!state.room.isHost;
+      state.room.isHost = !!myRow.is_host;
+      state.room.isCohost = !!myRow.is_cohost;
+      if (!wasHost && state.room.isHost) _activateHostControlsForCurrentPhase();
+    }
   }
   // While the host is merely ABSENT, deputise rather than replace. Taking the
   // role from someone who glanced at a notification means they return to find

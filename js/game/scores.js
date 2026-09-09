@@ -373,7 +373,30 @@ function showNextButtonOnScores() {
     actionFn = _handleNextQuestion;
   }
 
-  btn.onclick = () => { clearAutoProceed(); actionFn(); };
+  // THE PRESS IS VISIBLY SPENT, and this is the half of the round-skip fix a
+  // person can see. The button stayed live through the ~500ms screen fade, so
+  // a second tap ran the handler again — and "Next Question" reads the round
+  // number the first tap had already raised. Latched in the handler too;
+  // neither guard alone covers both a fast double-tap and a late one.
+  //
+  // TRY/FINALLY, because a control that stays dead is worse than one that is
+  // slow — the screen has moved on by the time this restores it, so putting it
+  // back is invisible unless the action failed, which is exactly when it must
+  // come back.
+  btn.onclick = async () => {
+    clearAutoProceed();
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    try {
+      await actionFn();
+    } catch (err) {
+      logger.error('Game', 'advancing the game failed', err);
+      showToast("Couldn't move the game on — check your connection", 'error');
+    } finally {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    }
+  };
   btn.disabled = false;
   btn.style.opacity = '1';
   btn.classList.remove('hidden');
@@ -1304,6 +1327,61 @@ async function openScoreEditQuestion(questionNumber) {
 // (Dead difficulty vote code removed — vote is now inline on final wager screen)
 
 
+/**
+ * The room's running tally, added to once per game.
+ *
+ * IT USED TO SIT BELOW FOUR AWAITS THAT CAN EACH THROW — archiveChatMessages,
+ * fetchAllAnswers and two more inside the signed-in branch — so any one of them
+ * failing took the tally with it, silently, having already drawn the results.
+ * Reported from a live game: "after we finished the round the room scores were
+ * not updated." It runs directly after updateScores() now, which is the first
+ * moment the numbers exist and the last moment nothing can have gone wrong.
+ *
+ * ONE WRITER, and normally the host: every device computes the same scores from
+ * the same answers, so letting all of them add to a shared total would multiply
+ * it by the number of phones in the room.
+ *
+ * THE FALLBACK IS FOR A ROOM WITH NO HOST AT ALL, not for a host who is merely
+ * slow. A host can be swept mid-game and the crown does not always move — and
+ * with nobody flagged, host-only meant NOBODY wrote the tally and nothing said
+ * so. The earliest-joined human present is a rule every phone computes the same
+ * way from the same list, so exactly one of them takes it. Two phones can only
+ * both write if they disagree about whether a host exists, and the cost of that
+ * is a doubled line rather than a broken game — which is the right way round
+ * from a tally that silently never appears.
+ *
+ * Keyed on display name, not player id: a player row is deleted when someone
+ * leaves and recreated when they return, so the id is not stable across the
+ * very event this is meant to survive, and guests have no account to key on.
+ */
+function writeRoomScores() {
+  if (state._cumulativeScoresWritten) return;
+  const roomHasHost = state.players.some(p => p.is_host);
+  const iAmCaretaker = !roomHasHost && (() => {
+    const humans = getHumans(state.players).filter(p => !isPlayerAway(p.id));
+    const pool = humans.length ? humans : getHumans(state.players);
+    const first = [...pool].sort((a, b) =>
+      String(a.joined_at || '').localeCompare(String(b.joined_at || ''))
+      || String(a.id).localeCompare(String(b.id)))[0];
+    return first && String(first.id) === String(state.room.playerId);
+  })();
+  if (!state.room.isHost && !iAmCaretaker) return;
+
+  state._cumulativeScoresWritten = true;
+  const earned = {};
+  for (const p of state.players) earned[p.display_name] = state.scores[p.id] || 0;
+  addRoomScores(state.room.id, earned)
+    .then(res => {
+      if (res?.error) {
+        // Not a toast: the game is over, the scoreboard on screen is right, and
+        // this is a lobby convenience. It must be findable in a log, which it
+        // was not — the write reported nothing at all before.
+        logger.warn('Game', 'the room tally was not updated', res.error);
+      }
+    })
+    .catch(err => logger.warn('Game', 'Could not save room scores', err));
+}
+
 export async function showResultsScreen() {
   if (state.timerId) {
     clearInterval(state.timerId);
@@ -1318,6 +1396,8 @@ export async function showResultsScreen() {
   if (_placeHostReview) _placeHostReview('results-host-review-slot');
 
   await updateScores();
+
+  writeRoomScores();
 
   // Mark game play as completed (fire-and-forget, guard against re-entry)
   if (!state._gamePlayCompleted) {
@@ -1389,24 +1469,6 @@ export async function showResultsScreen() {
         }
       }).catch(err => logger.warn('Titles', 'Evaluation failed', err));
     }
-  }
-
-  // Room session cumulative scores (for the lobby leaderboard).
-  //
-  // HOST ONLY, and once per game. Every device computes the same scores from
-  // the same answers, so letting all of them add to a shared total would
-  // multiply it by the number of phones in the room. The re-render guard stays
-  // because showResultsScreen is re-entered on Realtime events.
-  //
-  // Keyed on display name, not player id: a player row is deleted when someone
-  // leaves and recreated when they return, so the id is not stable across the
-  // very event this is meant to survive, and guests have no account to key on.
-  if (!state._cumulativeScoresWritten && state.room.isHost) {
-    state._cumulativeScoresWritten = true;
-    const earned = {};
-    for (const p of state.players) earned[p.display_name] = state.scores[p.id] || 0;
-    addRoomScores(state.room.id, earned)
-      .catch(err => logger.warn('Game', 'Could not save room scores', err));
   }
 
   $('#results-category').textContent = getCategoryLabel();

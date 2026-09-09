@@ -276,3 +276,13 @@ export const DIFFICULTY_UPSET_CHANCE = 0.05;
 export const PULL_REFRESH_THRESHOLD = 60;
 export const MASTERY_TREE_BASE_INDENT = 12;
 export const MASTERY_TREE_DEPTH_INDENT = 16;
+
+// HOW LONG THE LOBBY WAITS TO FIND OUT WHY A SEAT VANISHED.
+//
+// An eject, a kick and a stale sweep all look identical from the outside, and
+// only a kick cannot be undone by walking back in. op_is_banned answers that,
+// and the removal notice waits for it before choosing its words — but a notice
+// telling somebody they are out of the room is not allowed to wait on the
+// network indefinitely, so this bounds it. Timing out lands on the recoverable
+// wording, whose Rejoin is refused with an honest message anyway.
+export const REMOVAL_REASON_TIMEOUT_MS = 3000;

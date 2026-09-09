@@ -7,7 +7,8 @@ import { $, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithF
 import { logger } from './logger.js';
 import { presenceNeedsRebuild } from './presence-health.js';
 import { STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, HEARTBEAT_DB_INTERVAL_MS, LOBBY_PLAYER_DEBOUNCE_MS, HOST_WAIT_TIMEOUT_MS, CHAT_FLASH_MS, CHAT_MSG_DELAY_MS,
-         BOT_DISPLAY_NAME, BOT_AVATAR_COLOR, BOT_AVATAR_EMOJI, MAX_BOTS_PER_ROOM, AWAY_GRACE_MS } from './constants.js';
+         BOT_DISPLAY_NAME, BOT_AVATAR_COLOR, BOT_AVATAR_EMOJI, MAX_BOTS_PER_ROOM, AWAY_GRACE_MS,
+         REMOVAL_REASON_TIMEOUT_MS } from './constants.js';
 import {
   addPlayer,
   claimSeat,
@@ -30,6 +31,7 @@ import {
   demoteHost,
   promoteToCohost,
   kickPlayer,
+  isBannedFromRoom,
   demoteCohost,
   toggleReady,
   updateRoomStatus,
@@ -973,23 +975,12 @@ async function handlePlayerChange(payload) {
         players.push(payload.new);
         sortPlayers();
       }
-      // Detect host/cohost changes for this player
+      // Detect host/cohost changes for this player. ONE RULE, and the 8-second
+      // poll consults it too — see syncRoleFromRow. Stated in two places, it
+      // was followed in one, and a promotion whose Realtime event went missing
+      // had nothing else that could pick it up.
       if (String(payload.new.id) === String(room.playerId)) {
-        if (payload.new.is_host && !room.isHost) {
-          setHostRole(true, { cohost: false });
-          addSystemMessage('You are now the host');
-        } else if (!payload.new.is_host && room.isHost) {
-          setHostRole(false);
-        }
-        // Co-host status changes
-        if (payload.new.is_cohost && !room.isCohost) {
-          room.isCohost = true;
-          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-          addSystemMessage('You are now co-host');
-        } else if (!payload.new.is_cohost && room.isCohost) {
-          room.isCohost = false;
-          sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-        }
+        syncRoleFromRow(payload.new);
       }
       renderPlayers();
     } else if (event === 'DELETE' && payload.old) {
@@ -1420,8 +1411,21 @@ let _removedFromRoom = false;
  * So a deleted seat now ENDS the session in this room and says so. Coming back
  * is one deliberate tap, which is exactly what "they can rejoin" means for an
  * eject and is refused outright for a kick.
+ *
+ * `banned` MAY BE true, false, OR NULL MEANING "ASK BEFORE SAYING ANYTHING".
+ *
+ * The seat vanishing looks the same for an eject, a kick and a stale sweep, and
+ * only the middle one is permanent — so this used to guess the recoverable one
+ * and offer Rejoin to everybody. A kicked player was told they could come back,
+ * tapped, and only then learned they could not. Reported: "I thought I saw the
+ * eject notification but when I clicked rejoin it said I was kicked."
+ *
+ * The latch is taken FIRST, before the round trip, so nothing else can put a
+ * second notice up while the answer is on its way; the ask is bounded, and a
+ * timeout lands on the recoverable wording, whose Rejoin is refused with an
+ * honest message anyway.
  */
-function showRemovedNotice({ banned = false } = {}) {
+async function showRemovedNotice({ banned = false } = {}) {
   if (_removedFromRoom) return;
   _removedFromRoom = true;
   isReady = false;
@@ -1430,6 +1434,13 @@ function showRemovedNotice({ banned = false } = {}) {
   const body = $('#removed-body');
   const rejoin = $('#removed-rejoin');
   if (!modal) return;
+  if (banned === null) {
+    const uid = getAuthUserId();
+    banned = uid ? await Promise.race([
+      isBannedFromRoom(room.id, uid).catch(() => false),
+      new Promise(resolve => setTimeout(() => resolve(false), REMOVAL_REASON_TIMEOUT_MS)),
+    ]) : false;
+  }
   if (banned) {
     title.textContent = 'You were removed from this room';
     body.textContent = 'The host kicked you out, so you cannot rejoin this room.';
@@ -1460,9 +1471,42 @@ function hideRemovedNotice() {
  */
 function checkSeatStillMine() {
   if (_removedFromRoom || isLeaving) return;
-  const mine = players.some(p => String(p.id) === String(room.playerId));
-  if (mine) { _seatSeen = true; return; }
-  if (_seatSeen) showRemovedNotice();
+  const mine = players.find(p => String(p.id) === String(room.playerId));
+  if (mine) { _seatSeen = true; syncRoleFromRow(mine); return; }
+  // null, not false: the seat is gone and we do not yet know which removal it
+  // was. Asking is what puts the right words on the notice.
+  if (_seatSeen) showRemovedNotice({ banned: null });
+}
+
+/**
+ * THE ROLE FOLLOWS THE ROW, FROM EVERY SOURCE THAT REFRESHES THE LIST.
+ *
+ * The Realtime UPDATE handler already does this, and it was the ONLY thing that
+ * did once handlePlayerChange stopped ending in ensureCurrentPlayer(). So a
+ * promotion whose UPDATE never arrived — a dropped frame, a backgrounded tab, a
+ * channel mid-resubscribe, all of which this file has a section about — could
+ * never be picked up by anything else: the 8-second poll drew the new crown on
+ * somebody's row in the list and left the person it belonged to reading as an
+ * ordinary player, with none of the controls. Reported from a live game:
+ * "couldn't be promoted to host."
+ *
+ * setHostRole is the single writer of the flag, the storage and the buttons, so
+ * calling it from here cannot put the three out of step.
+ */
+function syncRoleFromRow(row) {
+  if (!row) return;
+  const isHost = !!row.is_host;
+  const isCohost = !!row.is_cohost;
+  if (isHost !== !!room.isHost) {
+    setHostRole(isHost, { cohost: isCohost });
+    if (isHost) addSystemMessage('You are now the host');
+    return;
+  }
+  if (isCohost !== !!room.isCohost) {
+    room.isCohost = isCohost;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+    if (isCohost) addSystemMessage('You are now co-host');
+  }
 }
 
 /**

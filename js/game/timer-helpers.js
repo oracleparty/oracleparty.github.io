@@ -60,3 +60,34 @@ export function isStampForCurrentRound({ rowQuestion, myQuestion, stampedAt, rou
   if (!Number.isFinite(stampMs)) return false;
   return stampMs >= roundEnteredAt - toleranceMs;
 }
+
+/**
+ * SHOULD A PHONE THAT HAS JUST RE-READ THE ROOM ADOPT THE ROOM'S CLOCK?
+ *
+ * `syncToCurrentState` is the 60-second poll and the return-from-backgrounded
+ * repair, and it took `rooms.question_started_at` unconditionally — then set
+ * `state.gamePhase = 'loading'` so the phase router would KEEP it rather than
+ * clear it. That is right for a genuine reconnect and catastrophic for a stale
+ * value: showQuestionScreen reads a non-null stamp as a reconnect, starts the
+ * timer at once, and a clock that has already run out expires inside half a
+ * second. On the host that writes `game_phase = 'reveal'` for the whole room.
+ *
+ * Reported from a live game: "one of the questions only seconds in advanced us
+ * without allowing us to type answers. It just said waiting."
+ *
+ * THE TEST IS A CONTRADICTION, NOT A GUESS. If the room is still ASKING a
+ * question, that round cannot already be over — so a stamp that has run out is
+ * not the stamp for the round the room is on, whatever wrote it there. The only
+ * other reading is a room waiting on the 8-second server backstop, and refusing
+ * the stamp there costs a timer that gets cut short by the reveal, which is
+ * cosmetic. Adopting it costs everybody the round.
+ *
+ * Refusing leaves the stamp absent, and absent is the harmless direction
+ * everywhere in this file: a phone with no stamp runs a full clock until the
+ * real one arrives.
+ */
+export function shouldAdoptRoomClock({ phase, stampedAt, serverTimeOffset, timerSeconds }) {
+  if (!stampedAt) return false;
+  if (phase !== 'question' && phase !== 'final_question') return true;
+  return getServerTimeLeft(stampedAt, serverTimeOffset, timerSeconds) > 0;
+}

@@ -73,6 +73,10 @@ export function showQuestionScreen() {
     $('#btn-submit-answer').textContent = 'Pass';
     $('#submit-status').classList.add('hidden');
     state.hasSubmitted = false;
+    // The previous round may have left "Time's up!" and the expired flash in
+    // the timer. Nothing else clears them, and startTimer's first paint is a
+    // second away behind the sync buffer.
+    resetTimerDisplay();
   }
   $('#wager-error').textContent = '';
 
@@ -363,6 +367,48 @@ function updateTimerDisplay(timeLeft) {
     const wrapper = revealBar.closest('.timer');
     if (wrapper) wrapper.classList.toggle('timer--warning', warn);
   }
+}
+
+/**
+ * "TIME'S UP!" IN THE TIMER, WITHOUT DESTROYING THE TIMER.
+ *
+ * This was one line in phases.js: `document.querySelector('.timer').textContent
+ * = "Time's up!"`. `.timer` is the WRAPPER — it holds `#timer-bar` and
+ * `#timer-text` — so setting its textContent DELETED BOTH, permanently, the
+ * first time any round ended with this phone not having submitted. Nothing ever
+ * put them back.
+ *
+ * From that moment on, every later round drew a fresh question screen with the
+ * words "Time's up!" standing where its countdown should be, on a clock that
+ * could not move because there was no longer a bar or a number to move:
+ * `updateTimerDisplay` looks both elements up by id, finds null, and quietly
+ * does nothing. Photographed on question 13 of 15, above an empty answer box
+ * and a full wager grid — "the timer was not working and said timer is up".
+ *
+ * The stylesheet has always said what was meant. `.timer--expired .timer__text`
+ * exists and colours the NUMBER red; the wrapper only carries the flash. Only
+ * the text was ever supposed to change.
+ */
+export function showTimerExpired() {
+  const text = $('#timer-text');
+  const bar = $('#timer-bar');
+  if (text) text.textContent = "Time's up!";
+  if (bar) bar.style.width = '0%';
+  const wrapper = bar ? bar.closest('.timer') : $('#question-screen .timer');
+  if (wrapper) {
+    wrapper.classList.remove('timer--warning');
+    wrapper.classList.add('timer--expired');
+  }
+}
+
+/** Put the timer back to a full, unexpired clock for a new round. */
+function resetTimerDisplay() {
+  const text = $('#timer-text');
+  const bar = $('#timer-bar');
+  if (text) text.textContent = '';
+  if (bar) bar.style.width = '100%';
+  const wrapper = bar ? bar.closest('.timer') : $('#question-screen .timer');
+  if (wrapper) wrapper.classList.remove('timer--expired', 'timer--warning');
 }
 
 /**

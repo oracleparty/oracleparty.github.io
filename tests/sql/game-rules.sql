@@ -1667,6 +1667,188 @@ BEGIN
 END $$;
 
 -- ============================================
+-- MIGRATION 070 — A DISQUALIFICATION CAN BE UNDONE
+--
+-- One unconfirmed tap set every answer in a round to wrong and worth nothing,
+-- and there was no way back from it on any screen. The verdicts come back from
+-- auto_correct — which 049 deliberately never touches — and the scores are
+-- recomputed from the wager by op_set_judgement's own rule.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  hostP uuid; aliceP uuid; bobP uuid; strangerP uuid; otherRoom uuid;
+  qA uuid := gen_random_uuid(); qB uuid := gen_random_uuid();
+  n int; ic boolean; sc int; dq boolean; hr boolean;
+BEGIN
+  -- Two questions, so op_room_total_questions() reports 1 and round 0 is a
+  -- REGULAR round while round 1 is the final one that subtracts.
+  INSERT INTO rooms (code, host_name, game_phase, current_question, question_ids)
+    VALUES ('070900', 'Hosty', 'reveal', 0, ARRAY[qA, qB]) RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now()) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Alice', now()) RETURNING id INTO aliceP;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Bob', now()) RETURNING id INTO bobP;
+
+  -- Alice got it right, Bob did not. Both rounds recorded.
+  INSERT INTO answers (room_id, player_id, question_number, question_id,
+                       submitted_answer, wager, is_correct, auto_correct,
+                       score_earned, history_recorded)
+    VALUES (rid, aliceP, 0, qA, 'Paris', 4, true,  true,  4, true),
+           (rid, bobP,   0, qA, 'Lyon',  3, false, false, 0, true);
+
+  PERFORM op_disqualify_round(rid, 0, hostP);
+  SELECT is_correct, score_earned, coalesce(disqualified, false)
+    INTO ic, sc, dq FROM answers WHERE room_id = rid AND player_id = aliceP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('disqualifying still throws the round out', dq::text, 'true'),
+    ('and takes the points with it', sc::text, '0');
+
+  -- AND IT COMES BACK.
+  SELECT op_undisqualify_round(rid, 0, hostP) INTO n;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('undoing touches every answer in the round', n::text, '2');
+
+  SELECT is_correct, score_earned, coalesce(disqualified, false), coalesce(history_recorded, true)
+    INTO ic, sc, dq, hr FROM answers WHERE room_id = rid AND player_id = aliceP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a right answer is right again', ic::text, 'true'),
+    ('and is paid its wager again', sc::text, '4'),
+    ('and the round is no longer thrown out', dq::text, 'false'),
+    ('and its mastery can be recorded again', hr::text, 'false');
+
+  SELECT is_correct, score_earned INTO ic, sc
+    FROM answers WHERE room_id = rid AND player_id = bobP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a wrong answer is wrong again', ic::text, 'false'),
+    ('and a regular round never subtracts', sc::text, '0');
+
+  -- THE WAGER IS SPENT AGAIN. This is the half a player feels: 068 hands the
+  -- wager back while the round is thrown out, so undoing must take it away.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the wager is spent again', op_next_wager(rid, aliceP, 1)::text, '1');
+
+  -- ONLY A ROUND THAT WAS ACTUALLY THROWN OUT. Calling it on a live round must
+  -- not quietly rewrite the host's own overrides back to the machine's verdict.
+  UPDATE answers SET is_correct = true, score_earned = 3
+   WHERE room_id = rid AND player_id = bobP;
+  SELECT op_undisqualify_round(rid, 0, hostP) INTO n;
+  SELECT is_correct, score_earned INTO ic, sc
+    FROM answers WHERE room_id = rid AND player_id = bobP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a round that was never thrown out is left alone', n::text, '0'),
+    ('so a host override survives it', ic::text, 'true'),
+    ('with its points intact', sc::text, '3');
+
+  -- THE FINAL ROUND IS THE ONE THAT SUBTRACTS, and the undo has to know that.
+  INSERT INTO answers (room_id, player_id, question_number, question_id,
+                       submitted_answer, wager, is_correct, auto_correct, score_earned)
+    VALUES (rid, aliceP, 1, qB, 'wrong', 20, false, false, -20);
+  PERFORM op_disqualify_round(rid, 1, hostP);
+  PERFORM op_undisqualify_round(rid, 1, hostP);
+  SELECT score_earned INTO sc
+    FROM answers WHERE room_id = rid AND player_id = aliceP AND question_number = 1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a wrong final answer loses its wager again', sc::text, '-20');
+
+  -- NOT ANYBODY'S BUTTON. Throwing a round out and putting it back are one
+  -- power, so they carry one guard.
+  PERFORM op_disqualify_round(rid, 0, hostP);
+  SELECT op_undisqualify_round(rid, 0, aliceP) INTO n;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('an ordinary player cannot put a round back', n::text, '-1');
+
+  INSERT INTO rooms (code, host_name) VALUES ('070901', 'Elsewhere') RETURNING id INTO otherRoom;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (otherRoom, 'Stranger', now()) RETURNING id INTO strangerP;
+  SELECT op_undisqualify_round(rid, 0, strangerP) INTO n;
+  SELECT coalesce(disqualified, false) INTO dq
+    FROM answers WHERE room_id = rid AND player_id = aliceP AND question_number = 0;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('nor can a stranger with the room code', n::text, '-1'),
+    ('and the round is still thrown out', dq::text, 'true');
+END $$;
+
+-- ============================================
+-- MIGRATION 069 — A ROUND'S CLOCK BELONGS TO THAT ROUND, AND NO ROUND IS SKIPPED
+--
+-- Both rules come from one live game. A room that announced round N+1 while
+-- still holding round N's stamp had a deadline already in the past, so the
+-- first phone to poll ended the round before anybody could type; and a second
+-- tap on "Next Question" inside the screen fade announced N+2, a round nobody
+-- was ever asked.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  hostP uuid;
+  verdict text; ts timestamptz; qn int; ph text;
+BEGIN
+  INSERT INTO rooms (code, host_name, game_phase, current_question,
+                     question_started_at, question_timer)
+    VALUES ('069900', 'Hosty', 'scores_reveal', 2, now() - interval '90 seconds', 30)
+    RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now()) RETURNING id INTO hostP;
+
+  -- ENTERING A NEW ROUND DROPS THE OLD ROUND'S CLOCK, in the same statement.
+  SELECT op_set_phase(rid, hostP, NULL, 'question', 3) INTO verdict;
+  SELECT question_started_at INTO ts FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the next round is announced', verdict, 'ok'),
+    ('and it does not open on the last round''s clock',
+     CASE WHEN ts IS NULL THEN 'cleared' ELSE 'STALE' END, 'cleared');
+
+  -- A CLOCK THAT IS RUNNING IS LEFT ALONE. Re-announcing the round the room is
+  -- already on is ordinary — Realtime re-delivers, and two controllers press —
+  -- and wiping a live clock there would restart everybody's timer mid-round.
+  UPDATE rooms SET question_started_at = now() - interval '5 seconds' WHERE id = rid;
+  SELECT op_set_phase(rid, hostP, NULL, 'question', 3) INTO verdict;
+  SELECT question_started_at INTO ts FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('re-announcing the round the room is on keeps its running clock',
+     CASE WHEN ts IS NULL THEN 'WIPED' ELSE 'kept' END, 'kept');
+
+  -- AND SO IS EVERY OTHER PHASE'S. The reveal reads the same stamp to decide
+  -- what to show, so clearing it on the way out of a question would be worse
+  -- than the bug.
+  SELECT op_set_phase(rid, hostP, NULL, 'reveal') INTO verdict;
+  SELECT question_started_at INTO ts FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('moving to the reveal leaves the clock alone',
+     CASE WHEN ts IS NULL THEN 'WIPED' ELSE 'kept' END, 'kept');
+
+  -- A GAME NEVER JUMPS A ROUND. The room is on 3; 5 is two away.
+  SELECT op_set_phase(rid, hostP, NULL, 'question', 5) INTO verdict;
+  SELECT current_question INTO qn FROM rooms WHERE id = rid;
+  SELECT game_phase INTO ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a call that skips a round is refused', verdict, 'skips a round'),
+    ('and the room stays on the round it was on', qn::text, '3'),
+    ('and the phase does not move either', ph, 'reveal');
+
+  -- ONE STEP STILL WORKS, which is the half the guard must not break.
+  SELECT op_set_phase(rid, hostP, NULL, 'question', 4) INTO verdict;
+  SELECT current_question INTO qn FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('advancing by exactly one still works', verdict, 'ok'),
+    ('and the room really moved', qn::text, '4');
+
+  -- GOING BACK IS NOT A SKIP. Play Again and Start Game both send question 0
+  -- from wherever the game ended, and refusing that would stop a room ever
+  -- playing twice.
+  SELECT op_set_phase(rid, hostP, NULL, 'lobby', 0) INTO verdict;
+  SELECT current_question INTO qn FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('resetting the room to question 0 is not a skip', verdict, 'ok'),
+    ('and the room is back at the start', qn::text, '0');
+END $$;
+
+-- ============================================
 -- MIGRATION 061 — ONLY THE RULES CHANGE THE ROOM
 --
 -- game_phase and current_question are the two most damaging columns in this

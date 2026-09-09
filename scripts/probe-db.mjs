@@ -577,6 +577,8 @@ const RPC_PROBES = [
   ['op_set_phase', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID,
                      p_expected_phase: null, p_to_phase: 'lobby',
                      p_question: 0 }],
+  ['op_undisqualify_round', { p_room_id: NOT_A_UUID, p_question_number: 0,
+                              p_caller_id: NOT_A_UUID }],
   // Granted to `authenticated` only. An anonymous probe therefore gets 42501,
   // which this script reports as installed — measured, not assumed: the same
   // shape already answers `admin_account_details  installed — HTTP 401 / 42501`
@@ -803,6 +805,18 @@ const CONSEQUENCES = [
       'NO GAME CAN START OR ADVANCE AT ALL — 061 revoked the column, so the fallback',
       'raises "permission denied for column game_phase" and every phone shows',
       "\"Couldn't move the game on\" on every button in the game",
+    ] },
+  // op_set_phase is watched above, so 069 has nothing of its own to watch: it
+  // REPLACES that function's body rather than adding one. What 069 fixes cannot
+  // be seen from here at all — a round opening on the last round's clock — so
+  // its verification block is the only evidence, which is why this file's
+  // to-do asks for the rows.
+  { object: 'op_undisqualify_round', kind: 'rpc',
+    fix: 'run migrations/070_a_disqualification_can_be_undone.sql',
+    breaks: [
+      'A DISQUALIFIED ROUND CANNOT BE PUT BACK — the host gets one unconfirmed tap',
+      'that sets every answer in a round to wrong and worth nothing, with no way',
+      'out of a mis-tap. The button hides itself rather than doing nothing.',
     ] },
 ];
 

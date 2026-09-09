@@ -10,6 +10,38 @@ import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 /**
  * Add a player to a room.
  */
+/**
+ * WAS THIS PERSON KICKED OUT OF THIS ROOM (migration 065)?
+ *
+ * A seat can vanish for three reasons that look identical from the outside —
+ * the host ejected you, the host kicked you, or a stale sweep judged you
+ * absent — and only the middle one is permanent. The lobby used to guess the
+ * recoverable one and offer Rejoin to everybody, so a kicked player was told
+ * they could come back, tapped the button, and only THEN learned they had been
+ * kicked. Reported from a live game: "I thought I saw the eject notification
+ * but when I clicked rejoin it said I was kicked."
+ *
+ * Guessing was never necessary: op_is_banned is callable by clients for exactly
+ * this, and addPlayer has asked it on a refusal since 065 shipped. This is the
+ * same question asked one step earlier, before anything is put on screen.
+ *
+ * FALSE WHEN IT CANNOT TELL — no auth identity means no ban is possible, and a
+ * failed call means the recoverable wording, whose Rejoin is refused with an
+ * honest message anyway. The other way round would tell an ejected player the
+ * door is shut when it is not.
+ */
+export async function isBannedFromRoom(roomId, userId) {
+  if (!roomId || !userId) return false;
+  const { data, error } = await supabase.rpc('op_is_banned', {
+    p_room_id: roomId, p_user_id: userId,
+  });
+  if (error) {
+    logger.warn('Supabase', 'could not ask whether this player was kicked', error);
+    return false;
+  }
+  return !!data;
+}
+
 export async function addPlayer(roomId, displayName, isHost = false, userId = null, extras = {}) {
   // last_seen_at IS WRITTEN HERE NOW, and the comment it replaces was stale in
   // the dangerous direction.
@@ -1075,6 +1107,39 @@ export async function disqualifyRoundOnServer(roomId, questionNumber, callerPlay
   }
   noteServerFunctions(true);
   return { ok: true, unavailable: false, changed: Number(data) };
+}
+
+/**
+ * PUT A ROUND BACK (migration 070). Returns rows changed, -1 when the caller is
+ * not the host, or `unavailable` when the function is not installed.
+ *
+ * THERE IS NO FALLBACK, and that is the same call kickPlayer made. Undoing a
+ * disqualification has never worked before 070, so there is no old path to fall
+ * back TO — and inventing one would be a loop of direct UPDATEs that 049
+ * revoked, which matches zero rows and reports success. The button would put
+ * the round back on screen and change nothing in the database, which is worse
+ * than the button not being there.
+ *
+ * So `unavailable` reaches the caller, and the caller hides the control.
+ */
+export async function undisqualifyRoundOnServer(roomId, questionNumber, callerPlayerId) {
+  const { data, error } = await supabase.rpc('op_undisqualify_round', {
+    p_room_id: roomId,
+    p_question_number: questionNumber,
+    p_caller_id: callerPlayerId,
+  });
+  if (error) {
+    if (functionMissing(error)) {
+      noteServerFunctions(false);
+      return { ok: false, unavailable: true, changed: 0 };
+    }
+    logger.error('Supabase', 'op_undisqualify_round failed', error);
+    return { ok: false, unavailable: false, changed: 0 };
+  }
+  noteServerFunctions(true);
+  const changed = Number(data);
+  if (changed < 0) return { ok: false, unavailable: false, changed };
+  return { ok: true, unavailable: false, changed };
 }
 
 export async function updateAnswerJudgment(answerId, isCorrect, scoreEarned) {

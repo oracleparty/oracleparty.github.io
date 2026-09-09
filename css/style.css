@@ -2689,20 +2689,43 @@ body::after {
   font-weight: 600;
   color: var(--color-primary);
   margin-bottom: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .chat-bubble__body {
   display: flex;
   align-items: baseline;
   gap: var(--space-sm);
+  /* A CHILD CAN ONLY SHRINK IF THE PARENT LETS IT — a flex item defaults to
+     min-width: auto. Same shape as the join list's reputation row. */
+  min-width: 0;
 }
 
+/* A LONG URL MADE THE WHOLE CHAT DRAGGABLE SIDEWAYS.
+ *
+ * A URL has no spaces, so its min-content width is the whole string — and a
+ * flex item at `flex: 1` with the default `min-width: auto` cannot go below
+ * that. The message pane has `overflow-y: auto`, which per CSS computes
+ * `overflow-x: auto` as well, so the overflow became a horizontal scroll:
+ * "when a long url is posted in the chatbox u can drag all the way to the
+ * right but it shouldn't be scrollable."
+ *
+ * `overflow-wrap: anywhere` is the one that fixes the SIZING as well as the
+ * painting — unlike `break-word`, it lowers the element's min-content width, so
+ * the flex item can shrink and there is nothing left to scroll to. Both are set
+ * because `anywhere` is the newer of the two and `break-word` is the fallback
+ * that has always been understood. */
 .chat-bubble__text {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-size: var(--text-sm);
   color: var(--color-text);
   line-height: 1.4;
 }
+
 
 .chat-bubble--system {
   text-align: center;
