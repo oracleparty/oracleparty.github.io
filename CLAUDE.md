@@ -82,6 +82,89 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-14 — the taps that felt dead, and what the measurements RULED OUT
+>
+> **Reported after a game: "tapping buttons (submit, bet values) slow and non
+> responsive. It was nearly game stopping. Didn't notice anything else except
+> this issue of difficulty pressing buttons."**
+>
+> **THE CAUSE IS NOT FOUND, and this entry says that first rather than last.**
+> What follows is one real fix, one real finding, and a list of mechanisms that
+> were measured and are NOT it — which is worth writing down, because every one
+> of them was plausible enough to have been shipped as "the answer".
+>
+> ### The half that IS fixed: Submit went grey and said nothing
+>
+> `doSubmitAnswer` disabled the button and the input the instant it was pressed
+> — so there WAS feedback, and any claim that the tap did nothing would be
+> false. What it did not do is say a word: the label stayed "Submit", and the
+> next thing to move was the SCREEN, which is behind the write. On a real link
+> that is a greyed button reading Submit for a whole round trip, which is
+> indistinguishable from a button that never took the tap.
+>
+> **This file already records what that costs**, about the button one screen
+> along: *"six seconds of nothing happening on a phone is a person tapping
+> again."* Reveal Results got "Revealing…" for exactly this in September;
+> Submit never did. It says **"Sending…"** now.
+>
+> **And it is restored in every path that leaves the player on that screen** —
+> the write failing, and the `!q` early return, which previously left the player
+> holding a disabled button for ever. `refreshSubmitButton()` puts back both the
+> word and the enabled state, so there is one rule rather than two. That is the
+> first version of the Reveal Results guard's own mistake, avoided by having
+> read this file's account of it.
+>
+> ### THE BET VALUES ARE LOCAL, so slowness there cannot be the network
+>
+> `selectWager` has no `await` in it. It removes a class, adds a class, sets two
+> fields and refreshes the button. A bet tap that appears to do nothing is
+> therefore a tap that never became a **click** — and that narrows the search to
+> three mechanisms, all of which were measured:
+>
+> | candidate | measured | verdict |
+> |---|---|---|
+> | the grid is rebuilt under the finger (`renderWagerGrid` does `innerHTML = ''`, and a button detached between touchstart and click never fires) | **0 rebuilds** during a whole question, on both phones | not it, in the harness |
+> | the tap target is too small | **61x61px** at 375, 430 and on an SE, with 15 wagers on screen | not it |
+> | something is on top of it | `elementFromPoint` at every button's centre, in a LIVE game with the chat bar and host gear present: **0 unreachable, Submit ok** | not it |
+>
+> **The first measurement of the bet tap said 1222ms and it was the harness
+> lying.** `showQuestionScreen` hides the card, the grid, the answer box and the
+> timer for a one-second sync buffer, and Playwright's `click` auto-waits for an
+> actionable element — so timing a tap that starts inside that buffer measures
+> the buffer. It waits for the grid to be visible first now, and reports 25-42ms.
+> **A number taken before the thing is ready is a number about something else.**
+>
+> ### One real finding, on the smallest phone only
+>
+> Nothing in this repo can open a keyboard, so `.kb-open` — a whole block of the
+> stylesheet — had **never been rendered by anything**. Setting the same
+> variables `js/keyboard-inset.js` publishes and measuring:
+>
+> | | keyboard up |
+> |---|---|
+> | 375x812, 430x932 | every wager button on screen |
+> | **375x667 (an SE)** | **5 of 15 wager buttons sit below the visible window** |
+>
+> Under `.kb-open` the QUESTION CARD gets the scroll and the answer form is
+> sticky; the grid is between them and the screen is `overflow: hidden`, so
+> those five cannot be scrolled to. **Reported, not fixed** — it is the smallest
+> phone in the range and the owner has not said which shape their fault took,
+> and rebuilding a working screen on a hunch is what this file's rules forbid.
+>
+> ### What the latency scenario did NOT measure until now
+>
+> `scenario-latency` pressed the wager and the Submit buttons to get the game
+> moving and **timed neither** — the two controls the owner reported were the
+> two it walked past. Both are timed now, Submit against its own label and
+> disabled state rather than against the screen.
+>
+> ### The habit
+>
+> **When the reported control has no network in it, stop looking at the
+> network.** Three plausible mechanisms were eliminated by measurement in the
+> time it would have taken to ship one of them as a fix, and a fix for the wrong
+> cause would have closed the report while leaving the game exactly as it was.
+
 > ## 2026-09-05 — Ready Up reported success and wrote nothing
 >
 > **Reported: "left and rejoined and it didn't show me in the lobby till I

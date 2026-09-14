@@ -701,12 +701,36 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   if (state.hasSubmitted) return;
   state.hasSubmitted = true;
 
-  // Disable question UI (in case transition is slow)
+  // SAY SOMETHING — DO NOT JUST GO GREY.
+  //
+  // Reported from a live game: "tapping buttons (submit, bet values) slow and
+  // non responsive. It was nearly game stopping." This button disabled itself
+  // and kept the word "Submit", then waited on a round trip before ANYTHING
+  // else changed — measured by scenario-latency at a full injected round trip,
+  // because the only thing that moves is the screen, and the screen is behind
+  // the write. A greyed button still reading "Submit" is indistinguishable from
+  // a button that never took the tap, and this file already records what that
+  // costs: "six seconds of nothing happening on a phone is a person tapping
+  // again."
+  //
+  // THE LABEL IS RESTORED IN EVERY PATH THAT LEAVES THE PLAYER ON THIS SCREEN.
+  // A control that stays dead is worse than one that is slow — the exact
+  // mistake the first version of the Reveal Results guard made, recorded in
+  // CLAUDE.md the day it was written.
   $('#answer-input').disabled = true;
   $('#btn-submit-answer').disabled = true;
+  $('#btn-submit-answer').textContent = 'Sending\u2026';
 
   const q = state.questions[state.currentQuestion];
-  if (!q) return;
+  if (!q) {
+    // No question loaded means nothing can be written, and the player is still
+    // looking at this screen. Give the control back rather than leaving them
+    // holding a dead button that says Sending.
+    state.hasSubmitted = false;
+    $('#answer-input').disabled = false;
+    refreshSubmitButton();
+    return;
+  }
   const correctAnswer = getCorrectAnswer(q);
   const alternates = getAlternates(q);
   const isCorrect = answer ? fuzzyMatch(answer, correctAnswer, alternates) : false;
@@ -809,7 +833,9 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   if (submitResult && submitResult.error && !autoSubmit) {
     state.hasSubmitted = false;
     $('#answer-input').disabled = false;
-    $('#btn-submit-answer').disabled = false;
+    // refreshSubmitButton puts BOTH back — the enabled state and the word — so
+    // a failed send cannot leave "Sending…" standing on a live button.
+    refreshSubmitButton();
     const errEl = $('#wager-error');
     // SAY WHY, when the reason is known. "Submit failed — try again" is a lie
     // whenever the server refused the answer: trying again cannot help, and the
