@@ -80,6 +80,34 @@ describe('keyboardInset', () => {
     expect(keyboardInset({ ...phone, viewportHeight: 508, scale: ZOOM_TOLERANCE + 0.01 }).open).toBe(false);
   });
 
+
+  // THE THRESHOLD WAS A GUESS ABOUT BROWSER CHROME AND NOBODY MEASURED A PHONE.
+  // On iOS Safari the layout viewport does not shrink with the toolbars, so the
+  // top bar, the bottom bar and the home indicator all land in `covered`. Above
+  // 120px of chrome — which real iPhones reach — this reported a keyboard for
+  // the whole game, and the question screen was resized and re-anchored the
+  // entire time with nothing focused.
+  it('needs something focused to type into, not just a shrunken viewport', () => {
+    const chrome = { ...phone, viewportHeight: 844 - 145, offsetTop: 0 };
+    expect(keyboardInset({ ...chrome, typing: false }).open).toBe(false);
+    // The identical measurement WITH a text box focused is a real keyboard and
+    // must still be one — otherwise this guard quietly deletes the feature.
+    expect(keyboardInset({ ...chrome, typing: true }).open).toBe(true);
+  });
+
+  it('a focused box with nothing covered is still a closed keyboard', () => {
+    // showQuestionScreen focuses the answer box every round; iOS often refuses
+    // to raise a keyboard for a programmatic focus. Focus alone must not count.
+    expect(keyboardInset({ ...phone, viewportHeight: 844, typing: true }).open).toBe(false);
+    expect(keyboardInset({ ...phone, viewportHeight: 800, typing: true }).open).toBe(false);
+  });
+
+  it('defaults to typing when the caller cannot say', () => {
+    // The pure function is used by tests and could be used by a caller with no
+    // DOM. Defaulting to "not typing" would report every keyboard as closed.
+    expect(keyboardInset({ ...phone, viewportHeight: 508 }).open).toBe(true);
+  });
+
   it('reports NOTHING MEASURABLE rather than a closed keyboard', () => {
     // The caller leaves the layout alone on a null height. Returning "closed"
     // here would strip the class off a screen whose keyboard is still up.

@@ -82,6 +82,83 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-14 — "it only started recently", and that objection was right
+>
+> **The owner pushed back on the entry below and the push-back is the finding:**
+> *"the sticky buttons only started just recently. Why is this? And ur sure the
+> fix addresses this? Wouldn't it imply it's something that recently changed?"*
+>
+> **Yes, and the layout explanation below does not answer it.** Submit being
+> off-screen at 375x560 is real and measured, and it has been true for as long
+> as that screen has had wagers on it. A fault that STARTED implies a change,
+> and reaching for a long-standing cause because it is the one you measured is
+> exactly the mistake this file exists to catch.
+>
+> ### One thing changed, and it changed how the question screen is SIZED
+>
+> `git log` over the whole window: **`js/keyboard-inset.js` was created on
+> 2026-09-05**, in the same commit that added `interactive-widget=resizes-content`
+> to `game.html`. Nothing else since August touches the geometry of that screen
+> or what happens to it during a touch. The playtests reporting dead taps are
+> 2026-09-09 and 2026-09-14.
+>
+> ### THE 120px THRESHOLD WAS A GUESS ABOUT BROWSER CHROME, NEVER MEASURED
+>
+> The rule was `covered = innerHeight - visualViewport.height - offsetTop`, and
+> `open` when that passed 120px. Its own comment states the assumption: *"Browser
+> chrome sliding away while scrolling moves the visual viewport by far less."*
+>
+> **On iOS Safari the layout viewport does not shrink with the toolbars.** So the
+> top bar, the bottom bar and the home indicator all land inside `covered` — and
+> on a phone whose chrome totals more than 120px, `kb-open` was **TRUE for the
+> whole game, with no keyboard anywhere**. Under that class `#question-screen`
+> is given a different height and re-anchored with `top`, the question card gets
+> its own scroll, and `#answer-form` goes sticky. A screen laid out for a
+> keyboard that is not there, from the first round, all game.
+>
+> That is: recent, phone-only, invisible to every check here (nothing in this
+> repo can shrink a visual viewport), and it matches all three answers the owner
+> gave — **keyboard down, no press animation at all, bad from the first round.**
+>
+> **IT IS A LEAD AND NOT A MEASUREMENT**, and the distinction matters because the
+> number that decides it is a fact about the owner's phone that nothing here can
+> read. What IS established: the guess was never checked, iOS chrome is in the
+> right range to break it, and the code went in on the one date that fits.
+>
+> ### The fix removes the need for the threshold to be right
+>
+> **A keyboard cannot open without something focused to type into.** That is not
+> a pixel guess, it is the definition, so it holds on every phone at every chrome
+> height — which is the thing a number can never do. `isTypingTarget` reads
+> `document.activeElement`, and `open` now requires it AND the measurement.
+>
+> **Neither half is sufficient and the code says so.** `showQuestionScreen`
+> focuses the answer box every round, and iOS routinely refuses to raise a
+> keyboard for a programmatic focus — so focus alone would be worse than the
+> threshold. A focused box with nothing covered is still a closed keyboard.
+>
+> `focusin`/`focusout` are watched alongside `resize` and `scroll`: dismissing a
+> keyboard can leave the viewport unchanged, and without them the class would
+> stick.
+>
+> Three tests, break-tested: dropping the focus clause fails *"needs something
+> focused to type into, not just a shrunken viewport"* by name while the other
+> eleven — every one pinning the keyboard fix itself — still pass.
+>
+> ### What the sticky-Submit change is, now that it is not the explanation
+>
+> It stands on its own: at 375x560 with 15 wagers the Submit button really was
+> below the visible edge, measured, and it is reachable at every size now with
+> 600px and up byte-for-byte unchanged. **It is a fix for a real fault that was
+> never recent, and it is no longer offered as the cause of this report.** Two
+> true things, one of which answers the question asked.
+>
+> ### The habit
+>
+> **"It started recently" is a measurement, and it outranks any cause you
+> happened to find.** A long-standing fault cannot explain a new symptom, however
+> well you have measured it — and the owner spotted that before I did.
+
 > ## 2026-09-14 (interviewed) — Submit was below the bottom of the phone
 >
 > **The three answers that turned a guess into a measurement.** Asked what the

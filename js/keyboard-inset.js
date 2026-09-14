@@ -48,13 +48,45 @@ export const KEYBOARD_MIN_INSET_PX = 120;
 export const ZOOM_TOLERANCE = 1.05;
 
 /**
+ * Is the thing with focus something a keyboard is FOR?
+ *
+ * THE 120px THRESHOLD WAS A GUESS ABOUT BROWSER CHROME AND IT WAS NEVER
+ * MEASURED ON A PHONE. `covered` is `innerHeight - visualViewport.height -
+ * offsetTop`, and on iOS Safari the layout viewport does not shrink with the
+ * toolbars — so the top bar plus the bottom bar plus the home indicator all
+ * land in that number. On a phone whose chrome totals more than 120px,
+ * `kb-open` was TRUE for the whole game with no keyboard anywhere, and the
+ * question screen was resized and re-anchored the entire time.
+ *
+ * A keyboard cannot open without something focused to type into. That is not a
+ * threshold, it is the definition, so it holds on every phone at every chrome
+ * height — which is what a guess about pixels can never do.
+ *
+ * `showQuestionScreen` focuses the answer box on every round even when iOS
+ * refuses to raise a keyboard for it, so this is not sufficient ON ITS OWN and
+ * is not used that way: it is ANDed with the measurement, and a focused box
+ * with nothing covered is still a closed keyboard.
+ */
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'TEXTAREA') return true;
+  if (tag === 'INPUT') {
+    // A checkbox or a button raises no keyboard.
+    return !['button', 'checkbox', 'radio', 'submit', 'reset', 'file', 'range', 'color']
+      .includes(String(el.type || 'text').toLowerCase());
+  }
+  return el.isContentEditable === true;
+}
+
+/**
  * What the visual viewport is telling us, as numbers a stylesheet can use.
  *
  * `covered` subtracts BOTH the height lost and how far the window has been
  * panned down: on iOS a keyboard produces some of each, and counting only the
  * height change reads a panned viewport as no keyboard at all.
  */
-export function keyboardInset({ innerHeight, viewportHeight, offsetTop = 0, scale = 1, minInsetPx = KEYBOARD_MIN_INSET_PX }) {
+export function keyboardInset({ innerHeight, viewportHeight, offsetTop = 0, scale = 1, typing = true, minInsetPx = KEYBOARD_MIN_INSET_PX }) {
   const inner = Number(innerHeight);
   const vh = Number(viewportHeight);
   const top = Number(offsetTop) || 0;
@@ -77,7 +109,10 @@ export function keyboardInset({ innerHeight, viewportHeight, offsetTop = 0, scal
   const covered = Math.max(0, inner - vh - top);
   return {
     covered,
-    open: covered > minInsetPx,
+    // BOTH, ALWAYS. The measurement says how much of the screen is gone; the
+    // focus says whether a keyboard is what took it. Browser chrome and a pan
+    // satisfy the first and never the second.
+    open: covered > minInsetPx && typing !== false,
     height: Math.round(vh),
     offsetTop: Math.round(top),
   };
@@ -108,6 +143,7 @@ export function initKeyboardInset() {
       // NaN, which the guard treats as "not zoomed" rather than as zoomed —
       // the direction that leaves the keyboard fix working.
       scale: vv.scale,
+      typing: isTypingTarget(document.activeElement),
     });
     if (height !== null) {
       root.style.setProperty('--kb-visible-height', `${height}px`);
@@ -124,12 +160,20 @@ export function initKeyboardInset() {
   const onChange = () => { if (!frame) frame = requestAnimationFrame(apply); };
   vv.addEventListener('resize', onChange);
   vv.addEventListener('scroll', onChange);
+  // FOCUS IS HALF THE ANSWER NOW, so it has to be watched like the other half.
+  // Tapping the answer box raises the keyboard and the viewport resizes a beat
+  // later, which the resize listener catches; DISMISSING it can leave the
+  // viewport unchanged, and without these the class would stay on.
+  document.addEventListener('focusin', onChange);
+  document.addEventListener('focusout', onChange);
   apply();
 
   return () => {
     if (frame) cancelAnimationFrame(frame);
     vv.removeEventListener('resize', onChange);
     vv.removeEventListener('scroll', onChange);
+    document.removeEventListener('focusin', onChange);
+    document.removeEventListener('focusout', onChange);
     document.body.classList.remove('kb-open');
     root.style.removeProperty('--kb-visible-height');
     root.style.removeProperty('--kb-offset-top');
