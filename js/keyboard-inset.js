@@ -30,6 +30,23 @@
 // keyboard would resize the screen under somebody who is only reading.
 export const KEYBOARD_MIN_INSET_PX = 120;
 
+// A PINCH-ZOOM SHRINKS THE VISUAL VIEWPORT EXACTLY LIKE A KEYBOARD DOES, and
+// nothing here could tell them apart. `visualViewport.scale` is the one signal
+// that can: it is 1 whenever the page is at its natural size, whatever the
+// keyboard is doing.
+//
+// This matters because `maximum-scale=1, user-scalable=no` in the viewport meta
+// IS IGNORED BY iOS SAFARI, and has been for years — so every screen in this
+// app really is pinch-zoomable, and a two-finger brush while holding a phone
+// zooms it. At 1.5x on an 844px phone the visible window is ~563px, which is
+// 281px "covered" — well past the 120px threshold — so the app declared a
+// keyboard that was not there and resized and re-anchored the question screen
+// underneath somebody who had not typed a word.
+//
+// A small tolerance rather than `=== 1`: the property is a float and browsers
+// report values a hair off after a double-tap zoom settles.
+export const ZOOM_TOLERANCE = 1.05;
+
 /**
  * What the visual viewport is telling us, as numbers a stylesheet can use.
  *
@@ -37,13 +54,24 @@ export const KEYBOARD_MIN_INSET_PX = 120;
  * panned down: on iOS a keyboard produces some of each, and counting only the
  * height change reads a panned viewport as no keyboard at all.
  */
-export function keyboardInset({ innerHeight, viewportHeight, offsetTop = 0, minInsetPx = KEYBOARD_MIN_INSET_PX }) {
+export function keyboardInset({ innerHeight, viewportHeight, offsetTop = 0, scale = 1, minInsetPx = KEYBOARD_MIN_INSET_PX }) {
   const inner = Number(innerHeight);
   const vh = Number(viewportHeight);
   const top = Number(offsetTop) || 0;
+  const zoom = Number(scale);
   // Nothing measurable — say so, rather than reporting a closed keyboard, so
   // the caller leaves the layout alone instead of acting on a guess.
   if (!Number.isFinite(inner) || !Number.isFinite(vh) || inner <= 0 || vh <= 0) {
+    return { covered: 0, open: false, height: null, offsetTop: 0 };
+  }
+  // ZOOMED IN. The visible window is small because the page is magnified, and
+  // every number below would describe the magnification rather than a keyboard.
+  // Reported as NOTHING MEASURABLE, the same answer as a broken reading, which
+  // is what leaves the screen exactly as it is: a wrongly applied `kb-open`
+  // resizes a fixed, full-screen element under a person who did not type,
+  // while a missing one is simply the layout this app had before any of this
+  // existed. A keyboard opened while zoomed loses the fix and keeps the game.
+  if (Number.isFinite(zoom) && zoom > ZOOM_TOLERANCE) {
     return { covered: 0, open: false, height: null, offsetTop: 0 };
   }
   const covered = Math.max(0, inner - vh - top);
@@ -76,12 +104,19 @@ export function initKeyboardInset() {
       innerHeight: window.innerHeight,
       viewportHeight: vv.height,
       offsetTop: vv.offsetTop,
+      // `scale` is undefined on browsers that predate it; Number(undefined) is
+      // NaN, which the guard treats as "not zoomed" rather than as zoomed —
+      // the direction that leaves the keyboard fix working.
+      scale: vv.scale,
     });
     if (height !== null) {
       root.style.setProperty('--kb-visible-height', `${height}px`);
       root.style.setProperty('--kb-offset-top', `${offsetTop}px`);
     }
     document.body.classList.toggle('kb-open', open);
+    // A pinch that starts WHILE the keyboard is up reports "not measurable",
+    // so the class is removed above and the variables are left holding their
+    // last values. That is correct: nothing reads them without the class.
   }
 
   // Coalesced: iOS fires resize and scroll together, many times, while the

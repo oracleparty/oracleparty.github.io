@@ -82,6 +82,100 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-09-14 (interviewed) — Submit was below the bottom of the phone
+>
+> **The three answers that turned a guess into a measurement.** Asked what the
+> button DID when it failed, the owner said: **no reaction at all** — no press
+> animation — with the **keyboard down**, and **bad from the first round**.
+>
+> `.wager-btn:active { transform: scale(0.93) }` is pure CSS. It fires on touch
+> whatever the JavaScript is doing. **So a tap that produced no shrink never
+> reached the element**, and that rules out every mechanism in the entry below
+> this one: the handler, the network, the re-render. It is a HIT-TESTING
+> failure, and those have a small number of causes.
+>
+> ### Measured: the Submit button is off the bottom of a small phone
+>
+> With 15 wagers on screen — the owner's game was 15 questions — and the
+> question screen rendered at every real phone height:
+>
+> | | Submit's bottom edge | `.game-content` scrolls by |
+> |---|---|---|
+> | **375x560** (an SE in Safari with both bars) | **567px of 560 — BELOW THE EDGE** | 23px |
+> | 375x580 | 567 of 580 | 3px |
+> | 375x600 and up | fits | 0 |
+>
+> A 20-wager game pushes it off at **620px** too, and scrolls by up to 88px.
+> 560 is not a number invented for this: CLAUDE.md already names it as *"an SE
+> in Safari with both bars showing — the tightest case this app can meet"*, from
+> the profile-card work.
+>
+> ### AND THE SCROLLING COSTS FAR MORE THAN THE ONE BUTTON
+>
+> This is the part that explains the BET VALUES, which have no network in them
+> at all. Once `.game-content` overflows, it is a scroller — and a browser must
+> then wait on every touch to see whether it is the start of a drag. `:active`
+> is delayed and then **cancelled outright by a pixel of movement, taking the
+> click with it**. A tap on a wager produces nothing whatsoever: no shrink, no
+> highlight, no selection. That is the report, word for word.
+>
+> **It is a LEAD, not a proven cause** — nobody has confirmed which phone or
+> which visible height, and the harness cannot feel a finger. What IS measured
+> is that the control was off-screen at the tightest size this app claims to
+> support, and that the screen scrolls there.
+>
+> ### The fix: the answer box is pinned on this screen at ALL times
+>
+> `#question-screen #answer-form` is `position: sticky; bottom: 0` now,
+> unconditionally. **Sticky is inert wherever the content already fits**, so
+> every phone from 600px up is byte-for-byte unchanged — measured at 600, 620,
+> 667, 812, 664 and 932, all reporting the identical bottom edge as before.
+> Where it does not fit, the wagers scroll under a pinned answer box and Submit
+> is reachable at every size, 560 included.
+>
+> **THE RULE WAS ALREADY WRITTEN, ONE CONDITION TOO NARROW.** `body.kb-open
+> #question-screen #answer-form` said exactly this and gave the reason —
+> *"the answer box is the one thing that must never be the thing that scrolls
+> away"* — and applied it only while a keyboard was up. The keyboard was never
+> the only way to make that screen too tall. The `.kb-open` copy is deleted
+> rather than left beside the new one: the same rule in two places is the fault
+> this file records more than any other.
+>
+> **What is NOT fixed, said plainly:** at 375x560 a 20-wager game still has five
+> wagers below the fold. They can be scrolled to, and Submit no longer moves —
+> but that screen is still a scroller, and a scroller still costs taps.
+>
+> ### A PINCH-ZOOM WAS BEING READ AS A KEYBOARD
+>
+> Found while looking for the same class of fault, and it is real whether or not
+> it is the owner's bug. `maximum-scale=1, user-scalable=no` **is ignored by iOS
+> Safari and has been for years**, so every screen here is pinch-zoomable, and a
+> two-finger brush while holding a phone zooms it.
+>
+> `keyboardInset` measured `innerHeight - visualViewport.height - offsetTop`.
+> **A zoom shrinks the visual viewport exactly as a keyboard does**: at 1.5x on
+> an 844px phone that is 281px "covered", well past the 120px threshold. So the
+> app declared a keyboard nobody had opened and **resized and re-anchored the
+> question screen** — a fixed, full-screen element — underneath somebody who had
+> not typed a word.
+>
+> `visualViewport.scale` is the one signal that separates them, and it was not
+> being read. A zoom now reports NOTHING MEASURABLE, which is the same answer
+> the function already gives a broken reading and is what leaves the layout
+> exactly as it was. A keyboard opened WHILE zoomed loses the keyboard fix and
+> keeps the game, which is the right way round.
+>
+> Two tests, break-tested: removing the guard fails both by name while the seven
+> that pin the keyboard behaviour still pass — which is what says the guard is
+> narrow rather than a quiet deletion of the feature.
+>
+> ### The habit
+>
+> **Ask what the CONTROL did, not what the app did.** "No press animation"
+> is a fact about CSS, and CSS does not wait on a network or a handler — one
+> answer from the owner eliminated every software mechanism in an afternoon of
+> measurement and pointed at the layout instead.
+
 > ## 2026-09-14 — the taps that felt dead, and what the measurements RULED OUT
 >
 > **Reported after a game: "tapping buttons (submit, bet values) slow and non

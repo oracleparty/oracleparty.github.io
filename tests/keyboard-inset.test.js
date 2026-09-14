@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { keyboardInset, KEYBOARD_MIN_INSET_PX } from '../js/keyboard-inset.js';
+import { keyboardInset, KEYBOARD_MIN_INSET_PX, ZOOM_TOLERANCE } from '../js/keyboard-inset.js';
 
 // The arithmetic behind "is the keyboard up, and how much of the screen is
 // left". Unit tested because NOTHING else in this repo can reach it: the robots
@@ -49,6 +49,35 @@ describe('keyboardInset', () => {
   it('reports the threshold as a boundary, not a range', () => {
     expect(keyboardInset({ ...phone, viewportHeight: 844 - KEYBOARD_MIN_INSET_PX }).open).toBe(false);
     expect(keyboardInset({ ...phone, viewportHeight: 844 - KEYBOARD_MIN_INSET_PX - 1 }).open).toBe(true);
+  });
+
+
+  // A PINCH-ZOOM LOOKS EXACTLY LIKE A KEYBOARD from the viewport's numbers, and
+  // `maximum-scale=1, user-scalable=no` does NOT stop iOS Safari zooming — so
+  // this is an ordinary state a real phone reaches, not an exotic one.
+  it('does not mistake a pinch-zoom for a keyboard', () => {
+    // 1.5x on an iPhone 14: the visible window is ~563px of an 844px page, and
+    // the old arithmetic called that 281px of keyboard.
+    const zoomed = keyboardInset({ ...phone, viewportHeight: 563, offsetTop: 0, scale: 1.5 });
+    expect(zoomed.open).toBe(false);
+    // Nothing measurable, so the caller leaves the CSS variables alone rather
+    // than re-anchoring a fixed screen to a magnified window.
+    expect(zoomed.height).toBe(null);
+
+    // The identical numbers WITHOUT the zoom are a keyboard, and must stay one
+    // — otherwise this guard would have quietly deleted the whole feature.
+    const real = keyboardInset({ ...phone, viewportHeight: 563, offsetTop: 0, scale: 1 });
+    expect(real.open).toBe(true);
+    expect(real.height).toBe(563);
+  });
+
+  it('treats an unzoomed page as unzoomed however scale is reported', () => {
+    // A browser with no `scale` at all (Number(undefined) is NaN) and one that
+    // reports a hair off 1 must both keep the keyboard fix working.
+    for (const scale of [undefined, 1, 1.0001, ZOOM_TOLERANCE, 0.5]) {
+      expect(keyboardInset({ ...phone, viewportHeight: 508, scale }).open).toBe(true);
+    }
+    expect(keyboardInset({ ...phone, viewportHeight: 508, scale: ZOOM_TOLERANCE + 0.01 }).open).toBe(false);
   });
 
   it('reports NOTHING MEASURABLE rather than a closed keyboard', () => {

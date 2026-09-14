@@ -3530,6 +3530,36 @@ body::after {
   margin-top: var(--space-sm);
 }
 
+/* THE SUBMIT BUTTON IS NEVER THE THING THAT SCROLLS AWAY.
+ *
+ * Reported from a live game: "tapping buttons (submit, bet values) slow and
+ * non responsive", with no press animation at all and no keyboard up.
+ *
+ * Measured, with 15 wagers on screen: at 375x560 — an SE in Safari with both
+ * bars showing, which CLAUDE.md already names as the tightest case this app
+ * meets — the Submit button's bottom edge lands at 567px of 560, so it is
+ * BELOW THE VISIBLE EDGE, and `.game-content` becomes a 23px scroller. A
+ * 20-wager game pushes it off at 620px too.
+ *
+ * That costs far more than one button. Once the content scrolls, the browser
+ * must wait on every touch to see whether it is the start of a drag: `:active`
+ * is delayed and then cancelled by a pixel of movement, and the click with it.
+ * So a tap on a WAGER — which has no network in it at all — produces nothing
+ * whatsoever, which is exactly what was described.
+ *
+ * Sticky is inert wherever the content already fits, so every phone from 600px
+ * up is byte-for-byte unchanged; measured at 667, 812 and 932. Where it does
+ * not fit, the wagers scroll under a pinned answer box, which is the same
+ * decision the keyboard rules below already make and for the same stated
+ * reason: the thing that gives way must never be the thing you are aiming at. */
+#question-screen #answer-form {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--color-bg);
+  padding-bottom: var(--space-xs);
+}
+
 .answer-input .input {
   flex: 1;
   min-width: 0;
@@ -8060,16 +8090,11 @@ body.kb-open #question-screen .question-card {
   margin-bottom: var(--space-sm);
 }
 
-/* PINNED. The answer box is the one thing that must never be the thing that
-   scrolls away — it is where the player is looking and where the keyboard is
-   pointing. */
-body.kb-open #question-screen #answer-form {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  background: var(--color-bg);
-  padding-bottom: var(--space-xs);
-}
+/* PINNED — and it is pinned on this screen at ALL times now, keyboard or not.
+   The rule moved up beside `.answer-input`, because a 15-wager game pushes
+   Submit off the bottom of a small phone with no keyboard anywhere near it.
+   Stated once rather than twice: the same rule in two places is the fault this
+   project records more than any other. */
 
 /* ============================================
    THE ADMIN WORKBENCH — DESKTOP
