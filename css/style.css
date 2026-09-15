@@ -5717,6 +5717,23 @@ body::after {
   text-align: center;
 }
 
+/* Two figures, not six. The Stats grid is three across and two items in it
+   would sit in columns one and two with a hole where the third should be —
+   which reads as a stat that failed to load rather than as a pair. minmax(0)
+   rather than a bare 1fr, for the reason every fixed-count grid in this file
+   carries it: 1fr cannot shrink below its content and that is what once pushed
+   the whole profile page 571px wide inside a 375px phone. */
+.profile-stats--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* The line under the pair. It states the denominator, or how far off the floor
+   is — the sample is always printed, which is what makes withholding the rate
+   honest rather than just missing. */
+.profile-claps__note {
+  margin: var(--space-sm) 0 0;
+}
+
 .profile-stat {
   padding: var(--space-sm);
   background: var(--color-bg-deep);
@@ -6083,6 +6100,18 @@ body::after {
 .profile-card__stat-label {
   font-size: var(--text-xs);
   color: var(--color-text-dim);
+}
+
+/* One line, beside the host rating it sits above, and it borrows that rule's
+   size and colour deliberately: two muted sentences under the chart read as one
+   small block of facts, where a third type size would read as a third section.
+   It is rendered only when the total is above zero — see the comment at its
+   call site for why a "0 claps" line would be worse than nothing. */
+.profile-card__claps {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  margin-bottom: 2px;
 }
 
 .profile-card__actions {

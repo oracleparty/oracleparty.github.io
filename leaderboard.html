@@ -50,13 +50,27 @@
     <div class="profile-tabs" role="tablist" aria-label="What to rank on">
       <button class="profile-tab active" data-measure="mastered" role="tab" aria-selected="true">Mastered</button>
       <button class="profile-tab" data-measure="proficiency" role="tab" aria-selected="false">Proficiency</button>
+      <button class="profile-tab" data-measure="claps" role="tab" aria-selected="false">Claps</button>
     </div>
 
     <div class="lb-controls">
+      <!-- CLAPS ARE NOT PER-CATEGORY AND NOT WINDOWED, so on that tab these
+           three are hidden and the order control below takes their place.
+           Leaving a category menu beside numbers that ignore it is the exact
+           thing the period control is hidden for — a filter that appears to be
+           doing something is worse than no filter at all. -->
       <select id="lb-category-select" class="input" aria-label="Category">
         <option value="">All categories</option>
       </select>
       <select id="lb-subcategory-select" class="input" style="display: none;" aria-label="Subcategory"></select>
+      <!-- The order of the claps board. Both numbers are on every row whichever
+           way it is sorted; this decides which one the ranking is FOR, because
+           "most claps" and "best rate" are different achievements and neither is
+           the other's tiebreak. -->
+      <select id="lb-clap-order-select" class="input" style="display: none;" aria-label="Order claps by">
+        <option value="total">Most claps</option>
+        <option value="rate">Best clap rate</option>
+      </select>
       <!-- Hidden until the server can honour it. See fetchLeaderboard: the
            fallback has no time dimension, and showing a period next to numbers
            that ignore it would be worse than not offering one. -->

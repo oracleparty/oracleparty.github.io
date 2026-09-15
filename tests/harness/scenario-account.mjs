@@ -140,6 +140,26 @@ try {
     { user_id: alice.userId, question_id: 'qm5', times_seen: 3, times_correct: 2, last_correct: false },
   ]);
 
+  // LIFETIME CLAPS — seeded so the two orders DISAGREE, which is the only thing
+  // that makes a check on the order control able to fail.
+  //
+  //   Bob   30 of 300 = 10%   most claps, worst rate
+  //   Alice 24 of  80 = 30%   fewer claps, best rate
+  //   Carol  2 of   6         under the floor: no rate at all
+  //
+  // One row per player per game, because that is the shape clap_history really
+  // has — a single summed row would pass just as happily on a page that read
+  // only the first row it found.
+  const clap = (userId, room, received, available) => ({
+    id: `ch-${userId}-${room}`, user_id: userId, room_id: room, game_key: 'g1',
+    claps_received: received, claps_available: available,
+  });
+  table.store.seed('clap_history', [
+    clap(bob.userId, 'cr1', 18, 180), clap(bob.userId, 'cr2', 12, 120),
+    clap(alice.userId, 'cr1', 14, 40), clap(alice.userId, 'cr2', 10, 40),
+    clap(carol.userId, 'cr1', 2, 6),
+  ]);
+
   table.store.seed('game_history', [
     { id: 'gh1', user_id: alice.userId, room_id: 'r1', category: 'history', subcategory: null,
       score: 62, placement: 1, total_players: 4, played_at: new Date().toISOString() },
@@ -204,6 +224,39 @@ try {
   const expectedAcc = `${Math.round(((30 + 51) / (60 + 80)) * 100)}%`;
   if (acc !== expectedAcc) {
     problems.push(`profile accuracy reads ${acc}, expected ${expectedAcc} from the rollups`);
+  }
+
+  // FAVOURITE ANSWERS on the profile page — the total AND the weighted figure,
+  // which is the pair the owner asked for. Alice is 24 of 80 across two games,
+  // so the section must reach the same numbers by summing her rows rather than
+  // reading whichever one came back first.
+  const clapSectionShown = await alice.page.locator('#profile-claps-section').isVisible().catch(() => false);
+  const clapStats = await alice.page.evaluate(() =>
+    [...document.querySelectorAll('#profile-claps .profile-stat')].map(el => ({
+      label: (el.querySelector('.profile-stat__label')?.textContent || '').trim(),
+      value: (el.querySelector('.profile-stat__value')?.textContent || '').trim(),
+    }))).catch(() => []);
+  const clapNote = ((await alice.page.textContent('#profile-claps-note').catch(() => '')) || '').trim();
+  note(`profile claps: shown=${clapSectionShown} ${JSON.stringify(clapStats)} — ${JSON.stringify(clapNote)}`);
+  if (!clapSectionShown) {
+    problems.push('the profile page shows no Favourite Answers section for a player with clap history');
+  } else {
+    const clapValue = label => clapStats.find(s => s.label.toLowerCase() === label)?.value;
+    if (clapValue('claps') !== '24') {
+      problems.push(`the profile shows ${clapValue('claps')} claps where her two games total 24`);
+    }
+    // 24 of 80. Both figures are checked rather than one: a page reading a
+    // single row reports 14 of 40 and 35%, and a page summing only the
+    // numerators reports 24 of 40 and 60% — neither of which the other check
+    // alone would catch.
+    if (clapValue('clap rate') !== '30%') {
+      problems.push(`the profile shows a clap rate of ${clapValue('clap rate')}, expected 30% from 24 of 80`);
+    }
+    // THE DENOMINATOR IS PRINTED. A rate with no sample beside it is the claim
+    // this project refuses to make anywhere else.
+    if (!clapNote.includes('80')) {
+      problems.push(`the clap rate is shown without saying what it is out of: ${JSON.stringify(clapNote)}`);
+    }
   }
 
   const catText = await alice.page.textContent('#profile-categories').catch(() => '');
@@ -432,6 +485,82 @@ try {
     // are different claims.
     if (!/\d+ of \d+ known/.test(prof)) {
       problems.push(`the Proficiency board shows a percentage with no sample beside it: ${prof.slice(0, 90)}`);
+    }
+  }
+
+  // --- the claps board ----------------------------------------------------
+  //
+  // A THIRD MEASURE OVER A DIFFERENT TABLE, so nothing the two checks above
+  // prove says anything about it. The seeded numbers invert deliberately: Bob
+  // has the most claps and the worst rate, Alice the reverse — so a board that
+  // ignores the order control ranks them the same way both times and this
+  // cannot pass by accident.
+  const clapTab = alice.page.locator('.profile-tab[data-measure="claps"]').first();
+  if (!await clapTab.isVisible().catch(() => false)) {
+    problems.push('there is no Claps toggle on the leaderboard');
+  } else {
+    await clapTab.click().catch(() => {});
+    await alice.page.waitForTimeout(1500);
+    const byTotal = await boardOrder();
+    const totalText = await boardText();
+    note(`claps by total: ${byTotal.join(' > ')} — ${totalText.slice(0, 120)}`);
+
+    if (byTotal.indexOf('Bob') > byTotal.indexOf('Alice')) {
+      problems.push(`Bob has 30 claps to Alice's 24 but is ranked below her on Most claps`);
+    }
+    // BOTH NUMBERS ON EVERY ROW. The owner asked for the total and the weighted
+    // figure together; a board showing only the one it sorts by makes the
+    // control read as two separate leaderboards.
+    if (!/%\s*of\s*\d+/.test(totalText)) {
+      problems.push(`the claps board shows a total with no rate beside it: ${totalText.slice(0, 90)}`);
+    }
+    // Carol is 2 from 6 available — under the floor, so there is no rate to
+    // print and the sample is printed instead. She is still ON the board: a
+    // total is a total at any size, and only the RATE needs a floor.
+    if (!byTotal.includes('Carol')) {
+      problems.push('Carol has claps and is missing from the Most claps board');
+    }
+    if (!/6 available/.test(totalText)) {
+      problems.push(`Carol is under the rate floor and the board printed a percentage for her anyway: ${totalText.slice(0, 120)}`);
+    }
+
+    // THE FILTERS ARE GONE, because claps have no category and no window.
+    // Leaving a category menu beside numbers that ignore it is the fault the
+    // period control is already hidden for.
+    if (await alice.page.locator('#lb-category-select').isVisible().catch(() => false)) {
+      problems.push('the category filter is still offered on the claps board, where it does nothing');
+    }
+    if (!await alice.page.locator('#lb-clap-order-select').isVisible().catch(() => false)) {
+      problems.push('the claps board offers no way to change the order');
+    }
+
+    // --- the other order ---------------------------------------------------
+    await alice.page.selectOption('#lb-clap-order-select', 'rate').catch(() => {});
+    await alice.page.waitForTimeout(1500);
+    const byRate = await boardOrder();
+    const rateText = await boardText();
+    note(`claps by rate: ${byRate.join(' > ')} — ${rateText.slice(0, 120)}`);
+
+    if (byRate.indexOf('Alice') > byRate.indexOf('Bob')) {
+      problems.push(`Alice is at 30% to Bob's 10% but is ranked below him — Best clap rate is not changing the ranking`);
+    }
+    if (byRate.includes('Carol')) {
+      problems.push('Carol qualifies on clap rate with only 6 claps available — the floor is not being applied');
+    }
+    if (!/\d+ of \d+/.test(rateText)) {
+      problems.push(`the clap rate board shows a percentage with no sample beside it: ${rateText.slice(0, 90)}`);
+    }
+
+    // AND BACK. A control hidden by one tab must come back on another, or the
+    // board is permanently unfilterable after one tap — the "a control that
+    // only moved is a control that was deleted" trap, from the other side.
+    await alice.page.locator('.profile-tab[data-measure="mastered"]').first().click().catch(() => {});
+    await alice.page.waitForTimeout(800);
+    if (!await alice.page.locator('#lb-category-select').isVisible().catch(() => false)) {
+      problems.push('leaving the claps board did not bring the category filter back');
+    }
+    if (await alice.page.locator('#lb-clap-order-select').isVisible().catch(() => false)) {
+      problems.push('the claps order control is still on screen on the Mastered board');
     }
   }
 
@@ -934,6 +1063,40 @@ try {
   if (aliceAvatar && bubbleFace !== aliceAvatar) {
     problems.push(`after reloading the lobby Alice's chat bubble shows ${JSON.stringify(bubbleFace)} instead of her avatar ${JSON.stringify(aliceAvatar)} — the history is drawn before the player list arrives`);
   }
+
+  // THE CARD SHOWS A LIFETIME CLAP TOTAL, and only the total. Bob has 30 across
+  // two games, so a card reading 18 is reading one row.
+  //
+  // THE CARD MUST NOT SHOW THE RATE. It is the one surface the owner asked to
+  // keep to a single number, and a second percentage would sit beside a chart,
+  // four stats and a host rating with nothing saying which of them it belongs
+  // to. Checked as an ABSENCE as well as a presence, because a card with both
+  // passes the first half perfectly.
+  const bobSeat = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
+  const clapCard = await alice.page.evaluate(async (pid) => {
+    const row = document.querySelector(`[data-profile-player-id="${pid}"]`);
+    if (!row) return { opened: false };
+    (row.querySelector('.avatar-wrap, .avatar') || row).click();
+    await new Promise(r => setTimeout(r, 1800));
+    const sheet = document.querySelector('#profile-card-sheet');
+    return {
+      opened: !!sheet && sheet.classList.contains('active'),
+      claps: (sheet?.querySelector('.profile-card__claps')?.textContent || '').trim(),
+      text: (sheet?.innerText || '').replace(/\s+/g, ' ').trim(),
+    };
+  }, bobSeat).catch(e => ({ err: String(e).slice(0, 120) }));
+  note(`Bob's card claps line: ${JSON.stringify(clapCard.claps || '(none)')}`);
+  if (clapCard.opened) {
+    if (!/\b30\b/.test(clapCard.claps || '')) {
+      problems.push(`the profile card shows ${JSON.stringify(clapCard.claps)} where Bob's two games total 30 claps`);
+    }
+    if (/%/.test(clapCard.claps || '')) {
+      problems.push(`the profile card is showing a clap RATE as well as the total: ${JSON.stringify(clapCard.claps)}`);
+    }
+  }
+  await alice.page.evaluate(() =>
+    document.querySelector('#profile-card-sheet')?.classList.remove('active')).catch(() => {});
+  await alice.page.waitForTimeout(400);
 
   // Promote one, which is the exact combination that overflowed in a live game.
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;

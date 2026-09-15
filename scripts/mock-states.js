@@ -951,6 +951,10 @@ export const STATES = {
               <div><div class="profile-card__stat-value">Science</div><div class="profile-card__stat-label">Best</div></div>
             </div>
             <div class="profile-card__radar radar" id="mock-card-radar"></div>
+            <!-- The lifetime clap total. A TOTAL ONLY here, on the owner's
+                 decision, and only when it is above zero — so this mock shows
+                 the case that has something to draw. -->
+            <p class="profile-card__claps">&#x1F44F; 23 claps received</p>
             <p class="host-rep host-rep--none">No host ratings yet</p>
             <!-- THE FULL HOST CASE: five buttons. The first version of this
                  mock showed three, which is what a NON-host with a friend
@@ -2106,6 +2110,56 @@ export const STATES = {
     },
   },
 
+  // THE CLAPS BOARD. Its own state because the tab row grows to three, the
+  // category and period menus are replaced by an order control, and the rows
+  // carry two numbers instead of a count and a sample — none of which the other
+  // two states render, so nothing would have been measuring any of it.
+  //
+  // Sorted by TOTAL, which is the default and the case where the rate can be
+  // withheld: the last row has not had enough claps available for one, and
+  // prints the sample alone instead of a figure.
+  'leaderboard-claps': {
+    page: 'leaderboard',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      document.querySelectorAll('.profile-tab').forEach(t => {
+        const on = t.dataset.measure === 'claps';
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      const hide = (id) => { const e = document.getElementById(id); if (e) e.style.display = 'none'; };
+      hide('lb-category-select'); hide('lb-subcategory-select'); hide('lb-period-select');
+      const order = document.getElementById('lb-clap-order-select');
+      if (order) order.style.display = '';
+
+      const row = (rank, name, title, primary, secondary, me) => `
+        <div class="leaderboard-row${me ? ' leaderboard-row--me' : ''}">
+          <span class="leaderboard-rank">${rank}</span>
+          <div class="avatar" style="width:28px;height:28px;background:#A87830;">\u{1F98A}</div>
+          <div class="leaderboard-row__info">
+            <div class="leaderboard-row__name">${name}</div>
+            <div class="leaderboard-row__title">${title}</div>
+          </div>
+          <div class="leaderboard-row__stats">
+            <div class="leaderboard-row__primary">${primary}</div>
+            <div class="leaderboard-row__secondary">${secondary}</div>
+          </div>
+        </div>`;
+      const note = document.getElementById('lb-scope-note');
+      if (note) note.textContent = 'You and 3 friends. Claps other players gave your answers. Every category, all time.';
+      const list = document.getElementById('lb-list');
+      if (list) {
+        list.innerHTML = [
+          row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '84', '22% of 388', false),
+          row(2, 'Sam', 'Novice', '31', '19% of 164', true),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar of the Atomic Age', '12', '9% of 133', false),
+          row(4, 'Jo', 'Apprentice', '1', '6 available', false),
+        ].join('');
+      }
+    },
+  },
+
   // What a brand-new player actually sees: no friends yet. The longest string
   // this page renders, and the first thing anybody signing up will read.
   'leaderboard-no-friends': {
@@ -2268,6 +2322,22 @@ export const STATES = {
         ).join('');
       }
 
+      // FAVOURITE ANSWERS. The measured case: past the floor, so both figures
+      // are shown and the note states the denominator. The withheld case is its
+      // own state (profile-claps-new) rather than a variant here, because a
+      // section whose only difference is two characters is a section nobody
+      // will notice is different.
+      const clapsSection = document.getElementById('profile-claps-section');
+      const clapsEl = document.getElementById('profile-claps');
+      if (clapsSection && clapsEl) {
+        clapsSection.style.display = '';
+        clapsEl.innerHTML = [['23', 'Claps'], ['19%', 'Clap Rate']].map(([v, l]) =>
+          `<div class="profile-stat"><div class="profile-stat__value">${v}</div><div class="profile-stat__label">${l}</div></div>`
+        ).join('');
+        const note = document.getElementById('profile-claps-note');
+        if (note) note.textContent = 'Out of 124 claps available to you.';
+      }
+
       const masteryEl = document.getElementById('profile-mastery');
       if (masteryEl) {
         const cats = [
@@ -2391,6 +2461,34 @@ export const STATES = {
           </div>
         `).join('');
       }
+
+      const tabContent = document.getElementById('profile-tab-content');
+      if (tabContent) tabContent.style.display = '';
+    },
+  },
+
+  // THE WITHHELD CLAP RATE. Under the floor the figure is "--" and the note
+  // says how far off it is — the sample is printed either way, which is what
+  // makes a missing number honest rather than just missing. It is a state of
+  // its own because this is the version every new player sees first, and the
+  // longest sentence the section can hold.
+  'profile-claps-new': {
+    page: 'profile',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const name = document.getElementById('profile-name');
+      if (name) name.textContent = 'ArchaeologistAnna';
+
+      const section = document.getElementById('profile-claps-section');
+      const el = document.getElementById('profile-claps');
+      if (!section || !el) return;
+      section.style.display = '';
+      el.innerHTML = [['1', 'Claps'], ['--', 'Clap Rate']].map(([v, l]) =>
+        `<div class="profile-stat"><div class="profile-stat__value">${v}</div><div class="profile-stat__label">${l}</div></div>`
+      ).join('');
+      const note = document.getElementById('profile-claps-note');
+      if (note) note.textContent = 'Clap rate needs 20 claps available. You have had 6.';
 
       const tabContent = document.getElementById('profile-tab-content');
       if (tabContent) tabContent.style.display = '';

@@ -2301,6 +2301,96 @@ BEGIN
 END $$;
 
 
+-- ============================================
+-- 071 — A BOT IS NOT A CLAP AVAILABLE
+--
+-- Its own block because it needs its own room: a solo practice game, which is
+-- the shape a bot exists for and the one that breaks a naive denominator. The
+-- bot holds an answer row in every round exactly as a person does, so counting
+-- SEATS would hand the human one clap available per round from something that
+-- has no screen and can never tap anything — and every practice game would then
+-- drag their lifetime rate towards zero for ever.
+--
+-- Two rounds, so a per-round count and a per-game one cannot coincide at 1.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid; humanP uuid; botP uuid; humanU uuid; friendP uuid; friendU uuid;
+  qid uuid; aHuman uuid; n int; got int;
+BEGIN
+  INSERT INTO questions (question, correct_answer, categories)
+    VALUES ('Clap bot q', 'yes', ARRAY['logic']) RETURNING id INTO qid;
+  INSERT INTO rooms (code, status, game_phase, current_question, question_ids,
+                     countdown_started_at)
+    VALUES ('CLB1', 'playing', 'reveal', 1, ARRAY[qid, qid], now()) RETURNING id INTO rid;
+
+  humanU := gen_random_uuid();
+  INSERT INTO auth.users (id) VALUES (humanU);
+  INSERT INTO players (room_id, display_name, is_host, user_id)
+    VALUES (rid, 'Solo', true, humanU) RETURNING id INTO humanP;
+  INSERT INTO players (room_id, display_name, is_bot)
+    VALUES (rid, 'Practice Bot', true) RETURNING id INTO botP;
+
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, humanP, 0, qid, 'mine', 1) RETURNING id INTO aHuman;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, botP, 0, qid, 'beep', 2);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, humanP, 1, qid, 'mine again', 3);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, botP, 1, qid, 'boop', 4);
+
+  PERFORM op_record_claps(rid);
+
+  -- COUNTED BY SEATS THIS IS 2 (one bot beside them in each of two rounds).
+  -- Counted by people who could actually clap, it is 0.
+  SELECT claps_available INTO got FROM clap_history WHERE user_id = humanU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a bot is not a clap available', got::text, '0');
+
+  -- AND THE ROW IS STILL WRITTEN. Dropping it instead would be a different bug
+  -- with the same symptom — a practice game leaving no record at all — and a
+  -- check on the number alone would pass on that.
+  SELECT count(*) INTO n FROM clap_history WHERE user_id = humanU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and a solo practice game still records a row, at zero', n::text, '1');
+
+  -- A REAL PERSON IN THE SAME ROOM STILL COUNTS, which is what says the rule is
+  -- about bots rather than a denominator quietly switched off. A second game in
+  -- this room: one round, one human beside them, so exactly one clap available.
+  friendU := gen_random_uuid();
+  INSERT INTO auth.users (id) VALUES (friendU);
+  INSERT INTO players (room_id, display_name, user_id)
+    VALUES (rid, 'Friend', friendU) RETURNING id INTO friendP;
+
+  UPDATE rooms SET countdown_started_at = now() + interval '1 hour' WHERE id = rid;
+  DELETE FROM answers WHERE room_id = rid;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, humanP, 0, qid, 'mine', 1);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, friendP, 0, qid, 'theirs', 2);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, botP, 0, qid, 'beep', 3);
+
+  PERFORM op_record_claps(rid);
+
+  SELECT claps_available INTO got FROM clap_history
+   WHERE user_id = humanU AND room_id = rid
+     AND game_key = (SELECT countdown_started_at::text FROM rooms WHERE id = rid);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a person in the room is a clap available, bot beside them or not', got::text, '1');
+
+  -- THE BOT'S OWN DENOMINATOR IS NOT ONE TOO HIGH EITHER. It has no user_id so
+  -- it writes no row, and asserting that here is what stops the CASE that
+  -- subtracts self being quietly wrong the day a bot gains one.
+  SELECT count(*) INTO n FROM clap_history WHERE room_id = rid
+     AND game_key = (SELECT countdown_started_at::text FROM rooms WHERE id = rid);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the bot itself writes no lifetime row', n::text, '2');
+END $$;
+
+
 
 -- ============================================
 -- 072 — A BOT KEEPS ITS OWN RECORD

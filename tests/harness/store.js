@@ -1243,9 +1243,20 @@ export class FakeStore {
       const gameKey = room?.countdown_started_at ? String(room.countdown_started_at) : null;
       if (!gameKey) return 0;
 
-      // The denominator is counted PER ROUND — people seated at round N, minus
-      // you — summed over the rounds you were actually in.
+      // The denominator is counted PER ROUND — people who could have clapped
+      // you at round N — summed over the rounds you were actually in.
+      //
+      // A BOT IS NOT A CLAP AVAILABLE. It holds an answer row in every round
+      // just as a person does, so counting seats would give a solo practice
+      // game one clap available per round from something that cannot tap
+      // anything. Mirrors the `clappers` CTE in migration 071 exactly; a row
+      // whose player cannot be found counts as a person, on the same
+      // cannot-tell rule the migration states.
       const answers = this.table('answers').filter(a => String(a.room_id) === String(roomId));
+      const isBot = (pid) => {
+        const p = this.table('players').find(x => String(x.id) === String(pid));
+        return !!p?.is_bot;
+      };
       const seatsByRound = new Map();
       for (const a of answers) {
         const r = Number(a.question_number);
@@ -1254,8 +1265,10 @@ export class FakeStore {
       }
       const available = new Map();
       for (const [, seats] of seatsByRound) {
+        const humans = [...seats].filter(pid => !isBot(pid)).length;
         for (const pid of seats) {
-          available.set(pid, (available.get(pid) || 0) + Math.max(seats.size - 1, 0));
+          const self = isBot(pid) ? 0 : 1;
+          available.set(pid, (available.get(pid) || 0) + Math.max(humans - self, 0));
         }
       }
       const received = new Map();

@@ -49,7 +49,13 @@
 > 2. **Add ~a dozen questions each to History's Ancient (58) and Medieval (52)**
 >    so they clear the 60-question floor and can carry words of their own.
 > 3. **Play a real game** and report what breaks.
-> 4. **Paste back the verification rows for 067, 068, 069 and 070.** All four
+> 4. **Run migrations 071 and 072, and paste back their verification rows.**
+>    Until 071 is applied the clap button on every reveal reports a refusal and
+>    records nothing, and the Favourite Answers card can never have anything in
+>    it. Until 072 is applied the bot's own record is not kept — and nothing
+>    breaks, which is exactly why it would go unnoticed. Both print their own
+>    verification block; the SQL is in `migrations/`.
+> 5. **Paste back the verification rows for 067, 068, 069 and 070.** All four
 >    were run on the owner's word and nothing here has seen a single row. That
 >    is the weakest evidence in this table, and 070 in particular is invisible
 >    until somebody needs it — the JavaScript hides Undo Disqualify when the
@@ -82,6 +88,144 @@
 > the same commit** — a change that leaves this file stale is not finished.
 >
 > Last verified against the code: 2026-08-30.
+
+> ## 2026-09-15 — Favourite Answers, and what a clap is allowed to mean
+>
+> **Asked for as a discussion first, and the owner was right to insist:** *"was
+> wondering if there should be an optional Favorite answer vote? But this would
+> have to be thought thru well with discussion first."* Every decision below is
+> theirs, settled by interview before a line was written. The mechanic is built
+> in full: migrations 071 and 072, the reveal, the results card, both profile
+> surfaces and a third leaderboard.
+>
+> **NEITHER MIGRATION IS APPLIED.** They are printed for the owner to paste, and
+> nothing here has seen a verification row. Until 071 runs, `op_clap_answer` is
+> missing and the clap button reports a refusal rather than recording anything.
+>
+> ### The design, and the reasoning that is not obvious from the code
+>
+> | | |
+> |---|---|
+> | the mark | 👏 a clap, **one per person per round**, on the reveal only |
+> | undo | tap another to move it, tap the same one again to take it back |
+> | who | visible, in the moment — *"if it was obvious someone was voting… others could try to neutralize it"* was the owner's own reasoning FOR it |
+> | per game | a **Favourite Answers** card above the scoreboard, capped at 3 |
+> | span | one game. Nothing accumulates in the lobby |
+> | lifetime | a total AND a weighted rate, claps received over claps AVAILABLE |
+> | bots | clappable, and can win |
+> | scoring | untouched. A clap is never a point |
+>
+> **CLAPPING IS PUBLIC AND HOST RATINGS ARE NOT, and the difference is the
+> whole safety argument.** A host rating is a verdict on somebody with power
+> over your score, so `host_ratings` admits admins only — a rating that is
+> unsafe to give is worse than none. A clap is a compliment. Hiding who gave it
+> would remove the thing that makes it fun and add nothing.
+>
+> ### TIES ARE THE NORMAL CASE, and the owner found that before I did
+>
+> *"What would happen if it is a draw? Like if i only play with my friend? Have
+> you even considered any edge cases?"* — **with two players nobody can win.**
+> Each can only clap the other, so every clapped answer sits at exactly one
+> clap. Three players caps it at two. A single winner is normal only at four or
+> more.
+>
+> So `favouriteAnswers` never picks one. It returns the top three in clap order
+> and **counts what did not fit** — a card silently showing three of eight equal
+> answers is claiming those three were special.
+>
+> ### A BOT IS NOT A CLAP AVAILABLE
+>
+> Found by reading the denominator back after it was written and passing. A bot
+> holds an answer row in every round exactly as a person does, so counting SEATS
+> gave a solo practice game one clap available per round — from a player with no
+> screen, no finger and no opinion. Every practice game would have dragged the
+> owner's own rate towards zero, permanently, and the number meant to say
+> "people liked your answers" would mostly have measured how often they played
+> alone.
+>
+> The `clappers` CTE counts people. **LEFT JOIN, and a row that cannot be found
+> counts as a person** — an answer outlives its seat (052), and this project's
+> oldest rule is that a missing value means *cannot tell* and takes the reading
+> that destroys nothing. The owner raised the departed-player case themselves
+> and called it negligible; it is.
+>
+> Break-tested: reverting to seat counting fails *"a bot is not a clap
+> available"* by name, and the rule beside it (*"a solo practice game still
+> records a row, at zero"*) is what stops the fix being a denominator quietly
+> switched off.
+>
+> ### Three surfaces, three different amounts of the same fact
+>
+> | | shows | why |
+> |---|---|---|
+> | the profile CARD | the total, and only above zero | it already carries four stats, a twelve-axis chart and a host rating. A second percentage there has nothing saying which of them it belongs to |
+> | the profile PAGE | total AND rate, with the denominator under it | this is where somebody reads their own numbers, and there is room for a sentence |
+> | the LEADERBOARD | both on every row, with a control for the ORDER | *"most claps"* and *"best rate"* are different achievements and neither is the other's tiebreak |
+>
+> **THE RATE IS WITHHELD UNDER 20 CLAPS AVAILABLE, never shown as 0%.** The
+> owner's number — *"about one game"*. `CLAP_RATE_FLOOR` is exported from
+> `clap-logic.js` and the page that explains the floor READS it rather than
+> typing 20 again, because the same quantity in two places is this file's most
+> repeated fault and would surface as a screen promising a threshold the maths
+> does not use.
+>
+> ### The leaderboard hides its own filters on that tab
+>
+> Claps have no category and no time window — `clap_history` records a game, not
+> a subject. So the category, subcategory and period menus are hidden on the
+> claps tab and an order control takes their place, and **the scope note says
+> the board is every category and all time**, so a filter vanishing is explained
+> rather than merely noticed.
+>
+> That is this file's own rule about the period control, applied one tab along:
+> *a control shown beside numbers that ignore it is worse than no control*.
+> `syncControls()` is the single place that decides, and it can only ever
+> NARROW — the period select has its own reason to be hidden and leaving the
+> claps tab must not bring it back.
+>
+> **Checked in both directions**, because hiding is exactly the trap this file
+> records as *"a control that only moved is a control that was deleted"*:
+> `scenario-account` fails if the category menu survives onto the claps board
+> AND if it does not come back when you leave.
+>
+> ### The bot's own record (migration 072), and the owner corrected me twice
+>
+> *"How many times do i have to say i want the bot's results recorded???? Forget
+> /wipe out any bit of not recording it"* and *"It should be actual results. It
+> answers no answer to plenty. The host may override some. There is chance on
+> others."* They were right on every count and I verified it against the code
+> before conceding.
+>
+> **IT CANNOT GO IN `question_history`.** That table's `user_id` is
+> `REFERENCES auth.users(id)` (011), a bot has no auth user, and
+> `record_round_history` (043) does every player in ONE statement — so a bot
+> written there raises 23503 and **rolls back the whole room's round**, every
+> round, reaching nothing but a log. `bot_history` is keyed on the bot's display
+> name and has no foreign key at all.
+>
+> **THE FIRST BREAK TEST PASSED, TWICE, AND BOTH REASONS ARE WORTH KEEPING.**
+> The scratch schema had no such FK, so the harness was more permissive than the
+> live database — adding it exposed leaderboard rules minting user ids that
+> never existed. Then it passed again because the comment I had written
+> described a mechanism that does not fire: bots are excluded by
+> `user_id IS NOT NULL`, not by the `is_bot` line I was deleting. The comment
+> was corrected rather than left standing, and a rule that gives a bot a user id
+> now reports *"a bot with a user id does not take everyone's round down with
+> it"*.
+>
+> ### A display name could break out of an HTML attribute
+>
+> Found on the way, unrelated, and live. `escapeHtml` is the textContent →
+> innerHTML trick, which **does not escape quotes** — and display names are
+> written into attributes on several screens. A name containing a quote could
+> close the attribute and add its own. Both quote forms are escaped now.
+>
+> ### The habit
+>
+> **Ask what the number is DIVIDED BY, and go and look at what is in the
+> denominator.** The clap rate was correct in every test it had, against a
+> denominator that counted a bot as a person — and the only thing that found it
+> was reading the SQL back and asking who, exactly, was being counted.
 
 > ## 2026-09-14 — "it only started recently", and that objection was right
 >
@@ -560,11 +704,22 @@
 
 > ## 2026-09-06 — the bot has a chart, and it is a circle on purpose
 >
+> **SUPERSEDED IN PART ON 2026-09-15 — read this whole entry as history.** It
+> argued that a bot's data can never accumulate, and the owner overruled it:
+> *"How many times do i have to say i want the bot's results recorded????"*
+> Migration 072 gives the bot its own table and its chart draws from what it
+> ACTUALLY did as soon as that migration is applied, falling back to the stated
+> skill below until then. What survives unchanged is the narrower rule, which
+> the owner has also stated separately: **nothing a bot does reaches
+> `question_stats` or `answer_tally`**, so its coin flips never shape a
+> question's difficulty band or its answer key. See "Favourite Answers, and what
+> a clap is allowed to mean".
+>
 > **Asked for by the owner: "give the bot its own proficiency chart… later when
 > I have more bots they'll show the differences."** Built, and one premise in the
 > request had to be corrected first rather than quietly worked around.
 >
-> ### A bot's data does not accumulate, and never will
+> ### A bot's data does not accumulate, and never will — WRONG, see above
 >
 > The owner expected the chart to fill in as the bot played. It cannot. **A bot
 > row carries no `user_id`** — `addBot` does not write one — and the owner's own
@@ -4223,6 +4378,7 @@ not build it on `game_history.score`.
 │   │   ├── presence-health.js    is the presence channel still joined
 │   │   ├── title-tiers.js        which tiers a topic offers, and at what count
 │   │   ├── game/phase-order.js  may a returning phone follow the room's phase
+│   │   ├── game/clap-logic.js    claps: counting, one-per-round, lifetime totals
 │   │   └── game/bot-logic.js     bot decisions
 │   └── constants.js    All timing + threshold values
 ├── migrations/         Hand-applied SQL (see #7 above)
@@ -4472,6 +4628,10 @@ nothing on the wheel is unreachable.
 
 ## Other Features
 
+- **Favourite Answers** — 👏 one clap per person per round, on the reveal. The
+  game ends with a Favourite Answers card above the scoreboard, and the claps
+  accumulate into a lifetime total and a weighted rate on the profile and the
+  leaderboard. **Needs migration 071, which is not applied.**
 - **Honks** — tap to blast a sound at everyone, throttled by `HONK_THROTTLE`.
   The honker's avatar shakes on every client (`jiggleHonker` in `honk.js`), so
   a quack has a face on it. `from_id` was in the broadcast payload from the
@@ -4509,8 +4669,10 @@ nothing on the wheel is unreachable.
   publishable key must still be accepted from anyone (#2).
 - **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
 - **Friends** — requests, accept/decline, see friends' active lobbies
-- **Leaderboard** — **friends only**, ranked on mastery or proficiency, by
-  category and subcategory, all-time or over a period. See "The leaderboard
+- **Leaderboard** — **friends only**, ranked on mastery, proficiency or CLAPS,
+  by category and subcategory, all-time or over a period. **The claps tab hides
+  the category and period controls**, because a clap has neither — see
+  "Favourite Answers, and what a clap is allowed to mean". See "The leaderboard
   ranks what you know, among people you know". The per-player mastery tree and
   the Map live on the profile.
 - **Host reputation** — "would you play with this host again?", read before you
@@ -4665,7 +4827,7 @@ Four rules from the owner, and where each is enforced:
 |---|---|
 | Only a human host adds or removes one, only in the lobby | `renderAddBotButton` / `handleAddBot` / `handleRemoveBot` in `js/lobby.js` |
 | Never host or co-host | `determineNextHost`, `handleHostPromotion`, and the row's buttons are not rendered at all |
-| Nothing it does is recorded | `recordCurrentQuestionOutcomes` in `reveal.js`, and `getHumans()` for placement in `scores.js` |
+| Nothing it does shapes a QUESTION | `recordCurrentQuestionOutcomes` in `reveal.js`, and `getHumans()` for placement in `scores.js`. **Revised 2026-09-15**: the bot's own results ARE recorded now (migration 072, `bot_history`) on the owner's instruction — what this row still guarantees is that they never reach `question_stats` or `answer_tally`, which is the evidence a question's difficulty and answer key are judged from |
 | A bot never holds a room open | `humanPlayers()` in `js/lobby.js` |
 
 Two exemptions that are not optional: a bot **sends no heartbeat and joins no
@@ -4685,7 +4847,13 @@ break it and `question_stats` reads `asked=2` where a solo human is `asked=1`.
 `rooms`, `players`, `answers`, `chat_messages`, `chat_archive`, `questions`,
 `question_feedback`, `question_history`, `question_stats`, `answer_tally`,
 `game_plays`, `game_history`, `profiles`, `player_stats`, `friend_requests`,
-`friendships`, `title_unlocks`, `site_settings`, `error_logs`, `host_ratings`.
+`friendships`, `title_unlocks`, `site_settings`, `error_logs`, `host_ratings`,
+`answer_claps`, `clap_history`, `bot_history`.
+
+**The last three arrive with migrations 071 and 072, which are NOT APPLIED.**
+`answer_claps` dies with its room; `clap_history` and `bot_history` deliberately
+have no foreign key to anything, for the reason 033 and 052 both record — a
+historical record that cascades is a historical record that gets deleted.
 
 ---
 

@@ -7,6 +7,18 @@
  * rule that has been wrong for months before, in this exact codebase.
  */
 
+/**
+ * How many claps must have been AVAILABLE to you before a rate is shown.
+ *
+ * The owner's number: "20 claps available — about one game". It lives here
+ * rather than in constants.js because this module deliberately has no imports,
+ * and it is EXPORTED so that a screen explaining the floor reads it instead of
+ * writing 20 again — the same quantity in two places is this project's most
+ * repeated fault, and it would surface as a page promising a number at a
+ * threshold the maths does not use.
+ */
+export const CLAP_RATE_FLOOR = 20;
+
 /** How many claps an answer has. */
 export function clapsForAnswer(claps, answerId) {
   if (!Array.isArray(claps) || !answerId) return 0;
@@ -159,7 +171,7 @@ export function favouriteAnswers(claps, { limit = 3 } = {}) {
  * and showing 0 for "not enough play yet" is the same lie the admin count chips
  * refuse to tell by rendering `?` instead of `0`.
  */
-export function clapTotals(rows, { floor = 20 } = {}) {
+export function clapTotals(rows, { floor = CLAP_RATE_FLOOR } = {}) {
   let received = 0, available = 0;
   for (const r of (Array.isArray(rows) ? rows : [])) {
     received += Number(r.claps_received) || 0;

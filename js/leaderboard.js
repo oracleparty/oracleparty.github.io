@@ -30,6 +30,16 @@
 // THE PERIOD CONTROL IS HIDDEN UNTIL THE SERVER CAN HONOUR IT. See
 // fetchLeaderboard: without migration 053 the fallback is lifetime-only, and a
 // period shown beside numbers that ignore it is worse than no period at all.
+//
+// CLAPS ARE THE THIRD MEASURE, and they are not a third slice of the same data.
+// A clap is somebody saying they liked your answer best that round — it has no
+// category and no time window, because clap_history records a game rather than a
+// subject. So on that tab the category, subcategory and period controls are
+// HIDDEN and an order control takes their place. Leaving them on screen would
+// rank a board on numbers that ignore them and say nothing, which is the fault
+// the paragraph above exists to avoid; the scope note says outright that this
+// board is every category and all time, so a filter vanishing is explained
+// rather than merely noticed.
 // ============================================
 
 import { $, $$, escapeHtml, renderAvatar, navigateWithFade } from './utils.js';
@@ -37,8 +47,10 @@ import { LEADERBOARD_LIMIT, MIN_QUESTIONS_FOR_TITLE } from './constants.js';
 import {
   fetchLeaderboard,
   fetchProfilesBatch,
-  fetchFriends
+  fetchFriends,
+  fetchClapHistory
 } from './supabase.js';
+import { clapTotals, CLAP_RATE_FLOOR } from './game/clap-logic.js';
 import { initAuth, getCurrentUser } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
@@ -62,11 +74,14 @@ const PROFICIENCY_FLOOR = { all: 10, 30: 5, 7: 3 };
 let _windowSupported = true;   // does the server offer time periods at all
 
 const state = {
-  measure: 'mastered',      // 'mastered' | 'proficiency'
+  measure: 'mastered',      // 'mastered' | 'proficiency' | 'claps'
   category: '',             // '' = all categories
   subcategory: '',
   periodDays: '',           // '' = all time
+  clapOrder: 'total',       // 'total' | 'rate' — only read on the claps tab
 };
+
+const onClaps = () => state.measure === 'claps';
 
 // ============================================
 // INIT
@@ -93,9 +108,15 @@ async function init() {
         t.classList.toggle('active', isActive);
         t.setAttribute('aria-selected', isActive ? 'true' : 'false');
       });
+      syncControls();
       load();
     });
   });
+
+  $('#lb-clap-order-select').onchange = () => {
+    state.clapOrder = $('#lb-clap-order-select').value;
+    load();
+  };
 
   $('#lb-category-select').onchange = () => {
     state.category = $('#lb-category-select').value;
@@ -117,6 +138,26 @@ async function init() {
   window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
 
   load();
+}
+
+/**
+ * Which controls belong to the measure now selected.
+ *
+ * ONE PLACE, because the alternative is each tab handler remembering to hide
+ * three things and show a fourth — the same rule stated N times and followed
+ * N-1, which is the shape this project records more than any other.
+ *
+ * The period select is the awkward one: it has its own reason to be hidden
+ * (the server cannot honour it), so leaving the claps tab must not bring it
+ * BACK. `_windowSupported` is the authority on that and this only ever narrows.
+ */
+function syncControls() {
+  const claps = onClaps();
+  $('#lb-category-select').style.display = claps ? 'none' : '';
+  $('#lb-subcategory-select').style.display =
+    (!claps && $('#lb-subcategory-select').options.length > 0 && state.category) ? '' : 'none';
+  $('#lb-period-select').style.display = (!claps && _windowSupported) ? '' : 'none';
+  $('#lb-clap-order-select').style.display = claps ? '' : 'none';
 }
 
 function buildCategorySelect() {
@@ -185,6 +226,17 @@ async function load() {
   const friends = _friendsCache;
   const ids = [myId, ...friends.map(f => f.user_id)];
 
+  // THE CLAPS BOARD READS A DIFFERENT TABLE AND STOPS HERE. It shares the
+  // friends list, the row template and the scope note, and nothing else: there
+  // is no category to filter by, no window to apply and no leaderboard RPC to
+  // call, so running it through the block below would mean four arguments that
+  // are all null and a `windowed` answer about a question nobody asked.
+  if (onClaps()) {
+    const rows = await fetchClapHistory(ids);
+    if (token !== _loadToken) return;
+    return paint(rankClaps(rows, ids), friends, myId, token, container, note);
+  }
+
   const { rows, windowed } = await fetchLeaderboard(ids, {
     category: state.category || null,
     subcategory: state.subcategory || null,
@@ -204,8 +256,19 @@ async function load() {
   }
 
   const floor = PROFICIENCY_FLOOR[state.periodDays || 'all'] ?? PROFICIENCY_FLOOR.all;
-  const ranked = rankRows(rows, state.measure, floor);
+  return paint(rankRows(rows, state.measure, floor), friends, myId, token, container, note, floor);
+}
 
+/**
+ * Draw a ranked list, whichever measure produced it.
+ *
+ * ONE PAINTER for all three boards. The profile fetch, the stale-token check,
+ * the empty case and the row template were about to be written twice, and this
+ * file already carries a note about what a second copy of buildDisplayTitle
+ * would have done — printed a raw word id as somebody's title on this screen
+ * alone, for as long as nobody compared the two.
+ */
+async function paint(ranked, friends, myId, token, container, note, floor) {
   note.textContent = scopeNote(friends.length, floor);
 
   if (ranked.length === 0) {
@@ -255,7 +318,57 @@ function rankRows(rows, measure, floor) {
     .sort((a, b) => b.mastered - a.mastered || b.accuracy - a.accuracy);
 }
 
+/**
+ * Rank the claps board from raw clap_history rows.
+ *
+ * One row per player per finished game, so they are summed per person —
+ * clapTotals is the single place that does it, shared with both profile
+ * surfaces, so the three can never disagree about what a lifetime total is.
+ *
+ * TWO ORDERS, BOTH REAL, which is why this is a control rather than a tiebreak.
+ * Most claps is a record of turning up and being funny for a long time; the best
+ * rate is a record of being the one people picked. Ranking one by the other
+ * would quietly answer a question nobody asked.
+ *
+ * THE RATE ORDER HAS A FLOOR AND THE TOTAL ORDER HAS NONE, exactly as
+ * proficiency has one and mastered does not. A count is a count at any size; a
+ * share of three claps is not a fact about a player. `available` is the floor's
+ * unit rather than `received`, because it measures how much CHANCE they have
+ * had — somebody in twenty rounds who was never clapped has a real 0% and
+ * belongs on the board.
+ *
+ * Everybody the board knows about is included, at zero if they have never been
+ * clapped. Hiding them would make the one screen meant to show where you stand
+ * answer "nowhere", which is the same call rankRows already makes for mastered.
+ */
+function rankClaps(rows, ids) {
+  const byUser = new Map(ids.map(id => [String(id), []]));
+  for (const r of (rows || [])) {
+    const key = String(r.user_id);
+    if (byUser.has(key)) byUser.get(key).push(r);
+  }
+
+  const withStats = [...byUser.entries()].map(([user_id, mine]) => {
+    const t = clapTotals(mine);
+    return { user_id, claps: t.received, available: t.available, rate: t.rate };
+  });
+
+  if (state.clapOrder === 'rate') {
+    return withStats
+      .filter(r => r.rate !== null)
+      // Ties to the bigger sample, the same rule proficiency follows: a perfect
+      // rate over the minimum must not outrank a near-perfect one over a year.
+      .sort((a, b) => b.rate - a.rate || b.available - a.available);
+  }
+  return withStats
+    .filter(r => r.available > 0)
+    .sort((a, b) => b.claps - a.claps || (b.rate ?? -1) - (a.rate ?? -1));
+}
+
 function primaryStat(row) {
+  if (onClaps()) {
+    return state.clapOrder === 'rate' ? `${Math.round(row.rate * 100)}%` : `${row.claps}`;
+  }
   if (state.measure === 'proficiency') return `${Math.round(row.accuracy * 100)}%`;
   return `${row.mastered}`;
 }
@@ -264,6 +377,18 @@ function secondaryStat(row) {
   // THE SAMPLE IS ALWAYS PRINTED BESIDE THE PERCENTAGE. "100%" and "100% of 12
   // questions" are different claims and must never look alike — the same rule
   // the difficulty band on the reveal follows.
+  if (onClaps()) {
+    // BOTH NUMBERS ON EVERY ROW, whichever way the board is sorted. The owner
+    // asked for the total and the weighted figure together, and the order
+    // control decides which one the ranking is for rather than which one is
+    // visible — a board that hides the number it is not sorting by makes the
+    // toggle look like two different leaderboards.
+    if (state.clapOrder === 'rate') return `${row.claps} of ${row.available}`;
+    return row.rate === null
+      // Under the floor there is no rate to print, and the sample says why.
+      ? `${row.available} available`
+      : `${Math.round(row.rate * 100)}% of ${row.available}`;
+  }
   if (state.measure === 'proficiency') return `${row.mastered} of ${row.met} known`;
   return `${row.met} met`;
 }
@@ -271,9 +396,16 @@ function secondaryStat(row) {
 function scopeNote(friendCount, floor) {
   const who = friendCount === 0 ? 'Just you so far — add friends to compare.'
                                 : `You and ${friendCount} friend${friendCount === 1 ? '' : 's'}.`;
-  const what = state.measure === 'proficiency'
-    ? `Share of the questions you have met that you currently get right. Needs ${floor}+ met to appear.`
-    : 'Questions you currently get right, counted once each.';
+  // SAY THAT THE FILTERS ARE GONE BECAUSE THEY DO NOT APPLY. A category menu
+  // disappearing when you change tab reads as a glitch unless the line under it
+  // accounts for the board being every category and all time.
+  const what = onClaps()
+    ? (state.clapOrder === 'rate'
+        ? `Claps you were given out of the claps available to you. Every category, all time. Needs ${CLAP_RATE_FLOOR}+ available to appear.`
+        : 'Claps other players gave your answers. Every category, all time.')
+    : state.measure === 'proficiency'
+      ? `Share of the questions you have met that you currently get right. Needs ${floor}+ met to appear.`
+      : 'Questions you currently get right, counted once each.';
   return `${who} ${what}`;
 }
 
@@ -284,6 +416,11 @@ function emptyMessage(friendCount, floor) {
   // who taps once, sees "Request Sent" and comes back to an empty board would
   // reasonably conclude the board is broken.
   if (friendCount === 0) return 'Add friends to build a leaderboard. Tap a signed-in player in a lobby to send a request — they accept it from their own profile.';
+  if (onClaps()) {
+    return state.clapOrder === 'rate'
+      ? `Nobody here has had ${CLAP_RATE_FLOOR} claps available yet — that is about one game with a few people in it.`
+      : 'No claps yet. Tap 👏 on the answer you liked best each round and they start collecting.';
+  }
   if (state.measure === 'proficiency') return `Nobody here has met ${floor} questions in this slice yet.`;
   return 'Nothing mastered here yet — play a game and it fills in.';
 }

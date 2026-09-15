@@ -6,6 +6,7 @@
 import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade, showToast } from './utils.js';
 import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT, MIN_HOST_RATINGS, BOT_ACCURACY } from './constants.js';
 import { botSkillFor } from './game/bot-logic.js';
+import { clapTotals, CLAP_RATE_FLOOR } from './game/clap-logic.js';
 import {
   supabase,
   fetchProfile,
@@ -13,6 +14,7 @@ import {
   deleteMyAccount,
   fetchPlayerStats,
   fetchBotProficiency,
+  fetchClapHistory,
   fetchGameHistory,
   sendFriendRequest,
   fetchPendingRequests,
@@ -268,9 +270,16 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
 
   if (userId) {
     // Fetch profile + stats
-    const [{ data: profile }, stats] = await Promise.all([
+    //
+    // THE CLAP ROWS RIDE ALONG IN THIS BATCH RATHER THAN BEING AWAITED AFTER
+    // IT. The card was measured at 343ms to first pixel on a 300ms link before
+    // the header was split out, and a fourth serial round trip would put that
+    // straight back — a clap total is the least urgent thing on this card and
+    // must not be the reason it is slow.
+    const [{ data: profile }, stats, clapRows] = await Promise.all([
       fetchProfile(userId),
-      fetchPlayerStats(userId)
+      fetchPlayerStats(userId),
+      fetchClapHistory([userId])
     ]);
 
     // AN ID WITH NO PROFILE ROW IS A GUEST, and since invisible accounts
@@ -364,6 +373,23 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       }
     }
 
+    // CLAPS ARE A TOTAL HERE AND NOTHING ELSE, on the owner's decision. The
+    // weighted number (claps received over claps available) needs a sentence to
+    // explain it and a floor before it means anything; this card already
+    // carries four stats, a twelve-axis chart and a host rating, and a fifth
+    // figure in a four-column grid would leave one item alone on a second row.
+    //
+    // IT IS ABSENT AT ZERO, not shown as "0 claps". That is the same call
+    // fetchClapHistory already commits to in its own comment: a total of none
+    // and a table that could not be read are both "nothing to show you" here,
+    // and a card announcing 0 to every player who has not been clapped yet is
+    // clutter that says nothing. The profile PAGE is where somebody goes to
+    // read their own numbers, and that is where a zero is worth stating.
+    const claps = clapTotals(clapRows);
+    const clapHtml = (profile && claps.received > 0)
+      ? `<p class="profile-card__claps">&#x1F44F; ${claps.received} clap${claps.received === 1 ? '' : 's'} received</p>`
+      : '';
+
     statsHtml = !profile ? `<p class="profile-card__guest-hint">Guest player</p>` : `
       <div class="profile-card__stats">
         <div><div class="profile-card__stat-value">${totalGames}</div><div class="profile-card__stat-label">Games</div></div>
@@ -372,6 +398,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
         <div><div class="profile-card__stat-value">${bestCatLabel}</div><div class="profile-card__stat-label">Best</div></div>
       </div>
       ${radarHtml}
+      ${clapHtml}
       ${hostHtml}
     `;
 
@@ -879,10 +906,11 @@ export async function initProfilePage() {
   };
 
   // Fetch stats + games
-  const [stats, games, masteryData] = await Promise.all([
+  const [stats, games, masteryData, clapRows] = await Promise.all([
     fetchPlayerStats(userId).catch(() => []),
     fetchGameHistory(userId, 5).catch(() => []),
-    fetchMasteryCounts(userId).catch(() => [])
+    fetchMasteryCounts(userId).catch(() => []),
+    fetchClapHistory([userId]).catch(() => [])
   ]);
 
   // Build mastery lookup: { "history": N, "history|ancient": N, ... }
@@ -1129,6 +1157,48 @@ export async function initProfilePage() {
       <div class="profile-stat"><div class="profile-stat__value">${strongCat ? (CATEGORY_META[strongCat]?.icon || '') : '--'}</div><div class="profile-stat__label">Strongest</div></div>
       <div class="profile-stat"><div class="profile-stat__value">${weakCat ? (CATEGORY_META[weakCat]?.icon || '') : '--'}</div><div class="profile-stat__label">Weakest</div></div>
     `;
+  }
+
+  // ------------------------------------------
+  // FAVOURITE ANSWERS — the claps other players gave you.
+  //
+  // BOTH NUMBERS HERE, where the card upstairs shows only the total. This is
+  // the page somebody opens to read their own figures, so there is room for a
+  // rate and a line saying what it divides by; the card is a glance at another
+  // player and a second percentage on it would be one more thing to decode.
+  //
+  // HIDDEN WHEN THERE WAS NEVER ANYTHING TO WIN. `available` is zero for
+  // somebody who has only practised against a bot — a bot cannot clap, so the
+  // server counts it as no clap available — and "0 of 0" is not a fact worth a
+  // section. It appears the first time they finish a game with a person in it.
+  // ------------------------------------------
+  const clapsEl = $('#profile-claps');
+  const clapsSection = $('#profile-claps-section');
+  if (clapsSection && clapsEl) {
+    const t = clapTotals(clapRows);
+    const show = t.available > 0 || t.received > 0;
+    clapsSection.style.display = show ? '' : 'none';
+    if (show) {
+      // UNDER THE FLOOR THE RATE IS "--", NEVER A PERCENTAGE. One clap in your
+      // only round is not a 100% player, and the floor exists precisely so that
+      // number is never printed. Same call as the host rating and the
+      // difficulty band, which both withhold a figure and print the sample.
+      const rate = t.rate === null ? '--' : `${Math.round(t.rate * 100)}%`;
+      clapsEl.innerHTML = `
+        <div class="profile-stat"><div class="profile-stat__value">${t.received}</div><div class="profile-stat__label">Claps</div></div>
+        <div class="profile-stat"><div class="profile-stat__value">${rate}</div><div class="profile-stat__label">Clap Rate</div></div>
+      `;
+      const note = $('#profile-claps-note');
+      if (note) {
+        // The floor is read from the module that applies it rather than typed
+        // again, so the sentence cannot promise a threshold the maths does not
+        // use — and the sample is stated either way, which is what makes a
+        // withheld number honest rather than merely absent.
+        note.textContent = t.rate === null
+          ? `Clap rate needs ${CLAP_RATE_FLOOR} claps available. You have had ${t.available}.`
+          : `Out of ${t.available} claps available to you.`;
+      }
+    }
   }
 
   // ------------------------------------------

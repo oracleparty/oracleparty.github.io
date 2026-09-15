@@ -1327,10 +1327,18 @@ export async function fetchClaps(roomId, gameKey) {
     .eq('room_id', roomId)
     .eq('game_key', gameKey);
   if (error) {
-    // A missing table is this feature being unavailable, not a fault worth
-    // shouting about — the JavaScript is always safe to deploy before the SQL.
-    logger.debug('Supabase', 'fetchClaps failed', error);
-    return [];
+    // NULL, NOT []. A missing table is this feature being UNAVAILABLE and an
+    // empty one is nobody having clapped yet, and this project has a whole
+    // section on what conflating those costs: a dead feature reads as a healthy
+    // one for months. The caller hides the clap button on null — before
+    // migration 071 is applied there is nothing behind it, and a control that
+    // lights up and records nothing is the fault CLAUDE.md #4 is about.
+    //
+    // It is not fatal and not shouted about: the JavaScript is always safe to
+    // deploy before the SQL, which is the direction this project has repeatedly
+    // got wrong the other way round.
+    logger.debug('Supabase', 'fetchClaps unavailable', error);
+    return null;
   }
   return data || [];
 }

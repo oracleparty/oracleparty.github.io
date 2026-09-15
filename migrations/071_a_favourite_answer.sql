@@ -370,26 +370,50 @@ BEGIN
     RETURN 0;
   END IF;
 
-  -- THE DENOMINATOR IS COUNTED PER ROUND. `seats` is who held a row in each
+  -- THE DENOMINATOR IS COUNTED PER ROUND. `rounds` is who held a row in each
   -- round, which every round already writes via op_fill_blank_answers — the
   -- same evidence op_played_whole_game reads. `available` then sums, for each
   -- player, the people they could have been clapped by in the rounds they were
   -- actually in.
+  --
+  -- A BOT IS NOT A CLAP AVAILABLE, and this is not a detail. A bot holds an
+  -- answer row in every round exactly like a person, so counting seats would
+  -- make a solo practice game read as one clap available per round — from a
+  -- player that has no screen, no finger and no opinion. Every practice game
+  -- would then drag the owner's own rate towards zero, permanently, and the one
+  -- number that is supposed to say "people liked your answers" would mostly be
+  -- measuring how often they played alone.
+  --
+  -- LEFT JOIN, and a row we cannot find COUNTS AS A PERSON. An answer outlives
+  -- its seat (052), so somebody swept mid-game has no `players` row to read —
+  -- and this project's oldest rule is that a missing value means "cannot tell"
+  -- and takes the reading that does not destroy something. Over-counting a
+  -- departed player by a clap or two is the harmless direction; the owner
+  -- raised that case themselves and called it negligible.
   WITH rounds AS (
     SELECT question_number, player_id
       FROM answers
      WHERE room_id = p_room_id
      GROUP BY question_number, player_id
   ),
-  sizes AS (
-    SELECT question_number, count(*) AS seated
-      FROM rounds
-     GROUP BY question_number
+  clappers AS (
+    SELECT r.question_number, count(*) AS humans
+      FROM rounds r
+      LEFT JOIN players p ON p.id = r.player_id
+     WHERE coalesce(p.is_bot, false) = false
+     GROUP BY r.question_number
   ),
   available AS (
-    SELECT r.player_id, sum(greatest(s.seated - 1, 0))::int AS claps_available
+    -- Subtract yourself only if you were one of the people counted above, so a
+    -- bot's own denominator is not quietly one too high. Its row is discarded
+    -- below anyway (a bot has no user_id), and a rule that only works because
+    -- of something two lines further down is a rule waiting to be wrong.
+    SELECT r.player_id,
+           sum(greatest(c.humans - CASE WHEN coalesce(p.is_bot, false) THEN 0 ELSE 1 END, 0))::int
+             AS claps_available
       FROM rounds r
-      JOIN sizes s USING (question_number)
+      LEFT JOIN players p ON p.id = r.player_id
+      JOIN clappers c USING (question_number)
      GROUP BY r.player_id
   ),
   received AS (

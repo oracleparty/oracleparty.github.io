@@ -70,4 +70,5 @@ export {
   fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts,
   fetchTitleWords, saveTitleWord, deleteTitleWord,
   fetchBotProficiency,
+  fetchClapHistory,
 } from './db/social.js';

@@ -262,6 +262,7 @@ function submittedCount(answers) {
  * where the honk deliberately does not, because there is nobody to startle.
  */
 function clapBtnHtml(player, answer, submittedText) {
+  if (state.clapsUnavailable) return '';
   if (!answer?.id || !submittedText) return '';
   if (String(player.id) === String(state.room.playerId)) return '';
   const n = clapsForAnswer(state.claps, answer.id);
@@ -302,6 +303,15 @@ function clapLabel(answerId, n, mine) {
 export function repaintClaps() {
   const container = $('#reveal-answers');
   if (!container) return;
+  // THE FEATURE IS NOT THERE, so neither is the control. The buttons are
+  // rendered before the first read comes back, so hiding them at render time
+  // alone would leave a screenful of dead claps on the one round that found out
+  // — which is precisely the round somebody taps one. Removing them here is
+  // what makes the answer arrive rather than merely be known.
+  if (state.clapsUnavailable) {
+    for (const btn of container.querySelectorAll('.clap-btn')) btn.remove();
+    return;
+  }
   for (const btn of container.querySelectorAll('.clap-btn')) {
     const answerId = btn.dataset.clapAnswer;
     const n = clapsForAnswer(state.claps, answerId);
@@ -348,7 +358,19 @@ export async function loadClaps() {
   }
   const rows = await fetchClaps(state.room.id, key);
   if (state.clapsGameKey !== key) return;   // a new game started while we read
-  state.claps = rows;
+
+  // NULL MEANS THE FEATURE IS NOT THERE, and the button goes with it. Migration
+  // 071 is applied by hand, so "the JavaScript is live and the SQL is not" is a
+  // real state the app runs in — and in it every clap is refused and the tap
+  // snaps back with nothing said. Hiding the control is the same call the host
+  // rating row already makes: it is not drawn until the feature is known to be
+  // installed, because three buttons that light up and record nothing is worse
+  // than a feature nobody can see yet.
+  //
+  // RE-READ EVERY ROUND rather than latched, so one dropped request costs a
+  // round's claps rather than the rest of the game.
+  state.clapsUnavailable = rows === null;
+  state.claps = rows || [];
   repaintClaps();
 }
 

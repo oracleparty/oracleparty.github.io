@@ -116,6 +116,23 @@
         <div id="profile-stats" class="profile-stats"></div>
       </div>
 
+      <!-- FAVOURITE ANSWERS — the claps other players gave your answers.
+           Hidden outright until there is a game with somebody else in it to
+           report on, because a section reading 0 out of 0 says nothing and is
+           exactly what a solo practice session would produce.
+
+           TWO NUMBERS, and they answer different questions: the total is how
+           many claps you have collected, the rate is how many of the claps
+           that were available to you you were given. The rate needs a floor
+           before it means anything, and under it this says so rather than
+           printing a figure from one round. -->
+      <div class="profile-section" id="profile-claps-section" style="display:none;">
+        <div class="profile-section__label">Favourite Answers</div>
+        <p class="profile-section__hint">Claps other players gave your answers when they liked one best.</p>
+        <div id="profile-claps" class="profile-stats profile-stats--pair"></div>
+        <p id="profile-claps-note" class="profile-section__hint profile-claps__note"></p>
+      </div>
+
       <!-- The shape of what you know. Twelve categories is close to ideal for
            a radar, and each already has an emoji, so the axes label themselves
            without any text having to fit around a circle at 375px.

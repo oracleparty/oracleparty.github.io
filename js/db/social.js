@@ -1353,3 +1353,36 @@ export async function fetchBotProficiency(botKey) {
   }
   return out;
 }
+
+/**
+ * Lifetime clap rows for a set of players (migration 071).
+ *
+ * One row per player per finished game, so the caller sums them — clapTotals in
+ * js/game/clap-logic.js is the single place that does, and it is what withholds
+ * the weighted number under the floor.
+ *
+ * READS clap_history DIRECTLY rather than through a function, because there is
+ * nothing to decide: the table holds two counts and a room id, no INSERT or
+ * UPDATE is granted to any client, and the rollup that writes it is already
+ * SECURITY DEFINER. A function here would be a round trip that answers the same
+ * question.
+ *
+ * Returns [] on failure rather than null, and the caller cannot tell "no claps
+ * yet" from "the table is not there". That is deliberate and narrower than it
+ * looks: every surface renders both the same way — no number — because a clap
+ * total of zero and an unavailable one both mean "nothing to show you", unlike
+ * the bot chart where one falls back to a stated accuracy and the other does not.
+ */
+export async function fetchClapHistory(userIds) {
+  const ids = (userIds || []).filter(Boolean);
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from('clap_history')
+    .select('user_id,claps_received,claps_available')
+    .in('user_id', ids);
+  if (error) {
+    logger.debug('Supabase', 'clap_history unavailable', error);
+    return [];
+  }
+  return data || [];
+}

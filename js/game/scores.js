@@ -1516,8 +1516,11 @@ export async function showResultsScreen() {
       if (state.clapsGameKey !== key) { state.claps = []; state.clapsGameKey = key; }
       // Re-read rather than trusting the cache: a phone that joined late, or
       // reloaded mid-game, has only the claps it happened to be present for.
+      // `|| []` because fetchClaps answers NULL when the table is not there —
+      // migration 071 unapplied — and this card must render as "nobody clapped
+      // anything" rather than throwing and taking the results screen with it.
       const rows = await fetchClaps(state.room.id, key);
-      if (state.clapsGameKey === key) state.claps = rows;
+      if (state.clapsGameKey === key) state.claps = rows || [];
     }
     renderFavouriteAnswers(answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions));
     recordClapsOnServer(state.room.id);

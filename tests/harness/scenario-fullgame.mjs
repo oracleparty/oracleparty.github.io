@@ -388,7 +388,18 @@ try {
     // and is worse than none.
     if (r !== host && screen === 'reveal-screen' && clapProbe.onOthers && !undoProbe.done) {
       const seenHere = await r.page.evaluate(() => {
-        const btn = document.querySelector('#reveal-answers .clap-btn');
+        // A BUTTON THIS PHONE HAS NOT ALREADY CLAPPED, and picking the first one
+        // blindly is what made this check fail one run in two. The clapper can
+        // reach this on the SAME reveal it clapped, with its own clap sitting on
+        // the first row — so the first tap WITHDREW and the second re-clapped,
+        // and the probe reported the exact opposite of what happened.
+        //
+        // Returning null rather than measuring from whatever state it found
+        // means the probe simply waits for the next reveal; the assertion on it
+        // is unconditional, so never finding one is a failure rather than a
+        // quietly skipped check.
+        const btn = [...document.querySelectorAll('#reveal-answers .clap-btn')]
+          .find(b => !b.classList.contains('clap-btn--mine'));
         if (!btn) return null;
         btn.click();                       // clap
         const after = btn.classList.contains('clap-btn--mine');
@@ -417,6 +428,36 @@ try {
         return { count: (btn.querySelector('.clap-btn__count')?.textContent || '').trim(),
                  mine: btn.classList.contains('clap-btn--mine') };
       }, clapProbe.answerId).catch(() => null);
+    }
+
+    // THE FEATURE NOT BEING INSTALLED TAKES THE BUTTON WITH IT.
+    //
+    // Driven rather than raced: the flag is set the way loadClaps sets it when
+    // fetchClaps answers null, and a tap is what makes a repaint happen on this
+    // exact turn. Waiting for a denied read to come round on a later reveal
+    // would need three more rounds to land and a check people learn to re-run
+    // is worse than none.
+    //
+    // WHAT THIS DOES NOT COVER, said rather than implied: that fetchClaps
+    // really does answer null for a missing table. That is one line, and this
+    // pins the half a player can see.
+    if (r !== host && screen === 'reveal-screen' && undoProbe.done && !goneProbe.done) {
+      const seen = await r.page.evaluate(() => {
+        const count = () => document.querySelectorAll('#reveal-answers .clap-btn').length;
+        const before = count();
+        if (!before) return null;
+        window.__state.clapsUnavailable = true;
+        document.querySelector('#reveal-answers .clap-btn').click();
+        return { before, after: count() };
+      }).catch(() => null);
+      if (seen) {
+        goneProbe.done = true;
+        goneProbe.before = seen.before;
+        goneProbe.after = seen.after;
+        // PUT IT BACK, or every later round of this game runs without claps and
+        // the checks above would be measuring a crippled build.
+        await r.page.evaluate(() => { window.__state.clapsUnavailable = false; }).catch(() => {});
+      }
     }
 
     if (r !== host && screen === 'reveal-screen') {
@@ -449,6 +490,11 @@ try {
   const waitingAfterReveal = [];
   const clapProbe = { pressed: false, answerId: null, clapper: null, onClapper: null, onOthers: null };
   const undoProbe = { done: false, state: null };
+  // Migration 071 is applied by hand, so "this JavaScript is live and the SQL
+  // is not" is a real state. In it every clap is refused, and a button that
+  // lights up and records nothing is the dead control this project keeps
+  // finding — so it is removed instead.
+  const goneProbe = { done: false, before: null, after: null };
   const timerBroken = [];
   let round = 0;
   let lastQuestionSeen = -1;
@@ -747,6 +793,13 @@ try {
           problems.push(`the clap was taken back and the count still reads "${undoProbe.state.count}"`);
         }
       }
+    }
+
+    note(`clap buttons with the feature unavailable: ${goneProbe.before} -> ${goneProbe.after}`);
+    if (!goneProbe.done) {
+      problems.push('never got to check what the clap buttons do when the feature is unavailable');
+    } else if (goneProbe.after !== 0) {
+      problems.push(`with claps unavailable ${goneProbe.after} clap button(s) stayed on screen — a control that records nothing`);
     }
 
     note(`rows still reading "Waiting..." after a reveal: ${waitingAfterReveal.length}`);

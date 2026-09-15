@@ -39,6 +39,13 @@ export const state = {
   // needing to remember. Same reasoning as the game key on the row itself.
   claps: [],
   clapsGameKey: null,
+  // IS THE FEATURE THERE AT ALL? Migrations are applied by hand, so "this
+  // JavaScript is live and migration 071 is not" is a real state — and in it
+  // every clap is refused. The button is hidden rather than left lighting up
+  // and recording nothing, which is the dead control this project keeps
+  // finding. Re-read on every round, so a dropped request costs one round's
+  // claps rather than the rest of the game.
+  clapsUnavailable: false,
   timerId: null,
   channels: [],
   chatOpen: false,
