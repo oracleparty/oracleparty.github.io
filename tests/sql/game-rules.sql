@@ -739,6 +739,12 @@ DECLARE
   r record;
 BEGIN
   ids := ARRAY[alice, bob, carol];
+  -- question_history.user_id is a foreign key to auth.users (migration 011), so
+  -- these have to be real users. The scratch schema was missing that key until
+  -- migration 072's break test exposed it, and these rows minted ids that never
+  -- existed anywhere — which the harness happily allowed and the live database
+  -- never would.
+  INSERT INTO auth.users (id) VALUES (alice), (bob), (carol) ON CONFLICT DO NOTHING;
 
   -- qa is filed under TWO categories, which is the case that made the old
   -- global board double count: 11% of the real bank carries more than one.
@@ -2292,6 +2298,165 @@ BEGIN
   SELECT count(*) INTO n FROM clap_history WHERE user_id = bobU AND room_id = rid;
   INSERT INTO result (check_name, got, want) VALUES
     ('so Bob now has two games of clap history in one room', n::text, '2');
+END $$;
+
+
+
+-- ============================================
+-- 072 — A BOT KEEPS ITS OWN RECORD
+--
+-- The rule that matters most is not that the bot is recorded. It is that
+-- RECORDING IT DOES NOT DESTROY THE HUMANS' ROUND. question_history.user_id is
+-- a foreign key to auth.users, so a bot written there raises 23503 and rolls
+-- back the single statement that records everybody — every round, for every
+-- player, reaching nothing but a log.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid; hostP uuid; botP uuid; bot2P uuid; hostU uuid;
+  q1 uuid; q2 uuid; rid2 uuid; hostP2 uuid; botP2 uuid;
+  n int; got int; verdict text;
+BEGIN
+  INSERT INTO questions (question, correct_answer, categories)
+    VALUES ('Bot q one', 'yes', ARRAY['science','logic']) RETURNING id INTO q1;
+  INSERT INTO questions (question, correct_answer, categories)
+    VALUES ('Bot q two', 'yes', ARRAY['science']) RETURNING id INTO q2;
+
+  INSERT INTO rooms (code, status, game_phase, current_question, question_ids)
+    VALUES ('BOT1', 'playing', 'reveal', 0, ARRAY[q1, q2]) RETURNING id INTO rid;
+
+  hostU := gen_random_uuid();
+  INSERT INTO auth.users (id) VALUES (hostU);
+  INSERT INTO players (room_id, display_name, is_host, user_id)
+    VALUES (rid, 'Alice', true, hostU) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, is_bot)
+    VALUES (rid, 'Practice Bot', true) RETURNING id INTO botP;
+  INSERT INTO players (room_id, display_name, is_bot)
+    VALUES (rid, 'Second Bot', true) RETURNING id INTO bot2P;
+
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, is_correct, wager)
+    VALUES (rid, hostP, 0, q1, 'yes', true, 1);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, is_correct, wager)
+    VALUES (rid, botP, 0, q1, 'no', false, 2);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, is_correct, wager)
+    VALUES (rid, bot2P, 0, q1, 'yes', true, 3);
+
+  SELECT record_round_history(rid, q1) INTO n;
+
+  -- THE ONE THAT MATTERS. A bot in the room must not cost the human their round.
+  SELECT count(*) INTO got FROM question_history WHERE user_id = hostU AND question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a bot in the room does not stop a human''s round being recorded', got::text, '1');
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and the count returned still counts people, not bots', n::text, '1');
+
+  -- ...AND NO BOT REACHED question_history, which is what would raise 23503.
+  SELECT count(*) INTO got FROM question_history WHERE question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('only the human is in question_history', got::text, '1');
+
+  -- THE BOT IS RECORDED, in its own table.
+  SELECT count(*) INTO got FROM bot_history WHERE bot_key = 'Practice Bot';
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the bot''s round is recorded', got::text, '1');
+  SELECT last_correct::text INTO verdict FROM bot_history
+   WHERE bot_key = 'Practice Bot' AND question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('with the verdict it actually got', verdict, 'false');
+
+  -- TWO BOTS KEEP SEPARATE RECORDS, which is what makes the key the name.
+  SELECT last_correct::text INTO verdict FROM bot_history
+   WHERE bot_key = 'Second Bot' AND question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a second bot keeps its own record', verdict, 'true');
+
+  -- EXACTLY ONCE. A host and a deputy can both advance; the marker is shared
+  -- with the human path, so the bot inherits exactly-once rather than needing
+  -- its own guard.
+  SELECT record_round_history(rid, q1) INTO n;
+  SELECT times_seen INTO got FROM bot_history
+   WHERE bot_key = 'Practice Bot' AND question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a second phone advancing does not count the bot twice', got::text, '1');
+
+  -- ACROSS ROOMS. "Recorded" has to mean the bot's play accumulates, or its
+  -- chart resets every game and the whole exercise is pointless.
+  INSERT INTO rooms (code, status, game_phase, current_question, question_ids)
+    VALUES ('BOT2', 'playing', 'reveal', 0, ARRAY[q1, q2]) RETURNING id INTO rid2;
+  INSERT INTO players (room_id, display_name, is_host, user_id)
+    VALUES (rid2, 'Alice', true, hostU) RETURNING id INTO hostP2;
+  INSERT INTO players (room_id, display_name, is_bot)
+    VALUES (rid2, 'Practice Bot', true) RETURNING id INTO botP2;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, is_correct, wager)
+    VALUES (rid2, botP2, 0, q1, 'yes', true, 1);
+  PERFORM record_round_history(rid2, q1);
+
+  SELECT times_seen INTO got FROM bot_history
+   WHERE bot_key = 'Practice Bot' AND question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the same bot in another room adds to the same record', got::text, '2');
+
+  -- THE MOST RECENT VERDICT WINS, exactly as it does for a human since 040 —
+  -- so the bot's chart and a player's mean the same thing rather than two
+  -- numbers that merely look alike.
+  SELECT last_correct::text INTO verdict FROM bot_history
+   WHERE bot_key = 'Practice Bot' AND question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('getting it right this time replaces the earlier miss', verdict, 'true');
+  SELECT times_correct INTO got FROM bot_history
+   WHERE bot_key = 'Practice Bot' AND question_id = q1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('while the attempt counters still add up', got::text, '1');
+
+  -- THE CHART. One row per category the question is filed under, so a question
+  -- in two categories is evidence about both — correct for a per-topic number.
+  SELECT questions_met INTO got FROM bot_proficiency
+   WHERE bot_key = 'Practice Bot' AND category = 'science';
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the bot''s chart counts a question it met', got::text, '1');
+  SELECT questions_mastered INTO got FROM bot_proficiency
+   WHERE bot_key = 'Practice Bot' AND category = 'logic';
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and counts it under every category it is filed in', got::text, '1');
+
+  -- A BOT CARRYING A USER ID IS STILL KEPT OUT OF question_history.
+  --
+  -- This is the case the is_bot guard actually defends, and without it the rule
+  -- below does not merely fail — the whole statement raises 23503 and NOBODY's
+  -- round is recorded. Giving a bot a user id is the obvious way to make it
+  -- "recorded" and is exactly the wrong one; the seat below is what a future
+  -- session reaching for that would create.
+  UPDATE players SET user_id = gen_random_uuid() WHERE id = botP;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, is_correct, wager)
+    VALUES (rid, botP, 1, q2, 'no', false, 4);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, is_correct, wager)
+    VALUES (rid, hostP, 1, q2, 'yes', true, 5);
+  -- Caught rather than left to abort, so the break test REPORTS instead of
+  -- crashing psql. Without the guard this raises 23503 and the whole statement
+  -- rolls back — which is precisely the failure, so it is worth reading as a
+  -- sentence rather than as an exit code.
+  BEGIN
+    SELECT record_round_history(rid, q2) INTO n;
+  EXCEPTION WHEN foreign_key_violation THEN
+    n := -1;
+  END;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a bot with a user id does not take everyone''s round down with it', n::text, '1');
+  SELECT count(*) INTO got FROM bot_history WHERE bot_key = 'Practice Bot' AND question_id = q2;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and it is still recorded in its own table', got::text, '1');
+
+  -- A BOT'S ANSWER IS STILL NOT EVIDENCE ABOUT A QUESTION, and the owner drew
+  -- that line themselves: the reveal says "18% get this right", and a flat coin
+  -- flip drags every question it touches toward 50% for real players.
+  --
+  -- NOT ASSERTED HERE, deliberately. `question_stats` is not in the scratch
+  -- schema and this function never touches it, so a check would be asserting
+  -- that a table nobody writes to stayed empty — true whatever the code does,
+  -- which is the kind of check this project deletes. The guard that matters is
+  -- client-side, in recordCurrentQuestionOutcomes, and scenario-bots fails by
+  -- name when it is removed.
 END $$;
 
 

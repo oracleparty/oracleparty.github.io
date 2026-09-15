@@ -77,7 +77,18 @@ GRANT SELECT ON profiles TO anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS question_history (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id uuid NOT NULL,
+  -- THE FOREIGN KEY IS REAL AND IT WAS MISSING HERE, which made this harness
+  -- more permissive than the live database on a rule that is load-bearing.
+  -- Migration 011 declares `REFERENCES auth.users(id) ON DELETE CASCADE`, and
+  -- that is the whole reason a bot's record cannot live in this table: a bot
+  -- has no auth user, so writing one raises 23503 and rolls back the single
+  -- statement that records EVERY player's round.
+  --
+  -- Found by break-testing migration 072 and watching the break PASS: without
+  -- this line the check could not see the fault it exists to catch, which is
+  -- CLAUDE.md #10 in its usual direction — the fake store allowing what the
+  -- real one refuses.
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   question_id uuid NOT NULL,
   times_seen int NOT NULL DEFAULT 1,
   times_correct int NOT NULL DEFAULT 0,
