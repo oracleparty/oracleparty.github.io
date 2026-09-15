@@ -17,7 +17,7 @@
 > | **Migration 066 is applied** (2026-09-06) | the owner ran its verification query and pasted `verdict: ok` — it reads `pg_proc.prosrc` for both halves of the new `ON CONFLICT` rule, so it cannot pass on a partial paste. |
 > | **065 is applied** (inferred 2026-09-07, NOT a verification report) | the owner kicked somebody in a real game and it worked: the player left the lobby, and their client then took a screenful of identical toasts, which is the shape of `room_bans` refusing every re-seat with 42501. `kickPlayer` has no fallback, so with 065 unapplied nothing would have been removed at all. Strong, and one notch weaker than a pasted `ok`. |
 > | **067 and 068: the owner says they ran them** (2026-09-09, "just ran the sql now"). **NO VERIFICATION ROWS WERE PASTED**, so this is one notch weaker than every other applied migration in this table — a paste that stopped halfway would look identical from here. Ask for the rows before relying on either. |
-> | **069 and 070 are NOT applied.** Written 2026-09-09, verified against a real Postgres, break-tested both ways. 069 stops a round opening on the previous round's clock and stops a double-press skipping a question; 070 is what makes "Undo Disqualify" work at all — until it is run the button hides itself and a mis-tap is still permanent. |
+> | **069 and 070: the owner says they ran them** (2026-09-14, *"I had pasted all the sqls"*). **NO VERIFICATION ROWS WERE PASTED**, so this is the same evidence level as 067/068 and one notch weaker than every migration above them — a paste that stopped halfway would look identical from here. 069 stops a round opening on the previous round's clock and stops a double-press skipping a question; 070 is the whole of Undo Disqualify, and until it is really applied the button hides itself and a mis-tap stays permanent. **The button being visible in a real game is the cheap check for 070**, the same shape of evidence that established 065. |
 > | The live database has every function and table the app needs | the CI probe on commit `18d199f`. **That tick only started meaning something on 2026-08-30** — before that the probe printed its alarm and still exited 0. |
 > | All 12 subjects have title slots (36 subject-level, 45 topics, 26 clearing the size floor) | computed from `title-tiers.js` and `CATEGORY_META` |
 > | 664 unit tests and 12 robot scenarios pass | run locally, and in CI on every push |
@@ -25,10 +25,12 @@
 >
 > ### What is NOT verified
 >
-> - **No real playtest since the fixes.** Everything about the game engine below
->   is proven against a *simulated* bad connection in an in-memory database.
->   Nobody has played a real game on a real phone since. **That is the single
->   biggest gap.**
+> - **Real games HAVE been played since** — 2026-09-09 and 2026-09-14, and both
+>   are written up in their own sections below. What has NOT been played is a
+>   game since the 2026-09-14 tap fixes, which are the newest and the least
+>   proven: the keyboard-inset guard in particular is a LEAD about the owner's
+>   phone, not a measurement, and nothing in this repo can shrink a real visual
+>   viewport. **That is the single biggest gap.**
 > - **"Friend couldn't submit at times" was never reproduced.** A mechanism was
 >   found that follows from a stalled round, and it is plausible, but it was
 >   inferred rather than measured. If it recurs, do not assume it is fixed.
@@ -47,12 +49,11 @@
 > 2. **Add ~a dozen questions each to History's Ancient (58) and Medieval (52)**
 >    so they clear the 60-question floor and can carry words of their own.
 > 3. **Play a real game** and report what breaks.
-> 4. **Run migrations 069 and 070** in the Supabase SQL editor and paste back the
->    verification rows. 069 closes the round-clock and skipped-round faults at
->    the source rather than in the client; 070 is the whole of Undo Disqualify.
->    The JavaScript for both is safe to deploy before the SQL, as always here.
-> 5. **Paste back the verification rows for 067 and 068** — they were run on
->    2026-09-09 and nothing here has seen the result.
+> 4. **Paste back the verification rows for 067, 068, 069 and 070.** All four
+>    were run on the owner's word and nothing here has seen a single row. That
+>    is the weakest evidence in this table, and 070 in particular is invisible
+>    until somebody needs it — the JavaScript hides Undo Disqualify when the
+>    server refuses, so a missing migration reads as a missing feature.
 >
 > ### The three faults reported in the last playtest, and their status
 >
