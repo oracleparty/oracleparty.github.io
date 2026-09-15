@@ -350,6 +350,75 @@ try {
       }
     }
 
+    // ---- CLAPS -----------------------------------------------------------
+    //
+    // Pressed on the FIRST reveal only, by Bob, and then watched from ALICE's
+    // phone. A clap that only ever shows on the phone that tapped it is the
+    // optimistic update working and Realtime doing nothing — which would pass
+    // a check that looked at the clapper's own screen, and is exactly the
+    // "it worked for me" bug this game is made of.
+    if (r !== host && screen === 'reveal-screen' && !clapProbe.pressed) {
+      const target = await r.page.evaluate(() => {
+        const btn = document.querySelector('#reveal-answers .clap-btn');
+        if (!btn) return null;
+        btn.click();
+        return btn.dataset.clapAnswer || null;
+      }).catch(() => null);
+      if (target) {
+        clapProbe.pressed = true;
+        clapProbe.answerId = target;
+        clapProbe.clapper = r.name;
+        // Their own screen first: a tap must show before the round trip.
+        clapProbe.onClapper = await r.page.evaluate((id) => {
+          const btn = document.querySelector(`.clap-btn[data-clap-answer="${id}"]`);
+          return { mine: !!btn?.classList.contains('clap-btn--mine'),
+                   count: (btn?.querySelector('.clap-btn__count')?.textContent || '').trim() };
+        }, target).catch(() => null);
+      }
+    }
+
+    // TAPPING THE SAME ONE AGAIN TAKES IT BACK — the owner's rule, and the half
+    // a check forgets, because a clap that cannot be undone still looks like it
+    // works.
+    //
+    // ON A LATER ROUND AND IN ONE TICK, deliberately. The first attempt waited
+    // for another phone to confirm the first clap before undoing it, and by
+    // then the room had advanced — so `afterWithdraw` stayed null and the
+    // assertion could never fail. A check that cannot fail looks like coverage
+    // and is worse than none.
+    if (r !== host && screen === 'reveal-screen' && clapProbe.onOthers && !undoProbe.done) {
+      const seenHere = await r.page.evaluate(() => {
+        const btn = document.querySelector('#reveal-answers .clap-btn');
+        if (!btn) return null;
+        btn.click();                       // clap
+        const after = btn.classList.contains('clap-btn--mine');
+        btn.click();                       // ...and take it back
+        return {
+          clapped: after,
+          stillMine: btn.classList.contains('clap-btn--mine'),
+          count: (btn.querySelector('.clap-btn__count')?.textContent || '').trim(),
+        };
+      }).catch(() => null);
+      if (seenHere) { undoProbe.done = true; undoProbe.state = seenHere; }
+    }
+
+    // WATCHED FROM A THIRD PHONE, not the host's.
+    //
+    // The first version watched the host and reported "another phone never saw
+    // the clap at all" — which was the PROBE being wrong, not the app. Bob taps
+    // the first row, that row is usually the host's own answer, and nobody is
+    // offered a clap on their own answer. So the button genuinely is not on her
+    // screen and the check was asking the one phone that can never answer.
+    if (r !== host && r.name !== clapProbe.clapper && screen === 'reveal-screen'
+        && clapProbe.pressed && !clapProbe.onOthers) {
+      clapProbe.onOthers = await r.page.evaluate((id) => {
+        const btn = document.querySelector(`.clap-btn[data-clap-answer="${id}"]`);
+        if (!btn) return null;
+        return { count: (btn.querySelector('.clap-btn__count')?.textContent || '').trim(),
+                 mine: btn.classList.contains('clap-btn--mine') };
+      }, clapProbe.answerId).catch(() => null);
+    }
+
     if (r !== host && screen === 'reveal-screen') {
       const onFinal = await r.page.evaluate(() =>
         (window.__state?.currentQuestion ?? -1) >= (window.__state?.totalQuestions ?? 0)).catch(() => false);
@@ -378,6 +447,8 @@ try {
 
   const hostReviewOnFinalRound = {};
   const waitingAfterReveal = [];
+  const clapProbe = { pressed: false, answerId: null, clapper: null, onClapper: null, onOthers: null };
+  const undoProbe = { done: false, state: null };
   const timerBroken = [];
   let round = 0;
   let lastQuestionSeen = -1;
@@ -637,6 +708,47 @@ try {
     // rate the host is a whole feature that is quietly not there, and it looks
     // identical to one working correctly until somebody plays a game and says
     // they never saw it.
+    // ---- CLAPS -----------------------------------------------------------
+    note(`clap pressed: ${clapProbe.pressed}`);
+    note(`on the clapper's own screen: ${JSON.stringify(clapProbe.onClapper)}`);
+    note(`on another phone: ${JSON.stringify(clapProbe.onOthers)}`);
+    note(`clap then take it back, same tick: ${JSON.stringify(undoProbe.state)}`);
+    if (!clapProbe.pressed) {
+      problems.push('no clap button was ever found on a reveal screen — the control is gone');
+    } else {
+      // THE TAP MUST SHOW BEFORE THE ROUND TRIP. A clap that only appears once
+      // the server answers is a button that does nothing for a second, which is
+      // the fault this project has recorded more than any other.
+      if (!clapProbe.onClapper?.mine) {
+        problems.push('the clap did not show on the phone that tapped it');
+      }
+      // AND IT MUST REACH THE OTHER PHONES. Passing on the clapper's screen
+      // alone would prove only that the optimistic update works — Realtime
+      // could be doing nothing at all and the check would be green.
+      if (!clapProbe.onOthers) {
+        problems.push('another phone never saw the clap at all');
+      } else {
+        if (clapProbe.onOthers.count !== '1') {
+          problems.push(`another phone shows the clap count as "${clapProbe.onOthers.count}", not 1`);
+        }
+        // Somebody else's clap must not read as yours, or the pill means nothing.
+        if (clapProbe.onOthers.mine) {
+          problems.push('another phone shows somebody else\'s clap as its own');
+        }
+      }
+      // TAKING IT BACK. Asserted unconditionally — if the undo never ran, that
+      // is itself the failure rather than a quietly skipped check.
+      if (!undoProbe.state) {
+        problems.push('never got to clap and take it back on one screen');
+      } else {
+        if (!undoProbe.state.clapped) problems.push('the clap did not register before being taken back');
+        if (undoProbe.state.stillMine) problems.push('tapping the same clap again did not take it back');
+        if (undoProbe.state.count !== '') {
+          problems.push(`the clap was taken back and the count still reads "${undoProbe.state.count}"`);
+        }
+      }
+    }
+
     note(`rows still reading "Waiting..." after a reveal: ${waitingAfterReveal.length}`);
     // A reveal that leaves somebody on "Waiting..." is telling the room a
     // player never answered when the round is over and the answer is stored.

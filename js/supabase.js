@@ -69,4 +69,5 @@ export {
   subscribeToFriendRequests,
   fetchAdminAccountDetails, fetchAccountGames, fetchAccountPlayCounts,
   fetchTitleWords, saveTitleWord, deleteTitleWord,
+  fetchBotProficiency,
 } from './db/social.js';

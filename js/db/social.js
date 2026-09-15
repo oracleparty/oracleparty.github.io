@@ -1320,3 +1320,36 @@ export async function deleteTitleWord({ slot = 2, category, subcategory = null, 
   }
   return { error: null };
 }
+
+/**
+ * A bot's recorded proficiency, per category (migration 072).
+ *
+ * The owner asked for this three times: "I want the bot's results recorded."
+ * It reads `bot_proficiency`, a view over the bot's own history — NOT
+ * question_history, whose user_id is a foreign key to auth.users that a bot can
+ * never satisfy.
+ *
+ * Returns null when the view is not there, and {} when the bot has simply never
+ * played. Those are different facts and the caller renders them differently:
+ * null falls back to the stated accuracy, {} draws nothing. Conflating them is
+ * how a dead feature reads as a healthy one (CLAUDE.md #8), and migrations here
+ * are applied by hand so "the JavaScript is live and the SQL is not" is a real
+ * state rather than a hypothetical.
+ */
+export async function fetchBotProficiency(botKey) {
+  if (!botKey) return {};
+  const { data, error } = await supabase
+    .from('bot_proficiency')
+    .select('category,questions_met,questions_mastered')
+    .eq('bot_key', botKey);
+  if (error) {
+    logger.debug('Supabase', 'bot_proficiency unavailable', error);
+    return null;
+  }
+  const out = {};
+  for (const r of (data || [])) {
+    const met = Number(r.questions_met) || 0;
+    if (met > 0) out[r.category] = (Number(r.questions_mastered) || 0) / met;
+  }
+  return out;
+}

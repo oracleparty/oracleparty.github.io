@@ -1129,7 +1129,162 @@ export class FakeStore {
         }
         recorded++;
       }
+
+      // ---- migration 072: the bot keeps its own record --------------------
+      //
+      // Same shared marker, so the bot inherits exactly-once. Keyed on the
+      // bot's display name, and deliberately a DIFFERENT table: the live
+      // question_history.user_id is a foreign key to auth.users, and a bot has
+      // no auth user — writing one there raises 23503 and rolls back the whole
+      // statement, so NOBODY's round gets recorded.
+      const botSeen = new Set();
+      for (const a of [...answers].reverse()) {
+        const player = players.find(p => String(p.id) === String(a.player_id));
+        if (!player || !player.is_bot) continue;
+        const key = String(player.display_name || '').trim();
+        if (!key || botSeen.has(key)) continue;
+        botSeen.add(key);
+
+        const rows = this.table('bot_history');
+        const isCorrect = !!a.is_correct;
+        const row = rows.find(r =>
+          String(r.bot_key) === key &&
+          String(r.question_id) === String(args.p_question_id));
+        if (row) {
+          row.times_seen = (row.times_seen || 0) + 1;
+          row.times_correct = (row.times_correct || 0) + (isCorrect ? 1 : 0);
+          row.last_correct = isCorrect;
+          row.last_seen_at = new Date().toISOString();
+        } else {
+          rows.push({
+            id: newId('bot_history'),
+            bot_key: key, question_id: args.p_question_id,
+            times_seen: 1, times_correct: isCorrect ? 1 : 0,
+            last_correct: isCorrect, last_seen_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      // The count returned is HUMANS, unchanged — callers read it as "how many
+      // people's rounds were recorded" and the SQL keeps it that way too.
       return recorded;
+    }
+
+    // ---- migration 071: a favourite answer ---------------------------------
+    //
+    // Mirrors op_clap_answer exactly, refusal strings included. A harness that
+    // allows what the live server refuses is the gap CLAUDE.md #10 is about,
+    // and every refusal here is one the screen has to handle.
+    if (name === 'op_clap_answer') {
+      const { p_room_id, p_voter_player_id, p_question_number, p_answer_id } = args || {};
+      if (!p_room_id || !p_voter_player_id || !p_answer_id) return 'bad_request';
+
+      const room = this.table('rooms').find(r => String(r.id) === String(p_room_id));
+      const gameKey = room?.countdown_started_at ? String(room.countdown_started_at) : null;
+      if (!gameKey) return 'no_game';
+
+      const voter = this.table('players').find(p =>
+        String(p.id) === String(p_voter_player_id) && String(p.room_id) === String(p_room_id));
+      if (!voter) return 'not_in_room';
+
+      const target = this.table('answers').find(a =>
+        String(a.id) === String(p_answer_id) &&
+        String(a.room_id) === String(p_room_id) &&
+        Number(a.question_number) === Number(p_question_number));
+      if (!target) return 'no_answer';
+      if (String(target.player_id) === String(p_voter_player_id)) return 'not_your_own';
+
+      const text = String(target.submitted_answer || '').trim();
+      if (!text || text === '__WAGER_LOCKED__') return 'nothing_to_clap';
+
+      const owner = this.table('players').find(p => String(p.id) === String(target.player_id));
+      const claps = this.table('answer_claps');
+      const existing = claps.find(c =>
+        String(c.room_id) === String(p_room_id) &&
+        String(c.game_key) === gameKey &&
+        Number(c.question_number) === Number(p_question_number) &&
+        String(c.voter_player_id) === String(p_voter_player_id));
+
+      if (existing) {
+        if (String(existing.answer_id) === String(p_answer_id)) {
+          const at = claps.indexOf(existing);
+          claps.splice(at, 1);
+          this._broadcast('DELETE', 'answer_claps', null, existing);
+          return 'withdrawn';
+        }
+        existing.answer_id = p_answer_id;
+        existing.clapped_player_id = target.player_id;
+        existing.clapped_user_id = owner?.user_id ?? null;
+        this._broadcast('UPDATE', 'answer_claps', existing, null);
+        return 'moved';
+      }
+
+      const row = {
+        id: newId('answer_claps'),
+        room_id: p_room_id, game_key: gameKey,
+        question_number: Number(p_question_number),
+        answer_id: p_answer_id,
+        voter_player_id: p_voter_player_id,
+        clapped_player_id: target.player_id,
+        voter_user_id: voter.user_id ?? null,
+        clapped_user_id: owner?.user_id ?? null,
+        created_at: new Date().toISOString(),
+      };
+      claps.push(row);
+      this._broadcast('INSERT', 'answer_claps', row, null);
+      return 'clapped';
+    }
+
+    // Idempotent on (user, room, game), which is what lets every device call it.
+    if (name === 'op_record_claps') {
+      const roomId = args?.p_room_id;
+      if (!roomId) return 0;
+      const room = this.table('rooms').find(r => String(r.id) === String(roomId));
+      const gameKey = room?.countdown_started_at ? String(room.countdown_started_at) : null;
+      if (!gameKey) return 0;
+
+      // The denominator is counted PER ROUND — people seated at round N, minus
+      // you — summed over the rounds you were actually in.
+      const answers = this.table('answers').filter(a => String(a.room_id) === String(roomId));
+      const seatsByRound = new Map();
+      for (const a of answers) {
+        const r = Number(a.question_number);
+        if (!seatsByRound.has(r)) seatsByRound.set(r, new Set());
+        seatsByRound.get(r).add(String(a.player_id));
+      }
+      const available = new Map();
+      for (const [, seats] of seatsByRound) {
+        for (const pid of seats) {
+          available.set(pid, (available.get(pid) || 0) + Math.max(seats.size - 1, 0));
+        }
+      }
+      const received = new Map();
+      for (const c of this.table('answer_claps')) {
+        if (String(c.room_id) !== String(roomId) || String(c.game_key) !== gameKey) continue;
+        const pid = String(c.clapped_player_id);
+        received.set(pid, (received.get(pid) || 0) + 1);
+      }
+
+      const history = this.table('clap_history');
+      let written = 0;
+      for (const [pid, avail] of available) {
+        const player = this.table('players').find(p => String(p.id) === pid);
+        if (!player?.user_id) continue;
+        const already = history.find(h =>
+          String(h.user_id) === String(player.user_id) &&
+          String(h.room_id) === String(roomId) &&
+          String(h.game_key) === gameKey);
+        if (already) continue;
+        history.push({
+          id: newId('clap_history'),
+          user_id: player.user_id, room_id: roomId, game_key: gameKey,
+          claps_received: received.get(pid) || 0,
+          claps_available: avail,
+          recorded_at: new Date().toISOString(),
+        });
+        written++;
+      }
+      return written;
     }
 
     // ---- migration 049: only a host changes a verdict ----------------------

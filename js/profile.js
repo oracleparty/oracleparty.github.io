@@ -12,6 +12,7 @@ import {
   updateProfile,
   deleteMyAccount,
   fetchPlayerStats,
+  fetchBotProficiency,
   fetchGameHistory,
   sendFriendRequest,
   fetchPendingRequests,
@@ -448,18 +449,45 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     // plays by, and docs/BOTS.md marks the per-category table as the owner's to
     // write. A model-chosen strength profile is precisely what this project has
     // deleted twice.
+    // IT READS WHAT THE BOT ACTUALLY DID (migration 072), and the owner was
+    // right to insist on that against my pushing back twice. I kept saying a
+    // bot is a coin so its record could only be a flat circle. Their answer —
+    // "It answers no answer to plenty. The host may override some. There is
+    // chance on others" — is correct, and the code agrees: about 20% of the
+    // bank has no stored wrong option so a miss is a BLANK, and a host flipping
+    // a bot's verdict writes to the answer row like anyone's. So the shape is
+    // evidence about the QUESTION BANK and the HOSTS, which is worth seeing.
+    //
+    // THREE ANSWERS, NOT TWO, because they mean different things:
+    //   null  the view is not installed — fall back to the stated accuracy,
+    //         since migrations here are applied by hand and "JS live, SQL not"
+    //         is a real state
+    //   {}    installed, and this bot has never played — draw nothing rather
+    //         than a ring of zeros, on the same rule as "an unplayed category
+    //         is not a zero"
+    //   rows  real recorded proficiency
+    const recorded = await fetchBotProficiency(displayName).catch(() => null);
+    const measured = recorded && Object.keys(recorded).length > 0;
     const byCategory = {};
-    for (const key of Object.keys(CATEGORY_META)) byCategory[key] = botSkillFor(key, BOT_ACCURACY);
+    for (const key of Object.keys(CATEGORY_META)) {
+      if (measured) {
+        if (recorded[key] != null) byCategory[key] = recorded[key];
+      } else if (recorded === null) {
+        byCategory[key] = botSkillFor(key, BOT_ACCURACY);
+      }
+    }
     const axesInput = Object.entries(CATEGORY_META)
       .map(([key, meta]) => ({ key, label: meta.label, emoji: meta.emoji || meta.icon }));
     const { axes, anyData } = buildRadarAxes(axesInput, byCategory);
     const pct = Math.round(BOT_ACCURACY * 100);
+    const caption = measured
+      ? `Practice bot &middot; this is what it has actually scored, subject by subject.`
+      : (recorded === null
+          ? `Practice bot &middot; aims for about ${pct}% on everything.`
+          : `Practice bot &middot; aims for about ${pct}% on everything. It has not played a recorded round yet.`);
     statsHtml = `
       ${anyData ? `<div class="profile-card__radar radar">${renderRadarSvg(axes)}</div>` : ''}
-      <p class="profile-card__guest-hint">
-        Practice bot &middot; gets about ${pct}% right, across every subject.
-        Nothing it plays is recorded.
-      </p>`;
+      <p class="profile-card__guest-hint">${caption}</p>`;
   } else {
     // Guest player
     statsHtml = `<p class="profile-card__guest-hint">Guest player</p>`;
