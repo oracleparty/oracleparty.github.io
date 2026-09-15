@@ -1239,6 +1239,41 @@ export const STATES = {
     },
   },
 
+  // FAVOURITE ANSWERS, the card above the scoreboard.
+  //
+  // Three entries with DIFFERENT clap counts, a long answer, a long name and a
+  // question long enough to need truncating — because every one of those is a
+  // way this card can go wrong and none of them show up with tidy sample data.
+  // The "+2 more tied" line is here too: it is the card admitting it is showing
+  // three of five equal answers rather than implying these three were special.
+  'results-favourites': {
+    page: 'game',
+    screen: 'results-screen',
+    inherits: 'results-winner',
+    inject: () => {
+      const host = document.getElementById('results-favourites');
+      if (!host) return;
+      const favs = [
+        { q: 'What mythical creature is half human and half horse?',
+          a: 'a very confused horse', who: 'TimeTraveler42', n: 4 },
+        { q: 'Which ancient wonder was located in the city of Babylon?',
+          a: 'the one with all the plants hanging off it, you know the one', who: 'ArchaeologistAnna', n: 2 },
+        { q: 'What is the capital of Australia?',
+          a: 'Sydney (wrong, I know)', who: 'MaximilianTheGreat99', n: 2 },
+      ];
+      host.innerHTML = '<div class="fav-answers__title">Favourite Answers</div>' +
+        favs.map(f => '<div class="fav-answer">' +
+          '<div class="fav-answer__q">' + f.q + '</div>' +
+          '<div class="fav-answer__a">' + f.a + '</div>' +
+          '<div class="fav-answer__who">' +
+            '<span class="fav-answer__name">' + f.who + '</span>' +
+            '<span class="fav-answer__claps"><span aria-hidden="true">&#x1F44F;</span> ' + f.n + '</span>' +
+          '</div></div>').join('') +
+        '<div class="fav-answers__more">+2 more tied</div>';
+      host.style.display = '';
+    },
+  },
+
   'results-review': {
     page: 'game',
     screen: 'results-screen',
