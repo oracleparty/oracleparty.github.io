@@ -30,6 +30,7 @@ export {
   submitAnswerViaServer, fillBlankAnswersViaServer,
   setJudgementOnServer, disqualifyRoundOnServer, undisqualifyRoundOnServer,
   deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
+  clapAnswerOnServer, fetchClaps, recordClapsOnServer, subscribeToClaps,
 } from './db/players.js';
 
 // --- Questions ---

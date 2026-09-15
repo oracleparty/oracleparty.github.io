@@ -1274,3 +1274,107 @@ export function subscribeToAnswers(roomId, callback) {
       }
     });
 }
+
+/**
+ * Clap an answer, move your clap to it, or take it back.
+ *
+ * ONE CLAP PER PERSON PER ROUND, so there is no separate "unclap" call: tapping
+ * a different answer moves it and tapping the same one again withdraws it. The
+ * server decides which of those happened, because only it knows what this
+ * player's clap was a moment ago — a client that decided for itself would be
+ * wrong every time two phones interleaved.
+ *
+ * → { ok, result } where result is 'clapped' | 'moved' | 'withdrawn', or one of
+ *   the refusals ('not_your_own', 'nothing_to_clap', 'not_in_room', 'no_game',
+ *   'no_answer'). `ok` is false ONLY when the function is not installed, which
+ *   is the caller's cue that this whole feature is unavailable rather than that
+ *   a particular tap was refused. Conflating those is how a dead feature reads
+ *   as a healthy one (CLAUDE.md #8), and there is no fallback path here at all:
+ *   claps have never worked before 071, so there is no old way to do it. Same
+ *   call as kickPlayer, and for the same reason.
+ */
+export async function clapAnswerOnServer({ roomId, voterPlayerId, questionNumber, answerId }) {
+  const { data, error } = await supabase.rpc('op_clap_answer', {
+    p_room_id: roomId,
+    p_voter_player_id: voterPlayerId,
+    p_question_number: questionNumber,
+    p_answer_id: answerId,
+  });
+  if (error) {
+    if (functionMissing(error)) {
+      logger.debug('Supabase', 'op_clap_answer not installed — claps are off');
+      return { ok: false, result: 'unavailable' };
+    }
+    logger.error('Supabase', 'op_clap_answer failed', error);
+    return { ok: false, result: 'failed' };
+  }
+  return { ok: true, result: String(data || '') };
+}
+
+/**
+ * Every clap in this room, for the game the room is currently on.
+ *
+ * FILTERED BY GAME KEY, not merely by room. A room survives Play Again, so the
+ * table holds every game's claps — reading them all would show the previous
+ * game's applause on this game's reveal, which is the exact shape of the stale
+ * answers migration 066 had to unpick.
+ */
+export async function fetchClaps(roomId, gameKey) {
+  if (!roomId || !gameKey) return [];
+  const { data, error } = await supabase
+    .from('answer_claps')
+    .select('id,answer_id,question_number,voter_player_id,clapped_player_id')
+    .eq('room_id', roomId)
+    .eq('game_key', gameKey);
+  if (error) {
+    // A missing table is this feature being unavailable, not a fault worth
+    // shouting about — the JavaScript is always safe to deploy before the SQL.
+    logger.debug('Supabase', 'fetchClaps failed', error);
+    return [];
+  }
+  return data || [];
+}
+
+/**
+ * Freeze this game's claps into the durable record.
+ *
+ * EVERY DEVICE CALLS THIS, deliberately. It is idempotent on
+ * (user_id, room_id, game_key), so the first call does the work and the rest
+ * match the key and do nothing. Host-gating it would mean a host whose phone
+ * died took the whole room's claps with them — the same reasoning that made
+ * record_round_history unguarded, and the opposite of room_scores, which is
+ * host-gated precisely because repeating it would multiply the tally.
+ */
+export async function recordClapsOnServer(roomId) {
+  const { data, error } = await supabase.rpc('op_record_claps', { p_room_id: roomId });
+  if (error) {
+    if (!functionMissing(error)) logger.error('Supabase', 'op_record_claps failed', error);
+    return { ok: false, written: 0 };
+  }
+  return { ok: true, written: Number(data) || 0 };
+}
+
+/**
+ * Subscribe to claps landing in this room.
+ *
+ * DELETE matters here as much as INSERT, because taking a clap back is a
+ * delete — and a Realtime DELETE payload carries only the primary key, which is
+ * why the handler cannot look the row up and must work from the id alone.
+ */
+export function subscribeToClaps(roomId, callback) {
+  return supabase.channel(`room-${roomId}-claps`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'answer_claps',
+      filter: `room_id=eq.${roomId}`
+    }, (payload) => {
+      try { callback(payload); } catch (e) { logger.error('Supabase', 'Clap change callback error', e); }
+    })
+    .subscribe((status, err) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (err) logger.error('Supabase', 'Claps subscription error', err);
+        logger.warn('Supabase', 'Claps subscription failed, status: ' + status);
+      }
+    });
+}
