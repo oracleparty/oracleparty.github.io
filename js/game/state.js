@@ -26,6 +26,19 @@ export const state = {
   scores: {},
   previousScores: {},   // scores before current round (for animation delta)
   currentAnswers: [],   // cached answers for current question (avoids re-fetch)
+
+  // EVERY CLAP IN THIS GAME, all rounds — not just the round on screen, because
+  // the Favourite Answers card at the end reads the whole game.
+  //
+  // KEYED BY GAME, and that is what makes a stale cache impossible rather than
+  // merely unlikely. A room survives Play Again, so claps from the last game are
+  // still in the table and still in memory; four separate call sites clear
+  // `currentAnswers` and any one of them forgetting would show the last game's
+  // applause on this game's reveal. `clapsGameKey` self-heals instead: the cache
+  // is dropped the moment the room's countdown stamp changes, with nobody
+  // needing to remember. Same reasoning as the game key on the row itself.
+  claps: [],
+  clapsGameKey: null,
   timerId: null,
   channels: [],
   chatOpen: false,
