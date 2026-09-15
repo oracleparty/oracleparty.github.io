@@ -144,6 +144,11 @@ export async function showRevealScreen() {
   // it was applied to two of the six in-game switches. This is the shape this
   // project records more than any other: the same rule stated N times and
   // followed N-2.
+  // Read this game's claps once the screen is up. Deliberately NOT awaited:
+  // decorative content must never be able to hold a screen shut, which is the
+  // rule the title-word loader carries its own deadline for. A slow read means
+  // the counts appear a moment later, never that the reveal does.
+  loadClaps();
   Promise.resolve(showScreen($('#reveal-screen'))).then(showChatBar);
 
   showHostSettingsGear();

@@ -21,6 +21,7 @@ import {
   fetchRoom,
   subscribeToRoom,
   subscribeToAnswers,
+  subscribeToClaps,
   subscribeToMessages,
   unsubscribe,
   getServerTimeOffset,
@@ -73,6 +74,7 @@ import {
   showRevealScreen, enableRevealButton,
   enableNextQuestion, updateRevealButtonText, placeHostReview,
   updateHonkBadges, handleNextQuestion, initFeedbackListeners,
+  handleClapChange,
   registerScoresRef as registerRevealScoresRef,
 } from './reveal.js';
 import {
@@ -312,7 +314,12 @@ async function init() {
   const answerCh = subscribeToAnswers(state.room.id, handleAnswerChange);
   const msgCh = subscribeToMessages(state.room.id, handleNewMessage);
   const playerCh = subscribeToPlayers(state.room.id, handlePlayerChange);
-  state.channels = [roomCh, answerCh, msgCh, playerCh];
+  // Claps land and are taken back over their own channel. It goes in
+  // state.channels like the rest so cleanup() unsubscribes it — a leaked
+  // subscription compounds over a long sitting, which this project has already
+  // paid for once when cleanup() threw before reaching its unsubscribes.
+  const clapCh = subscribeToClaps(state.room.id, handleClapChange);
+  state.channels = [roomCh, answerCh, msgCh, playerCh, clapCh];
 
   // Presence tracking (away/active state)
   buildPresenceChannel();

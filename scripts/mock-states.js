@@ -773,28 +773,74 @@ export const STATES = {
       const fb = document.getElementById('reveal-feedback');
       if (fb) fb.style.display = '';
 
+      // CLAPS ARE ON THIS STATE, not a separate one, because the default reveal
+      // is what the sweep measures on every run and a control nothing renders
+      // is a control nobody is checking.
+      //
+      // `clap` is the count and `mine` is whether this phone clapped it, so
+      // every state the button can be in appears once: untouched, clapped by
+      // others, clapped by you, and — on the row that is YOURS — absent
+      // altogether, which is the case that proves nothing shifts when it is
+      // missing. The long answer is deliberately the longest thing this line
+      // ever holds, since the button and the text share a row now.
       const answers = [
-        { p: P[0], a: 'Hanging Gardens', c: true, w: 7 },
-        { p: P[1], a: 'Colossus', c: false, w: 5 },
-        { p: P[2], a: 'hanging gardens of babylon', c: true, w: 8 },
-        { p: P[3], a: 'The Hanging Gardens', c: true, w: 3 },
-        { p: P[4], a: 'Tower of Babel', c: false, w: 6 },
-        { p: P[5], a: 'Gardens of Babylon', c: true, w: 4 },
+        { p: P[0], a: 'Hanging Gardens', c: true, w: 7, clap: 0, mine: false },
+        { p: P[1], a: 'Colossus', c: false, w: 5, clap: 3, mine: true },
+        { p: P[2], a: 'hanging gardens of babylon', c: true, w: 8, clap: 1, mine: false },
+        { p: P[3], a: 'The Hanging Gardens', c: true, w: 3, clap: 0, mine: false, me: true },
+        { p: P[4], a: 'Tower of Babel', c: false, w: 6, clap: 12, mine: false },
+        { p: P[5], a: 'Gardens of Babylon', c: true, w: 4, clap: 0, mine: false },
       ];
 
       document.getElementById('reveal-answers').innerHTML = answers.map(x => {
         const cc = x.c ? 'answer-row__answer--correct' : 'answer-row__answer--incorrect';
         const wc = x.c ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect';
         const badge = x.p.isHost ? ' <span class="badge badge--host">Host</span>' : '';
+        // Matches clapBtnHtml byte for byte in structure; if that changes, this
+        // changes in the same commit or the sweep reviews markup nobody ships.
+        const clapBtn = x.me ? '' :
+          '<button class="clap-btn' + (x.mine ? ' clap-btn--mine' : '') + '" aria-pressed="' + (x.mine ? 'true' : 'false') + '">' +
+          '<span class="clap-btn__icon">&#x1F44F;</span>' +
+          '<span class="clap-btn__count">' + (x.clap || '') + '</span></button>';
         return '<div class="answer-row">' +
           '<div class="answer-row__top"><div class="avatar-wrap">' + av(x.p) + '</div>' +
           '<span class="answer-row__name">' + x.p.name + badge + '</span>' +
           '<span class="answer-row__wager ' + wc + '">' + x.w + '</span></div>' +
-          '<div class="answer-row__bottom"><span class="answer-row__answer ' + cc + '">' + x.a + '</span></div>' +
+          '<div class="answer-row__bottom"><span class="answer-row__answer ' + cc + '">' + x.a + '</span>' +
+          clapBtn + '</div>' +
           '</div>';
       }).join('');
 
       document.getElementById('btn-next-question').classList.remove('hidden');
+    },
+  },
+
+  // ONE ROW, HOLDING THE LONGEST ANSWER THIS SCREEN CAN EVER SHOW.
+  //
+  // It is one row on purpose. The job here is the thing the default state
+  // cannot check — an answer long enough to wrap, sharing its line with a clap
+  // button, without pushing the button off the edge or making the page
+  // draggable sideways. List UNIFORMITY is the default state's job, and mixing
+  // the two costs both: a single wrapping row among short ones makes the list
+  // legitimately ragged (a two-line answer IS taller), so the sweep would
+  // report a fault that is not one, and the RAGGED check would have to be
+  // softened on this list to shut it up. That check is exactly what caught the
+  // clap button making a row WITHOUT one 10px shorter than every other row, so
+  // it is worth more than the convenience of one mixed state.
+  //
+  // Six long rows was the first attempt and it failed for a reason worth
+  // keeping: equal character counts are not equal widths in a proportional
+  // font, so one string wrapped to three lines where the rest made two and the
+  // state reported itself ragged.
+  'reveal-long-answers': {
+    page: 'game',
+    screen: 'reveal-screen',
+    inherits: 'reveal-answers',
+    inject: () => {
+      const rows = [...document.querySelectorAll('#reveal-answers .answer-row')];
+      rows.slice(1).forEach(r => r.remove());
+      const a = rows[0] && rows[0].querySelector('.answer-row__answer');
+      if (a) a.textContent = 'the hanging gardens of babylon, or possibly the ones at nineveh, nobody is really sure';
     },
   },
 

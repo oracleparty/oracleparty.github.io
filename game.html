@@ -319,6 +319,12 @@
       <div class="game-content" style="justify-content: flex-start;">
         <div id="results-winner" class="results-winner"></div>
 
+        <!-- FAVOURITE ANSWERS — above the scoreboard, on the owner's call.
+             Hidden by default and shown only when somebody actually clapped
+             something: an empty award slot reads as a broken feature, and this
+             screen already has one thing that used to render nothing. -->
+        <div id="results-favourites" class="results-favourites" style="display: none;"></div>
+
         <div class="results-scoreboard">
           <div class="scores-animated__title">Scoreboard</div>
           <div id="results-list"></div>

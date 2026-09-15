@@ -37,7 +37,9 @@ import {
   fetchQuestionFeedback,
   upsertQuestionFeedback,
   deleteQuestionFeedbackByVoter,
+  fetchClaps, recordClapsOnServer,
 } from '../supabase.js';
+import { favouriteAnswers } from './clap-logic.js';
 import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../auth.js';
 import { evaluateUnlocks, hasReachedApprentice, planCelebration } from '../titles.js';
 import { loadTitleWords } from '../title-content.js';
@@ -1427,6 +1429,62 @@ function writeRoomScores() {
     .catch(err => logger.warn('Game', 'Could not save room scores', err));
 }
 
+/**
+ * FAVOURITE ANSWERS — the card above the scoreboard.
+ *
+ * It names ANSWERS, never a player, and it is plural on purpose. With two
+ * players nobody can win: each can only clap the other, so every clapped answer
+ * ties at exactly one clap. Three players caps it at two. A card that picked
+ * "the winner" out of eight equal answers would be inventing a result.
+ *
+ * SO IT SAYS HOW MANY DID NOT FIT. Three is the cap the owner set — fifteen
+ * tied answers is a list nobody reads — and "+4 more" is the difference between
+ * a card that is honest about a tie and one quietly claiming these three were
+ * special.
+ *
+ * THE QUESTION IS SHOWN, SMALL AND CUT TO ONE LINE, because an answer alone is
+ * a non-sequitur: "a very confused horse" means nothing until you see "What is
+ * a centaur?". It is a memory jog rather than information — everybody reading
+ * this card played that round minutes ago — which is why truncating it is the
+ * right amount rather than a compromise.
+ *
+ * Hidden entirely when nobody clapped anything. An empty award slot reads as a
+ * broken feature, and #reveal-difficulty sat in this app for months as exactly
+ * that: a slot the code only ever hid.
+ */
+function renderFavouriteAnswers(allAnswers) {
+  const host = $('#results-favourites');
+  if (!host) return;
+  const { entries, more } = favouriteAnswers(state.claps, { limit: 3 });
+  if (!entries.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+
+  const rows = entries.map(e => {
+    const answer = allAnswers.find(a => String(a.id) === String(e.answerId));
+    // A clap whose answer we cannot find belongs to a game this client no
+    // longer has loaded. Skipping is the only honest option — a card cannot
+    // quote a line it does not have.
+    if (!answer) return '';
+    const player = state.players.find(p => String(p.id) === String(answer.player_id));
+    const qText = getQuestionText(e.questionNumber) || '';
+    const who = player?.display_name || 'Someone';
+    return `<div class="fav-answer">
+      ${qText ? `<div class="fav-answer__q">${escapeHtml(qText)}</div>` : ''}
+      <div class="fav-answer__a">${escapeHtml((answer.submitted_answer || '').trim())}</div>
+      <div class="fav-answer__who">
+        <span class="fav-answer__name">${escapeHtml(who)}</span>
+        <span class="fav-answer__claps"><span aria-hidden="true">&#x1F44F;</span> ${e.claps}</span>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  if (!rows) { host.style.display = 'none'; host.innerHTML = ''; return; }
+
+  host.innerHTML = `<div class="fav-answers__title">Favourite Answers</div>
+    ${rows}
+    ${more ? `<div class="fav-answers__more">+${more} more tied</div>` : ''}`;
+  host.style.display = '';
+}
+
 export async function showResultsScreen() {
   if (state.timerId) {
     clearInterval(state.timerId);
@@ -1443,6 +1501,31 @@ export async function showResultsScreen() {
   await updateScores();
 
   writeRoomScores();
+
+  // THE CLAPS, AND THE CARD. Both are deliberately outside the per-device block
+  // below: recordClapsOnServer is idempotent on (user, room, game), so every
+  // phone calling it writes once in total — host-gating it would mean a host
+  // whose phone died took the room's claps with them, which is the opposite
+  // call from writeRoomScores directly above and for the opposite reason.
+  //
+  // Not awaited as a pair with the render: a slow write must never hold the
+  // card, and a card is not worth a screen.
+  try {
+    const key = state.countdownStartedAt || null;
+    if (key) {
+      if (state.clapsGameKey !== key) { state.claps = []; state.clapsGameKey = key; }
+      // Re-read rather than trusting the cache: a phone that joined late, or
+      // reloaded mid-game, has only the claps it happened to be present for.
+      const rows = await fetchClaps(state.room.id, key);
+      if (state.clapsGameKey === key) state.claps = rows;
+    }
+    renderFavouriteAnswers(answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions));
+    recordClapsOnServer(state.room.id);
+  } catch (e) {
+    // A card is decoration. It must never be able to take the results screen
+    // down with it — the rule the title-word loader carries a deadline for.
+    logger.warn('Claps', 'could not draw the favourite answers', e);
+  }
 
   // Mark game play as completed (fire-and-forget, guard against re-entry)
   if (!state._gamePlayCompleted) {
