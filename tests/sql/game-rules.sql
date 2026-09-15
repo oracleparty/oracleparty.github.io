@@ -2089,4 +2089,211 @@ BEGIN
 END $$;
 
 
+-- ============================================
+-- 071 — A FAVOURITE ANSWER
+--
+-- The rules that decide whether this mechanic works, rather than whether it is
+-- installed. The two that matter most are the ones nobody would think to write:
+-- a SECOND GAME IN THE SAME ROOM must accept a clap on a round number the first
+-- game already used, and the DENOMINATOR must be counted per round or a player
+-- who joined late is measured against rounds they were never in.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid; hostP uuid; bobP uuid; carolP uuid; lateP uuid; ghostP uuid;
+  hostU uuid; bobU uuid; carolU uuid; lateU uuid;
+  qid uuid;
+  aHost uuid; aBob uuid; aCarol uuid; aLate uuid; aBlank uuid; aLocked uuid;
+  verdict text; n int; got int;
+BEGIN
+  INSERT INTO questions (question, correct_answer)
+    VALUES ('What is a centaur?', 'half horse half man') RETURNING id INTO qid;
+
+  INSERT INTO rooms (code, status, game_phase, current_question,
+                     countdown_started_at, question_ids)
+    VALUES ('CLP1', 'playing', 'reveal', 1, now(), ARRAY[qid, qid, qid])
+    RETURNING id INTO rid;
+
+  hostU := gen_random_uuid(); bobU := gen_random_uuid();
+  carolU := gen_random_uuid(); lateU := gen_random_uuid();
+
+  INSERT INTO players (room_id, display_name, is_host, user_id)
+    VALUES (rid, 'Alice', true, hostU) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, user_id)
+    VALUES (rid, 'Bob', bobU) RETURNING id INTO bobP;
+  INSERT INTO players (room_id, display_name, user_id)
+    VALUES (rid, 'Carol', carolU) RETURNING id INTO carolP;
+  -- Joins at round 1, so rounds 0 and 1 are not theirs.
+  INSERT INTO players (room_id, display_name, user_id)
+    VALUES (rid, 'Latecomer', lateU) RETURNING id INTO lateP;
+  -- A guest whose anonymous sign-in never landed: a seat, no durable id.
+  INSERT INTO players (room_id, display_name, user_id)
+    VALUES (rid, 'Ghost', NULL) RETURNING id INTO ghostP;
+
+  -- ROUND 0 — four seated (host, bob, carol, ghost), the latecomer absent.
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, hostP, 0, qid, 'a horse with ideas', 1) RETURNING id INTO aHost;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, bobP, 0, qid, 'a very confused horse', 2) RETURNING id INTO aBob;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, carolP, 0, qid, 'half man half horse', 3) RETURNING id INTO aCarol;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, ghostP, 0, qid, '', 4) RETURNING id INTO aBlank;
+
+  -- A CLAP LANDS.
+  SELECT op_clap_answer(rid, hostP, 0, aBob) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a player can clap somebody else''s answer', verdict, 'clapped');
+
+  -- NOT YOUR OWN. The award is about an answer you liked, and clapping yourself
+  -- is the one thing that makes a popularity count meaningless on its own.
+  SELECT op_clap_answer(rid, bobP, 0, aBob) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('nobody can clap their own answer', verdict, 'not_your_own');
+
+  -- NOTHING TO CLAP. A blank is a round somebody missed.
+  SELECT op_clap_answer(rid, hostP, 0, aBlank) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a blank answer cannot be clapped', verdict, 'nothing_to_clap');
+
+  -- AND THE PLACEHOLDER IS NOT AN ANSWER AT ALL. __WAGER_LOCKED__ must never
+  -- reach a player in any form, a clappable control included.
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, bobP, 2, qid, '__WAGER_LOCKED__', 20) RETURNING id INTO aLocked;
+  SELECT op_clap_answer(rid, hostP, 2, aLocked) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a locked wager placeholder cannot be clapped', verdict, 'nothing_to_clap');
+
+  -- A STRANGER CANNOT CLAP. Every browser carries the publishable key because
+  -- guests play, so without this anybody could stuff a room they were never in
+  -- — the same guard op_rate_host needs and for the same reason.
+  SELECT op_clap_answer(rid, gen_random_uuid(), 0, aBob) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody not in the room cannot clap', verdict, 'not_in_room');
+
+  -- ONE PER ROUND, AND TAPPING ANOTHER MOVES IT.
+  SELECT op_clap_answer(rid, hostP, 0, aCarol) INTO verdict;
+  SELECT count(*) INTO n FROM answer_claps
+   WHERE room_id = rid AND question_number = 0 AND voter_player_id = hostP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('clapping a second answer moves the clap', verdict, 'moved'),
+    ('and leaves exactly one clap for that round', n::text, '1');
+  SELECT count(*) INTO n FROM answer_claps
+   WHERE room_id = rid AND answer_id = aCarol;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the clap is on the answer just tapped', n::text, '1');
+
+  -- TAPPING THE SAME ONE AGAIN TAKES IT BACK.
+  SELECT op_clap_answer(rid, hostP, 0, aCarol) INTO verdict;
+  SELECT count(*) INTO n FROM answer_claps
+   WHERE room_id = rid AND question_number = 0 AND voter_player_id = hostP;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('tapping the same answer again withdraws it', verdict, 'withdrawn'),
+    ('and the round is left with no clap from them', n::text, '0');
+
+  -- Put a real spread of claps on round 0: Bob's answer takes two.
+  PERFORM op_clap_answer(rid, hostP, 0, aBob);
+  PERFORM op_clap_answer(rid, carolP, 0, aBob);
+  PERFORM op_clap_answer(rid, bobP, 0, aCarol);
+
+  -- ROUND 1 — five seated, the latecomer now has a row.
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, hostP, 1, qid, 'x', 5);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, bobP, 1, qid, 'y', 6);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, carolP, 1, qid, 'z', 7);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, ghostP, 1, qid, 'w', 8);
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, lateP, 1, qid, 'late but keen', 9) RETURNING id INTO aLate;
+
+  PERFORM op_clap_answer(rid, hostP, 1, aLate);
+
+  -- THE ROLLUP.
+  SELECT op_record_claps(rid) INTO n;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the end of game records one row per player with an identity', n::text, '4');
+
+  SELECT claps_received INTO got FROM clap_history WHERE user_id = bobU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('Bob collected both claps on his answer', got::text, '2');
+
+  -- THE DENOMINATOR IS PER ROUND, AND THIS IS THE RULE THAT PROVES IT.
+  -- Bob sat in round 0 (4 seated -> 3 others) and round 1 (5 seated -> 4
+  -- others) = 7. Counted per GAME instead, he would be measured against every
+  -- round at the final room size, which is 8 — so a per-game count cannot pass
+  -- this and a per-round one cannot fail it.
+  SELECT claps_available INTO got FROM clap_history WHERE user_id = bobU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('claps available counts the people actually there each round', got::text, '7');
+
+  -- A LATECOMER IS MEASURED ONLY ON THE ROUNDS THEY PLAYED. Round 1 only, with
+  -- five seated, so four others. Nothing about rounds they never saw.
+  SELECT claps_available INTO got FROM clap_history WHERE user_id = lateU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody who joined late is not measured against rounds they missed', got::text, '4');
+  SELECT claps_received INTO got FROM clap_history WHERE user_id = lateU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and they keep the clap they did get', got::text, '1');
+
+  -- A PLAYER WITH NO DURABLE ID IS SKIPPED RATHER THAN LOST NOISILY.
+  SELECT count(*) INTO n FROM clap_history
+   WHERE room_id = rid AND user_id IS NULL;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a seat with no identity writes no lifetime row', n::text, '0');
+
+  -- IDEMPOTENT, WHICH IS WHAT LETS EVERY DEVICE CALL IT. Host-gating this would
+  -- mean a host whose phone died took the room's claps with them; a per-device
+  -- call that was not idempotent would multiply every total by the room size.
+  SELECT op_record_claps(rid) INTO n;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('calling it again from another phone writes nothing', n::text, '0');
+  SELECT claps_received INTO got FROM clap_history WHERE user_id = bobU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and Bob''s total is not doubled', got::text, '2');
+
+  -- PLAY AGAIN. A room survives it and round numbers start over, so this is the
+  -- collision the game key exists to prevent. Without it the clap below is
+  -- refused by the unique constraint and the second game silently collects
+  -- nothing — the shape migration 066 had to unpick for answers.
+  UPDATE rooms SET countdown_started_at = now() + interval '1 hour' WHERE id = rid;
+  DELETE FROM answers WHERE room_id = rid;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, bobP, 0, qid, 'a second game answer', 1) RETURNING id INTO aBob;
+  INSERT INTO answers (room_id, player_id, question_number, question_id, submitted_answer, wager)
+    VALUES (rid, carolP, 0, qid, 'and another', 2) RETURNING id INTO aCarol;
+  SELECT op_clap_answer(rid, hostP, 0, aBob) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a new game in the same room accepts a clap on round 0 again', verdict, 'clapped');
+
+  -- And the first game's claps are still there, unharmed, because nothing had
+  -- to be cleared to make that work.
+  SELECT count(*) INTO n FROM answer_claps WHERE room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the first game''s claps survive the second starting', n::text, '5');
+
+  -- THE SECOND GAME GETS ITS OWN LIFETIME ROW rather than being folded into the
+  -- first, so an evening of Play Again accumulates instead of overwriting.
+  SELECT op_record_claps(rid) INTO n;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a second game records its own rows', n::text, '2');
+
+  -- ...and ONLY for people who actually played it. The host clapped in game two
+  -- but answered nothing, so they could receive nothing and are not in it. A
+  -- row of 0 out of 0 would drag their lifetime rate toward nothing for a game
+  -- they sat out.
+  SELECT count(*) INTO n FROM clap_history
+   WHERE user_id = hostU AND room_id = rid AND game_key = (
+     SELECT countdown_started_at::text FROM rooms WHERE id = rid);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('somebody who answered nothing that game gets no row', n::text, '0');
+  SELECT count(*) INTO n FROM clap_history WHERE user_id = bobU AND room_id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('so Bob now has two games of clap history in one room', n::text, '2');
+END $$;
+
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

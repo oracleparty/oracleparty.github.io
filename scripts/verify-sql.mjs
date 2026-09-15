@@ -87,6 +87,7 @@ const MIGRATIONS = [
   '068_a_thrown_out_round_says_so.sql',
   '069_a_rounds_clock_belongs_to_that_round.sql',
   '070_a_disqualification_can_be_undone.sql',
+  '071_a_favourite_answer.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.
