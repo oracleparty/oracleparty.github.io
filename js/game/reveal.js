@@ -18,7 +18,10 @@ import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
   rateHost, fetchHostReputations, hostRatingsAvailable,
   insertBlankAnswers, fetchAllAnswers,
   recordQuestionOutcome, recordAnswerText, fetchQuestionPlayStats,
+  clapAnswerOnServer, fetchClaps,
 } from '../supabase.js';
+import { clapsForAnswer, iClapped, myClapInRound, clappersOf,
+         applyClapEvent } from './clap-logic.js';
 import { describeDifficulty } from '../difficulty-band.js';
 import { countAnswersFrom, findNextAvailableWager, answersForCurrentGame,
          buildDisqualifiedSet, buildUsedWagersMap } from './scoring-helpers.js';
@@ -225,6 +228,183 @@ function submittedCount(answers) {
  * doReveal used to answer both by rendering BEFORE flipping the flag, which
  * got (2) right and (1) wrong — see the comment at its call site.
  */
+/**
+ * THE CLAP SITS WITH THE ANSWER, NOT WITH THE PERSON, and that placement is a
+ * decision rather than a convenience.
+ *
+ * The owner pointed at the top of the row — "there is already space for the
+ * honk right?" — and beside the honk is where this was going to go. Three
+ * things moved it down here instead:
+ *
+ *   * IT IS ABOUT THE ANSWER. The whole design settles on the award naming the
+ *     ANSWER rather than the player, precisely so the evening is about a line
+ *     somebody wrote and not a popularity count. A control next to somebody's
+ *     name reads as "clap this person"; one at the end of their answer reads as
+ *     "I liked that", which is the thing being asked.
+ *   * THE TOP ROW IS THE CROWDED ONE — avatar, name, title, honk, wager badge
+ *     and the host's verdict toggle, at 375px. CLAUDE.md records the lobby row
+ *     overflowing by 71px from exactly this kind of addition and making the
+ *     whole page draggable sideways. The bottom row holds one span.
+ *   * AND IT DISSOLVES THE ALIGNMENT PROBLEM RATHER THAN SOLVING IT. In a strip
+ *     of icons a control that is absent on some rows is not a column, it is a
+ *     shove — the misalignment the owner spotted in the lobby ("the cohost's
+ *     quack and ready sign aren't aligned with everyone underneath"). At the
+ *     end of a line of text, an absent button costs nothing and nothing shifts,
+ *     so no slot has to be reserved at all.
+ *
+ * Offered ONLY where there is something to clap: real text on screen, somebody
+ * else's row. A bot's row DOES get one — the owner's call, and it can win —
+ * where the honk deliberately does not, because there is nobody to startle.
+ */
+function clapBtnHtml(player, answer, submittedText) {
+  if (!answer?.id || !submittedText) return '';
+  if (String(player.id) === String(state.room.playerId)) return '';
+  const n = clapsForAnswer(state.claps, answer.id);
+  const mine = iClapped(state.claps, answer.id, state.room.playerId);
+  return `<button class="clap-btn${mine ? ' clap-btn--mine' : ''}"
+    data-clap-answer="${answer.id}"
+    data-clap-round="${state.currentQuestion}"
+    aria-pressed="${mine ? 'true' : 'false'}"
+    aria-label="${clapLabel(answer.id, n, mine)}"
+    title="${clapLabel(answer.id, n, mine)}"
+    ><span class="clap-btn__icon">&#x1F44F;</span><span class="clap-btn__count">${n || ''}</span></button>`;
+}
+
+/** Who clapped this, in words — the accessible name and the long-press title. */
+function clapLabel(answerId, n, mine) {
+  if (!n) return 'Clap this answer';
+  const names = clappersOf(state.claps, answerId)
+    .map(pid => state.players.find(p => String(p.id) === String(pid))?.display_name)
+    .filter(Boolean);
+  const who = names.length ? escapeHtml(names.join(', ')) : `${n}`;
+  return mine ? `Clapped by ${who} \u2014 tap to take yours back` : `Clapped by ${who}`;
+}
+
+/**
+ * Repaint the clap buttons WITHOUT redrawing a single row.
+ *
+ * THIS IS THE WHOLE REASON CLAPS DO NOT GO THROUGH renderRevealAnswers.
+ * That function replaces its entire container — cloneNode plus replaceChild —
+ * so every row is destroyed and rebuilt. A button detached between touchstart
+ * and click never fires, and with five people clapping that would be five
+ * rebuilds a round, each one able to eat somebody's tap. It is the exact
+ * mechanism behind the dead-tap report this project spent a day measuring; the
+ * wager grid was measured at ZERO rebuilds and this would have introduced it to
+ * the reveal screen instead.
+ *
+ * So a clap only ever edits the buttons that changed, in place.
+ */
+export function repaintClaps() {
+  const container = $('#reveal-answers');
+  if (!container) return;
+  for (const btn of container.querySelectorAll('.clap-btn')) {
+    const answerId = btn.dataset.clapAnswer;
+    const n = clapsForAnswer(state.claps, answerId);
+    const mine = iClapped(state.claps, answerId, state.room.playerId);
+    const countEl = btn.querySelector('.clap-btn__count');
+    if (countEl) countEl.textContent = n || '';
+    btn.classList.toggle('clap-btn--mine', mine);
+    btn.setAttribute('aria-pressed', mine ? 'true' : 'false');
+    const label = clapLabel(answerId, n, mine);
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+  }
+}
+
+/**
+ * A clap arriving from anybody, including the echo of our own.
+ *
+ * Returns without touching the DOM when the cache did not change, so an echo of
+ * our own optimistic write costs nothing.
+ */
+export function handleClapChange(payload) {
+  const next = applyClapEvent(state.claps, payload);
+  if (next === state.claps) return;
+  state.claps = next;
+  repaintClaps();
+}
+
+/**
+ * Read this game's claps once, when the reveal screen opens.
+ *
+ * BY GAME KEY, not by room. A room survives Play Again, so the table still
+ * holds the last game's applause and reading by room alone would show it on
+ * this game's reveal — the shape migration 066 had to unpick for answers.
+ */
+export async function loadClaps() {
+  const key = state.countdownStartedAt || null;
+  if (!key) return;
+  if (state.clapsGameKey !== key) {
+    // A NEW GAME, so whatever is cached belongs to the last one. Dropping it
+    // here rather than at four separate reset sites is what makes a stale
+    // cache impossible instead of merely unlikely.
+    state.claps = [];
+    state.clapsGameKey = key;
+  }
+  const rows = await fetchClaps(state.room.id, key);
+  if (state.clapsGameKey !== key) return;   // a new game started while we read
+  state.claps = rows;
+  repaintClaps();
+}
+
+/**
+ * Tap a clap.
+ *
+ * OPTIMISTIC, because a tap that waits on a round trip is a button that does
+ * nothing for a second, and this file records what that costs. The cache is
+ * updated and the buttons repainted BEFORE the request goes out; the server's
+ * own row then displaces the temporary one through the dedupe in
+ * applyClapEvent, so nothing has to track which was which.
+ *
+ * ON REFUSAL IT PUTS THE CACHE BACK. An optimistic change that is never
+ * reverted is the fault CLAUDE.md records under "a role change that was refused
+ * was announced anyway" — the screen showing something the database declined.
+ */
+async function handleClapTap(btn) {
+  const answerId = btn.dataset.clapAnswer;
+  const round = Number(btn.dataset.clapRound);
+  if (!answerId || !state.room?.playerId) return;
+
+  const before = state.claps;
+  const mine = myClapInRound(state.claps, round, state.room.playerId);
+  const withdrawing = String(mine) === String(answerId);
+
+  // Mirror exactly what the server will do, so the screen and the row agree.
+  const withoutMine = state.claps.filter(c =>
+    !(Number(c.question_number) === round
+      && String(c.voter_player_id) === String(state.room.playerId)));
+  state.claps = withdrawing ? withoutMine : [...withoutMine, {
+    id: `optimistic-${answerId}-${state.room.playerId}`,
+    answer_id: answerId,
+    question_number: round,
+    voter_player_id: state.room.playerId,
+    clapped_player_id: (state.currentAnswers.find(a => String(a.id) === String(answerId)) || {}).player_id || null,
+  }];
+  repaintClaps();
+
+  const { ok, result } = await clapAnswerOnServer({
+    roomId: state.room.id,
+    voterPlayerId: state.room.playerId,
+    questionNumber: round,
+    answerId,
+  });
+
+  if (ok && ['clapped', 'moved', 'withdrawn'].includes(result)) return;
+
+  // Anything else and the tap did not land. Put the screen back rather than
+  // leaving it asserting something the database refused.
+  state.claps = before;
+  repaintClaps();
+  // Silent for the refusals a player can see the reason for on screen — their
+  // own row, a blank — and loud only for the ones that look like nothing
+  // happened. A toast per mis-tap is the noise that teaches people to ignore
+  // real warnings.
+  if (!ok && result === 'unavailable') return;
+  if (result === 'not_in_room' || result === 'failed') {
+    showToast("Couldn't clap that — check your connection");
+  }
+}
+
 export function renderRevealAnswers(answers, { holdColours = false } = {}) {
   // Colours are painted when the round is revealed AND the caller is not
   // holding them back for the reveal animation. `stillWaiting` deliberately
@@ -358,6 +538,7 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
           <span class="answer-row__answer ${colorClass}${emptyClass}">
             ${isEmpty ? 'No answer' : escapeHtml(submittedText)}
           </span>
+          ${clapBtnHtml(player, answer, submittedText)}
         </div>
       `;
     } else {
@@ -387,10 +568,17 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
     newContainer.appendChild(row);
   }
 
-  // Honk click handler on cloned container
+  // Honk and clap click handlers on the cloned container.
+  //
+  // DELEGATED, so the buttons themselves are never bound individually — a clap
+  // repaint edits a button's text and class in place and must not have to
+  // rebind anything, and a row rebuilt by a later answer event inherits the
+  // handler for free.
   newContainer.addEventListener('click', (e) => {
-    const btn = e.target.closest('.honk-btn');
-    if (btn) sendHonk(btn.dataset.honkTarget);
+    const honk = e.target.closest('.honk-btn');
+    if (honk) { sendHonk(honk.dataset.honkTarget); return; }
+    const clap = e.target.closest('.clap-btn');
+    if (clap) handleClapTap(clap);
   });
 
   // Host/co-host: attach toggle click listeners (pre- and post-reveal)

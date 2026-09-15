@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeAnswer,
+  escapeHtml,
   levenshteinDistance,
   fuzzyMatch,
   pickProfileByTag,
@@ -358,5 +359,31 @@ describe('pickProfileByTag', () => {
   it('ignores whitespace around the typed name', () => {
     const rows = [{ display_name: 'Alice', discriminator: '1234' }];
     expect(pickProfileByTag(rows, '  Alice  ')?.display_name).toBe('Alice');
+  });
+});
+
+describe('escapeHtml and HTML attributes', () => {
+  // MEASURED BEFORE THE FIX: escapeHtml('Bob" onmouseover="x') returned that
+  // string with the quotes untouched, and eighteen places in js/ drop the
+  // result straight into title="..." or data-*="...". Display names are typed
+  // by players with no character restriction, so this was a real way into
+  // somebody else's browser.
+  it('escapes double quotes, so a name cannot break out of an attribute', () => {
+    expect(escapeHtml('Bob" onmouseover="x')).toBe('Bob&quot; onmouseover=&quot;x');
+  });
+
+  it('escapes single quotes too', () => {
+    expect(escapeHtml("Bob' onfocus='x")).toBe('Bob&#39; onfocus=&#39;x');
+  });
+
+  it('still escapes the angle brackets it always did', () => {
+    expect(escapeHtml('<script>')).toBe('&lt;script&gt;');
+  });
+
+  // Ordinary names must be untouched, or this would have quietly mangled every
+  // name on every screen to close one hole.
+  it('leaves an ordinary name alone', () => {
+    expect(escapeHtml('QuizMasterMax')).toBe('QuizMasterMax');
+    expect(escapeHtml('Anna-Maria Ó Súilleabháin')).toBe('Anna-Maria Ó Súilleabháin');
   });
 });

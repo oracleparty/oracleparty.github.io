@@ -55,7 +55,25 @@ export function delay(ms) {
 export function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
-  return div.innerHTML;
+  // QUOTES TOO, AND textContent DOES NOT DO IT.
+  //
+  // Setting textContent and reading innerHTML escapes `<`, `>` and `&` and
+  // leaves `"` and `'` exactly as they were — measured, not assumed:
+  // escapeHtml('Bob" onmouseover="x') returned that string untouched.
+  //
+  // Safe while the result only ever lands in element TEXT, which is what this
+  // was written for. It does not: eighteen places across js/ interpolate it
+  // straight into an ATTRIBUTE — `title="${escapeHtml(player.display_name)}"`
+  // on the scoreboard, the friends list, the profile and the admin page among
+  // them. Display names are typed by players and `setDisplayName` stores
+  // whatever was entered, so a name of `" onfocus=... ` breaks out of the
+  // attribute and into everybody else's browser.
+  //
+  // Escaping here rather than at eighteen call sites is the only version that
+  // can be right: the next person to write an attribute cannot get it wrong,
+  // and `&quot;` in text content renders as `"` exactly as before, so nothing
+  // that was correct changes.
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**
