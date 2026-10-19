@@ -239,6 +239,15 @@
 > a different class so nothing ever tries to press it. Break-tested by
 > collapsing it: the sweep reproduces CI's numbers exactly.
 >
+> **And the deploy push then failed `scenario-fullgame` on code byte-identical
+> to the green run** — *"another phone never saw the clap at all"*, with the
+> third phone's reading `null`, meaning never SAMPLED rather than seen wrong. My
+> probe waited for that phone's own turn, so it missed whenever the room moved on
+> first, and it watched one fixed phone, which cannot see a clap on its own
+> answer. It now polls every other phone in the same turn as the tap. Break-tested
+> by switching off Realtime clap delivery: *"another phone shows the clap count as
+> "", not 1"*, which is the real fault keeping its own message.
+>
 > **CI is part of "done".** A local run of the checks you remembered is not the
 > CI run of the checks that exist, and `--stress` is in CI precisely because a
 > layout that fits its mock data is one real answer away from breaking.

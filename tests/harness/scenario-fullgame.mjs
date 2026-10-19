@@ -374,6 +374,43 @@ try {
           return { mine: !!btn?.classList.contains('clap-btn--mine'),
                    count: (btn?.querySelector('.clap-btn__count')?.textContent || '').trim() };
         }, target).catch(() => null);
+
+        // THEN EVERY OTHER PHONE, IN THIS SAME TURN, until one shows it.
+        //
+        // This used to wait for the third phone's own turn in the loop, and that
+        // had TWO races, which together failed the live branch's CI once on code
+        // byte-identical to a commit that passed half an hour earlier:
+        //
+        //   * if the room had moved past this round before that phone's turn
+        //     came round, the button for this answer was gone for good, and the
+        //     two checks gated on this one cascaded into failing with it;
+        //   * it watched one fixed phone — and if the tap had landed on THAT
+        //     phone's own answer, its screen holds a slot there rather than a
+        //     button, so it could never have seen the clap at all.
+        //
+        // Polling all of them now, here, removes both: the host cannot advance
+        // the room while this turn is running, and whichever phone does hold a
+        // button for the answer is the one that answers. A button that IS found
+        // with no count is recorded rather than skipped — that is the real fault
+        // this check exists for, Realtime delivering nothing, and it must keep
+        // its own failure message instead of reading as "never sampled".
+        const watchers = everyone.filter(x => x !== r);
+        const deadline = Date.now() + 8000;
+        let sawEmpty = null;
+        while (!clapProbe.onOthers && Date.now() < deadline) {
+          for (const w of watchers) {
+            const seen = await w.page.evaluate((id) => {
+              const btn = document.querySelector(`#reveal-answers .clap-btn[data-clap-answer="${id}"]`);
+              if (!btn) return null;
+              return { count: (btn.querySelector('.clap-btn__count')?.textContent || '').trim(),
+                       mine: btn.classList.contains('clap-btn--mine') };
+            }, target).catch(() => null);
+            if (seen && seen.count) { clapProbe.onOthers = { ...seen, watcher: w.name }; break; }
+            if (seen) sawEmpty = { ...seen, watcher: w.name };
+          }
+          if (!clapProbe.onOthers) await r.page.waitForTimeout(250);
+        }
+        if (!clapProbe.onOthers && sawEmpty) clapProbe.onOthers = sawEmpty;
       }
     }
 
@@ -411,23 +448,6 @@ try {
         };
       }).catch(() => null);
       if (seenHere) { undoProbe.done = true; undoProbe.state = seenHere; }
-    }
-
-    // WATCHED FROM A THIRD PHONE, not the host's.
-    //
-    // The first version watched the host and reported "another phone never saw
-    // the clap at all" — which was the PROBE being wrong, not the app. Bob taps
-    // the first row, that row is usually the host's own answer, and nobody is
-    // offered a clap on their own answer. So the button genuinely is not on her
-    // screen and the check was asking the one phone that can never answer.
-    if (r !== host && r.name !== clapProbe.clapper && screen === 'reveal-screen'
-        && clapProbe.pressed && !clapProbe.onOthers) {
-      clapProbe.onOthers = await r.page.evaluate((id) => {
-        const btn = document.querySelector(`.clap-btn[data-clap-answer="${id}"]`);
-        if (!btn) return null;
-        return { count: (btn.querySelector('.clap-btn__count')?.textContent || '').trim(),
-                 mine: btn.classList.contains('clap-btn--mine') };
-      }, clapProbe.answerId).catch(() => null);
     }
 
     // THE FEATURE NOT BEING INSTALLED TAKES THE BUTTON WITH IT.
