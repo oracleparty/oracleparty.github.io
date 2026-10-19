@@ -1502,34 +1502,6 @@ export async function showResultsScreen() {
 
   writeRoomScores();
 
-  // THE CLAPS, AND THE CARD. Both are deliberately outside the per-device block
-  // below: recordClapsOnServer is idempotent on (user, room, game), so every
-  // phone calling it writes once in total — host-gating it would mean a host
-  // whose phone died took the room's claps with them, which is the opposite
-  // call from writeRoomScores directly above and for the opposite reason.
-  //
-  // Not awaited as a pair with the render: a slow write must never hold the
-  // card, and a card is not worth a screen.
-  try {
-    const key = state.countdownStartedAt || null;
-    if (key) {
-      if (state.clapsGameKey !== key) { state.claps = []; state.clapsGameKey = key; }
-      // Re-read rather than trusting the cache: a phone that joined late, or
-      // reloaded mid-game, has only the claps it happened to be present for.
-      // `|| []` because fetchClaps answers NULL when the table is not there —
-      // migration 071 unapplied — and this card must render as "nobody clapped
-      // anything" rather than throwing and taking the results screen with it.
-      const rows = await fetchClaps(state.room.id, key);
-      if (state.clapsGameKey === key) state.claps = rows || [];
-    }
-    renderFavouriteAnswers(answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions));
-    recordClapsOnServer(state.room.id);
-  } catch (e) {
-    // A card is decoration. It must never be able to take the results screen
-    // down with it — the rule the title-word loader carries a deadline for.
-    logger.warn('Claps', 'could not draw the favourite answers', e);
-  }
-
   // Mark game play as completed (fire-and-forget, guard against re-entry)
   if (!state._gamePlayCompleted) {
     state._gamePlayCompleted = true;
@@ -1626,6 +1598,25 @@ export async function showResultsScreen() {
   const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   const fwAnswers = allAnswers.filter(a => a.question_number === state.totalQuestions);
 
+  // THE FAVOURITE ANSWERS CARD IS DRAWN FROM WHAT IS ALREADY IN HAND, and the
+  // network only ever corrects it afterwards. It used to await a claps read and
+  // a second whole-game answers read BEFORE the screen switch below, while its
+  // own comment said a card is not worth a screen — two more un-timed round
+  // trips gating the results, which is the 2026-08-30 rule broken by a card.
+  //
+  // The cache is good enough to draw from: every reveal re-reads the whole
+  // game's claps and Realtime keeps it current between reads. The refresh after
+  // the screen switch catches a phone that rejoined late.
+  const clapKey = state.countdownStartedAt || null;
+  if (clapKey && state.clapsGameKey !== clapKey) { state.claps = []; state.clapsGameKey = clapKey; }
+  try {
+    renderFavouriteAnswers(allAnswers);
+  } catch (e) {
+    // A card is decoration. It must never be able to take the results screen
+    // down with it.
+    logger.warn('Claps', 'could not draw the favourite answers', e);
+  }
+
   // Winner celebration
   const winner = sorted[0];
   if (winner) {
@@ -1691,6 +1682,21 @@ export async function showResultsScreen() {
   // project records more than any other: the same rule stated N times and
   // followed N-2.
   Promise.resolve(showScreen($('#results-screen'))).then(showChatBar);
+
+  // AFTER the screen, never before it. recordClapsOnServer is idempotent on
+  // (user, room, game), so every phone calling it writes once in total —
+  // host-gating it would mean a host whose phone died took the room's claps
+  // with them, the opposite call from writeRoomScores and for the opposite
+  // reason. `|| []` on the read because fetchClaps answers NULL when 071 is not
+  // applied, and the card must then read as "nobody clapped anything".
+  recordClapsOnServer(state.room.id);
+  if (clapKey) {
+    fetchClaps(state.room.id, clapKey).then(rows => {
+      if (state.clapsGameKey !== clapKey) return;   // a new game started meanwhile
+      state.claps = rows || [];
+      renderFavouriteAnswers(allAnswers);
+    }).catch(e => logger.warn('Claps', 'could not refresh the favourite answers', e));
+  }
 
   showHostSettingsGear();
 

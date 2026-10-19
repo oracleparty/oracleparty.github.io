@@ -118,6 +118,19 @@ describe('favourite answers', () => {
     expect(more).toBe(2);
   });
 
+  // "+N more tied" must be TRUE: an answer left off with fewer claps than the
+  // last one shown is not tied with anything on the card.
+  it('counts only what ties with the last answer shown', () => {
+    const give = (answerId, round, n) =>
+      Array.from({ length: n }, (_, i) => clap(`${answerId}-${i}`, answerId, `v${i}`, round));
+    const splitTie = [...give('a0', 0, 3), ...give('a1', 1, 2), ...give('a2', 2, 2),
+                      ...give('a3', 3, 2), ...give('a4', 4, 1)];
+    expect(favouriteAnswers(splitTie).more).toBe(1);
+    const noTie = [...give('a0', 0, 3), ...give('a1', 1, 2), ...give('a2', 2, 2),
+                   ...give('a3', 3, 1)];
+    expect(favouriteAnswers(noTie).more).toBe(0);
+  });
+
   // Chronological within a tier is the only tie-break that is not arbitrary.
   it('orders a tie by the round it happened in', () => {
     const claps = [clap('c1', 'a-late', 'v1', 7), clap('c2', 'a-early', 'v2', 2)];

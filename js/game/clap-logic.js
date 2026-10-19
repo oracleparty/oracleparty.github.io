@@ -123,9 +123,15 @@ export function applyClapEvent(claps, payload) {
  * four or more does a single winner normally emerge.
  *
  * So it never picks one. It returns the top `limit` in clap order, and `more`
- * counts what would not fit — because a card that silently shows three of eight
- * equal answers is claiming those three were special, which is a small lie the
- * screen has no business telling.
+ * counts the answers left off that TIE WITH THE LAST ONE SHOWN — because a card
+ * that silently shows three of eight equal answers is claiming those three were
+ * special, which is a small lie the screen has no business telling.
+ *
+ * ONLY TIES, and that is the whole of the rule. It used to count everything that
+ * did not fit, under a line reading "+N more tied" — so 3, 2, 2 and then a
+ * one-clap answer printed "+1 more tied" about something tied with nothing on
+ * the card. An answer with fewer claps than the third shown was simply less of
+ * a favourite; leaving it off claims nothing. Only a cut that splits a tie does.
  *
  * Ordering: most claps first, then by round. Chronological within a tier is the
  * only tie-break that is not arbitrary — it is the order they happened in.
@@ -152,9 +158,11 @@ export function favouriteAnswers(claps, { limit = 3 } = {}) {
   const ranked = [...byAnswer.values()].sort((a, b) =>
     b.claps - a.claps || a.questionNumber - b.questionNumber);
 
+  const entries = ranked.slice(0, limit);
+  const lastShown = entries.length ? entries[entries.length - 1].claps : 0;
   return {
-    entries: ranked.slice(0, limit),
-    more: Math.max(0, ranked.length - limit),
+    entries,
+    more: ranked.slice(limit).filter(e => e.claps === lastShown).length,
   };
 }
 

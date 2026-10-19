@@ -658,6 +658,32 @@ try {
     note(`${r.name} is on ${await activeScreen(r)}`);
   }
 
+  // --- The Favourite Answers card ---
+  //
+  // Nothing checked this card at all until it was moved behind the screen
+  // switch, which is exactly when a card can quietly stop appearing. The clap
+  // probe above leaves one clap standing, so every phone that reached results
+  // must show it — and the answer it names must be the one that was clapped.
+  const standingClaps = table.store.table('answer_claps').length;
+  if (reachedResults && clapProbe.pressed && standingClaps > 0) {
+    for (const r of everyone) {
+      const card = await r.page.evaluate(() => {
+        const host = document.querySelector('#results-favourites');
+        if (!host) return null;
+        return {
+          shown: getComputedStyle(host).display !== 'none',
+          entries: host.querySelectorAll('.fav-answer').length,
+        };
+      }).catch(() => null);
+      note(`${r.name}'s Favourite Answers card: ${JSON.stringify(card)}`);
+      if (!card || !card.shown || card.entries === 0) {
+        problems.push(`${r.name} reached results with ${standingClaps} clap(s) in the room and no Favourite Answers card`);
+      }
+    }
+  } else {
+    note(`Favourite Answers not checked (results=${reachedResults}, clapped=${clapProbe.pressed}, claps=${standingClaps})`);
+  }
+
   // --- The final wager clock ---
   const finalQ = QUESTIONS; // final wager rides on question_number === QUESTIONS
   const carolId = table.store.table('players').find(p => p.display_name === 'Carol')?.id;
