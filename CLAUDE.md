@@ -49,12 +49,13 @@
 > 2. **Add ~a dozen questions each to History's Ancient (58) and Medieval (52)**
 >    so they clear the 60-question floor and can carry words of their own.
 > 3. **Play a real game** and report what breaks.
-> 4. **Run migrations 071 and 072, and paste back their verification rows.**
->    Until 071 is applied the clap button on every reveal reports a refusal and
->    records nothing, and the Favourite Answers card can never have anything in
->    it. Until 072 is applied the bot's own record is not kept — and nothing
->    breaks, which is exactly why it would go unnoticed. Both print their own
->    verification block; the SQL is in `migrations/`.
+> 4. **071 and 072: the owner says they ran both (2026-10-19). NO
+>    VERIFICATION ROWS WERE PASTED** — the same evidence level as 067–070. **The
+>    cheap check for 071 is the 👏 button appearing on a real reveal**: the
+>    client hides it whenever `answer_claps` cannot be read, so a missing
+>    migration reads as a missing feature, never as an error. 072 has no visible
+>    tell at all — the bot's card falls back to its stated skill — so ask for its
+>    rows.
 > 5. **Paste back the verification rows for 067, 068, 069 and 070.** All four
 >    were run on the owner's word and nothing here has seen a single row. That
 >    is the weakest evidence in this table, and 070 in particular is invisible
@@ -98,9 +99,10 @@
 > in full: migrations 071 and 072, the reveal, the results card, both profile
 > surfaces and a third leaderboard.
 >
-> **NEITHER MIGRATION IS APPLIED.** They are printed for the owner to paste, and
-> nothing here has seen a verification row. Until 071 runs, `op_clap_answer` is
-> missing and the clap button reports a refusal rather than recording anything.
+> **THE OWNER SAYS BOTH ARE RUN (2026-10-19), and no verification row has been
+> seen.** Deployed the same day as `v=20261019`, CI green on the live branch. If
+> 071 is not really there, the clap button hides itself (`state.clapsUnavailable`)
+> rather than offering a control that records nothing.
 >
 > ### The design, and the reasoning that is not obvious from the code
 >
@@ -4663,7 +4665,7 @@ nothing on the wheel is unreachable.
 - **Favourite Answers** — 👏 one clap per person per round, on the reveal. The
   game ends with a Favourite Answers card above the scoreboard, and the claps
   accumulate into a lifetime total and a weighted rate on the profile and the
-  leaderboard. **Needs migration 071, which is not applied.**
+  leaderboard. **Needs migration 071** — the owner says it is run (2026-10-19).
 - **Honks** — tap to blast a sound at everyone, throttled by `HONK_THROTTLE`.
   The honker's avatar shakes on every client (`jiggleHonker` in `honk.js`), so
   a quack has a face on it. `from_id` was in the broadcast payload from the
@@ -4882,7 +4884,8 @@ break it and `question_stats` reads `asked=2` where a solo human is `asked=1`.
 `friendships`, `title_unlocks`, `site_settings`, `error_logs`, `host_ratings`,
 `answer_claps`, `clap_history`, `bot_history`.
 
-**The last three arrive with migrations 071 and 072, which are NOT APPLIED.**
+**The last three arrive with migrations 071 and 072** — run by the owner on
+2026-10-19, on their word, with no verification rows pasted.
 `answer_claps` dies with its room; `clap_history` and `bot_history` deliberately
 have no foreign key to anything, for the reason 033 and 052 both record — a
 historical record that cascades is a historical record that gets deleted.
