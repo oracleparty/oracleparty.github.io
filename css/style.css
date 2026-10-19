@@ -4032,6 +4032,23 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* THE SLOT A ROW KEEPS WHEN IT HAS NOTHING TO CLAP — your own answer, or a
+   blank. It must be exactly as wide as the button or the answer beside it gets a
+   different width and wraps differently, which is the fault it exists to fix.
+   So it repeats the three declarations that decide the button's WIDTH (layout,
+   gap, side padding) and nothing else, and its children are the button's own
+   icon and count classes, which size themselves in rem and em of their own font.
+   Hidden, not removed: `visibility` keeps the box and paints nothing. */
+.clap-slot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0 var(--space-xs);
+  line-height: 1;
+  visibility: hidden;
+}
+
 /* A TAP SHRINKS IT, IN CSS, WITH NO JAVASCRIPT INVOLVED.
    This is the whole lesson of the dead-tap playtest: `.wager-btn:active` fires
    on touch whatever the handler is doing, so "no press animation at all" was

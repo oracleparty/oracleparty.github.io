@@ -798,7 +798,8 @@ export const STATES = {
         const badge = x.p.isHost ? ' <span class="badge badge--host">Host</span>' : '';
         // Matches clapBtnHtml byte for byte in structure; if that changes, this
         // changes in the same commit or the sweep reviews markup nobody ships.
-        const clapBtn = x.me ? '' :
+        const clapBtn = x.me
+          ? '<span class="clap-slot" aria-hidden="true"><span class="clap-btn__icon">&#x1F44F;</span><span class="clap-btn__count"></span></span>' :
           '<button class="clap-btn' + (x.mine ? ' clap-btn--mine' : '') + '" aria-pressed="' + (x.mine ? 'true' : 'false') + '">' +
           '<span class="clap-btn__icon">&#x1F44F;</span>' +
           '<span class="clap-btn__count">' + (x.clap || '') + '</span></button>';

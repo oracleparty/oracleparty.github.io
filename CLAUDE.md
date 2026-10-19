@@ -220,6 +220,29 @@
 > written into attributes on several screens. A name containing a quote could
 > close the attribute and add its own. Both quote forms are escaped now.
 >
+> ### CI WAS RED FOR THREE PUSHES AND NOBODY LOOKED — me
+>
+> Found a month later, before deploying, by checking the Actions tab the way
+> this file says to after every push. **Every robot scenario passed. The STRESS
+> layout sweep failed** on all three clap commits, and I had only ever run the
+> plain one locally.
+>
+> The clap button takes ~55px of the answer's line, so a long answer wrapped to
+> two lines on every clappable row and stayed on one on your own, which has no
+> button: `[108, 108, 108, 79, 108, 107]` at 430px. At 375px every row wrapped,
+> so they agreed by accident — which is exactly why the plain sweep, with short
+> mock answers, could not see it.
+>
+> The fix is the lobby's lesson: **a row that cannot be clapped still holds the
+> slot.** `.clap-slot` is built from the button's own icon and count classes, so
+> it is the button's width by construction (measured 44=44 and 50=50), and it is
+> a different class so nothing ever tries to press it. Break-tested by
+> collapsing it: the sweep reproduces CI's numbers exactly.
+>
+> **CI is part of "done".** A local run of the checks you remembered is not the
+> CI run of the checks that exist, and `--stress` is in CI precisely because a
+> layout that fits its mock data is one real answer away from breaking.
+>
 > ### The habit
 >
 > **Ask what the number is DIVIDED BY, and go and look at what is in the

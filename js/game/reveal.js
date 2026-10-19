@@ -263,8 +263,21 @@ function submittedCount(answers) {
  */
 function clapBtnHtml(player, answer, submittedText) {
   if (state.clapsUnavailable) return '';
-  if (!answer?.id || !submittedText) return '';
-  if (String(player.id) === String(state.room.playerId)) return '';
+  // A ROW THAT CANNOT BE CLAPPED STILL HOLDS THE SLOT. The button takes ~55px
+  // of the answer's line, so a long answer wrapped to two lines on every
+  // clappable row and stayed on one on your own — measured at 430px as
+  // `[108, 108, 108, 79, 108, 107]`, and 79 was the row with no button. At
+  // 375px every row wrapped, so they agreed by accident and only the stress
+  // sweep saw it. The lobby already learned this: a column that only exists on
+  // some rows is not a column, it is a shove.
+  //
+  // BUILT FROM THE SAME PIECES AS THE BUTTON, so its width matches by
+  // construction rather than by a number kept in step with the button's. And
+  // a DIFFERENT class, so the click handler, repaintClaps and every robot that
+  // looks for `.clap-btn` never mistake it for something that can be pressed.
+  const slot = '<span class="clap-slot" aria-hidden="true"><span class="clap-btn__icon">&#x1F44F;</span><span class="clap-btn__count"></span></span>';
+  if (!answer?.id || !submittedText) return slot;
+  if (String(player.id) === String(state.room.playerId)) return slot;
   const n = clapsForAnswer(state.claps, answer.id);
   const mine = iClapped(state.claps, answer.id, state.room.playerId);
   return `<button class="clap-btn${mine ? ' clap-btn--mine' : ''}"
@@ -309,7 +322,9 @@ export function repaintClaps() {
   // — which is precisely the round somebody taps one. Removing them here is
   // what makes the answer arrive rather than merely be known.
   if (state.clapsUnavailable) {
-    for (const btn of container.querySelectorAll('.clap-btn')) btn.remove();
+    // The slots go WITH the buttons. Removing only the buttons would leave your
+    // own row the one row still reserving the column — the shove above, inverted.
+    for (const el of container.querySelectorAll('.clap-btn, .clap-slot')) el.remove();
     return;
   }
   for (const btn of container.querySelectorAll('.clap-btn')) {
