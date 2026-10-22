@@ -1607,18 +1607,39 @@ export class FakeStore {
       }
       const room = this.table('rooms').find(r => String(r.id) === String(args.p_room_id));
       if (!room) return 'not allowed';
-      const prevIds = room.question_ids;
-      const prevStamp = room.question_started_at;
+      const before = { ...room };
       room.question_ids = [...ids];
       room.question_started_at = null;
-      const verdict = this._rpc('op_set_phase', {
-        p_room_id: args.p_room_id, p_caller_id: args.p_caller_id,
-        p_expected_phase: null, p_to_phase: 'final_question', p_question: args.p_question,
-      });
-      if (verdict !== 'ok') {
-        room.question_ids = prevIds;
-        room.question_started_at = prevStamp;
+      // TWO REALTIME EVENTS, LIST THEN PHASE, because that is what the real
+      // database sends: two UPDATEs to one row in one transaction are two WAL
+      // records. The first version of this stand-in sent ONE combined event,
+      // and scenario-fullgame — which drops two room events to prove a phone
+      // can recover — then swallowed the list, the phase AND the clock stamp,
+      // leaving a phone that never saw the final question at all. That was the
+      // fake being less faithful than the database, not the game breaking.
+      //
+      // op_set_phase's own broadcast is held back until we know the verdict, so
+      // a refusal (which the real transaction rolls back) sends nothing.
+      const held = [];
+      const realBroadcast = this._broadcast;
+      this._broadcast = (...a) => { held.push(a); };
+      let verdict;
+      try {
+        verdict = this._rpc('op_set_phase', {
+          p_room_id: args.p_room_id, p_caller_id: args.p_caller_id,
+          p_expected_phase: null, p_to_phase: 'final_question', p_question: args.p_question,
+        });
+      } finally {
+        this._broadcast = realBroadcast;
       }
+      if (verdict !== 'ok') {
+        room.question_ids = before.question_ids;
+        room.question_started_at = before.question_started_at;
+        return verdict;
+      }
+      this._broadcast('UPDATE', 'rooms',
+        { ...before, question_ids: [...ids], question_started_at: null }, before);
+      for (const a of held) this._broadcast(...a);
       return verdict;
     }
 
