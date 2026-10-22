@@ -161,6 +161,10 @@ try {
   const phasesVisited = new Set();
   const screensShown = { Alice: new Set(), Bob: new Set(), Carol: new Set() };
   const worstLagMs = { Alice: 0, Bob: 0, Carol: 0 };
+  // The RESULTS screen on its own, because it is the one screen that queued
+  // several server reads in front of itself — the slow phone's number here is
+  // what the end of a game feels like on a bad link.
+  const resultsLagMs = { Alice: null, Bob: null, Carol: null };
   const waitingStreak = { Alice: 0, Bob: 0, Carol: 0 };
   // Where each phone was last seen, and every time it moved to somewhere the
   // app's own rule calls a step BACKWARDS.
@@ -287,6 +291,7 @@ try {
         arrivedThisPhase.add(r.name);
         const lag = Date.now() - phaseStartedAt;
         if (lag > worstLagMs[r.name]) worstLagMs[r.name] = lag;
+        if (want === 'results-screen') resultsLagMs[r.name] = lag;
       }
 
       if (seen.screen === 'reveal-screen' && seen.revealed && seen.stuckWaiting > 0) {
@@ -454,6 +459,9 @@ try {
   for (const n of navigations) note(`navigation: ${n}`);
   for (const r of everyone) {
     note(`${r.name} worst screen lag ${worstLagMs[r.name]}ms; screens ${[...screensShown[r.name]].join(', ') || '(none)'}`);
+  }
+  for (const r of everyone) {
+    note(`${r.name} reached the results screen ${resultsLagMs[r.name] == null ? 'NEVER' : resultsLagMs[r.name] + 'ms'} after the room did`);
   }
 
   if (!reachedResults) {

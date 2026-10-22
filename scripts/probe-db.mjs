@@ -577,6 +577,8 @@ const RPC_PROBES = [
   ['op_set_phase', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID,
                      p_expected_phase: null, p_to_phase: 'lobby',
                      p_question: 0 }],
+  ['op_reveal_final_question', { p_room_id: NOT_A_UUID, p_caller_id: NOT_A_UUID,
+                                 p_question: 0, p_question_ids: [] }],
   ['op_undisqualify_round', { p_room_id: NOT_A_UUID, p_question_number: 0,
                               p_caller_id: NOT_A_UUID }],
   // Granted to `authenticated` only. An anonymous probe therefore gets 42501,
@@ -805,6 +807,12 @@ const CONSEQUENCES = [
       'NO GAME CAN START OR ADVANCE AT ALL — 061 revoked the column, so the fallback',
       'raises "permission denied for column game_phase" and every phone shows',
       "\"Couldn't move the game on\" on every button in the game",
+    ] },
+  { object: 'op_reveal_final_question', kind: 'rpc',
+    fix: 'run migrations/073_the_final_question_in_one_trip.sql',
+    breaks: [
+      'the final question takes two round trips to reach the room instead of one —',
+      'slower on a bad connection, nothing broken: the client falls back to the old way',
     ] },
   // op_set_phase is watched above, so 069 has nothing of its own to watch: it
   // REPLACES that function's body rather than adding one. What 069 fixes cannot

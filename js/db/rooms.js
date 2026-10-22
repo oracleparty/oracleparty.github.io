@@ -527,6 +527,44 @@ export async function advancePhaseOnServer(roomId, callerPlayerId) {
 }
 
 /**
+ * Say what an op_set_phase verdict means to the person who pressed the button.
+ *
+ * Shared by setPhaseOnServer and revealFinalQuestionOnServer, because the
+ * second returns the first's verdict word for word — two copies of this wording
+ * would be two places to keep in step.
+ */
+function reportPhaseVerdict(data, toPhase, expectedPhase = null) {
+  if (data === 'already moved') {
+    // Ordinary, not a fault: Realtime means somebody else may have advanced the
+    // room first, and a duplicate tap is common on a phone.
+    logger.debug('Supabase', `op_set_phase: room already past ${expectedPhase}`);
+  } else if (data === 'not allowed') {
+    // THE PLAYER PRESSED A BUTTON AND THE GAME DID NOT MOVE. Silence here is
+    // the exact shape CLAUDE.md #4 is about: this returns true, so no fallback
+    // runs, and before this branch existed the tap simply did nothing forever.
+    //
+    // It reaches a real person in two ways, both of which mean the same thing —
+    // you are not the one driving right now. A deputy whose local view of the
+    // host is stale (the host came back between the poll and the tap), and a
+    // host whose seat was swept while they were away, so somebody else was
+    // promoted and their new row is not flagged host.
+    //
+    // Rare by design since migration 062: it used to fire for ninety seconds of
+    // every host absence, because the client deputised at 30s and the server
+    // did not agree until 120s. A toast on that would have been noise, which is
+    // how real warnings get ignored — the fix was the window, not the wording.
+    logger.warn('Supabase', 'op_set_phase: this client may not advance the room', { toPhase });
+    showToast("The host is running the game — you can't advance it", 'error');
+  } else if (data !== 'ok') {
+    // Declined for a reason with no wording of its own ('not a phase', and
+    // anything a later migration adds). Rare, but the tap still did nothing, so
+    // it says so rather than leaving the host pressing a dead button.
+    logger.warn('Supabase', `op_set_phase declined: ${data}`, { toPhase });
+    showToast("The game didn't move — tap again", 'error');
+  }
+}
+
+/**
  * Move the room to a new phase, through the server. Needs migration 060.
  *
  * Slice 7 moved the TIME-BASED transitions (056); this is the other half — the
@@ -596,34 +634,41 @@ export async function setPhaseOnServer(roomId, callerId, expectedPhase, toPhase,
     showToast("Couldn't move the game on — tap again", 'error');
     return true;
   }
-  if (data === 'already moved') {
-    // Ordinary, not a fault: Realtime means somebody else may have advanced the
-    // room first, and a duplicate tap is common on a phone.
-    logger.debug('Supabase', `op_set_phase: room already past ${expectedPhase}`);
-  } else if (data === 'not allowed') {
-    // THE PLAYER PRESSED A BUTTON AND THE GAME DID NOT MOVE. Silence here is
-    // the exact shape CLAUDE.md #4 is about: this returns true, so no fallback
-    // runs, and before this branch existed the tap simply did nothing forever.
-    //
-    // It reaches a real person in two ways, both of which mean the same thing —
-    // you are not the one driving right now. A deputy whose local view of the
-    // host is stale (the host came back between the poll and the tap), and a
-    // host whose seat was swept while they were away, so somebody else was
-    // promoted and their new row is not flagged host.
-    //
-    // Rare by design since migration 062: it used to fire for ninety seconds of
-    // every host absence, because the client deputised at 30s and the server
-    // did not agree until 120s. A toast on that would have been noise, which is
-    // how real warnings get ignored — the fix was the window, not the wording.
-    logger.warn('Supabase', 'op_set_phase: this client may not advance the room', { toPhase });
-    showToast("The host is running the game — you can't advance it", 'error');
-  } else if (data !== 'ok') {
-    // Declined for a reason with no wording of its own ('not a phase', and
-    // anything a later migration adds). Rare, but the tap still did nothing, so
-    // it says so rather than leaving the host pressing a dead button.
-    logger.warn('Supabase', `op_set_phase declined: ${data}`, { toPhase });
-    showToast("The game didn't move — tap again", 'error');
+  reportPhaseVerdict(data, toPhase, expectedPhase);
+  return true;
+}
+
+/**
+ * Write the final question list AND move the room to it, in one round trip
+ * (migration 073).
+ *
+ * It used to be two trips in series from the presser's phone — the list, then
+ * the phase — because the list must land first. On a slow link that was the
+ * whole gap between the host pressing Reveal Question and anybody seeing it.
+ *
+ * → true when the server handled it (moved or declined, and the player has been
+ *   told); false only when the function is not installed, which is the caller's
+ *   cue to do the old two-step. That is what makes the JavaScript safe to ship
+ *   before the SQL is pasted.
+ */
+export async function revealFinalQuestionOnServer(roomId, callerId, question, questionIds) {
+  if (!roomId || !callerId || !Array.isArray(questionIds) || questionIds.length === 0) return false;
+  const { data, error } = await supabase.rpc('op_reveal_final_question', {
+    p_room_id: roomId,
+    p_caller_id: callerId,
+    p_question: question,
+    p_question_ids: questionIds,
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      logger.debug('Supabase', 'op_reveal_final_question not installed, using two writes');
+      return false;
+    }
+    logger.error('Supabase', 'op_reveal_final_question failed', error);
+    showToast("Couldn't move the game on — tap again", 'error');
+    return true;
   }
+  reportPhaseVerdict(data, 'final_question');
   return true;
 }
 

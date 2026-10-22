@@ -2551,4 +2551,75 @@ END $$;
 
 
 
+-- ============================================
+-- MIGRATION 073 — THE FINAL QUESTION IN ONE TRIP
+--
+-- One call writes the swapped question list and moves the room to the final
+-- question. Both halves are pinned: the move happens AND a refused caller
+-- changes nothing — including the list, which is written first and must be
+-- rolled back when op_set_phase declines.
+-- ============================================
+
+DO $$
+DECLARE
+  rid uuid;
+  otherRoom uuid;
+  hostP uuid; aliceP uuid; botP uuid; strangerP uuid;
+  oldList uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+  newList uuid[];
+  verdict text; ph text; qn int; ids uuid[]; stamp timestamptz;
+BEGIN
+  newList := ARRAY[oldList[1], oldList[2], gen_random_uuid()];
+  INSERT INTO rooms (code, host_name, game_phase, current_question, question_ids, question_started_at)
+    VALUES ('073900', 'Hosty', 'final_wager', 2, oldList, now() - interval '30 seconds')
+    RETURNING id INTO rid;
+  INSERT INTO players (room_id, display_name, is_host, last_seen_at)
+    VALUES (rid, 'Hosty', true, now()) RETURNING id INTO hostP;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (rid, 'Alice', now()) RETURNING id INTO aliceP;
+  INSERT INTO players (room_id, display_name, is_bot, last_seen_at)
+    VALUES (rid, 'Practice Bot', true, now()) RETURNING id INTO botP;
+  INSERT INTO rooms (code, host_name) VALUES ('073901', 'Elsewhere') RETURNING id INTO otherRoom;
+  INSERT INTO players (room_id, display_name, last_seen_at)
+    VALUES (otherRoom, 'Stranger', now()) RETURNING id INTO strangerP;
+
+  -- AN ORDINARY PLAYER, A STRANGER AND A BOT ARE ALL REFUSED, and the list is
+  -- untouched by any of them.
+  SELECT op_reveal_final_question(rid, aliceP, 2, newList) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('073: an ordinary player cannot reveal the final question', verdict, 'not allowed');
+  SELECT op_reveal_final_question(rid, strangerP, 2, newList) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('073: a stranger cannot reveal the final question', verdict, 'not allowed');
+  SELECT op_reveal_final_question(rid, botP, 2, newList) INTO verdict;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('073: a bot cannot reveal the final question', verdict, 'not allowed');
+  SELECT question_ids, game_phase INTO ids, ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('073: a refused reveal leaves the question list alone', (ids = oldList)::text, 'true'),
+    ('073: and the room is still on the final wager', ph, 'final_wager');
+
+  -- A REVEAL THAT op_set_phase DECLINES PUTS THE LIST BACK. The host may
+  -- advance, so op_may_advance passes and the list IS written — then a skipped
+  -- round is refused, and the sub-transaction must take the list with it.
+  SELECT op_reveal_final_question(rid, hostP, 7, newList) INTO verdict;
+  SELECT question_ids, game_phase INTO ids, ph FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('073: a reveal that skips a round is refused', verdict, 'skips a round'),
+    ('073: and the list it wrote first is rolled back', (ids = oldList)::text, 'true'),
+    ('073: and the room did not move', ph, 'final_wager');
+
+  -- THE HOST CAN, in one call: list, phase, round number and a cleared clock.
+  SELECT op_reveal_final_question(rid, hostP, 3, newList) INTO verdict;
+  SELECT question_ids, game_phase, current_question, question_started_at
+    INTO ids, ph, qn, stamp FROM rooms WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('073: the host reveals the final question in one call', verdict, 'ok'),
+    ('073: the room asks the swapped question', (ids = newList)::text, 'true'),
+    ('073: the room is on the final question', ph, 'final_question'),
+    ('073: at the final round number', qn::text, '3'),
+    ('073: with the last round''s clock cleared', coalesce(stamp::text, 'null'), 'null');
+END $$;
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

@@ -89,6 +89,7 @@ const MIGRATIONS = [
   '070_a_disqualification_can_be_undone.sql',
   '071_a_favourite_answer.sql',
   '072_a_bot_keeps_its_own_record.sql',
+  '073_the_final_question_in_one_trip.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.

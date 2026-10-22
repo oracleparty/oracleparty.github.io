@@ -1594,6 +1594,34 @@ export class FakeStore {
     // path the app now takes, and written to REFUSE for the same reasons —
     // a fake that always advanced would let a scenario pass on a move the live
     // server rejects.
+    // ---- migration 073: the final question in one trip ---------------------
+    //
+    // The list and the phase in one call, delegating the phase rules to
+    // op_set_phase exactly as the migration does — and putting the list back
+    // when that declines, which is the half a fake that always wrote would let
+    // a scenario pass on.
+    if (name === 'op_reveal_final_question') {
+      const ids = args?.p_question_ids;
+      if (!args?.p_room_id || !args?.p_caller_id || !Array.isArray(ids) || ids.length === 0) {
+        return 'bad request';
+      }
+      const room = this.table('rooms').find(r => String(r.id) === String(args.p_room_id));
+      if (!room) return 'not allowed';
+      const prevIds = room.question_ids;
+      const prevStamp = room.question_started_at;
+      room.question_ids = [...ids];
+      room.question_started_at = null;
+      const verdict = this._rpc('op_set_phase', {
+        p_room_id: args.p_room_id, p_caller_id: args.p_caller_id,
+        p_expected_phase: null, p_to_phase: 'final_question', p_question: args.p_question,
+      });
+      if (verdict !== 'ok') {
+        room.question_ids = prevIds;
+        room.question_started_at = prevStamp;
+      }
+      return verdict;
+    }
+
     if (name === 'op_set_phase') {
       const PHASES = ['lobby', 'countdown', 'question', 'reveal', 'answer_reveal',
                       'scores_reveal', 'final_wager', 'final_question', 'results'];
