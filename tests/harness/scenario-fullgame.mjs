@@ -567,8 +567,42 @@ try {
   }, 100);
   let waitedOutWagerClock = false;
 
+  // THE FINAL REVEAL IS WATCHED FROM INSIDE EACH PAGE, every 100ms.
+  //
+  // Sampling it only during a robot's own turn missed it every time once
+  // migration 073 made the final question arrive a round trip sooner: the robot
+  // host presses Show Scores the instant it can, so the final reveal is up for
+  // a moment that the turns of the other two robots consistently straddled.
+  // Three runs out of three reported "no player was ever offered the host
+  // rating" with no samples at all — the check never looking, rather than the
+  // row not being there. An in-page watcher does not depend on whose turn it
+  // is; the turn-based sampler below still records what it sees.
+  // INSTALLED EVERY TURN, because it is idempotent and a page navigation (the
+  // lobby to game.html) wipes it — the first version installed it once, before
+  // the robots had reached the game page, and was watching nothing.
+  const watchHostReview = (r) => r.page.evaluate(() => {
+      if (window.__hostReviewWatcher) return;
+      window.__hostReviewWatcher = setInterval(() => {
+        const s = window.__state;
+        if (!s || (s.currentQuestion ?? -1) < (s.totalQuestions ?? 0)) return;
+        if (document.querySelector('.screen.active')?.id !== 'reveal-screen') return;
+        const vis = el => !!el && el.style.display !== 'none' && el.offsetParent !== null;
+        const seen = {
+          row: vis(document.querySelector('#reveal-host-review')),
+          up: vis(document.querySelector('[data-host-vote="up"]')),
+          down: vis(document.querySelector('[data-host-vote="down"]')),
+          label: (document.querySelector('.host-review__label')?.textContent || '').trim(),
+        };
+        // Keep the best sighting: once the row has been seen whole, a later
+        // frame mid-fade must not overwrite it with a half-drawn one.
+        const prev = window.__hostReviewSeen;
+        if (!prev || (!(prev.row && prev.up && prev.down) && seen.row)) window.__hostReviewSeen = seen;
+      }, 100);
+    }).catch(() => {});
+
   for (let step = 0; step < 160 && !reachedResults; step++) {
     for (const r of everyone) {
+      if (r !== host) await watchHostReview(r);
       await takeTurn(r, round).catch(() => '(navigating)');
     }
 
@@ -859,6 +893,11 @@ try {
     note(`timer element intact on every question screen: ${timerBroken.length === 0}`);
     for (const t of new Set(timerBroken)) problems.push(t);
 
+    for (const r of everyone) {
+      if (r === host || hostReviewOnFinalRound[r.name]?.row) continue;
+      const watched = await r.page.evaluate(() => window.__hostReviewSeen || null).catch(() => null);
+      if (watched) hostReviewOnFinalRound[r.name] = watched;
+    }
     note(`host review on the final round: ${JSON.stringify(hostReviewOnFinalRound)}`);
     const raters = Object.entries(hostReviewOnFinalRound).filter(([, v]) => v.row && v.up && v.down);
     if (raters.length === 0) {
