@@ -651,8 +651,40 @@ export async function setPhaseOnServer(roomId, callerId, expectedPhase, toPhase,
  *   cue to do the old two-step. That is what makes the JavaScript safe to ship
  *   before the SQL is pasted.
  */
+// WHETHER 073 IS INSTALLED, learned once and remembered for the page.
+//
+// Without it, asking costs a whole round trip just to hear "no such function",
+// and only THEN do the two old writes start — measured at a 12s link, that made
+// the final question 12s SLOWER than before 073 existed, exactly the thing it is
+// for. So the answer is fetched ahead of time (see preflightRevealFinalQuestion)
+// and a known-missing function is never asked again.
+let _revealFinalAvailable = null;   // null = not known yet
+
+function _isMissingFunction(error) {
+  return error?.code === 'PGRST202' || /could not find the function/i.test(error?.message || '');
+}
+
+/**
+ * Find out, ahead of the press, whether op_reveal_final_question exists.
+ *
+ * Called when the final wager screen opens — at least twenty seconds before
+ * anybody can press Reveal Question. Null arguments make the function return
+ * 'bad request' without touching anything, so this asks "are you there?" and
+ * nothing else. Fire-and-forget: a failure leaves the answer unknown, which
+ * falls back to simply trying.
+ */
+export async function preflightRevealFinalQuestion() {
+  if (_revealFinalAvailable !== null) return;
+  const { error } = await supabase.rpc('op_reveal_final_question', {
+    p_room_id: null, p_caller_id: null, p_question: null, p_question_ids: null,
+  });
+  if (!error) _revealFinalAvailable = true;
+  else if (_isMissingFunction(error)) _revealFinalAvailable = false;
+}
+
 export async function revealFinalQuestionOnServer(roomId, callerId, question, questionIds) {
   if (!roomId || !callerId || !Array.isArray(questionIds) || questionIds.length === 0) return false;
+  if (_revealFinalAvailable === false) return false;
   const { data, error } = await supabase.rpc('op_reveal_final_question', {
     p_room_id: roomId,
     p_caller_id: callerId,
@@ -660,14 +692,16 @@ export async function revealFinalQuestionOnServer(roomId, callerId, question, qu
     p_question_ids: questionIds,
   });
   if (error) {
-    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+    if (_isMissingFunction(error)) {
       logger.debug('Supabase', 'op_reveal_final_question not installed, using two writes');
+      _revealFinalAvailable = false;
       return false;
     }
     logger.error('Supabase', 'op_reveal_final_question failed', error);
     showToast("Couldn't move the game on — tap again", 'error');
     return true;
   }
+  _revealFinalAvailable = true;
   reportPhaseVerdict(data, 'final_question');
   return true;
 }

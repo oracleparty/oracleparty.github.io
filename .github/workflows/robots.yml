@@ -113,6 +113,13 @@ jobs:
       - name: Final question — with a screen transition in flight
         run: node tests/harness/scenario-finalq.mjs --lag=0 --stuck
 
+      # THE SAME GAME BEFORE MIGRATION 073 IS PASTED. Migrations here are applied
+      # by hand, so "the JavaScript is live and the SQL is not" is a real state.
+      # The first client version of 073 made the final question 12s SLOWER in
+      # exactly that state, and only this run could see it.
+      - name: Final question — on a database without migration 073
+        run: node tests/harness/scenario-finalq.mjs --old-server
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.

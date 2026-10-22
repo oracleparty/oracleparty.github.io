@@ -11,7 +11,7 @@ export {
   generateRoomCode, createRoom, findRoomByCode, fetchPublicRooms,
   cleanupOrphanedRooms, cleanupAbandonedRooms, deleteRoom, deleteRoomBeacon, endRoomAsAdmin, fetchRoom,
   leaveRoomOnServer, leaveRoomBeacon, sweepRoomsOnServer,
-  updateRoomStatus, updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, revealFinalQuestionOnServer,
+  updateRoomStatus, updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, revealFinalQuestionOnServer, preflightRevealFinalQuestion,
   saveQuestionIds, appendUsedQuestionIds,
   addRoomScores, fetchRoomScores,
   getServerTimeOffset, testConnection,

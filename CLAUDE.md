@@ -56,7 +56,11 @@
 >    migration reads as a missing feature, never as an error. 072 has no visible
 >    tell at all — the bot's card falls back to its stated skill — so ask for its
 >    rows.
-> 5. **Paste back the verification rows for 067, 068, 069 and 070.** All four
+> 5. **Run migration 073 and paste back its three `ok` rows** (written
+>    2026-10-22). It is optional for correctness — the client falls back to the
+>    old two writes when the function is missing — and it is what makes the
+>    final question reach the room one round trip sooner.
+> 6. **Paste back the verification rows for 067, 068, 069 and 070.** All four
 >    were run on the owner's word and nothing here has seen a single row. That
 >    is the weakest evidence in this table, and 070 in particular is invisible
 >    until somebody needs it — the JavaScript hides Undo Disqualify when the
@@ -89,6 +93,69 @@
 > the same commit** — a change that leaves this file stale is not finished.
 >
 > Last verified against the code: 2026-08-30.
+
+> ## 2026-10-22 — the end of a game stopped waiting on the network
+>
+> **The owner's goal after a six-week break was "stable first", and asked for
+> work that needs no playtest.** Three changes, each measured before and after
+> with one phone on a slow link, because that is where every past report lived.
+>
+> ### Reviewing the unreviewed batch (claps, 071/072) found two real faults
+>
+> The owner had let thirteen commits through without reading them. Both
+> migrations, the clap logic and the quote-escaping fix were sound. Two were not:
+>
+> - **The Favourite Answers card awaited two reads in front of the results
+>   screen** — a claps read and a SECOND whole-game answers read — while its own
+>   comment said a card is not worth a screen. It now draws from the claps cache
+>   (every reveal re-reads them, Realtime keeps them current) and refreshes after
+>   the screen is up. `scenario-fullgame` now requires every phone to show the
+>   card; nothing checked it before. Break-tested: removing the render fails it
+>   on all three phones.
+> - **"+N more tied" counted everything that did not fit**, so 3, 2, 2 and a
+>   one-clap answer printed "+1 more tied" about an answer tied with nothing on
+>   the card. It counts only answers tied with the last one shown now.
+>
+> **Not fixed, and known:** `clapLabel` escapes names and `repaintClaps` sets the
+> result through `setAttribute`, so the clap tooltip reads `O&#39;Brien`. The
+> owner chose not to fix it yet.
+>
+> ### The results screen read the game's answers THREE times before showing
+>
+> `updateScores()`, the signed-in stats block and the final-wager deltas each
+> fetched every answer, in series, and the chat archive was awaited between
+> them. One read now feeds all of it, and the bookkeeping nobody can see — play
+> count, chat archive, game history, title unlocks — runs in
+> `recordFinishedGame()` AFTER the screen switch. Measured with
+> `scenario-badnetwork --lag=1500 --on=Alice`, which now prints this number:
+>
+> | | before | after |
+> |---|---|---|
+> | the slow host reaches results | 6008ms | 1205ms |
+> | the other phones | ~807ms | ~407ms |
+>
+> ### Migration 073 — the final question in one trip
+>
+> Closes the slowness the 2026-09-06 entry left open. `op_reveal_final_question`
+> writes the list and then CALLS `op_set_phase` (never copies it), in one
+> sub-transaction, so a declined phase rolls the list back. 12 rules; removing
+> the rollback fails *"the list it wrote first is rolled back"*.
+>
+> **THE FIRST CLIENT VERSION MADE THINGS WORSE BEFORE THE SQL IS RUN, and only
+> the `--old-server` run found it.** Trying the new function first costs a whole
+> round trip to hear "not installed" before the old two writes even start:
+> 29.5s became 41.5s on a 12s link, and the scenario failed by name. The wager
+> screen now asks once whether the function exists (`preflightRevealFinalQuestion`,
+> null arguments, touches nothing) and a known-missing function is never called.
+>
+> | `scenario-finalq` at 12s lag | room reaches the final question |
+> |---|---|
+> | 073 not applied (`--old-server`) | 29480ms — identical to before |
+> | 073 applied | 17481ms |
+>
+> **The habit:** a fallback that is only taken after a failed attempt is not
+> free — on a slow link the attempt IS the cost. Test the "SQL not applied yet"
+> state as its own run, every time.
 
 > ## 2026-09-15 — Favourite Answers, and what a clap is allowed to mean
 >
@@ -8283,6 +8350,7 @@ node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused wr
 node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
 node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
 node tests/harness/scenario-finalq.mjs   # the host reveals the final question on a bad connection
+node tests/harness/scenario-finalq.mjs --old-server  # ...against a database without migration 073
 node tests/harness/scenario-sitting.mjs --games=4        # SEVERAL games in ONE room — what grows between them
 node tests/harness/scenario-sitting.mjs --games=4 --lag=800 --on=Bob   # ...with one phone on a real link
 node tests/harness/scenario-badnetwork.mjs --lag=1500  # a WHOLE game on a bad link (NOT in CI — see below)

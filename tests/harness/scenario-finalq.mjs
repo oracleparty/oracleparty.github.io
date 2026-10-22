@@ -38,6 +38,11 @@ const LAG_FLAG = process.argv.find(a => a.startsWith('--lag='));
 // that sets it for why that is the reported bug rather than a contrived state.
 const STUCK_FLAG = process.argv.includes('--stuck');
 const SLOW_MS = LAG_FLAG ? Number(LAG_FLAG.split('=')[1]) : 12000;
+// --old-server plays the reveal against a database WITHOUT migration 073, so
+// the client must fall back to its two separate writes. The owner pastes
+// migrations by hand, so "the JavaScript is live and the SQL is not" is a real
+// state, and this is the only run that exercises it.
+const OLD_SERVER = process.argv.includes('--old-server');
 const problems = [];
 const note = m => console.log('   ·', m);
 const heading = m => console.log(`\n=== ${m} ===`);
@@ -77,6 +82,7 @@ const table = await PlaytestTable.open();
 
 try {
   seedQuestions(table.store);
+  if (OLD_SERVER) table.store.hideFunction('op_reveal_final_question');
 
   async function seat(name) {
     const r = await table.seat(name);

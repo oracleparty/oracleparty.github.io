@@ -9,7 +9,7 @@ import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, A
 import {
   supabase,
   updateGameState,
-  setPhaseOnServer,
+  setPhaseOnServer, revealFinalQuestionOnServer, preflightRevealFinalQuestion,
   startClockOnServer,
   addRoomScores,
   insertAnswersIfAbsent,
@@ -484,6 +484,11 @@ async function handleShowResults() {
 
 export function showFinalWagerScreen() {
   state.isFinalWagerRound = true;
+
+  // Learn now whether the one-trip reveal (073) exists, so pressing Reveal
+  // Question never spends a round trip finding out. Only somebody who can press
+  // it needs to know. See preflightRevealFinalQuestion.
+  if (canControlGame()) preflightRevealFinalQuestion().catch(() => {});
 
   // A timestamp already present here means a reconnect: init.js reads
   // question_started_at off the room row before it routes the phase, and the
@@ -1033,6 +1038,13 @@ export async function handleRevealFinalQuestion() {
   // CHAINED, SO THE ORDER HOLDS — but not awaited before the screen, because
   // this phone already knows everything it needs to draw one. See below.
   const roomWrite = (async () => {
+    // ONE TRIP WHEN THE SERVER CAN (migration 073): the list and the phase in a
+    // single call, in the same order. On a slow link the second write used to
+    // start only once the first came back, which was the whole wait between
+    // the host pressing Reveal Question and anybody seeing it. False means 073
+    // is not installed, and the two writes below run exactly as before.
+    if (await revealFinalQuestionOnServer(state.room.id, state.room.playerId,
+                                          state.totalQuestions, questionIds)) return;
     await updateGameState(state.room.id, { question_ids: questionIds, question_started_at: null });
     if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
                                 'final_question', state.totalQuestions)) {
@@ -1485,24 +1497,22 @@ function renderFavouriteAnswers(allAnswers) {
   host.style.display = '';
 }
 
-export async function showResultsScreen() {
-  if (state.timerId) {
-    clearInterval(state.timerId);
-    state.timerId = null;
-  }
-  state.onRevealScreen = false;
-
-  // The host review comes WITH us to results. It lived only on the final
-  // round's reveal, which lasts as long as it takes the host to tap on —
-  // reported as a friend never encountering the option at all. Results is where
-  // people actually stop. See placeHostReview: the row is moved, not copied.
-  if (_placeHostReview) _placeHostReview('results-host-review-slot');
-
-  await updateScores();
-
-  writeRoomScores();
-
-  // Mark game play as completed (fire-and-forget, guard against re-entry)
+/**
+ * The end-of-game bookkeeping nobody can SEE: the play count, the chat archive,
+ * game history and title unlocks.
+ *
+ * RUN AFTER THE RESULTS SCREEN IS UP, NEVER BEFORE IT. This used to sit in the
+ * middle of showResultsScreen, awaited — a chat archive (a hundred-message read
+ * and an insert, growing with the transcript) and a second whole-game answers
+ * read, both between the final reveal and the screen that names the winner. On
+ * a slow link that is seconds of nothing on the one screen everybody waits for,
+ * and a request that never answers meant the results never appeared at all.
+ * None of it changes a single pixel of that screen.
+ *
+ * It takes the answers the screen was drawn from, so the stats it records are
+ * the same ones everybody is looking at.
+ */
+async function recordFinishedGame(allAnswers) {
   if (!state._gamePlayCompleted) {
     state._gamePlayCompleted = true;
     completeGamePlay({
@@ -1533,7 +1543,6 @@ export async function showResultsScreen() {
     if (authUser) {
       const uid = authUser.user.id;
       const cat = state.room.category;
-      const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
       const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
       // Exclude disqualified questions from stats
       const validAnswers = myAnswers.filter(a => !state.disqualifiedQuestions.has(a.question_number));
@@ -1586,6 +1595,30 @@ export async function showResultsScreen() {
       }).catch(err => logger.warn('Titles', 'Evaluation failed', err));
     }
   }
+}
+
+export async function showResultsScreen() {
+  if (state.timerId) {
+    clearInterval(state.timerId);
+    state.timerId = null;
+  }
+  state.onRevealScreen = false;
+
+  // The host review comes WITH us to results. It lived only on the final
+  // round's reveal, which lasts as long as it takes the host to tap on —
+  // reported as a friend never encountering the option at all. Results is where
+  // people actually stop. See placeHostReview: the row is moved, not copied.
+  if (_placeHostReview) _placeHostReview('results-host-review-slot');
+
+  // ONE read of the game's answers, shared by the scores, the scoreboard, the
+  // Favourite Answers card and the bookkeeping after the screen is up. It used
+  // to be three identical reads in a row, each one a round trip in front of
+  // the screen.
+  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
+  state.scores = computeScoresFromAnswers(allAnswers, state.players);
+
+  writeRoomScores();
+
 
   $('#results-category').textContent = getCategoryLabel();
 
@@ -1595,7 +1628,6 @@ export async function showResultsScreen() {
   );
 
   // Get final wager deltas
-  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   const fwAnswers = allAnswers.filter(a => a.question_number === state.totalQuestions);
 
   // THE FAVOURITE ANSWERS CARD IS DRAWN FROM WHAT IS ALREADY IN HAND, and the
@@ -1689,6 +1721,7 @@ export async function showResultsScreen() {
   // with them, the opposite call from writeRoomScores and for the opposite
   // reason. `|| []` on the read because fetchClaps answers NULL when 071 is not
   // applied, and the card must then read as "nobody clapped anything".
+  recordFinishedGame(allAnswers).catch(e => logger.warn('Results', 'end-of-game bookkeeping failed', e));
   recordClapsOnServer(state.room.id);
   if (clapKey) {
     fetchClaps(state.room.id, clapKey).then(rows => {
