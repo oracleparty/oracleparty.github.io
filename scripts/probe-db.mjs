@@ -75,6 +75,130 @@ console.log('ORACLE PARTY — LIVE DATABASE PROBE (read-only)');
 console.log('Using the publishable key from js/db/client.js — visitor-level access.');
 console.log('='.repeat(70));
 
+// ============================================
+// HOW FAST IS THE LIVE DATABASE, RIGHT NOW?
+//
+// Asked on 2026-10-23, after a real game in which every network action took
+// 5-15 seconds — on two phones, in two places, both on Wi-Fi — when the same
+// game had felt fine in September. The robots cannot answer that question: the
+// fake store is in memory and every request it serves is instant.
+//
+// FIRST IN THE FILE ON PURPOSE, before everything below adds its own load.
+//
+// WHAT THIS IS NOT: a measurement of anybody's phone. This runs on a GitHub
+// runner, so it separates "the database is slow" from "the road to it is
+// slow" and nothing else. x-envoy-upstream-service-time, when the gateway
+// sends it, is the part of each request spent behind Supabase's front door —
+// that number being high is the database; the total being high while it stays
+// low is the network.
+// ============================================
+console.log('\n--- HOW FAST IS THE LIVE DATABASE RIGHT NOW? (from a GitHub runner) ---');
+{
+  const summarise = ms => {
+    const s = [...ms].sort((a, b) => a - b);
+    const pick = p => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+    return `min ${s[0]}ms, median ${pick(0.5)}ms, max ${s[s.length - 1]}ms (n=${s.length})`;
+  };
+  const timed = async (url, init) => {
+    const t0 = Date.now();
+    const res = await fetch(url, init);
+    await res.text().catch(() => '');
+    return { ms: Date.now() - t0, status: res.status, headers: res.headers };
+  };
+  const upstream = h => {
+    const v = Number(h.get('x-envoy-upstream-service-time'));
+    return Number.isFinite(v) && h.has('x-envoy-upstream-service-time') ? v : null;
+  };
+
+  try {
+    const first = await timed(`${URL_BASE}/rest/v1/rooms?select=id&limit=1`, { headers });
+    console.log(`  first request (includes the TLS handshake): ${first.ms}ms, HTTP ${first.status}`);
+    const shown = ['server', 'cf-ray', 'x-envoy-upstream-service-time', 'sb-gateway-version', 'sb-project-ref', 'x-sb-edge-region']
+      .filter(k => first.headers.has(k)).map(k => `${k}=${first.headers.get(k)}`);
+    console.log(`  response headers worth knowing: ${shown.join('  ') || '(none of the expected ones)'}`);
+
+    const rest = [], restUp = [];
+    for (let i = 0; i < 10; i++) {
+      const r = await timed(`${URL_BASE}/rest/v1/rooms?select=id&limit=1`, { headers });
+      rest.push(r.ms);
+      const u = upstream(r.headers); if (u != null) restUp.push(u);
+    }
+    console.log(`  a plain read, 10 in a row: ${summarise(rest)}`);
+    if (restUp.length) console.log(`     ...of which behind the gateway: ${summarise(restUp)}`);
+
+    const rpc = [], rpcUp = [];
+    for (let i = 0; i < 5; i++) {
+      const r = await timed(`${URL_BASE}/rest/v1/rpc/op_answer_matches`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_submitted: 'paris', p_correct: 'Paris' }),
+      });
+      rpc.push(r.ms);
+      const u = upstream(r.headers); if (u != null) rpcUp.push(u);
+    }
+    console.log(`  a database function, 5 in a row: ${summarise(rpc)}`);
+    if (rpcUp.length) console.log(`     ...of which behind the gateway: ${summarise(rpcUp)}`);
+
+    const auth = [];
+    for (let i = 0; i < 3; i++) {
+      auth.push((await timed(`${URL_BASE}/auth/v1/settings`, { headers: { apikey: KEY } })).ms);
+    }
+    console.log(`  the sign-in server (settings, no sign-in happens): ${summarise(auth)}`);
+  } catch (err) {
+    console.log(`  could not time the REST API: ${err.message}`);
+  }
+
+  // REALTIME, which is how every phone hears that the room moved on. Joins a
+  // channel filtered to a room id that cannot exist, so nothing is ever
+  // delivered, and leaves. "subscribed" is the moment Postgres changes would
+  // start flowing — the setup runs inside the database, so a database under
+  // load shows up here as well as above.
+  if (typeof WebSocket === 'undefined') {
+    console.log('  realtime: NOT TIMED — this Node has no WebSocket (needs Node 22)');
+  } else {
+    const t0 = Date.now();
+    const result = await new Promise(resolve => {
+      const out = { open: null, joined: null, subscribed: null, error: null };
+      let ws;
+      const done = () => { try { ws.close(); } catch { /* ignore */ } resolve(out); };
+      const timer = setTimeout(() => { out.error = out.error || 'timed out after 15s'; done(); }, 15000);
+      try {
+        ws = new WebSocket(`${URL_BASE.replace('https://', 'wss://')}/realtime/v1/websocket?apikey=${KEY}&vsn=1.0.0`);
+      } catch (e) { out.error = e.message; clearTimeout(timer); return resolve(out); }
+      ws.onopen = () => {
+        out.open = Date.now() - t0;
+        ws.send(JSON.stringify({
+          topic: 'realtime:probe-latency', event: 'phx_join', ref: '1', join_ref: '1',
+          payload: {
+            config: {
+              broadcast: { self: false }, presence: { key: '' },
+              postgres_changes: [{ event: '*', schema: 'public', table: 'rooms',
+                filter: 'id=eq.00000000-0000-0000-0000-000000000000' }],
+            },
+            access_token: KEY,
+          },
+        }));
+      };
+      ws.onmessage = ev => {
+        let m; try { m = JSON.parse(ev.data); } catch { return; }
+        if (m.event === 'phx_reply' && m.ref === '1') {
+          out.joined = Date.now() - t0;
+          if (m.payload?.status !== 'ok') { out.error = `join refused: ${JSON.stringify(m.payload).slice(0, 200)}`; clearTimeout(timer); done(); }
+        }
+        if (m.event === 'system' && m.payload?.extension === 'postgres_changes') {
+          out.subscribed = Date.now() - t0;
+          if (m.payload.status !== 'ok') out.error = `subscription failed: ${m.payload.message}`;
+          clearTimeout(timer); done();
+        }
+      };
+      ws.onerror = () => { out.error = out.error || 'socket error'; };
+      ws.onclose = () => { clearTimeout(timer); resolve(out); };
+    });
+    const fmtMs = v => (v == null ? 'never' : `${v}ms`);
+    console.log(`  realtime: socket open ${fmtMs(result.open)}, channel joined ${fmtMs(result.joined)}, postgres changes subscribed ${fmtMs(result.subscribed)}${result.error ? ` — ${result.error}` : ''}`);
+  }
+}
+
 // "rows" is what a VISITOR can see, not what the table holds. A restrictive
 // SELECT policy filters rows out rather than refusing the request, so an
 // admin-only table like error_logs reads as empty no matter how much is in it.
