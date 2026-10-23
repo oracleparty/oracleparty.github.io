@@ -396,9 +396,84 @@ try {
   if (!stillOnJoin) problems.push('a wrong room code navigated away instead of being refused');
   if (!errorText) problems.push('a wrong room code produced no visible error — it just looks broken');
 
-  for (const r of [publicHost, privateHost, stranger, latecomer, lost]) {
+  // ============================================================
+  // THE NAME PROMPT'S WAY INTO AN ACCOUNT (asked for 2026-10-23: "also the
+  // option to sign in or create an account, in case they don't want to be
+  // guest"). The test client refuses every real sign-in and sign-up, which is
+  // exactly what is wanted here: the paths worth checking are the ones that
+  // come BACK to the prompt, because the sign-up box asks for a missing name by
+  // calling the prompt itself — and a prompt whose Continue then belongs to
+  // somebody else's promise is a page that never finishes loading.
+  // ============================================================
+  heading('the name prompt offers an account');
+  const nameless = await table.seat('Nameless');   // no stored name, on purpose
+  await nameless.goto('join.html');
+  const promptUp = () => nameless.page.evaluate(() =>
+    document.getElementById('display-name-modal')?.classList.contains('active'));
+  await nameless.page.waitForFunction(() =>
+    document.getElementById('display-name-modal')?.classList.contains('active'), null, { timeout: 15000 })
+    .catch(() => problems.push('a visitor with no name was not asked for one'));
+  const linksShown = await nameless.page.evaluate(() =>
+    ['display-name-signin', 'display-name-signup'].every(id => {
+      const el = document.getElementById(id);
+      return el && el.offsetParent !== null;
+    }));
+  if (!linksShown) problems.push('the name prompt does not offer Sign in and Create an account');
+
+  // Create an account with no name typed: asked for one, nothing opens.
+  await nameless.page.click('#display-name-signup');
+  await nameless.page.waitForTimeout(300);
+  const askedForName = await nameless.page.evaluate(() =>
+    (document.getElementById('display-name-error')?.textContent || '').trim());
+  const signupOpenedEarly = await nameless.page.evaluate(() =>
+    !!document.getElementById('signup-modal')?.classList.contains('active'));
+  note(`Create an account with no name: "${askedForName}"`);
+  if (!askedForName) problems.push('Create an account with an empty name box said nothing');
+  if (signupOpenedEarly) problems.push('Create an account opened without a name to create it under');
+
+  // The deep road back: Sign in -> Create one -> submit with no name stored, so
+  // the sign-up box opens the name prompt for itself; the sign-up then fails
+  // and is dismissed. This prompt must come back WORKING.
+  await nameless.page.click('#display-name-signin');
+  await nameless.page.waitForSelector('#signin-modal.active', { timeout: 5000 })
+    .catch(() => problems.push('Sign in on the name prompt opened nothing'));
+  await nameless.page.click('#signin-create-link');
+  await nameless.page.waitForSelector('#signup-modal.active', { timeout: 5000 })
+    .catch(() => problems.push('Create one on the sign-in box opened nothing'));
+  await nameless.page.fill('#signup-email', 'nameless@example.com');
+  await nameless.page.fill('#signup-password', 'secret123');
+  await nameless.page.fill('#signup-confirm', 'secret123');
+  await nameless.page.click('#signup-submit');
+  await nameless.page.waitForFunction(() =>
+    document.getElementById('display-name-modal')?.classList.contains('active'), null, { timeout: 5000 })
+    .catch(() => problems.push('the sign-up box did not ask for the missing name'));
+  await nameless.page.fill('#display-name-input', 'Nameless');
+  await nameless.page.click('#display-name-submit');
+  await nameless.page.waitForFunction(() =>
+    (document.getElementById('signup-error')?.textContent || '').trim().length > 0, null, { timeout: 5000 })
+    .catch(() => {});
+  await nameless.page.click('#signup-dismiss');
+  await nameless.page.waitForTimeout(400);
+  if (!await promptUp()) problems.push('after a dismissed sign-up the name prompt did not come back');
+  await nameless.page.click('#display-name-submit');
+  // join.js attaches its listeners only once the name prompt has RESOLVED, and
+  // one of them turns whatever is typed into the room code into capitals. So
+  // "ab1" reading "AB" is the page having started — and "ab1" is it waiting on
+  // a prompt that has already closed. (The public list cannot say this: it
+  // holds its hidden empty-state from the start, so it is never empty.)
+  await nameless.page.waitForTimeout(800);
+  await nameless.page.fill('#code-input', 'ab1').catch(() => {});
+  const typed = await nameless.page.inputValue('#code-input').catch(() => '');
+  const pageStarted = typed === 'AB';
+  note(`after the round trip, Continue started the page: ${pageStarted} (code box read "${typed}")`);
+  if (!pageStarted) problems.push('after a side trip into an account, Continue closed the name prompt but the join page never started — Continue belonged to another promise');
+
+  for (const r of [publicHost, privateHost, stranger, latecomer, lost, nameless]) {
     const real = r.consoleErrors.filter(e =>
-      !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e));
+      !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e)
+      // The test client refuses every sign-up; the name-prompt section above
+      // makes one fail on purpose to walk the road back.
+      && !(r === nameless && /signUp failed .*not supported in tests/.test(e)));
     if (real.length) problems.push(`${r.name}: ${real.length} console error(s) — first: ${real[0].slice(0, 140)}`);
   }
 } catch (err) {

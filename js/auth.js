@@ -44,6 +44,12 @@ export function setDisplayName(name) {
 /**
  * Show the display-name modal overlay.
  * Returns a Promise that resolves with the entered name.
+ *
+ * It also offers a way into an account (asked for 2026-10-23: "also the option
+ * to sign in or create an account, in case they don't want to be guest").
+ * Signing in or creating an account RELOADS the page on success — the same
+ * thing the home page's own Sign In link does — so every part of the page
+ * starts as a member instead of as the guest it booted as.
  */
 export function showDisplayNameModal() {
   return new Promise((resolve) => {
@@ -51,6 +57,8 @@ export function showDisplayNameModal() {
     const input = $('#display-name-input');
     const btn = $('#display-name-submit');
     const error = $('#display-name-error');
+    const signInLink = $('#display-name-signin');
+    const signUpLink = $('#display-name-signup');
 
     // Reset state
     input.value = '';
@@ -58,12 +66,14 @@ export function showDisplayNameModal() {
     overlay.classList.add('active');
     input.focus();
 
-    function submit() {
+    // The rules Continue has always applied. Create an account needs them too:
+    // an account is made under the name the player is playing as.
+    function readName() {
       const name = input.value.trim();
       if (name.length < 1 || name.length > 20) {
         if (error) error.textContent = 'Enter a name (1–20 characters)';
         input.focus();
-        return;
+        return null;
       }
       // 'System' is reserved as the sender name for in-game system chat
       // messages (host transfer, disqualify, etc.). Allowing a player to
@@ -71,20 +81,57 @@ export function showDisplayNameModal() {
       if (name.toLowerCase() === 'system') {
         if (error) error.textContent = 'That name is reserved — pick another';
         input.focus();
-        return;
+        return null;
       }
+      return name;
+    }
+
+    function submit() {
+      const name = readName();
+      if (!name) return;
       setDisplayName(name);
       overlay.classList.remove('active');
       resolve(name);
     }
 
-    // Click submit
-    btn.onclick = submit;
+    // A SIDE TRIP INTO AN ACCOUNT, AND BACK. On success the page reloads. On
+    // "Cancel" or "Not Now" this prompt comes back WITH ITS HANDLERS BOUND
+    // AGAIN, and that is not tidiness: the sign-up box asks for a name by
+    // calling this very function when none is set, which points Continue at a
+    // promise of its own — and without re-binding, Continue here would then
+    // resolve that one and leave this one waiting for ever.
+    async function sideTrip(open) {
+      overlay.classList.remove('active');
+      const result = await open();
+      if (result) { window.location.reload(); return; }
+      bind();
+      if (error) error.textContent = '';
+      if (!input.value) input.value = getDisplayName() || '';
+      overlay.classList.add('active');
+      input.focus();
+    }
 
-    // Enter key submits
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter') submit();
-    };
+    function bind() {
+      btn.onclick = submit;
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') submit();
+      };
+      if (signInLink) signInLink.onclick = () => sideTrip(showSignInModal);
+      if (signUpLink) {
+        signUpLink.onclick = () => {
+          if (!input.value.trim()) {
+            if (error) error.textContent = 'Type a name first — your account will use it';
+            input.focus();
+            return;
+          }
+          const name = readName();
+          if (!name) return;
+          setDisplayName(name);
+          sideTrip(showSignUpModal);
+        };
+      }
+    }
+    bind();
   });
 }
 

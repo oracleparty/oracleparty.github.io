@@ -365,6 +365,34 @@ body::after {
   flex-shrink: 0;
 }
 
+/* The name prompt's way into an account (asked for 2026-10-23: "also the
+   option to sign in or create an account, in case they don't want to be
+   guest"). Quiet links under Continue, on the owner's choice, so playing as a
+   guest stays the obvious path. Each link is a real button with padding, so
+   the target is bigger than the word without making the sentence look like a
+   row of controls. */
+.name-modal__account {
+  margin-top: var(--space-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+  line-height: 1.4;
+}
+
+.name-modal__link {
+  display: inline-block;
+  /* 44px tall at 375px wide, measured — the floor this file holds every
+     other tap target to. var(--space-xs) all round measured 35. */
+  min-height: 44px;
+  padding: var(--space-sm) var(--space-xs);
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
 /* --- Input --- */
 .input {
   width: 100%;
