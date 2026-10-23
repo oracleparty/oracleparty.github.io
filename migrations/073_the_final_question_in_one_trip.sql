@@ -97,33 +97,24 @@ REVOKE ALL ON FUNCTION op_reveal_final_question(uuid, uuid, int, uuid[]) FROM pu
 GRANT EXECUTE ON FUNCTION op_reveal_final_question(uuid, uuid, int, uuid[]) TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- VERIFICATION — run this and paste back what it prints.
+-- VERIFICATION — a SELECT, not a DO block with RAISE NOTICE, because the
+-- Supabase SQL editor may not show notices. Every row should read ok.
+-- APPLIED 2026-10-23: the owner reported all three ok.
 -- ---------------------------------------------------------------------------
 
-DO $verify$
-DECLARE
-  v_ok text;
-BEGIN
-  RAISE NOTICE '--- 073 verification ---';
-
-  SELECT CASE WHEN EXISTS (
-      SELECT 1 FROM pg_proc WHERE proname = 'op_reveal_final_question' AND prosecdef)
-    THEN 'ok' ELSE 'FAIL' END INTO v_ok;
-  RAISE NOTICE 'op_reveal_final_question installed as DEFINER: %', v_ok;
-
-  -- It calls op_set_phase, so 073 is only as good as the op_set_phase it finds.
-  -- 069's version is the one that refuses a skipped round; its source carries
-  -- the words below, so a paste that predates 069 reads FAIL here rather than
-  -- passing quietly.
-  SELECT CASE WHEN EXISTS (
-      SELECT 1 FROM pg_proc WHERE proname = 'op_set_phase'
-                              AND prosrc LIKE '%skips a round%')
-    THEN 'ok' ELSE 'FAIL — op_set_phase predates 069' END INTO v_ok;
-  RAISE NOTICE 'op_set_phase is the 069 version: %', v_ok;
-
-  SELECT CASE WHEN has_function_privilege('anon',
-      'op_reveal_final_question(uuid, uuid, int, uuid[])', 'EXECUTE')
-    THEN 'ok' ELSE 'FAIL — players cannot call it' END INTO v_ok;
-  RAISE NOTICE 'players can call it: %', v_ok;
-END
-$verify$;
+SELECT 'installed as DEFINER' AS check,
+       CASE WHEN EXISTS (SELECT 1 FROM pg_proc
+                          WHERE proname = 'op_reveal_final_question' AND prosecdef)
+            THEN 'ok' ELSE 'FAIL' END AS result
+UNION ALL
+-- It calls op_set_phase, so 073 is only as good as the op_set_phase it finds.
+-- 069's version carries the words below, so one that predates 069 reads FAIL.
+SELECT 'op_set_phase is the 069 version',
+       CASE WHEN EXISTS (SELECT 1 FROM pg_proc
+                          WHERE proname = 'op_set_phase' AND prosrc LIKE '%skips a round%')
+            THEN 'ok' ELSE 'FAIL — op_set_phase predates 069' END
+UNION ALL
+SELECT 'players can call it',
+       CASE WHEN has_function_privilege('anon',
+              'op_reveal_final_question(uuid, uuid, int, uuid[])', 'EXECUTE')
+            THEN 'ok' ELSE 'FAIL — players cannot call it' END;

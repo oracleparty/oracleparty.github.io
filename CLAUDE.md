@@ -17,7 +17,8 @@
 > | **Migration 066 is applied** (2026-09-06) | the owner ran its verification query and pasted `verdict: ok` — it reads `pg_proc.prosrc` for both halves of the new `ON CONFLICT` rule, so it cannot pass on a partial paste. |
 > | **065 is applied** (inferred 2026-09-07, NOT a verification report) | the owner kicked somebody in a real game and it worked: the player left the lobby, and their client then took a screenful of identical toasts, which is the shape of `room_bans` refusing every re-seat with 42501. `kickPlayer` has no fallback, so with 065 unapplied nothing would have been removed at all. Strong, and one notch weaker than a pasted `ok`. |
 > | **067 and 068: the owner says they ran them** (2026-09-09, "just ran the sql now"). **NO VERIFICATION ROWS WERE PASTED**, so this is one notch weaker than every other applied migration in this table — a paste that stopped halfway would look identical from here. Ask for the rows before relying on either. |
-> | **069 and 070: the owner says they ran them** (2026-09-14, *"I had pasted all the sqls"*). **NO VERIFICATION ROWS WERE PASTED**, so this is the same evidence level as 067/068 and one notch weaker than every migration above them — a paste that stopped halfway would look identical from here. 069 stops a round opening on the previous round's clock and stops a double-press skipping a question; 070 is the whole of Undo Disqualify, and until it is really applied the button hides itself and a mis-tap stays permanent. **The button being visible in a real game is the cheap check for 070**, the same shape of evidence that established 065. |
+> | **069 and 070: the owner says they ran them** (2026-09-14). **BOTH NOW MEASURED, 2026-10-23, by two different instruments.** 070: the CI probe on `c88824d` reports `op_undisqualify_round installed`. 069: 073's verification checks `op_set_phase`'s installed source for 069's own words (*"skips a round"*) and the owner reported it `ok`. Neither is a pasted 069/070 verification block, so a partial paste of either is not strictly ruled out — but the function each one exists to install is there, which is the claim that matters. |
+> | **073 is applied** (2026-10-23) | the owner ran the SELECT-form verification and reported all three rows `ok` ("All okay") — installed as DEFINER, the 069 `op_set_phase` beneath it, callable by players. Reported, not pasted verbatim; the next CI probe will confirm `op_reveal_final_question` independently. |
 > | The live database has every function and table the app needs | the CI probe on commit `18d199f`. **That tick only started meaning something on 2026-08-30** — before that the probe printed its alarm and still exited 0. |
 > | All 12 subjects have title slots (36 subject-level, 45 topics, 26 clearing the size floor) | computed from `title-tiers.js` and `CATEGORY_META` |
 > | 664 unit tests and 12 robot scenarios pass | run locally, and in CI on every push |
@@ -56,15 +57,15 @@
 >    migration reads as a missing feature, never as an error. 072 has no visible
 >    tell at all — the bot's card falls back to its stated skill — so ask for its
 >    rows.
-> 5. **Run migration 073 and paste back its three `ok` rows** (written
->    2026-10-22). It is optional for correctness — the client falls back to the
->    old two writes when the function is missing — and it is what makes the
->    final question reach the room one round trip sooner.
-> 6. **Paste back the verification rows for 067, 068, 069 and 070.** All four
->    were run on the owner's word and nothing here has seen a single row. That
->    is the weakest evidence in this table, and 070 in particular is invisible
->    until somebody needs it — the JavaScript hides Undo Disqualify when the
->    server refuses, so a missing migration reads as a missing feature.
+> 5. **Paste back the verification rows for 067 and 068.** Both were run on
+>    the owner's word and nothing here has seen a single row. (069, 070 and 073
+>    are measured — see the table above.)
+>
+> **SUPABASE'S SQL EDITOR MAY NOT SHOW `RAISE NOTICE` OUTPUT.** 073's check was
+> rewritten as a plain SELECT returning one row per rule so the answer lands in
+> the results grid. Write every future verification that way. And when showing
+> the owner what the result should look like, say plainly it is NOT to be run —
+> a sample table pasted into the editor raises 42601, which happened once.
 >
 > ### The three faults reported in the last playtest, and their status
 >
