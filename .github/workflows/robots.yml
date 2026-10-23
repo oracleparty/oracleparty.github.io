@@ -120,6 +120,14 @@ jobs:
       - name: Final question — on a database without migration 073
         run: node tests/harness/scenario-finalq.mjs --old-server
 
+      # A SCREEN THAT FINISHED LOADING AFTER THE GAME MOVED ON. The scoreboard
+      # fetches before it switches the screen, and on a slow link it came back
+      # after the next question had arrived and covered it — with nothing ever
+      # putting the question back. Reported from a real game on 2026-10-23 as a
+      # friend "still on the scoreboard" while the host was on question 2.
+      - name: Late screen — a slow scoreboard must not cover the next question
+        run: node tests/harness/scenario-latescreen.mjs
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.

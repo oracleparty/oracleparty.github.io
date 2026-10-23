@@ -125,3 +125,43 @@ export function isStaleRoomEvent({ incomingPhase, incomingQuestion, currentPhase
   if (incomingPhase === currentPhase) return false;
   return !shouldSyncPhase(currentPhase, incomingPhase);
 }
+
+/**
+ * MAY A SCREEN THAT WAITED ON THE NETWORK STILL BE PUT UP?
+ *
+ * The reveal and the scoreboard each fetch before they switch the screen — the
+ * reveal reads the round's answers, the scoreboard recomputes everybody's
+ * score — and neither asked, once its read came back, whether the phone was
+ * still where it had been when the read went out. On a slow link the answer is
+ * often no. Reported from a real game on 2026-10-23: "by the time I got to
+ * question 2, my friend did not see the question I was on until I clicked
+ * reveal", with the friend's screen "still the scoreboard".
+ *
+ * The scoreboard for question 1 was still fetching when question 2 arrived.
+ * Question 2 drew itself at once, the fetch finished, and the scoreboard went
+ * up on top of it. Nothing put the question back: every later event for that
+ * round is the round the phone already believes it is on, and
+ * handlePhaseTransition refuses a phase it is already on. Only the next PHASE —
+ * the host's Reveal — moved the screen again.
+ *
+ * So a screen is put up only for the phase and round it was drawn for:
+ *
+ *   * the scoreboard, only while the phone is on that round's scores_reveal;
+ *   * the reveal, on that round's reveal phases — or during that round's
+ *     question once this phone has answered, which is the "waiting for
+ *     everybody else" view a player sits on after Submit, and the reason the
+ *     reveal screen is legitimately up before the room reveals anything.
+ *
+ * A render that loses this test is not lost work: whatever moved the phone on
+ * called its own renderer, and that one owns the screen.
+ */
+export function screenStillFits({ screen, phase, question, renderedFor, submitted }) {
+  if (question !== renderedFor) return false;
+  if (screen === 'scores-screen') return phase === 'scores_reveal';
+  if (screen === 'reveal-screen') {
+    if (phase === 'reveal' || phase === 'answer_reveal') return true;
+    if (phase === 'question' || phase === 'final_question') return !!submitted;
+    return false;
+  }
+  return true;
+}

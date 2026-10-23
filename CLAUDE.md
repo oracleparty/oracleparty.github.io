@@ -26,12 +26,12 @@
 >
 > ### What is NOT verified
 >
-> - **Real games HAVE been played since** — 2026-09-09 and 2026-09-14, and both
->   are written up in their own sections below. What has NOT been played is a
->   game since the 2026-09-14 tap fixes, which are the newest and the least
->   proven: the keyboard-inset guard in particular is a LEAD about the owner's
->   phone, not a measurement, and nothing in this repo can shrink a real visual
->   viewport. **That is the single biggest gap.**
+> - **Real games HAVE been played since** — 2026-09-09, 2026-09-14 and
+>   2026-10-23, each written up in its own section. The 10-23 game is the first
+>   since the 2026-09-14 tap fixes, and it reported no dead taps — only slow
+>   ones, which measured as the network (see that entry). That is WEAK evidence
+>   the keyboard-inset guard holds: absence of a report, not a measurement, and
+>   nothing in this repo can shrink a real visual viewport.
 > - **"Friend couldn't submit at times" was never reproduced.** A mechanism was
 >   found that follows from a stalled round, and it is plausible, but it was
 >   inferred rather than measured. If it recurs, do not assume it is fixed.
@@ -94,6 +94,107 @@
 > the same commit** — a change that leaves this file stale is not finished.
 >
 > Last verified against the code: 2026-08-30.
+
+> ## 2026-10-23 — the first playtest in six weeks: a scoreboard drawn over the next question
+>
+> **Reported after a real game, remote, two phones in two places, both on
+> Wi-Fi:** the name prompt should offer a way to sign in; the profile, the
+> practice bot, Start, the game loading and Submit all slow — interviewed,
+> **5–15 seconds** for Start and loading, and **"new, it was fine before"**;
+> and the game-breaker: *"by the time I got to question 2, my friend did not see
+> the question I was on until I clicked reveal. Game is broken, stopped
+> there."* Asked what the friend's screen showed: **"still the scoreboard"**.
+>
+> ### Two screens fetched before they drew, and nothing asked whether it was too late
+>
+> `showScoresScreen` awaited `updateScores()` — a read of every answer — and
+> only then switched the screen. On a slow link that read was still out when
+> the host pressed Next Question. Question 2 arrived and drew itself at once;
+> then the read came back and **put the scoreboard up on top of it**. Nothing
+> ever put the question back: every later event for that round is the round
+> the phone already believes it is on, and `handlePhaseTransition` refuses a
+> phase it is already on. Only the next PHASE — the host's Reveal — moved the
+> screen. That is the report, word for word.
+>
+> `showRevealScreen` has the same shape (it reads the round's answers first).
+> `screenStillFits` in `phase-order.js` is the one rule both now ask after their
+> read: the scoreboard only on its own round's `scores_reveal`; the reveal only
+> on its own round's reveal phases, or during its question once this phone has
+> answered (the "waiting for everybody" view after Submit). A render that loses
+> the test is not lost work — whatever moved the phone on called its own
+> renderer, and that one owns the screen. Every caller was read first: all of
+> them set the phase before rendering, and `hasSubmitted` is set before the
+> post-Submit reveal.
+>
+> **Reproduced by SETTING the state, in `scenario-latescreen`** (now in CI): one
+> phone's link goes to 8s just before Show Scores, the host advances as soon as
+> it can. Before: `7567ms question-screen (own question@1) -> 12770ms
+> scores-screen (own question@1)`, can type: false. After: the question stays.
+> Seven unit tests; making the rule always answer yes fails exactly the four
+> refusals while the three that permit legitimate screens still pass.
+>
+> **`scenario-badnetwork` could not see it, and the reason is worth keeping.**
+> Its robot host reveals two seconds into every question, so the question was
+> on the slow phone's screen for two seconds before the round moved on — the
+> covering-up happened during the reveal instead, where nothing looked. **A
+> real host waits for their friend.** A robot that never waits cannot find a
+> bug that needs somebody's patience. It now also asks the question nothing
+> asked: is a phone that believes it is on a question showing something else?
+>
+> ### The slowness: our code did not get chattier
+>
+> Every reported action timed at a 300ms injected round trip, on the
+> September build (`c803c84`, what the owner played on 09-09 and 09-14) and on
+> today's — **identical, action for action**:
+>
+> | | round trips in series | requests |
+> |---|---|---|
+> | open the profile page | ~5 | 12 |
+> | Host Game → lobby | ~8.5 | 4 |
+> | + Practice Bot | ~1 | 1 |
+> | Start → game page | ~8 | 4 |
+> | game page loading | ~11.5 | **41** |
+> | Submit → reveal | ~4 | 7 |
+>
+> So "it was fine before" is a fact about the ROAD, not the code. **The probe
+> now times the live database first thing on every run**: requests spend 24–67ms
+> behind Supabase's gateway (`x-envoy-upstream-service-time`), so the database
+> itself is fast; the rest is the trip to it. Comparing like-for-like eastus
+> runners across the old logs: median request 109ms (08-27), 106ms (09-07),
+> **164ms (10-23)**, and the slowest tenth went from ~125ms to **788ms**, in a
+> burst. One sample, from one machine — a lead, not a measurement of anybody's
+> phone. The realtime join took **3.9s** to start delivering changes; there is
+> no older number to compare that with yet.
+>
+> ### The name prompt offers an account (owner's choice of layout)
+>
+> Two quiet links under Continue — guest stays the obvious path. Success
+> RELOADS, as the home page's own Sign In already does. **The trap was the road
+> back:** the sign-up box asks for a missing name by calling the name prompt
+> itself, which points Continue at a promise of its own; return to the
+> original prompt without re-binding and Continue closes it while the page
+> waits for ever. `scenario-join` walks that road; removing the re-bind reports
+> *"Continue closed the name prompt but the join page never started"*. Links
+> measured 44px tall at both widths.
+>
+> ### Found and NOT fixed
+>
+> - **The game page makes 41 requests to load**, ~11.5 in series — the room
+>   read ~12 times, the players ~9. Nothing here changed since September, and it
+>   is the biggest lever on how slow a slow link feels.
+> - **At 8s per request, init routes on a stale room snapshot**: Bob went
+>   `answer_reveal@1 -> countdown@1` in `scenario-badnetwork --lag=8000 --on=Bob`.
+>   The same run had Bob never reach results, "Waiting…" rows after the final
+>   reveal, and a refused late submit logged as an error.
+> - **supabase-js is unpinned** (`@2`), so every deploy's cache clear takes
+>   whatever esm.sh serves: phones moved 2.116 → 2.118 on 10-22 with no review.
+>   The diff was read and holds nothing relevant; the drift is the fault.
+>
+> ### The habit
+>
+> **A screen that waited on the network must ask, before it draws, whether the
+> phone is still where it was when it asked.** The await is the moment the
+> world can change, and two renderers drew straight through it.
 
 > ## 2026-10-22 — the end of a game stopped waiting on the network
 >
@@ -8352,6 +8453,7 @@ node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, nev
 node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
 node tests/harness/scenario-finalq.mjs   # the host reveals the final question on a bad connection
 node tests/harness/scenario-finalq.mjs --old-server  # ...against a database without migration 073
+node tests/harness/scenario-latescreen.mjs # a slow scoreboard must not cover the next question
 node tests/harness/scenario-sitting.mjs --games=4        # SEVERAL games in ONE room — what grows between them
 node tests/harness/scenario-sitting.mjs --games=4 --lag=800 --on=Bob   # ...with one phone on a real link
 node tests/harness/scenario-badnetwork.mjs --lag=1500  # a WHOLE game on a bad link (NOT in CI — see below)

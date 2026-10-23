@@ -48,6 +48,7 @@ import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
+import { screenStillFits } from './phase-order.js';
 import {
   state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
@@ -165,7 +166,17 @@ export async function showScoresScreen() {
     : `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;
 
   // Calculate new scores
+  const renderedFor = state.currentQuestion;
   await updateScores();
+
+  // THE PHONE MAY HAVE MOVED ON WHILE THAT READ WAS OUT, and putting the
+  // scoreboard up now would cover the next question with this one's scores —
+  // with nothing ever putting the question back. See screenStillFits.
+  if (!screenStillFits({ screen: 'scores-screen', phase: state.gamePhase,
+      question: state.currentQuestion, renderedFor, submitted: state.hasSubmitted })) {
+    logger.debug('Game', `scoreboard for round ${renderedFor} finished after the phone moved on to ${state.gamePhase}@${state.currentQuestion} — not shown`);
+    return;
+  }
 
   // If previousScores is empty (reconnect), skip animation — show final scores directly
   const hasPreviousScores = Object.keys(state.previousScores).length > 0;

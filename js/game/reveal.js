@@ -28,6 +28,7 @@ import { countAnswersFrom, findNextAvailableWager, answersForCurrentGame,
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { sendHonk, getHonkCount } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
+import { screenStillFits } from './phase-order.js';
 import { showChatBar } from './chat.js';
 import { showHostSettingsGear } from './host.js';
 
@@ -81,7 +82,18 @@ export async function showRevealScreen() {
 
   // Fetch existing answers (some players may not have submitted yet) and cache them
   const currentQ = state.currentQuestion;
-  state.currentAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, currentQ));
+  const fetched = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, currentQ));
+
+  // THE PHONE MAY HAVE MOVED ON WHILE THAT READ WAS OUT. A reveal put up now
+  // would cover the scoreboard, or the next question, with a round the room
+  // has finished. See screenStillFits — and the cache is left alone too, since
+  // it belongs to whichever round the phone is on now.
+  if (!screenStillFits({ screen: 'reveal-screen', phase: state.gamePhase,
+      question: state.currentQuestion, renderedFor: currentQ, submitted: state.hasSubmitted })) {
+    logger.debug('Game', `reveal for round ${currentQ} finished after the phone moved on to ${state.gamePhase}@${state.currentQuestion} — not shown`);
+    return;
+  }
+  state.currentAnswers = fetched;
   // Skip render if doReveal() will be called immediately (it re-renders with colors)
   if (!state.resultsRevealed) {
     renderRevealAnswers(state.currentAnswers);

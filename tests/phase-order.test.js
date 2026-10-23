@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldSyncPhase, isStaleRoomEvent } from '../js/game/phase-order.js';
+import { shouldSyncPhase, isStaleRoomEvent, screenStillFits } from '../js/game/phase-order.js';
 
 // ============================================
 // shouldSyncPhase
@@ -179,5 +179,57 @@ describe('the final round runs past the end of the list, all the way to results'
     expect(shouldSyncPhase('question', 'scores_reveal')).toBe(true);
     expect(shouldSyncPhase('scores_reveal', 'answer_reveal')).toBe(false);
     expect(shouldSyncPhase('scores_reveal', 'question')).toBe(false);
+  });
+});
+
+// ============================================
+// screenStillFits
+//
+// The reveal and the scoreboard each fetch BEFORE they switch the screen. On a
+// slow link the phone can move on while that read is out, and the late screen
+// then covered the one that belongs to where the phone really is. Reported from
+// a real game on 2026-10-23: a friend left on the scoreboard while the room was
+// asking question 2, until the host pressed Reveal.
+// ============================================
+describe('screenStillFits', () => {
+  const fits = (screen, phase, question, renderedFor, submitted = false) =>
+    screenStillFits({ screen, phase, question, renderedFor, submitted });
+
+  it('lets the scoreboard up while the phone is still on that round\'s scores', () => {
+    expect(fits('scores-screen', 'scores_reveal', 0, 0)).toBe(true);
+  });
+
+  // THE REPORTED BUG. The scoreboard for question 1 came back after question 2
+  // had arrived and drawn itself.
+  it('does not put a scoreboard over the next question', () => {
+    expect(fits('scores-screen', 'question', 1, 0)).toBe(false);
+  });
+
+  it('does not put a scoreboard up once its round has moved past scores', () => {
+    expect(fits('scores-screen', 'final_wager', 4, 4)).toBe(false);
+    expect(fits('scores-screen', 'results', 5, 5)).toBe(false);
+  });
+
+  it('lets the reveal up on its own round\'s reveal phases', () => {
+    expect(fits('reveal-screen', 'reveal', 2, 2)).toBe(true);
+    expect(fits('reveal-screen', 'answer_reveal', 2, 2)).toBe(true);
+  });
+
+  // After Submit a player waits on the reveal screen while the room is still
+  // asking the question. Refusing that would leave somebody who has answered
+  // staring at a question they can no longer change.
+  it('lets the reveal up during the question once this phone has answered', () => {
+    expect(fits('reveal-screen', 'question', 2, 2, true)).toBe(true);
+    expect(fits('reveal-screen', 'final_question', 5, 5, true)).toBe(true);
+  });
+
+  it('does not cover a question this phone has not answered', () => {
+    expect(fits('reveal-screen', 'question', 2, 2, false)).toBe(false);
+  });
+
+  it('does not put a finished round\'s reveal over the scoreboard or the next question', () => {
+    expect(fits('reveal-screen', 'scores_reveal', 2, 2, true)).toBe(false);
+    expect(fits('reveal-screen', 'question', 3, 2, false)).toBe(false);
+    expect(fits('reveal-screen', 'question', 3, 2, true)).toBe(false);
   });
 });

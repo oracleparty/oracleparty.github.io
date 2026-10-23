@@ -175,6 +175,14 @@ try {
   // there the long way round or really did jump.
   const phoneTimeline = { Alice: [], Bob: [], Carol: [] };
   const waitingAfterReveal = [];   // a row that outlived the reveal
+  // A SCREEN DRAWN LATE ON TOP OF A NEWER ROUND. Reported from a real game on
+  // 2026-10-23: "by the time I got to question 2, my friend did not see the
+  // question I was on until I clicked reveal" — and the friend's screen was
+  // "still the scoreboard". Every check above asks whether a phone ARRIVED;
+  // none asks whether something drew over it after it had.
+  const ownSince = { Alice: null, Bob: null, Carol: null };
+  const staleScreen = { Alice: null, Bob: null, Carol: null };
+  const staleScreenFound = [];
   const consoleErrors = [];
   const navigations = [];
   const roomTimeline = [];
@@ -252,9 +260,34 @@ try {
         phase: window.__state?.gamePhase || null,
         question: Number.isInteger(window.__state?.currentQuestion)
           ? window.__state.currentQuestion : null,
+        submitted: !!window.__state?.hasSubmitted,
       })).catch(() => null);
       if (!seen?.screen) continue;
       screensShown[r.name].add(seen.screen);
+
+      // ENTERING A QUESTION SWITCHES THE SCREEN AT ONCE — showQuestionScreen
+      // calls showScreen before anything else — so once the 500ms fade is over,
+      // a phone whose OWN phase is a question and whose screen is the last
+      // round's scoreboard, or a reveal it has not answered into, is showing
+      // something that was drawn over the question after it arrived. Late is a
+      // different fault, and worstLagMs above already measures it; this is the
+      // screen going BACK after the phone had moved on.
+      const ownKey = `${seen.phase}@${seen.question}`;
+      if (ownSince[r.name]?.key !== ownKey) ownSince[r.name] = { key: ownKey, at: Date.now() };
+      const inQuestion = seen.phase === 'question' || seen.phase === 'final_question';
+      const coveredUp = inQuestion && (seen.screen === 'scores-screen'
+        || (seen.screen === 'reveal-screen' && !seen.submitted));
+      if (coveredUp && Date.now() - ownSince[r.name].at > 2000) {
+        const s = staleScreen[r.name];
+        if (!s || s.key !== ownKey) {
+          staleScreen[r.name] = { key: ownKey, screen: seen.screen, from: Date.now() };
+        } else if (!s.reported && Date.now() - s.from > 2000) {
+          s.reported = true;
+          staleScreenFound.push(`${r.name}'s own game was on ${ownKey} but its screen showed ${seen.screen} — drawn over the question after it had arrived`);
+        }
+      } else if (staleScreen[r.name]?.key === ownKey) {
+        staleScreen[r.name] = null;
+      }
 
       // DID THIS PHONE GO BACKWARDS?
       //
@@ -573,6 +606,14 @@ try {
   // conditions most likely to produce a missing row.
   if (waitingAfterReveal.length) {
     problems.push(waitingAfterReveal[0]);
+  }
+
+  // NOTHING DRAWS OVER A QUESTION THAT HAS ALREADY ARRIVED.
+  for (const s of staleScreenFound) problems.push(s);
+  for (const r of everyone) {
+    if (staleScreenFound.some(s => s.startsWith(`${r.name}'`))) {
+      note(`${r.name}'s phases: ${phoneTimeline[r.name].join(' -> ')}`);
+    }
   }
 
   // EVERY ROUND GETS ITS OWN CLOCK — a stamp refused on a slow link used to
