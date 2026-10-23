@@ -12,41 +12,61 @@ import { bucketQuestionsByHistory } from '../question-selection.js';
  * Questions have a `categories` text[] array column.
  * Paginates through all rows to ensure accurate counts.
  * Returns [{ name: 'history', count: 142 }, ...] sorted alphabetically.
+ *
+ * THE PAGES ARE ASKED FOR TOGETHER, NOT ONE AFTER ANOTHER. The bank holds
+ * about 4,800 open questions and the server hands back 1000 rows at most, so
+ * this used to be five round trips in a row before the profile or a first
+ * visit to the Host screen could draw — measured as half of the profile's
+ * whole wait on a slow link, after a real game on 2026-10-23 reported that
+ * page as "very slow to load". PAGES_AT_ONCE pages go out in one trip, and
+ * another batch only follows if the last page came back full, so a bank that
+ * grows past it still counts every row.
+ *
+ * Ordered by id, because separate queries with no ORDER BY are not promised
+ * to agree about which rows are on which page.
  */
 export async function fetchCategories() {
   const PAGE_SIZE = CATEGORY_PAGE_SIZE;
+  const PAGES_AT_ONCE = 6;
   const counts = {};
   let offset = 0;
   let hasMore = true;
 
+  const page = from => supabase
+    .from('questions')
+    .select('categories')
+    .eq('format', 'open')
+    .order('id')
+    .range(from, from + PAGE_SIZE - 1);
+
   while (hasMore) {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('categories')
-      .eq('format', 'open')
-      .range(offset, offset + PAGE_SIZE - 1);
+    const pages = await Promise.all(
+      Array.from({ length: PAGES_AT_ONCE }, (_, i) => page(offset + i * PAGE_SIZE)));
 
-    if (error) {
-      logger.error('Supabase', 'Failed to fetch categories', error);
-      // Re-throw so callers can surface the specific reason in the UI
-      // instead of silently rendering an empty grid.
-      const e = new Error(error.message || 'Supabase query failed');
-      e.code = error.code;
-      e.details = error.details;
-      e.hint = error.hint;
-      throw e;
-    }
+    for (const { data, error } of pages) {
+      if (error) {
+        logger.error('Supabase', 'Failed to fetch categories', error);
+        // Re-throw so callers can surface the specific reason in the UI
+        // instead of silently rendering an empty grid.
+        const e = new Error(error.message || 'Supabase query failed');
+        e.code = error.code;
+        e.details = error.details;
+        e.hint = error.hint;
+        throw e;
+      }
 
-    for (const row of (data || [])) {
-      // Supabase returns text[] as a JS array
-      const cats = Array.isArray(row.categories) ? row.categories : [];
-      for (const cat of cats) {
-        counts[cat] = (counts[cat] || 0) + 1;
+      for (const row of (data || [])) {
+        // Supabase returns text[] as a JS array
+        const cats = Array.isArray(row.categories) ? row.categories : [];
+        for (const cat of cats) {
+          counts[cat] = (counts[cat] || 0) + 1;
+        }
       }
     }
 
-    hasMore = data && data.length === PAGE_SIZE;
-    offset += PAGE_SIZE;
+    const last = pages[pages.length - 1].data;
+    hasMore = !!last && last.length === PAGE_SIZE;
+    offset += PAGES_AT_ONCE * PAGE_SIZE;
   }
 
   return Object.entries(counts)
@@ -101,6 +121,15 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
     query = query.like('subcategory', subcategory + '%');
   }
 
+  // WHAT THE ROOM HAS ALREADY MET goes out in the same trip as the pool. It
+  // does not depend on which questions come back — it is every player's
+  // history, filtered against the pool afterwards — and asking for it second
+  // was one more round trip in front of every game's countdown. Started first,
+  // awaited only on the path that uses it; it already answers [] on a refusal.
+  const historyLoaded = playerUserIds.length > 0
+    ? fetchQuestionHistoryForUsers(playerUserIds).catch(() => [])
+    : null;
+
   const { data, error } = await query.limit(fetchCount);
 
   if (error) {
@@ -123,8 +152,8 @@ export async function fetchQuestionsByCategory(category, limit, excludeIds = [],
     return _fillTo(_shuffle(available).slice(0, limit), data, limit);
   }
 
-  // Fetch question history for all logged-in players in the room
-  const history = await fetchQuestionHistoryForUsers(playerUserIds);
+  // Question history for all logged-in players in the room (already asked for)
+  const history = await historyLoaded;
 
   const loggedInCount = playerUserIds.length;
   const { fresh, redemption, seenMixed, mastered } =
@@ -227,6 +256,10 @@ function _shuffle(arr) {
  */
 export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserIds = []) {
   const fetchCount = Math.min(QUESTION_POOL_SIZE, Math.max((limit + excludeIds.length) * 5, 100));
+  // In the same trip as the pool — see fetchQuestionsByCategory.
+  const historyLoaded = playerUserIds.length > 0
+    ? fetchQuestionHistoryForUsers(playerUserIds).catch(() => [])
+    : null;
   const { data, error } = await supabase
     .from('questions')
     .select('*')
@@ -253,7 +286,7 @@ export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserId
   // Same buckets, same rule as a normal category. These two paths used to keep
   // separate copies of this logic and had drifted into two different
   // definitions of "knows it".
-  const history = await fetchQuestionHistoryForUsers(playerUserIds);
+  const history = await historyLoaded;
   const loggedInCount = playerUserIds.length;
   const { fresh, redemption, seenMixed, mastered } =
     bucketQuestionsByHistory(available, history, playerUserIds);

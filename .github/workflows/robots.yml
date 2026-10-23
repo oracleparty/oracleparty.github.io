@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  playtest:
+  playtest-game:
     runs-on: ubuntu-latest
     # THE SUITE OUTGREW 25 MINUTES, AND A TIMEOUT IS NOT A FAILURE — GitHub
     # cancels the job, which reads as "cancelled" rather than red, and the last
@@ -66,6 +66,27 @@ jobs:
 
       - name: Co-host — promote, demote, and gated controls
         run: node tests/harness/scenario-cohost.mjs
+
+
+  # SPLIT 2026-10-23, as the note above says to: one job had reached 32-41
+  # minutes against its 45-minute limit, and the late-screen scenario added
+  # more. Two jobs on two runners finish in about half the time, and a
+  # timeout here is a CANCEL, which reads as grey rather than red.
+  playtest-accounts-and-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Only Chromium: the game is mobile-only and every scenario emulates a
+      # phone viewport.
+      - run: npx playwright install --with-deps chromium
 
       # The signed-in half of the app — profile, leaderboard, friends — which
       # no robot could reach until the harness learned to sign in. Also plays a

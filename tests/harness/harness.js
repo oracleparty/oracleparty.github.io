@@ -326,12 +326,18 @@ export class PlaytestTable {
     // a robot leaving a room would have issued a real DELETE.
     //
     // Anything addressed to the live project is answered locally instead.
-    await context.route('**://*.supabase.co/**', route => {
+    //
+    // A GET here is the clock-offset probe (getServerTimeOffset), the one read
+    // the app makes outside the client — and it is a real round trip on a
+    // phone. Answering it instantly on a slowConnection robot made every
+    // measured page load one round trip faster than any real one.
+    await context.route('**://*.supabase.co/**', async route => {
       const method = route.request().method();
       if (method !== 'GET') {
         return route.fulfill({ status: 204, contentType: 'application/json', body: '' });
       }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      if (robot.latencyMs) await new Promise(r => setTimeout(r, robot.latencyMs));
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }).catch(() => {});
     });
 
     // Serve the fake Supabase library in place of the real one.

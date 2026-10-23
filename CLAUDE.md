@@ -181,7 +181,8 @@
 >
 > - **The game page makes 41 requests to load**, ~11.5 in series — the room
 >   read ~12 times, the players ~9. Nothing here changed since September, and it
->   is the biggest lever on how slow a slow link feels.
+>   is the biggest lever on how slow a slow link feels. **Partly fixed the same
+>   day — see "the waits that did not need to queue" below.**
 > - **At 8s per request, init routes on a stale room snapshot**: Bob went
 >   `answer_reveal@1 -> countdown@1` in `scenario-badnetwork --lag=8000 --on=Bob`.
 >   The same run had Bob never reach results, "Waiting…" rows after the final
@@ -189,6 +190,58 @@
 > - **supabase-js is unpinned** (`@2`), so every deploy's cache clear takes
 >   whatever esm.sh serves: phones moved 2.116 → 2.118 on 10-22 with no review.
 >   The diff was read and holds nothing relevant; the drift is the fault.
+>
+> ### The waits that did not need to queue (deployed separately, same day)
+>
+> Our code had not got chattier, but a slow road makes every wait-in-a-row
+> cost a whole trip. So every reported action was timed with BOTH phones on a
+> 300ms link and every await read for whether it needed the one before it.
+> `--lag=300`, round trips in series, from the tap:
+>
+> | | before | after |
+> |---|---|---|
+> | profile, until your stats show | 10.0 | ~4–5 |
+> | Host screen, first visit | 7.7 | 3.4 |
+> | Start → countdown on both phones | 21.0 | 13.3 |
+>
+> - **`fetchCategories` read the whole bank five pages in a row.** ~4,800 open
+>   questions at 1000 a page, one after another, in front of the profile and a
+>   first Host visit. Six pages go out together now, ordered by id so separate
+>   queries agree on what is on which page; another batch follows only if the
+>   last came back full. **The harness hid this entirely** — every scenario
+>   seeds ~40 questions, which is one page. The measuring script seeds 4,800.
+> - **The profile** started its title words, stats and bank count one after
+>   another; they share one trip now, and the words are awaited just before
+>   the first thing that reads `TITLE_WORDS`.
+> - **The Host screen** asked for the bank and play counts only after sign-in
+>   answered. Only mastery needs to know who is asking.
+> - **Start Game** cleared the phase in its own trip after the clear-out, and
+>   the host then waited for the Realtime ECHO of its own successful write —
+>   up to the 5-second fallback. It navigates on the write's success now (and
+>   a FAILED status write no longer navigates at all; the old fallback did).
+>   The lobby's echo handler now ignores a phone already leaving.
+> - **The game page** asked sign-in, the clock offset, the players and the room
+>   one after another; one trip now. `initHostGame` reads the room row init
+>   already has instead of twice more — except after a branch that waited on
+>   the network again (rejoin, refresh heartbeat, answer reclaim), which nulls
+>   it and reads fresh exactly as before. Both reconnect paths read questions
+>   and answers together, and `updateScores(answersAlreadyRead)` scores from
+>   that read instead of a third.
+> - **Question selection** reads the room's history alongside the pool.
+> - **+ Practice Bot says "Adding…"** — one trip, but a greyed button with no
+>   word looks like a tap that never landed.
+>
+> **Deliberately NOT changed:** which screen a loading phone routes to. The
+> stale-snapshot finding above is real, but the routing during init interacts
+> with Realtime events in ways no check here pins; these changes keep every
+> decision in the same order and only remove waits.
+>
+> **The harness had been answering the clock-offset read instantly** — it is a
+> plain `fetch`, not a store op — so every measured page load was one trip
+> faster than a phone's. That GET now honours `slowConnection`.
+>
+> **The robot workflow is two jobs now.** One job had reached 32–41 minutes of
+> a 45-minute limit, and a timeout is a grey cancel, not a red fail.
 >
 > ### The habit
 >

@@ -901,6 +901,13 @@ async function handleAddBot() {
   if (players.filter(p => p.is_bot).length >= MAX_BOTS_PER_ROOM) return;
   _isAddingBot = true;
   btnAddBot.disabled = true;
+  // SAY SOMETHING WHILE IT WAITS. A greyed button is the only change a press
+  // made, and on a slow link that is a whole round trip of a button that looks
+  // as though it never took the tap — reported from a real game on 2026-10-23
+  // as "clicking practice bot also takes too long". Submit learned this as
+  // "Sending…"; Reveal Results as "Revealing…".
+  const idleLabel = btnAddBot.textContent;
+  btnAddBot.textContent = 'Adding\u2026';
   try {
     const { data, error } = await addBot(room.id, BOT_DISPLAY_NAME, {
       avatarColor: BOT_AVATAR_COLOR,
@@ -922,6 +929,7 @@ async function handleAddBot() {
   } finally {
     _isAddingBot = false;
     btnAddBot.disabled = false;
+    btnAddBot.textContent = idleLabel;
   }
 }
 
@@ -1888,6 +1896,13 @@ async function handleStartGame() {
     // write can land after a game finishes; it cannot land after the next one
     // is announced, because that is seconds of lobby later. Both run: this is
     // the belt, and Play Again's is the braces.
+    //
+    // THE PHASE IS CLEARED IN THE SAME TRIP. It touches different columns from
+    // the clear-out beside it and neither reads the other, so queueing it
+    // behind them was a whole round trip of "Starting..." for nothing — one of
+    // three in front of a button reported from a real game on 2026-10-23 as
+    // "loading forever". Both still land before the status flips below, which
+    // is the ordering that matters.
     await Promise.all([
       updateGameState(room.id, {
         question_ids: [],
@@ -1895,21 +1910,30 @@ async function handleStartGame() {
         countdown_started_at: null
       }),
       deleteAnswersByRoom(room.id, room.playerId),
+      setPhaseOnServer(room.id, room.playerId, null, null, 0).then(ok =>
+        ok || updateGameState(room.id, { game_phase: null, current_question: 0 })),
     ]);
-    if (!await setPhaseOnServer(room.id, room.playerId, null, null, 0)) {
-      await updateGameState(room.id, { game_phase: null, current_question: 0 });
+    const { error: startError } = await updateRoomStatus(room.id, 'playing');
+    if (startError) {
+      // updateRoomStatus has already said so. Staying put is the truth: the
+      // room is not playing, and the game page would only bounce us back.
+      // The old 5-second fallback below navigated here regardless.
+      _isStarting = false;
+      btnStartGame.disabled = false;
+      btnStartGame.classList.remove('is-loading');
+      btnStartGame.textContent = 'Start Game';
+      return;
     }
-    await updateRoomStatus(room.id, 'playing');
-    // Realtime subscription triggers navigation for everyone including host.
-    // Safety fallback: if Realtime doesn't fire within 5s, navigate directly.
-    setTimeout(() => {
-      if (!isLeaving) {
-        logger.warn('Lobby', 'Realtime did not fire — navigating directly');
-        isLeaving = true;
-        cleanup();
-        navigateWithFadeReplace('game.html');
-      }
-    }, 5000);
+    // THE HOST GOES AS SOON AS THE SERVER SAYS YES. Everybody else follows the
+    // Realtime echo of this write — and so did the host, behind a 5-second
+    // fallback, waiting to be told about a write it had just watched succeed.
+    // On a phone whose Realtime is slow that was up to five more seconds of
+    // "Starting...". The echo still arrives; isLeaving makes it a no-op.
+    if (!isLeaving) {
+      isLeaving = true;
+      cleanup();
+      navigateWithFadeReplace('game.html');
+    }
   } catch (err) {
     logger.error('Lobby', 'startGame failed', err);
     _isStarting = false;
@@ -2119,8 +2143,10 @@ function handleRoomChange(payload) {
   const newRoom = payload.new;
   if (!newRoom) return;
 
-  // Game start — navigate all players
+  // Game start — navigate all players. The host has usually gone already, on
+  // its own write succeeding (handleStartGame); its echo is then a no-op.
   if (newRoom.status === 'playing') {
+    if (isLeaving) return;
     isLeaving = true;
     try { cleanup(); } catch (_) {}
     navigateWithFadeReplace('game.html');

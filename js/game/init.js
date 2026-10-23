@@ -145,15 +145,30 @@ async function init() {
   // Safari bfcache: if this page is restored from cache after navigating away, go home
   window.addEventListener('pageshow', (e) => { if (e.persisted) { cleanup(); window.location.href = 'index.html'; } });
 
-  await Promise.all([ensureDisplayName(), initAuth()]);
-
-  // Calibrate clock offset between client and server
-  state.serverTimeOffset = await getServerTimeOffset();
-
-  state.players = await fetchPlayers(state.room.id);
-
-  // Validate room still exists (may have been deleted while player was away)
-  const { data: roomCheck } = await fetchRoom(state.room.id);
+  // FOUR QUESTIONS, ONE TRIP.
+  //
+  // Sign-in, the clock offset, the players and the room used to be asked one
+  // after another — four round trips before this page did anything else, on
+  // every phone, at the start of every game. None of them reads another's
+  // answer: each request carries whatever session supabase-js already holds,
+  // which is ready before initAuth's own profile read comes back. Measured on a
+  // simulated slow link after a real game on 2026-10-23 reported the game as
+  // "taking forever" to load.
+  const [, serverTimeOffset, playersAtStart, { data: roomCheck }] = await Promise.all([
+    Promise.all([ensureDisplayName(), initAuth()]),
+    // Calibrate clock offset between client and server
+    getServerTimeOffset(),
+    fetchPlayers(state.room.id),
+    // Validate room still exists (may have been deleted while player was away)
+    fetchRoom(state.room.id),
+  ]);
+  state.serverTimeOffset = serverTimeOffset;
+  state.players = playersAtStart;
+  // The room as it stood when this page arrived. initHostGame decides from it
+  // instead of reading the same row twice more; a branch below that waits on
+  // the network again sets it to null, so the decision is taken on a fresh
+  // read exactly as before.
+  let roomSnapshot = roomCheck;
   if (!roomCheck) {
     sessionStorage.removeItem('oracle_party_room');
     window.location.href = 'index.html';
@@ -188,6 +203,7 @@ async function init() {
   if (me) {
     // Player row exists — clear disconnected_at and refresh last_seen_at immediately
     if (me.disconnected_at) {
+      roomSnapshot = null;
       await playerHeartbeat(state.room.playerId);
     }
   } else {
@@ -244,6 +260,7 @@ async function init() {
       && String(p.id) !== String(prevPlayerId)
       && (!(p.last_seen_at || p.joined_at) || seenAt(p) > stale));
 
+    roomSnapshot = null;
     const seatUserId = await ensureAnonymousIdentity() || rejoinUserId;
     const { data: rejoinedPlayer } = await claimSeat({
       roomId: state.room.id,
@@ -395,6 +412,7 @@ async function init() {
   if (priorSeat && String(priorSeat) !== String(state.room.playerId)) {
     const stillThere = state.players.some(p => String(p.id) === String(priorSeat));
     if (!stillThere) {
+      roomSnapshot = null;
       await reassignPlayerAnswers(state.room.id, priorSeat, state.room.playerId);
       logger.info('Init', 'reclaimed answers from a previous seat in this room');
     }
@@ -405,21 +423,31 @@ async function init() {
   updatePresence({ activity: 'game', roomId: state.room.id, category: state.room.category });
 
   if (state.room.isHost || state.room.isCohost) {
-    await initHostGame();
+    await initHostGame(roomSnapshot);
     if (state.room.isHost) initHostSettingsPanel();
   } else {
     await initPlayerGame();
   }
 }
 
-async function initHostGame() {
-  // Check if there's already a game in progress (host refreshed mid-game)
-  const { data: roomData } = await fetchRoom(state.room.id);
+async function initHostGame(roomSnapshot = null) {
+  // Check if there's already a game in progress (host refreshed mid-game).
+  // init() read this row a moment ago in the same trip as everything else;
+  // reading it again here, and a third time for the used question ids below,
+  // was two round trips in front of every game's first question.
+  const roomData = roomSnapshot || (await fetchRoom(state.room.id)).data;
   if (roomData && roomData.question_ids && roomData.question_ids.length > 0 && roomData.game_phase && roomData.game_phase !== 'lobby') {
     // Reconnect to existing game
     // question_ids has N+1 entries (N regular + 1 final wager)
     state.totalQuestions = Math.max(1, roomData.question_ids.length - 1);
-    state.questions = await fetchQuestionsByIds(roomData.question_ids);
+    // The questions and the answers in ONE trip: neither read needs the other,
+    // and the answers are only FILTERED by the questions once both are here.
+    // The scores below come from this same read rather than a third one.
+    const [questions, answersRead] = await Promise.all([
+      fetchQuestionsByIds(roomData.question_ids),
+      fetchAllAnswers(state.room.id),
+    ]);
+    state.questions = questions;
     if (state.questions.length > 0) resolveFieldMap(state.questions[0]);
     state.currentQuestion = roomData.current_question || 0;
     prefetchFeedback(); // fire-and-forget: restore previous ratings
@@ -430,7 +458,7 @@ async function initHostGame() {
     }
 
     // Rebuild used wagers from existing answers (clear first to prevent stale data)
-    const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
+    const allAnswers = answersForCurrentGame(answersRead, state.questions);
     const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
     state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
     state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
@@ -451,7 +479,7 @@ async function initHostGame() {
     // reconnect path — ever recomputed them. Two paths doing the same job, one
     // of which forgot half of it. Reported from a playtest as "upon players
     // refreshing ... reset scores to zero also".
-    await updateScores();
+    await updateScores(answersRead);
 
     // If reconnecting to countdown, skip straight to question
     if (roomData.game_phase === 'countdown') {
@@ -465,9 +493,9 @@ async function initHostGame() {
     return;
   }
 
-  // Fetch used question IDs for repeat prevention (persists across Play Again cycles)
-  const { data: roomForExclude } = await fetchRoom(state.room.id);
-  const excludeIds = roomForExclude?.used_question_ids || [];
+  // Used question IDs for repeat prevention (persists across Play Again cycles).
+  // The same row as above — it was read once already.
+  const excludeIds = roomData?.used_question_ids || [];
 
   // Collect logged-in player user IDs for smart question selection
   const playerUserIds = state.players.map(p => p.user_id).filter(Boolean);
@@ -619,7 +647,14 @@ async function initPlayerGame() {
 async function applyGameState(roomData) {
   // question_ids has N+1 entries (N regular + 1 final wager)
   state.totalQuestions = Math.max(1, roomData.question_ids.length - 1);
-  state.questions = await fetchQuestionsByIds(roomData.question_ids);
+  // One trip for both, as in initHostGame's reconnect: the answers are only
+  // filtered by the questions once both have arrived, and the scores at the
+  // bottom are computed from this same read instead of fetching it again.
+  const [questions, answersRead] = await Promise.all([
+    fetchQuestionsByIds(roomData.question_ids),
+    fetchAllAnswers(state.room.id),
+  ]);
+  state.questions = questions;
 
   if (state.questions.length > 0) {
     resolveFieldMap(state.questions[0]);
@@ -641,7 +676,7 @@ async function applyGameState(roomData) {
 
   // Rebuild disqualified questions and used wagers from existing answers.
   // Disq must come first so usedWagers can correctly skip wagers from disqualified Qs.
-  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
+  const allAnswers = answersForCurrentGame(answersRead, state.questions);
   const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
   state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
   state.usedWagers = buildUsedWagersMap(myAnswers, state.totalQuestions, state.disqualifiedQuestions);
@@ -662,7 +697,7 @@ async function applyGameState(roomData) {
   }
 
   // Hydrate scores from DB so existing players' scores are correct
-  await updateScores();
+  await updateScores(answersRead);
 
   handlePhaseTransition(roomData.game_phase);
 }

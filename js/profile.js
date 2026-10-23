@@ -720,12 +720,6 @@ function _injectProfileCard() {
  * Initialize the profile page. Call from profile.html's inline script.
  */
 export async function initProfilePage() {
-  // The owner's written words before anything draws: the gallery and the Title
-  // Builder both read TITLE_WORDS synchronously, so arriving late would show a
-  // collection missing whatever has been written since the last deploy. It
-  // carries its own deadline and can never hold this page shut.
-  await loadTitleWords();
-
   const authUser = getCurrentUser();
   const displayName = getDisplayName() || 'Guest';
 
@@ -796,6 +790,22 @@ export async function initProfilePage() {
 
   const profile = authUser.profile;
   const userId = authUser.user.id;
+
+  // EVERY READ THIS PAGE NEEDS GOES OUT NOW, TOGETHER.
+  //
+  // They used to queue: the owner's title words, then the stats, then the size
+  // of the bank — and that last one was five pages of the question bank, one
+  // after another. Ten round trips before a signed-in player saw their own
+  // numbers, measured on a simulated slow link after a real game on 2026-10-23
+  // reported this page as "very slow to load". None of the three needs another,
+  // so they share one trip.
+  //
+  // The owner's written words are still in place before anything READS them:
+  // the title line, the Title Builder and the gallery all read TITLE_WORDS
+  // synchronously, so they wait on `wordsLoaded` below, by which time it has
+  // long arrived. It carries its own deadline and can never hold this page shut.
+  const wordsLoaded = loadTitleWords();
+  const catsLoaded = fetchCategories().catch(() => []);
 
   // Render header
   headerAvatar.innerHTML = renderAvatar({
@@ -927,7 +937,7 @@ export async function initProfilePage() {
   // shows every category whether or not the player has touched one, so it
   // needs these totals for somebody with no mastery at all — which is exactly
   // the person the empty cells are addressed to.
-  const allCats = await fetchCategories().catch(() => []);
+  const allCats = await catsLoaded;
   const catTotals = {};
   for (const c of allCats) catTotals[c.name] = c.count;
   const totalQuestions = allCats.reduce((s, c) => s + c.count, 0);
@@ -1051,7 +1061,9 @@ export async function initProfilePage() {
     }
   }
 
-  // Title — use custom title if builder is unlocked, otherwise auto-title
+  // Title — use custom title if builder is unlocked, otherwise auto-title.
+  // The first reader of the owner's words on this page; see wordsLoaded above.
+  await wordsLoaded;
   const customTitle = buildDisplayTitle(profile);
   headerTitle.textContent = customTitle || calculateTitle(stats).title;
 

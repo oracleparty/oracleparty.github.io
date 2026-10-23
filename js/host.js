@@ -73,34 +73,42 @@ async function init() {
     categoryGrid.innerHTML = Array(6).fill('<div class="skeleton skeleton-card"></div>').join('');
   }
 
-  // 2) Auth (required before fetching user-specific data)
+  // 2) The bank and the play counts are the same for everybody, so they are
+  // asked for NOW rather than after sign-in has answered — that wait was a
+  // whole round trip in front of the grid for a signed-in player, on a screen
+  // reported slow from a real game on 2026-10-23.
+  let categoriesError = null;
+  const categoriesLoaded = fetchCategories().catch(err => {
+    // Capture the actual error so we can show it in the empty state below
+    // — "Failed to load categories" alone is unactionable for the user.
+    logger.error('Host', 'fetchCategories', err);
+    console.error('[Host] fetchCategories failed:', err);
+    categoriesError = err;
+    return null;
+  });
+  const playCountsLoaded = fetchCategoryPlayCounts()
+    .catch(e => { logger.warn('Host', 'Could not load play counts', e); return {}; });
+
+  // 3) Auth (required before fetching user-specific data)
   try {
     await Promise.all([ensureDisplayName(), initAuth()]);
   } catch (err) {
     logger.error('Host', 'Auth error', err);
   }
 
-  // 3) Fetch categories + play counts + mastery all in parallel
+  // 4) Mastery needs to know who is asking; the rest is already in flight
   const authUser = getCurrentUser();
   if (authUser?.user?.id) _isLoggedIn = true;
 
-  let categoriesError = null;
   const [freshCategories, playCounts, masteryData] = await Promise.all([
-    fetchCategories().catch(err => {
-      // Capture the actual error so we can show it in the empty state below
-      // — "Failed to load categories" alone is unactionable for the user.
-      logger.error('Host', 'fetchCategories', err);
-      console.error('[Host] fetchCategories failed:', err);
-      categoriesError = err;
-      return null;
-    }),
-    fetchCategoryPlayCounts().catch(e => { logger.warn('Host', 'Could not load play counts', e); return {}; }),
+    categoriesLoaded,
+    playCountsLoaded,
     _isLoggedIn
       ? fetchMasteryCounts(authUser.user.id).catch(e => { logger.warn('Host', 'Could not load mastery', e); return []; })
       : Promise.resolve([])
   ]);
 
-  // 4) Apply results
+  // 5) Apply results
   if (playCounts && typeof playCounts === 'object') categoryPlayCounts = playCounts;
   if (masteryData && masteryData.length) {
     for (const m of masteryData) _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
@@ -110,7 +118,7 @@ async function init() {
     setCachedCategories(freshCategories);
   }
 
-  // 5) Render or patch
+  // 6) Render or patch
   if (!hadCache) {
     // First visit — replace skeletons with full render
     if (categories.length) {

@@ -2199,7 +2199,11 @@ async function handleReviewQuestions() {
 // SCORES
 // ============================================
 
-export async function updateScores() {
-  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
+export async function updateScores(answersAlreadyRead = null) {
+  // A caller that has just read every answer for its own reasons passes them
+  // in, and the scores cost no second trip. Filtered here either way, so the
+  // rule about which rows belong to this game stays in one place.
+  const read = answersAlreadyRead || await fetchAllAnswers(state.room.id);
+  const allAnswers = answersForCurrentGame(read, state.questions);
   state.scores = computeScoresFromAnswers(allAnswers, state.players);
 }
