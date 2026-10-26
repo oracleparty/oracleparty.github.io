@@ -468,6 +468,43 @@ try {
   note(`after the round trip, Continue started the page: ${pageStarted} (code box read "${typed}")`);
   if (!pageStarted) problems.push('after a side trip into an account, Continue closed the name prompt but the join page never started — Continue belonged to another promise');
 
+  heading('the category page draws before the bank answers');
+  {
+    // Reported from a real phone 2026-10-26: grey boxes for a long time on
+    // Choose Category. The cards waited for a read of every question in the
+    // bank AND for sign-in, and a cache older than 30 minutes was thrown away.
+    // One slow phone, no copy at all, a lag the reads cannot beat: the twelve
+    // subjects must be there, and tappable, well inside one round trip.
+    const LAG = 3000;
+    const browser = await table.seat('Browsing');
+    await browser.page.addInitScript(() => localStorage.setItem('oracle_party_display_name', 'Browsing'));
+    await browser.goto('index.html');
+    await browser.page.evaluate(() => localStorage.removeItem('op_categories'));
+    browser.slowConnection(LAG);
+    const t0 = Date.now();
+    const nav = browser.goto('host.html').catch(() => {});
+    let drawnAt = null;
+    while (Date.now() - t0 < LAG * 3) {
+      const n = await browser.page.evaluate(() => document.querySelectorAll('.category-card').length).catch(() => 0);
+      if (n >= 12) { drawnAt = Date.now() - t0; break; }
+      await new Promise(r => setTimeout(r, 25));
+    }
+    note(`twelve subject cards drawn after ${drawnAt ?? 'never'}ms on a ${LAG}ms link`);
+    if (drawnAt === null || drawnAt > LAG * 0.8) {
+      problems.push(`Choose Category showed no subjects for ${drawnAt ?? 'over ' + LAG * 3}ms on a ${LAG}ms link — the cards are waiting on the network`);
+    } else {
+      await browser.page.evaluate(() => document.querySelector('.category-card[data-category="science"]')?.click());
+      await new Promise(r => setTimeout(r, 300));
+      const opened = await browser.page.evaluate(() => document.querySelector('#subcategory-view')?.style.display !== 'none');
+      if (!opened) problems.push('a subject card tapped while the page was still loading did nothing');
+      const claims = await browser.page.evaluate(() => [...document.querySelectorAll('.category-card__count, .category-card__plays')]
+        .map(e => e.textContent).filter(t => /null|undefined|NaN|\b0 plays/.test(t)));
+      if (claims.length) problems.push(`before the counts arrived the cards claimed: ${claims.slice(0, 3).join(', ')}`);
+    }
+    await nav;
+    browser.slowConnection(0);
+  }
+
   for (const r of [publicHost, privateHost, stranger, latecomer, lost, nameless]) {
     const real = r.consoleErrors.filter(e =>
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e)

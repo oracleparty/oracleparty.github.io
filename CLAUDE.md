@@ -95,6 +95,34 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-26 — Choose Category showed grey boxes
+>
+> **Reported with a photograph from a real phone: six skeleton cards and
+> nothing else, "takes so long to load".** The grid waited on three things it
+> did not need: a read of every open question in the bank (to count them per
+> subject), sign-in, and play counts plus mastery — and a cached copy older
+> than `CATEGORY_CACHE_TTL` (30 min) was thrown away, so anybody who had not
+> hosted for half an hour got the skeletons every time. Listeners were attached
+> after all of it, so a card tapped during the wait did nothing.
+>
+> The twelve subjects are known without asking (`CATEGORY_META`), so the cards
+> are drawn from that at once; a cache of any age is used; the bank's counts
+> patch in the moment they land, before sign-in; play counts and mastery after.
+> Unknown numbers are a blank line, never `0 plays`. A late answer PATCHES the
+> cards rather than rebuilding them, because a rebuild would close a subject the
+> player has already opened. The empty-state error still shows on a first visit
+> whose bank read fails.
+>
+> | `--lag=2000`, signed in | cards visible |
+> |---|---|
+> | before (no cache, or cache >30 min) | 4253ms |
+> | after | ~130ms; counts at ~2.3s |
+>
+> `scenario-join` checks it at a 3s lag; on the old code: *"Choose Category
+> showed no subjects for over 9000ms"*. **What the harness cannot see is the
+> SIZE of the bank read** — it delays requests, it does not model bandwidth —
+> so how much of the owner's wait was that download is not measured.
+
 > ## 2026-10-23 — the first playtest in six weeks: a scoreboard drawn over the next question
 >
 > **Reported after a real game, remote, two phones in two places, both on

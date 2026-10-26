@@ -9,7 +9,7 @@ import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, g
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
-import { CATEGORY_CACHE_TTL, MASTERY_HIGH_THRESHOLD, MASTERY_COMPLETE_THRESHOLD } from './constants.js';
+import { MASTERY_HIGH_THRESHOLD, MASTERY_COMPLETE_THRESHOLD } from './constants.js';
 
 // --- State ---
 let categories = [];
@@ -20,6 +20,7 @@ let _masteryCounts = {}; // { categoryName: masteredCount }
 let navStack = [];      // Navigation stack for multi-level subcategory drill-down
 let sheetNavStack = []; // Navigation stack for category bottom sheet
 let _isLoggedIn = false;
+let _playCountsKnown = false; // "0 plays" before the count arrives would be a claim
 let settings = {
   whoCanJoin: 'anyone',
   questionsPerGame: 10,
@@ -37,14 +38,17 @@ const hostError = $('#host-error');
 
 // --- Category cache (localStorage) ---
 const CACHE_KEY = 'op_categories';
-const CACHE_TTL = CATEGORY_CACHE_TTL; // from constants.js
 
 function getCachedCategories() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
-    const { ts, data } = JSON.parse(raw);
-    if (Date.now() - ts > CACHE_TTL) return null;
+    // Any age will do: the grid is refreshed from the server on every visit
+    // anyway, so an old copy only decides what is drawn for the second or two
+    // before that lands. Throwing it away after CACHE_TTL put the skeletons
+    // back in front of anybody who had not hosted for half an hour — reported
+    // from a real phone on 2026-10-26 as the page taking far too long.
+    const { data } = JSON.parse(raw);
     return data;
   } catch { return null; }
 }
@@ -68,10 +72,22 @@ async function init() {
   const hadCache = cached && cached.length > 0;
   if (hadCache) {
     categories = cached;
-    renderCategories(categories, categoryPlayCounts);
   } else {
-    categoryGrid.innerHTML = Array(6).fill('<div class="skeleton skeleton-card"></div>').join('');
+    // No copy at all: the twelve subjects are known without asking anybody,
+    // so draw them now and fill the numbers in when the bank answers. Grey
+    // boxes until a ~5,000-row read finishes was the whole wait.
+    categories = Object.keys(CATEGORY_META)
+      .sort((a, b) => a.localeCompare(b))
+      .map(name => ({ name, count: null }));
   }
+  renderCategories(categories, categoryPlayCounts);
+
+  // Listeners go on NOW. They used to wait for every read below, so a card
+  // tapped while the page was still loading did nothing at all.
+  attachListeners();
+  initThemeToggle();
+  history.pushState({ page: 'host' }, '');
+  window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
 
   // 2) The bank and the play counts are the same for everybody, so they are
   // asked for NOW rather than after sign-in has answered — that wait was a
@@ -85,6 +101,14 @@ async function init() {
     console.error('[Host] fetchCategories failed:', err);
     categoriesError = err;
     return null;
+  }).then(fresh => {
+    // Drawn the moment they land, rather than after sign-in and mastery.
+    if (fresh && fresh.length) {
+      categories = fresh;
+      setCachedCategories(fresh);
+      patchCategoryCards(categoryPlayCounts);
+    }
+    return fresh;
   });
   const playCountsLoaded = fetchCategoryPlayCounts()
     .catch(e => { logger.warn('Host', 'Could not load play counts', e); return {}; });
@@ -113,17 +137,11 @@ async function init() {
   if (masteryData && masteryData.length) {
     for (const m of masteryData) _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
   }
-  if (freshCategories && freshCategories.length) {
-    categories = freshCategories;
-    setCachedCategories(freshCategories);
-  }
+  _playCountsKnown = true;
 
-  // 6) Render or patch
-  if (!hadCache) {
-    // First visit — replace skeletons with full render
-    if (categories.length) {
-      renderCategories(categories, categoryPlayCounts);
-    } else {
+  // 6) Patch the cards already on screen. A rebuild would close a subject the
+  // player has already opened, now that the cards are tappable from the start.
+  if (!hadCache && !(freshCategories && freshCategories.length)) {
       const reason = categoriesError
         ? `${categoriesError.message || 'Unknown error'}${categoriesError.code ? ' (' + categoriesError.code + ')' : ''}`
         : 'Empty result from server';
@@ -140,19 +158,9 @@ async function init() {
           '<button class="btn" style="margin-top:16px;" onclick="location.reload()">Retry</button>' +
         '</div>';
       showToast('Failed to load categories', 'error');
-    }
   } else {
-    // Return visit — cards already visible from cache. Patch in-place to avoid blink.
     patchCategoryCards(categoryPlayCounts);
   }
-
-  // Always attach listeners even if data fetch fails
-  attachListeners();
-  initThemeToggle();
-
-  // Trap browser back button — always go to index.html
-  history.pushState({ page: 'host' }, '');
-  window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
 }
 
 // --- Render category cards ---
@@ -170,7 +178,10 @@ function renderCategories(cats, playCounts = {}) {
     const ringHtml = _isLoggedIn ? `<div class="category-card__ring" style="--mastery-pct: ${pct}"></div>` : '';
     // Wild-card card shows a placeholder count — replaced with total DB count async
     const countId = cat.name === 'wild-card' ? 'id="wc-card-count"' : '';
-    const displayCount = cat.count;
+    // Unknown is a blank line, never "null questions" or "0 plays": these are
+    // drawn before the bank or the play counts have answered.
+    const countText = cat.count == null ? '\u00a0' : `${cat.count} questions`;
+    const playsText = _playCountsKnown ? `${plays.toLocaleString()} plays` : '\u00a0';
     return `
       <div class="category-card" data-category="${cat.name}" data-hiero="${meta.icon}"${tierAttr}>
         <div class="category-card__icon-wrap">
@@ -178,8 +189,8 @@ function renderCategories(cats, playCounts = {}) {
           <div class="category-card__icon">${meta.emoji || meta.icon}</div>
         </div>
         <div class="category-card__name">${meta.label}</div>
-        <div class="category-card__count" ${countId}>${displayCount} questions</div>
-        <div class="category-card__plays">${plays.toLocaleString()} plays</div>
+        <div class="category-card__count" ${countId}>${countText}</div>
+        <div class="category-card__plays">${playsText}</div>
       </div>
     `;
   }).join('');
@@ -205,15 +216,26 @@ function renderCategories(cats, playCounts = {}) {
  */
 function patchCategoryCards(playCounts = {}) {
   const cards = $$('.category-card', categoryGrid);
+  // The server named a different set of subjects from the one drawn: rebuild,
+  // unless the player is inside one, which a rebuild would close under them.
+  const drawn = cards.map(c => c.dataset.category).sort().join('|');
+  const known = categories.map(c => c.name).sort().join('|');
+  const subOpen = $('#subcategory-view')?.style.display !== 'none' && navStack.length > 0;
+  if (drawn !== known && !subOpen && !searchInput.value.trim()) {
+    renderCategories(categories, playCounts);
+    return;
+  }
   for (const card of cards) {
     const catName = card.dataset.category;
     if (!catName) continue;
-    // Update play count text
+    const cat = categories.find(c => c.name === catName);
+    // Wild card's number is the whole bank, fetched on its own in renderCategories
+    const countEl = card.querySelector('.category-card__count');
+    if (countEl && catName !== 'wild-card' && cat?.count != null) countEl.textContent = `${cat.count} questions`;
     const playsEl = card.querySelector('.category-card__plays');
-    if (playsEl) playsEl.textContent = `${(playCounts[catName] || 0).toLocaleString()} plays`;
+    if (playsEl && _playCountsKnown) playsEl.textContent = `${(playCounts[catName] || 0).toLocaleString()} plays`;
     // Update mastery ring
     if (_isLoggedIn) {
-      const cat = categories.find(c => c.name === catName);
       const total = cat?.count || 1;
       const mastered = _masteryCounts[catName] || 0;
       const pct = Math.round((mastered / total) * 100);
