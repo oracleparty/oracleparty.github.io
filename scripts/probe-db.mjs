@@ -1263,6 +1263,60 @@ console.log('\n--- CAN A REJOINING PLAYER RECOVER THEIR ANSWERS? ---');
 }
 
 // ============================================
+// CAN A LOCKED FINAL WAGER BE SAVED?
+//
+// Reported 2026-10-26: on the final-wager screen everybody's row read
+// "Waiting..." for the whole game. lockInFinalWager writes a __WAGER_LOCKED__
+// row with question_id NULL (since c803c84, 2026-09-09: at the moment a wager
+// is locked nobody knows which question it will be against). `answers`
+// predates migrations/, so whether the live column ALLOWS null is in no file
+// here — and if it does not, every lock dies on 23502, which only reaches a
+// log, and nobody ever sees anybody's wager. The robots cannot see this: the
+// scratch schema and the fake store both allow it.
+//
+// The insert cannot write anything: NOT NULL is checked before the foreign key
+// (an AFTER trigger), and room_id names a room that does not exist, so the
+// best outcome is 23503. It only runs when the key to `rooms` has just been
+// seen to exist — without that key a nullable column would let a row land.
+// ============================================
+
+console.log('\n--- CAN A LOCKED FINAL WAGER BE SAVED? (nothing is written) ---');
+{
+  const rooms = await req('answers?select=id,rooms(id)&limit=1');
+  if (rooms.status < 200 || rooms.status >= 300) {
+    console.log(`  NOT PROBED — the answers -> rooms key could not be confirmed (HTTP ${rooms.status}), and without it the probe could write a row.`);
+  } else {
+    const ghost = '00000000-0000-4000-8000-00000000beef';
+    const r = await req('answers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        room_id: ghost, player_id: ghost, question_number: 999, question_id: null,
+        wager: 0, submitted_answer: '__probe__', is_correct: false, auto_correct: false, score_earned: 0,
+      }),
+    });
+    const code = pgCode(r.body);
+    let msg = '';
+    try { msg = JSON.parse(r.body || '{}').message || ''; } catch { /* ignore */ }
+    if (code === '23502') {
+      console.log(`  *** REFUSED: ${msg || 'a NOT NULL column'} ***`);
+      if (/question_id/.test(msg)) {
+        console.log('      answers.question_id is NOT NULL on the live table, so EVERY locked final');
+        console.log('      wager is refused and the wager screen reads "Waiting..." for everybody.');
+        process.exitCode = 1;
+      }
+    } else if (code === '23503') {
+      console.log('  ok — a row with no question_id passes every column rule (stopped by the room key, nothing written)');
+    } else if (r.status >= 200 && r.status < 300) {
+      console.log('  *** A ROW WAS WRITTEN — the room key did not stop it. Delete room_id ' + ghost + ' by hand. ***');
+      process.exitCode = 1;
+    } else {
+      console.log(`  cannot tell (HTTP ${r.status}${code ? ' / ' + code : ''}) ${msg}`);
+    }
+  }
+}
+
+// ============================================
 // QUESTIONS FILED WHERE NOTHING CAN FIND THEM
 //
 // `questions.subcategory` is free text with no constraint and no foreign key.
