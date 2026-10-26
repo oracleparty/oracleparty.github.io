@@ -8853,3 +8853,43 @@ body.kb-open #question-screen .question-card {
   padding: var(--space-md) 0 var(--space-sm);
   line-height: 1.5;
 }
+
+/* ===== Chaos mode (migration 075) — the host's room-wide setting, shown to
+   everybody so a honk mid-question reads as the setting rather than a bug.
+   Text in --color-text on a surface, never a coloured fill: a fill cannot
+   answer to three palettes, which is how the tier badges broke. ===== */
+.chaos-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  align-self: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-surface-light);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.chaos-pill.hidden { display: none; }
+.lobby-room__card .chaos-pill { margin: 0 auto var(--space-sm); }
+.chaos-pill--header { padding: 0 6px; }
+
+/* A player's own honk sound switch. 36px is the floor for a thumb here, and
+   the icon is small inside it; the label is in aria-label / title. */
+.honk-sound-toggle {
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.lobby-bar .honk-sound-toggle { min-width: 32px; height: 32px; font-size: 14px; opacity: 0.8; }

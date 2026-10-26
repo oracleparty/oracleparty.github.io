@@ -106,6 +106,7 @@ export class FakeStore {
         'room_scores', 'host_name', 'status',
         'category', 'subcategory', 'who_can_join',
         'questions_per_game', 'question_timer', 'auto_proceed',
+        'chaos',   // migration 075
       ])],
     ]);
     this._shutDoors = new Map([

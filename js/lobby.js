@@ -47,10 +47,11 @@ import {
   fetchQuestionCount,
   toggleMessageHeart,
   fetchAllOpenQuestionCount,
-  fetchExclusiveWildCardCount
+  fetchExclusiveWildCardCount,
+  chaosAvailable
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
-import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem } from './honk.js';
+import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkChaos, attachHonkSoundToggle } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
@@ -193,6 +194,13 @@ async function init() {
     window.location.href = 'index.html';
     return;
   }
+  // The room row is the truth about Chaos mode; sessionStorage may predate a
+  // change the host made while this phone was on another page.
+  if (room.settings && currentRoom.chaos !== undefined) {
+    room.settings.chaos = !!currentRoom.chaos;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+  }
+  updateChaosDisplay();
 
   // If we explicitly came from a game ending (Play Again / Quit / "Return to Lobby"
   // notice), trust the flag over the DB read. The host's lobby-reset write may still
@@ -245,6 +253,10 @@ async function init() {
   // Honk system
   initHonkSystem(room.id, room.playerId, () => {
     renderPlayers();
+  });
+  attachHonkSoundToggle($('#btn-honk-sound'));
+  chaosAvailable().then(ok => {
+    if (ok) settingsModal?.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
   });
 
   // Honk / transfer / co-host click handling (event delegation).
@@ -1377,6 +1389,8 @@ function attachSettingsListeners() {
       let value = option.dataset.value;
       if (key === 'questionsPerGame' || key === 'questionTimer' || key === 'autoProceed') {
         value = parseInt(value, 10);
+      } else if (key === 'chaos') {
+        value = value === '1';
       }
       handleSettingChange(key, value);
     });
@@ -1944,6 +1958,17 @@ async function handleStartGame() {
 }
 
 // --- Settings Modal (host) ---
+/**
+ * Chaos mode is the host's call and EVERYBODY can see it is on — honks going off
+ * while somebody types would otherwise read as a bug.
+ */
+function updateChaosDisplay() {
+  const on = !!room?.settings?.chaos;
+  setHonkChaos(on);
+  const pill = $('#lobby-chaos');
+  if (pill) pill.classList.toggle('hidden', !on);
+}
+
 function updateCategoryDisplay() {
   const meta = CATEGORY_META[room.category] || { icon: '?', label: room.category };
   const icon = resolveSubcategoryIcon(room.category, room.subcategory);
@@ -2091,7 +2116,9 @@ function syncTogglesToSettings() {
     const key = group.dataset.setting;
     // Default autoProceed to 0 for rooms created before the feature existed
     const raw = room.settings[key];
-    const currentValue = String(raw !== undefined && raw !== null ? raw : (key === 'autoProceed' ? 0 : ''));
+    const currentValue = key === 'chaos'
+      ? (raw ? '1' : '0')
+      : String(raw !== undefined && raw !== null ? raw : (key === 'autoProceed' ? 0 : ''));
     group.querySelectorAll('.toggle-option').forEach(opt => {
       opt.classList.toggle('active', opt.dataset.value === currentValue);
     });
@@ -2105,7 +2132,8 @@ async function handleSettingChange(key, value) {
     whoCanJoin: 'who_can_join',
     questionsPerGame: 'questions_per_game',
     questionTimer: 'question_timer',
-    autoProceed: 'auto_proceed'
+    autoProceed: 'auto_proceed',
+    chaos: 'chaos'
   };
   const column = columnMap[key];
   if (!column) return;
@@ -2124,6 +2152,11 @@ async function handleSettingChange(key, value) {
 
   // Persist to sessionStorage
   sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+
+  if (key === 'chaos') {
+    updateChaosDisplay();
+    addSystemMessage(value ? 'Chaos mode is on — honks never stop' : 'Chaos mode is off');
+  }
 
   // Push to Supabase (triggers Realtime for other players)
   await updateGameState(room.id, { [column]: value });
@@ -2192,6 +2225,13 @@ function handleRoomChange(payload) {
 
     if (newRoom.auto_proceed !== undefined && newRoom.auto_proceed !== room.settings.autoProceed) {
       room.settings.autoProceed = newRoom.auto_proceed;
+      changed = true;
+    }
+
+    if (newRoom.chaos !== undefined && !!newRoom.chaos !== !!room.settings.chaos) {
+      room.settings.chaos = !!newRoom.chaos;
+      updateChaosDisplay();
+      addSystemMessage(room.settings.chaos ? 'Host turned on Chaos mode — honks never stop' : 'Host turned off Chaos mode');
       changed = true;
     }
 

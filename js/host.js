@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
-import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount, chaosAvailable } from './supabase.js';
 import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
@@ -25,7 +25,8 @@ let settings = {
   whoCanJoin: 'anyone',
   questionsPerGame: 10,
   questionTimer: 30,
-  autoProceed: 0
+  autoProceed: 0,
+  chaos: 0
 };
 
 // --- DOM refs ---
@@ -85,6 +86,10 @@ async function init() {
   // Listeners go on NOW. They used to wait for every read below, so a card
   // tapped while the page was still loading did nothing at all.
   attachListeners();
+  // Chaos mode needs migration 075; until then the switch is not offered.
+  chaosAvailable().then(ok => {
+    if (ok) $$('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
+  });
   initThemeToggle();
   history.pushState({ page: 'host' }, '');
   window.addEventListener('popstate', () => { window.location.href = 'index.html'; });
@@ -608,7 +613,7 @@ function attachListeners() {
       // Update settings
       const settingKey = group.dataset.setting;
       const value = option.dataset.value;
-      if (settingKey === 'questionsPerGame' || settingKey === 'questionTimer' || settingKey === 'autoProceed') {
+      if (settingKey === 'questionsPerGame' || settingKey === 'questionTimer' || settingKey === 'autoProceed' || settingKey === 'chaos') {
         settings[settingKey] = parseInt(value, 10);
       } else {
         settings[settingKey] = value;
@@ -681,7 +686,8 @@ async function handleHostGame() {
       whoCanJoin: settings.whoCanJoin,
       questionsPerGame: settings.questionsPerGame,
       questionTimer: settings.questionTimer,
-      autoProceed: settings.autoProceed
+      autoProceed: settings.autoProceed,
+      chaos: settings.chaos === 1
     });
 
     if (error) {
@@ -749,7 +755,8 @@ async function handleHostGame() {
         whoCanJoin: data.who_can_join,
         questionsPerGame: data.questions_per_game,
         questionTimer: data.question_timer,
-        autoProceed: data.auto_proceed || 0
+        autoProceed: data.auto_proceed || 0,
+        chaos: !!data.chaos
       }
     }));
 

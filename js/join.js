@@ -197,7 +197,8 @@ async function joinRoom(code) {
         whoCanJoin: room.who_can_join,
         questionsPerGame: room.questions_per_game,
         questionTimer: room.question_timer,
-        autoProceed: room.auto_proceed || 0
+        autoProceed: room.auto_proceed || 0,
+        chaos: !!room.chaos
       }
     }));
 

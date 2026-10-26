@@ -33,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20261026c">
+  <link rel="stylesheet" href="css/style.css?v=20261026d">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body style="opacity:0">
@@ -45,6 +45,7 @@
       <div class="lobby-bar">
         <span class="lobby-bar__brand">Oracle Party</span>
         <span class="lobby-bar__spacer"></span>
+        <button id="btn-honk-sound" class="honk-sound-toggle" aria-label="Honk sound">🔊</button>
         <button class="theme-toggle" aria-label="Toggle theme">🌙</button>
         <button id="btn-leave" class="leave-btn">Leave</button>
       </div>
@@ -62,6 +63,7 @@
               <span id="lobby-category-icon" class="lobby-room__card-icon"></span>
               <span id="lobby-category" class="lobby-room__card-label"></span>
             </div>
+            <span id="lobby-chaos" class="chaos-pill hidden" title="Chaos mode: honks sound even while people answer">🔥 Chaos mode</span>
             <button id="btn-copy-code" class="lobby-room__card-bottom" aria-label="Copy room code">
               <span id="lobby-code" class="lobby-room__card-code"></span>
               <span class="lobby-room__card-hint">tap to copy</span>
@@ -159,6 +161,15 @@
         <p class="settings-group__hint">Auto-advances between rounds after host reveals answers.</p>
       </div>
 
+      <div class="settings-group hidden" data-chaos-setting>
+        <div class="settings-group__label">Chaos Mode</div>
+        <div class="toggle-group" data-setting="chaos">
+          <button class="toggle-option active" data-value="0">Off</button>
+          <button class="toggle-option" data-value="1">On 🔥</button>
+        </div>
+        <p class="settings-group__hint">Honks sound and show even while people are answering. Everyone can see it's on.</p>
+      </div>
+
       <button id="btn-close-settings" class="btn btn-primary btn-block" style="margin-top: var(--space-lg);">Done</button>
     </div>
   </div>
@@ -209,7 +220,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/lobby.js?v=20261026c"></script>
+  <script type="module" src="js/lobby.js?v=20261026d"></script>
 
 </body>
 </html>

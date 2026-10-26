@@ -1044,7 +1044,10 @@ const REQUIRED = {
             'auto_proceed', 'who_can_join', 'used_question_ids',
             // Migration 038 — the lobby's cumulative Room Scores tally. Without
             // it the section simply never appears.
-            'room_scores'],
+            'room_scores',
+            // Migration 075 — Chaos mode. Missing reads as a missing feature,
+            // not a fault: chaosAvailable() hides the host's switch.
+            'chaos'],
   answers: ['id', 'room_id', 'player_id', 'question_number', 'question_id',
             'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned',
             // Migration 043 — the marker that makes recording a round

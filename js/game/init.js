@@ -44,7 +44,7 @@ import {
 } from '../supabase.js';
 import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
-import { initHonkSystem, sendHonk, destroyHonkSystem } from '../honk.js';
+import { initHonkSystem, sendHonk, destroyHonkSystem, attachHonkSoundToggle } from '../honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
 import { initKeyboardInset } from '../keyboard-inset.js';
 import { updatePresence } from '../presence.js';
@@ -63,7 +63,7 @@ import {
   updateTypingUI,
 } from './chat.js';
 import {
-  initHostSettingsPanel, hideHostSettingsGear,
+  initHostSettingsPanel, hideHostSettingsGear, syncChaosDisplay,
   resetReturnConfirm, registerCleanup as registerHostCleanup,
 } from './host.js';
 import {
@@ -196,6 +196,12 @@ async function init() {
     window.location.replace('lobby.html');
     return;
   }
+
+  // Chaos mode: the row is the truth, and every phone shows it.
+  if (roomCheck.chaos !== undefined && state.room.settings) {
+    state.room.settings.chaos = !!roomCheck.chaos;
+  }
+  syncChaosDisplay();
 
   // Session resume: since handleUnload now marks disconnected_at instead of deleting,
   // the player row should still exist after a refresh. Clear the disconnect flag.
@@ -381,6 +387,7 @@ async function init() {
     // Re-render visible player rows to update honk badges
     updateHonkBadges();
   });
+  attachHonkSoundToggle($('#btn-honk-sound'));
 
   // Honk click handler (event delegation on scores + results containers)
   // Note: #reveal-answers is NOT included here because renderRevealAnswers()

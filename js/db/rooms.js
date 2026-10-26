@@ -21,7 +21,24 @@ export function generateRoomCode() {
  * Create a new room in Supabase.
  * Retries once on code collision.
  */
-export async function createRoom({ hostName, category, subcategory, whoCanJoin, questionsPerGame, questionTimer, autoProceed }) {
+/**
+ * Does the live `rooms` table have the Chaos column yet (migration 075)?
+ *
+ * Asked once per page and cached. The switch is shown only on a yes: offering a
+ * control the database will refuse is the dead button this project keeps
+ * finding. A failed read answers no, which hides the switch — the harmless way.
+ */
+let _chaosAvailable = null;
+export function chaosAvailable() {
+  if (!_chaosAvailable) {
+    _chaosAvailable = supabase.from('rooms').select('chaos').limit(1)
+      .then(({ error }) => !error)
+      .catch(() => false);
+  }
+  return _chaosAvailable;
+}
+
+export async function createRoom({ hostName, category, subcategory, whoCanJoin, questionsPerGame, questionTimer, autoProceed, chaos }) {
   const roomPayload = {
     code: generateRoomCode(),
     host_name: hostName,
@@ -35,6 +52,8 @@ export async function createRoom({ hostName, category, subcategory, whoCanJoin, 
   // works even when the subcategory column hasn't been added to the DB yet
   if (subcategory) roomPayload.subcategory = subcategory;
   if (autoProceed) roomPayload.auto_proceed = autoProceed;
+  // Only when on: a room created with it off must still work before 075 runs.
+  if (chaos) roomPayload.chaos = true;
 
   const { data, error } = await supabase
     .from('rooms')

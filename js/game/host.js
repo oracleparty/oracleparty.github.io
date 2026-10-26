@@ -7,7 +7,8 @@ import { state, _isLeaving, setIsLeaving, _hostSettingsConfirmTimer, setHostSett
 import { $, navigateWithFadeReplace } from '../utils.js';
 import { logger } from '../logger.js';
 import { RETURN_HOME_DELAY_MS } from '../constants.js';
-import { updateGameState, updateRoomStatus, deleteAnswersByRoom, setPhaseOnServer } from '../supabase.js';
+import { updateGameState, updateRoomStatus, deleteAnswersByRoom, setPhaseOnServer, chaosAvailable } from '../supabase.js';
+import { setHonkChaos } from '../honk.js';
 
 // Cleanup callback — registered by init.js to avoid circular imports
 let _cleanup = null;
@@ -45,6 +46,38 @@ export function initHostSettingsPanel() {
 
   // Return to Lobby — double-tap confirmation
   returnBtn.onclick = () => handleReturnToLobby();
+
+  // Chaos mode needs migration 075; until then the switch is not offered.
+  chaosAvailable().then(ok => {
+    if (ok) sheet.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
+  });
+}
+
+// ============================================
+// CHAOS MODE — visible to everybody
+// ============================================
+
+/**
+ * Apply the room's Chaos setting on this phone: lift the no-honks-while-
+ * answering rule, and show "🔥 Chaos" in every screen header so nobody reads a
+ * honk mid-question as a bug. Every phone calls this, not only the host.
+ */
+export function syncChaosDisplay() {
+  const on = !!state.room?.settings?.chaos;
+  setHonkChaos(on);
+  document.querySelectorAll('.game-progress').forEach(progress => {
+    let pill = progress.querySelector('.chaos-pill');
+    if (!pill) {
+      if (!on) return;
+      pill = document.createElement('span');
+      pill.className = 'chaos-pill chaos-pill--header';
+      pill.textContent = '🔥 Chaos';
+      pill.title = 'Chaos mode: honks sound even while people answer';
+      const gear = progress.querySelector('.host-settings-gear');
+      progress.insertBefore(pill, gear || null);
+    }
+    pill.classList.toggle('hidden', !on);
+  });
 }
 
 function openHostSettingsSheet() {
@@ -72,7 +105,9 @@ function syncHostSettingsToggles() {
   sheet.querySelectorAll('.toggle-group[data-game-setting]').forEach(group => {
     const key = group.dataset.gameSetting;
     let currentValue;
-    if (key === 'autoProceed') {
+    if (key === 'chaos') {
+      currentValue = state.room?.settings?.chaos ? '1' : '0';
+    } else if (key === 'autoProceed') {
       currentValue = String(state.autoProceedSeconds || 0);
     } else if (key === 'questionTimer') {
       currentValue = String(state.timerSeconds || 30);
@@ -89,6 +124,15 @@ async function handleGameSettingChange(key, value) {
     autoProceed: 'auto_proceed',
     questionTimer: 'question_timer'
   };
+
+  if (key === 'chaos') {
+    const on = value === '1';
+    if (state.room?.settings) state.room.settings.chaos = on;
+    sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
+    syncChaosDisplay();
+    await updateGameState(state.room.id, { chaos: on });
+    return;
+  }
 
   // Update local state
   if (key === 'autoProceed') {

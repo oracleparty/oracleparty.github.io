@@ -95,6 +95,43 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-26 (later) — Chaos mode (migration 075), and honks ignore the silent switch
+>
+> **The owner's design, settled in conversation.** Ordinarily honks are dropped
+> while somebody is answering (the default). **Chaos mode** is a host setting on
+> the create-room screen, the lobby settings sheet and the in-game gear; it is
+> stored on the room (`rooms.chaos`, 075) and **every phone shows "🔥 Chaos"**:
+> on the lobby's room card, and in each game screen's header. With it on, honks
+> sound and show at every moment. `setHonkChaos` in `honk.js` lifts the
+> answering rule and nothing else.
+>
+> **Every player has a 🔊 switch** (lobby top bar, game chat bar), saved in
+> localStorage. It turns honk SOUND off on that phone only; the ducks and the
+> avatar shake still show, so a muted player still sees the chaos. It can only
+> make things quieter. That was the owner's open question and this is the
+> recommended answer — revisit if they decide otherwise.
+>
+> **075 NOT APPLIED until the owner runs it.** The switch is hidden until
+> `chaosAvailable()` can read the column, so before then it is a missing feature,
+> never a dead control. 061 grants rooms columns by name, so 075 GRANTs `chaos`
+> or the host's write would be refused with 42501. The fake store's grant list
+> carries it.
+>
+> **Received honks are `<audio>` again, from a pool unlocked inside taps.** The
+> 20261026c fix used Web Audio, and **Web Audio obeys the iPhone silent switch
+> while `<audio>` does not** — the sender's own honk was always `<audio>`, which
+> is why the owner heard their own. Owner's call: honks are a game sound, not a
+> notification, so they ignore the switch. Web Audio is only the fallback. Still
+> a lead about iOS, not a measurement.
+>
+> `scenario-chaos` (in CI) checks both directions: Chaos on lets a honk reach
+> somebody answering, Chaos off still drops it; sound off plays nothing and
+> still shows a duck, sound on plays. Break-tested: ignoring Chaos and ignoring
+> the sound switch each fail by name.
+>
+> **074: the owner says they ran it (2026-10-26). No row pasted yet**; the CI
+> probe's "CAN A LOCKED FINAL WAGER BE SAVED?" section measures it.
+
 > ## 2026-10-26 — every locked final wager was refused (migration 074), and honks
 >
 > **"Final question we should see each other's wagers"** — the screen already

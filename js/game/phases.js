@@ -39,7 +39,7 @@ import {
   beginRoundClock,
 } from './state.js';
 import { showChatBar, hideChatBar } from './chat.js';
-import { initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear } from './host.js';
+import { initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear, syncChaosDisplay } from './host.js';
 import { showQuestionScreen, doSubmitAnswer, startTimer, showTimerExpired } from './question.js';
 import {
   showRevealScreen, renderRevealAnswers, enableRevealButton,
@@ -239,7 +239,7 @@ export function handleRoomChange(payload) {
   }
 
   if (!payload.new) return;
-  const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status, category, subcategory, question_timer, auto_proceed } = payload.new;
+  const { game_phase, current_question, question_ids, question_started_at, countdown_started_at, status, category, subcategory, question_timer, auto_proceed, chaos } = payload.new;
 
   // Sync category/subcategory if changed (host changed settings)
   if (category && state.room) state.room.category = category;
@@ -253,6 +253,11 @@ export function handleRoomChange(payload) {
   if (auto_proceed !== undefined && state.room?.settings) {
     state.autoProceedSeconds = Number(auto_proceed) || 0;
     state.room.settings.autoProceed = state.autoProceedSeconds;
+  }
+  if (chaos !== undefined && state.room?.settings && !!chaos !== !!state.room.settings.chaos) {
+    state.room.settings.chaos = !!chaos;
+    try { sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room)); } catch { /* storage full */ }
+    syncChaosDisplay();
   }
 
   // BUG 2 FIX: When room status changes to 'lobby', DON'T auto-navigate all players.

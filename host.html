@@ -32,7 +32,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20261026c">
+  <link rel="stylesheet" href="css/style.css?v=20261026d">
 </head>
 <body style="opacity:0">
 
@@ -127,6 +127,15 @@
         <p class="settings-group__hint">Auto-advances between rounds after host reveals answers.</p>
       </div>
 
+      <div class="settings-group hidden" data-chaos-setting>
+        <div class="settings-group__label">Chaos Mode</div>
+        <div class="toggle-group" data-setting="chaos">
+          <button class="toggle-option active" data-value="0">Off</button>
+          <button class="toggle-option" data-value="1">On 🔥</button>
+        </div>
+        <p class="settings-group__hint">Honks sound and show even while people are answering. Everyone can see it's on.</p>
+      </div>
+
       <button id="btn-host-game" class="btn btn-primary btn-block">Host Game</button>
       <p id="host-error" class="error-msg"></p>
     </div>
@@ -163,7 +172,7 @@
   </div>
 
   <!-- ===== SCRIPTS ===== -->
-  <script type="module" src="js/host.js?v=20261026c"></script>
+  <script type="module" src="js/host.js?v=20261026d"></script>
 
   <!-- Glyph tuner: visit host.html?tune=𓂀 (or any hiero) to get live sliders -->
   <script>
