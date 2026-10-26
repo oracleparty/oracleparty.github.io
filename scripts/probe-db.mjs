@@ -1303,6 +1303,7 @@ console.log('\n--- CAN A LOCKED FINAL WAGER BE SAVED? (nothing is written) ---')
       if (/question_id/.test(msg)) {
         console.log('      answers.question_id is NOT NULL on the live table, so EVERY locked final');
         console.log('      wager is refused and the wager screen reads "Waiting..." for everybody.');
+        console.log('      Fix: run migrations/074_a_locked_wager_names_no_question.sql.');
         process.exitCode = 1;
       }
     } else if (code === '23503') {

@@ -175,7 +175,10 @@ CREATE TABLE IF NOT EXISTS answers (
   -- that cascade is now the only thing stopping orphans accumulating.
   player_id uuid,
   question_number int NOT NULL,
-  question_id uuid,
+  -- NOT NULL, as the live table has it — measured 2026-10-26 by the CI probe,
+  -- and in no migration file. 074 drops it. Allowing NULL here is what let
+  -- every check pass while every locked final wager was being refused live.
+  question_id uuid NOT NULL,
   wager int,
   submitted_answer text DEFAULT '',
   is_correct boolean DEFAULT false,

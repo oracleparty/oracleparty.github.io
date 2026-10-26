@@ -95,6 +95,43 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-26 — every locked final wager was refused (migration 074), and honks
+>
+> **"Final question we should see each other's wagers"** — the screen already
+> draws a locked wager beside each name, and the owner saw "Waiting..." for
+> everybody all game. **MEASURED by the CI probe on `0403654`:** the live
+> `answers.question_id` is **NOT NULL**, in no migration file. Since `c803c84`
+> (2026-09-09) `lockInFinalWager` writes the placeholder with `question_id`
+> NULL on purpose (the final question is swapped after the wagers are in), so
+> every lock died on 23502, into a log. Scoring survived — the final answer
+> carries its own wager — so the loss was the display and "locked is locked".
+>
+> **074 drops the NOT NULL. NOT APPLIED until the owner runs it**; the probe
+> exits 1 and names the fix until then. The scratch schema now carries the
+> NOT NULL so `verify-sql` reproduces the live error word for word without 074.
+> **The robots still cannot see this**: the fake store accepts NULL. A probe
+> section ("CAN A LOCKED FINAL WAGER BE SAVED?") is what watches it, and it
+> writes nothing — NOT NULL is checked before the room key, which stops it.
+>
+> **Honks, reported on FaceTime: each person heard their own and never the
+> other's.** A received honk plays from a Realtime event with no tap, through a
+> freshly cloned `<audio>` — and iOS Safari's gesture rule is per element, so
+> that clone was never unlocked. Received honks now play through Web Audio, which
+> unlocks per context on any tap; the sender keeps the old path, which works.
+> **A lead from reading, NOT measured** — nothing here runs iOS Safari. The owner
+> also could not hear their OWN honks between questions; the harness shows the
+> sender's duck there, so that is unexplained (FaceTime routing or the ringer are
+> the candidates, and neither can be tested here).
+>
+> Two measured faults on the way, by a scratch probe: the final-wager screen
+> drew honk buttons while honks were muted there (hideChatBar mutes them), so
+> they did nothing on either phone; and its list added a tap handler on every
+> redraw, so one tap sent several honks. **No CI check covers either.**
+>
+> **Chaos mode: proposed, not built** — the owner asked for advice. Honks are
+> ALREADY dropped while somebody is answering (the owner's chosen "non-chaos"
+> behaviour); chaos would lift that.
+
 > ## 2026-10-26 — the host slept, lost the seat, and both phones were wrong
 >
 > **Reported:** *"I had gone afk for a few minutes. Came back it said i was

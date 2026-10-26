@@ -17,27 +17,88 @@ honkAudio.preload = 'auto';
 let _honkMuted = false;
 
 // Mobile browsers require a user gesture before playing audio.
-// Unlock the audio context on the first tap anywhere on the page by
-// playing a tiny silent WAV via a SEPARATE disposable Audio element.
-// This avoids touching honkAudio (no muted/paused state that could
-// interfere if the first user interaction is a honk button tap).
+//
+// A HONK YOU RECEIVE PLAYS WITH NO GESTURE AT ALL — it arrives over Realtime —
+// and that is the case the old unlock could never cover. It played a silent WAV
+// through a separate throwaway <audio>, and every honk then played through a
+// brand-new clone. iOS Safari's gesture rule is per media ELEMENT, so the clone
+// made inside a broadcast handler was never unlocked and its play() was
+// rejected, into a catch that swallowed it. Reported 2026-10-26, two iPhones:
+// each person heard their OWN honks (played inside the tap) and never the
+// other's. A lead from how the code reads, not a measurement — nothing here can
+// run iOS Safari.
+//
+// Web Audio unlocks per CONTEXT instead: resume one AudioContext inside a tap
+// and every later sound through it plays, whatever started it. So a received
+// honk goes through Web Audio. The sender keeps the <audio> path — it is inside
+// the tap, it already works, and it behaves exactly as before.
+//
+// iOS can suspend or "interrupt" the context (a call, a backgrounded tab), so
+// every tap asks for it to resume while it is not running.
 const _SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 let _audioUnlocked = false;
-function _unlockAudio() {
-  if (_audioUnlocked) return;
-  _audioUnlocked = true;
-  const tmp = new Audio(_SILENT_WAV);
-  tmp.play().catch(() => {});
-  document.removeEventListener('touchstart', _unlockAudio, true);
-  document.removeEventListener('click', _unlockAudio, true);
+let _ctx = null;
+let _honkBuffer = null;
+let _honkBufferLoading = null;
+
+function _audioContext() {
+  if (_ctx) return _ctx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  try { _ctx = new AC(); } catch { _ctx = null; }
+  return _ctx;
 }
+
+function _loadHonkBuffer() {
+  if (_honkBuffer || _honkBufferLoading || !_ctx) return;
+  _honkBufferLoading = fetch('honk.mp3')
+    .then(r => r.arrayBuffer())
+    // The callback form, because older Safari's decodeAudioData returns no promise.
+    .then(data => new Promise((resolve, reject) => _ctx.decodeAudioData(data, resolve, reject)))
+    .then(buf => { _honkBuffer = buf; })
+    .catch(() => { _honkBufferLoading = null; });
+}
+
+function _unlockAudio() {
+  if (!_audioUnlocked) {
+    _audioUnlocked = true;
+    const tmp = new Audio(_SILENT_WAV);
+    tmp.play().catch(() => {});
+  }
+  const ctx = _audioContext();
+  if (!ctx) return;
+  if (ctx.state !== 'running') {
+    ctx.resume().catch(() => {});
+    // A one-sample buffer played inside the tap is what iOS counts as starting
+    // the context; resume() alone has not always been enough there.
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch { /* nothing to unlock with — the <audio> path still stands */ }
+  }
+  _loadHonkBuffer();
+}
+// Kept on for the life of the page, not removed after the first tap: a context
+// iOS suspends later has to be resumed by a later tap.
 document.addEventListener('touchstart', _unlockAudio, true);
 document.addEventListener('click', _unlockAudio, true);
 
 /** Suppress honk sounds + animations (e.g. during question phase). */
 export function setHonkMuted(muted) { _honkMuted = muted; }
 
-function playHonk() {
+function playHonk({ received = false } = {}) {
+  if (received && _ctx && _honkBuffer && _ctx.state === 'running') {
+    try {
+      // A fresh source per honk, so rapid honks overlap rather than cut off.
+      const src = _ctx.createBufferSource();
+      src.buffer = _honkBuffer;
+      src.connect(_ctx.destination);
+      src.start(0);
+      return;
+    } catch { /* fall through to the <audio> path */ }
+  }
   // Clone the Audio element so rapid honks OVERLAP rather than interrupt
   // each other. The previous "currentTime = 0; play()" pattern restarted
   // the single shared element on every tap, so a 10-tap spam played 10
@@ -127,7 +188,7 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
 
       // If I'm the honked player, react! (skip sound+animation when muted)
       if (targetId === localPlayerId && !_honkMuted) {
-        playHonk();
+        playHonk({ received: true });
         spawnGooseEmoji();
       }
     })

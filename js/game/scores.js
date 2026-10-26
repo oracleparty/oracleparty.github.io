@@ -45,7 +45,7 @@ import { evaluateUnlocks, hasReachedApprentice, planCelebration } from '../title
 import { loadTitleWords } from '../title-content.js';
 import { showCelebration } from '../celebration.js';
 import { CATEGORY_META } from '../categories.js';
-import { sendHonk, getHonkCount } from '../honk.js';
+import { sendHonk, getHonkCount, setHonkMuted } from '../honk.js';
 import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { screenStillFits } from './phase-order.js';
@@ -690,6 +690,11 @@ export function showFinalWagerScreen() {
   // staying open and covering final wager content
   closeChatDrawer();
   hideChatBar();
+  // hideChatBar also silences honks, which is right while somebody is TYPING an
+  // answer and wrong here: this screen is a choice between three buttons, and
+  // it draws a honk button on every row. With honks muted those buttons made
+  // no sound and no duck on either phone — a control that did nothing at all.
+  setHonkMuted(false);
 
   // Transition
   // Same hole as the question screen had, and worse: no else at all, so with a
@@ -881,11 +886,17 @@ function renderFinalWagerPlayers(lockedWagers) {
     `;
   }).join('');
 
-  // Wire honk buttons on final wager player list
-  $('#fw-player-list').addEventListener('click', (e) => {
-    const btn = e.target.closest('.honk-btn');
-    if (btn) sendHonk(btn.dataset.honkTarget);
-  });
+  // Wire honk buttons on final wager player list — ONCE. This function runs on
+  // every redraw (the first paint, each fetch, each lock), and a listener added
+  // per redraw sent one honk per redraw for a single tap.
+  const list = $('#fw-player-list');
+  if (!list.dataset.honkWired) {
+    list.dataset.honkWired = '1';
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('.honk-btn');
+      if (btn) sendHonk(btn.dataset.honkTarget);
+    });
+  }
 }
 
 export async function updateFinalWagerPlayerList() {

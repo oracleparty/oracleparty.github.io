@@ -90,6 +90,7 @@ const MIGRATIONS = [
   '071_a_favourite_answer.sql',
   '072_a_bot_keeps_its_own_record.sql',
   '073_the_final_question_in_one_trip.sql',
+  '074_a_locked_wager_names_no_question.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.
