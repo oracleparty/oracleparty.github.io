@@ -50,7 +50,7 @@ import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWe
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { screenStillFits } from './phase-order.js';
 import {
-  state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLabel,
+  state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
   _lastScoresRenderedForQuestion, setLastScoresRendered,
   _isLeaving, setIsLeaving,
@@ -251,7 +251,7 @@ export async function showScoresScreen() {
 
   // Host: show "Edit Scores" button to review/correct past judgments
   const editBtn = $('#btn-edit-scores');
-  if (canControlGame() && state.currentQuestion > 0) {
+  if (canJudge() && state.currentQuestion > 0) {
     editBtn.classList.remove('hidden');
     editBtn.onclick = showScoreEditSheet;
   } else {
@@ -360,7 +360,7 @@ function showFinalScoresState() {
   showNextButtonOnScores();
 }
 
-function showNextButtonOnScores() {
+export function showNextButtonOnScores() {
   // Clear any previous auto-proceed timer
   clearAutoProceed();
 
@@ -2004,7 +2004,7 @@ async function handleReviewQuestions() {
     let hostAnswersHtml = '';
     // Same rule as the reveal and the score-edit sheet: a disqualified round
     // shows what happened but offers no way to re-judge it.
-    if (canControlGame() && !state.disqualifiedQuestions?.has(i)) {
+    if (canJudge() && !state.disqualifiedQuestions?.has(i)) {
       // Only people still in the room. Until migration 052 an answer died with
       // its player row, so a departed player could never appear here; 052 drops
       // that key deliberately (it is what lets a rejoining player recover their

@@ -336,6 +336,21 @@ export function canControlGame() {
   return state.room?.isHost || state.room?.isCohost || state.isDeputy === true;
 }
 
+/**
+ * May this phone change a VERDICT — flip an answer, disqualify a round, edit
+ * scores? A narrower question than canControlGame, and the server already asks
+ * it: op_set_judgement and op_disqualify_round admit the host and co-host
+ * (op_is_room_host, 049) and nobody else. A DEPUTY moves the game on while the
+ * host is away; it was never given the host's say over anybody's score.
+ *
+ * Offering a deputy the toggles drew controls the database refuses. Reported
+ * 2026-10-26: "his only host power was to edit scores, he couldn't update
+ * scores or move on".
+ */
+export function canJudge() {
+  return !!(state.room?.isHost || state.room?.isCohost);
+}
+
 export function getCategoryLabel() {
   if (!state.room) return '?';
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };

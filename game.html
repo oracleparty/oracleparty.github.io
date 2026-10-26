@@ -451,6 +451,15 @@
   </div>
 
   <!-- Display Name Modal (fallback) -->
+  <div id="seat-lost-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal__title">You're no longer in this game</h2>
+      <p style="font-size: var(--text-sm); color: var(--color-text-dim); margin-bottom: var(--space-lg);">You were away long enough that your seat was given up. Rejoin to keep playing — your answers so far come with you.</p>
+      <button class="btn btn-primary btn-block" id="seat-lost-rejoin">Rejoin</button>
+      <button class="btn btn-secondary btn-block" id="seat-lost-leave" style="margin-top: var(--space-sm);">Leave</button>
+    </div>
+  </div>
+
   <div id="display-name-modal" class="modal-overlay">
     <div class="modal">
       <h2 class="modal__title">Who Goes There?</h2>

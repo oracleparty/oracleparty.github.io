@@ -3,7 +3,7 @@
 // Answer reveal, judgment overrides, feedback UI, honks.
 // ============================================
 
-import { state, canControlGame, currentGameAnswers, isPlayerAway, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
+import { state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
          showScreen,
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
@@ -564,7 +564,7 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
       // No row means nothing to flip, so the host is offered no toggle. A
       // control bound to an id that does not exist is the dead button this
       // project keeps finding.
-      const toggleHtml = (answer?.id && canControlGame() && paintColours && !isDisqualified)
+      const toggleHtml = (answer?.id && canJudge() && paintColours && !isDisqualified)
         ? `<div class="answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host" data-answer-id="${answer.id}">
              <div class="answer-toggle__thumb"></div>
            </div>`
@@ -636,7 +636,7 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
   });
 
   // Host/co-host: attach toggle click listeners (pre- and post-reveal)
-  if (canControlGame()) {
+  if (canJudge()) {
     newContainer.addEventListener('click', handleJudgmentOverride);
   }
 
@@ -807,7 +807,7 @@ export function doReveal() {
         wagerEl.classList.add(isCorrect ? 'answer-row__wager--correct' : 'answer-row__wager--incorrect');
       }
       // Host: inject toggle switches now that results are revealed
-      if (canControlGame() && answer.id && !row.querySelector('.answer-toggle')) {
+      if (canJudge() && answer.id && !row.querySelector('.answer-toggle')) {
         const toggleDiv = document.createElement('div');
         toggleDiv.className = `answer-toggle ${isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect'} answer-toggle--host`;
         toggleDiv.dataset.answerId = answer.id;
@@ -1064,7 +1064,7 @@ let _undisqualifyUnavailable = false;
  */
 function renderDisqualifyButton() {
   const dqBtn = $('#btn-disqualify-round');
-  if (!dqBtn || !canControlGame()) return;
+  if (!dqBtn || !canJudge()) return;
   const thrownOut = state.disqualifiedQuestions.has(state.currentQuestion);
   if (!thrownOut) {
     dqBtn.classList.remove('hidden');
@@ -1103,7 +1103,7 @@ function renderDisqualifyButton() {
  * papered over with a third copy of the verdict.
  */
 async function handleUndisqualifyRound() {
-  if (!canControlGame()) return;
+  if (!canJudge()) return;
   const qNum = state.currentQuestion;
   if (!state.disqualifiedQuestions.has(qNum)) return;
 
@@ -1153,7 +1153,7 @@ async function handleUndisqualifyRound() {
 }
 
 async function handleDisqualifyRound() {
-  if (!canControlGame()) return;
+  if (!canJudge()) return;
   const qNum = state.currentQuestion;
 
   // Guard against double-click

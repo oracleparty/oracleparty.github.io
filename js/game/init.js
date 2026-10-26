@@ -924,6 +924,10 @@ function handleVisibilityChange() {
   // Tab became visible — send immediate DB heartbeat so other clients
   // see us as alive right away (don't wait for 15s interval).
   playerHeartbeat(state.room.playerId).catch(() => {});
+  // And ask at once whether the seat is still ours. A phone away for a few
+  // minutes has usually been swept, and the 30s poll was the only thing that
+  // could tell it — long enough to press a host button for a seat that is gone.
+  checkStalePresence().catch(() => {});
 
   // When tab becomes visible again, sync to current game state.
   // Supabase Realtime does NOT replay missed messages after a disconnect,

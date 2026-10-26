@@ -29,7 +29,7 @@ import {
 } from '../supabase.js';
 import { getDisplayName } from '../auth.js';
 import {
-  state, canControlGame, currentGameAnswers,
+  state, canControlGame, canJudge, currentGameAnswers,
   resolveFieldMap,
   _isLeaving, setIsLeaving,
   setLastScoresRendered,
@@ -49,7 +49,7 @@ import {
 import {
   showScoresScreen, showFinalWagerScreen, showResultsScreen,
   updateScores, updateFinalWagerPlayerList, handleRevealFinalQuestion,
-  showScoreEditSheet, clearFinalWagerTimer,
+  showScoreEditSheet, clearFinalWagerTimer, showNextButtonOnScores,
 } from './scores.js';
 
 // Forward reference — registered by init.js to avoid circular imports
@@ -194,11 +194,15 @@ function _activateHostControlsForCurrentPhase() {
   }
 
   if (phase === 'scores_reveal') {
-    // Scores screen: show action button + edit scores
-    const btn = $('#btn-scores-action');
-    if (btn) btn.classList.remove('hidden');
+    // THE WHOLE SCORES FOOTER, from the function that draws it, and not three
+    // lines that imitate it. This used to un-hide the advance button and stop:
+    // it never gave it a label or an onclick, and never took "Waiting for
+    // host..." down. So somebody handed the game on the scoreboard saw the
+    // waiting line, an advance button that did nothing, and an Edit Scores
+    // that worked — reported word for word from a real game on 2026-10-26.
+    showNextButtonOnScores();
     const editBtn = $('#btn-edit-scores');
-    if (editBtn && state.currentQuestion > 0) {
+    if (editBtn && canJudge() && state.currentQuestion > 0) {
       editBtn.classList.remove('hidden');
       editBtn.onclick = showScoreEditSheet;
     }
@@ -1143,7 +1147,46 @@ function iAmTheCaretaker() {
   return present.length > 0 && String(present[0].id) === String(state.room.playerId);
 }
 
+let _seatLost = false;
+
+/**
+ * Stop acting for a seat that no longer exists, and say so.
+ *
+ * Every control on this page is drawn from state.room's flags, so those go
+ * first; then one notice with the two honest ways out. Rejoin is a reload: the
+ * game page's own init already takes a fresh seat and moves this player's
+ * answers onto it (op_reassign_answers, which only works because the old seat
+ * is gone — exactly this case). The crown is NOT asked for again, because the
+ * room has a host by now, and claimSeat would refuse it anyway.
+ */
+export function showSeatLostNotice() {
+  if (_seatLost) return;
+  _seatLost = true;
+  state.room.isHost = false;
+  state.room.isCohost = false;
+  state.isDeputy = false;
+  try { sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room)); } catch { /* ignore */ }
+  for (const id of ['btn-scores-action', 'btn-next-question', 'btn-edit-scores', 'btn-fw-reveal', 'btn-disqualify-round']) {
+    document.getElementById(id)?.classList.add('hidden');
+  }
+  hideHostSettingsGear();
+  const modal = document.getElementById('seat-lost-modal');
+  if (!modal) return;
+  document.getElementById('seat-lost-rejoin').onclick = () => {
+    setIsLeaving(true);       // no unload beacon for a seat that is not there
+    window.location.reload();
+  };
+  document.getElementById('seat-lost-leave').onclick = () => {
+    setIsLeaving(true);
+    if (_cleanup) _cleanup();
+    sessionStorage.removeItem('oracle_party_room');
+    window.location.href = 'index.html';
+  };
+  modal.classList.add('active');
+}
+
 export async function checkStalePresence() {
+  if (_seatLost) return;
   setStaleCheckCount(_staleCheckCount + 1);
   const now = Date.now();
 
@@ -1235,8 +1278,21 @@ export async function checkStalePresence() {
       state.room.isHost = !!myRow.is_host;
       state.room.isCohost = !!myRow.is_cohost;
       if (!wasHost && state.room.isHost) _activateHostControlsForCurrentPhase();
+    } else if (!_isLeaving) {
+      // THIS PHONE'S SEAT IS GONE. The others swept it while the phone was
+      // asleep — a few minutes away is past STALE_TIMEOUT_MS — and nothing on
+      // this page ever noticed: a Realtime DELETE is not delivered here at all
+      // (the room_id filter cannot match a payload carrying only the key).
+      // So the phone came back still holding host controls for a seat that
+      // did not exist, every press refused by op_may_advance, and its owner
+      // absent from their own player list. Reported 2026-10-26: "came back it
+      // said I was host... then got notification I wasn't host... I'm still
+      // in, but don't see myself in." The lobby already says this; the game
+      // page now does too.
+      showSeatLostNotice();
     }
   }
+  if (_seatLost) return;
   // While the host is merely ABSENT, deputise rather than replace. Taking the
   // role from someone who glanced at a notification means they return to find
   // they no longer run their own game. The crown moves only when they actually

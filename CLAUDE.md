@@ -95,6 +95,47 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-26 — the host slept, lost the seat, and both phones were wrong
+>
+> **Reported:** *"I had gone afk for a few minutes. Came back it said i was
+> host. Started round. Then got notification i wasnt host. Then friend said …
+> his only host power was to edit scores he couldnt update scores or move on to
+> the next question and said marker at bottom said waiting for host. On his end
+> it looked like i eventually left the lobby. On my end i'm still in, but dont
+> see myself in."* A few minutes is past `STALE_TIMEOUT_MS`, so the friend's
+> phone swept the host's seat and promoted itself. Two faults, one per phone,
+> both reproduced by `scenario-seatlost` (in CI) and both failing by name on
+> the old code.
+>
+> - **The new host on the SCOREBOARD got three lines that imitated the footer.**
+>   `_activateHostControlsForCurrentPhase`'s `scores_reveal` branch un-hid
+>   `#btn-scores-action` and stopped: no label (it read a stale "Update
+>   Scores"), no onclick, and "Waiting for host..." left up. Edit Scores was the
+>   one control it wired. It calls `showNextButtonOnScores()` now — the
+>   function that draws that footer — rather than a copy of part of it.
+> - **The swept phone never learned its seat was gone.** A Realtime DELETE is
+>   not delivered to this page (the room_id filter cannot match a key-only
+>   payload), and `checkStalePresence` only acted on its own row when it FOUND
+>   it. So the host kept host controls, every press was refused as "The host is
+>   running the game", and they were missing from their own list.
+>   `showSeatLostNotice()` drops the role flags and the controls and offers
+>   Rejoin (a reload: init takes a fresh seat and `op_reassign_answers` moves the
+>   answers, which is what it was built for) or Leave. The check also runs the
+>   moment the tab becomes visible, not only on the 30s poll.
+>
+> **A deputy is no longer offered judgement controls.** `canJudge()` in
+> `state.js` is host or co-host — the same rule `op_is_room_host` (049) applies
+> to `op_set_judgement` and `op_disqualify_round`. Toggles, disqualify and Edit
+> Scores were drawn on `canControlGame()`, which includes the deputy, so a
+> deputy was handed controls the server refuses: the other half of *"couldn't
+> update scores"* if the friend was deputised rather than promoted. Advancing
+> stays `canControlGame()`. **Inspection-verified only**: no scenario presses a
+> toggle as a deputy.
+>
+> **Not explained:** *"came back it said I was host"* is the stale flag above;
+> whether "started round" was a press of Next Question on the old controls is
+> inferred from the toast wording, not established.
+
 > ## 2026-10-26 — Choose Category showed grey boxes
 >
 > **Reported with a photograph from a real phone: six skeleton cards and

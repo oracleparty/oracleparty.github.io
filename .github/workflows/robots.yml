@@ -149,6 +149,13 @@ jobs:
       - name: Late screen — a slow scoreboard must not cover the next question
         run: node tests/harness/scenario-latescreen.mjs
 
+      # A host whose phone slept past the stale window loses the seat mid-game.
+      # Reported 2026-10-26: the friend handed the game on the scoreboard saw
+      # "Waiting for host..." and a dead advance button, and the returning host
+      # kept host controls for a seat that no longer existed.
+      - name: Seat lost — a swept host is told, the new host can advance
+        run: node tests/harness/scenario-seatlost.mjs
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.
