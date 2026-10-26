@@ -129,8 +129,10 @@
 > still shows a duck, sound on plays. Break-tested: ignoring Chaos and ignoring
 > the sound switch each fail by name.
 >
-> **074: the owner says they ran it (2026-10-26). No row pasted yet**; the CI
-> probe's "CAN A LOCKED FINAL WAGER BE SAVED?" section measures it.
+> **074 IS APPLIED — MEASURED by the CI probe on `d86a866`**: *"ok — a row with
+> no question_id passes every column rule"*. Locked final wagers can be saved
+> live, so each phone's wager should now show beside its name. The same run
+> reports `rooms *** MISSING: chaos ***`, which is 075 not yet run.
 
 > ## 2026-10-26 — every locked final wager was refused (migration 074), and honks
 >
