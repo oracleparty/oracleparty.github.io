@@ -451,6 +451,18 @@ async function handleClapTap(btn) {
   }
 }
 
+/**
+ * Has this round closed for answers? True once results are revealed, and also
+ * from the moment the room is on time's up (`reveal`) — the phase that is only
+ * ever written after every missing answer has been filled in.
+ */
+export function roundClosed() {
+  return !!state.resultsRevealed
+    || state.gamePhase === 'reveal'
+    || state.gamePhase === 'answer_reveal'
+    || state.gamePhase === 'scores_reveal';
+}
+
 export function renderRevealAnswers(answers, { holdColours = false } = {}) {
   // Colours are painted when the round is revealed AND the caller is not
   // holding them back for the reveal animation. `stillWaiting` deliberately
@@ -527,7 +539,16 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
     // somebody a verdict on an answer they did send. Afterwards the round is
     // closed and there is nothing left to be in flight, so no row means exactly
     // what an empty row means — no answer.
-    const stillWaiting = (!answer || isPlaceholder || isEmptyRow) && !state.resultsRevealed;
+    //
+    // AND ONCE THE ROOM HAS GONE TO TIME'S UP, NOBODY IS STILL WAITING EITHER.
+    // Reported 2026-10-27, every round a friend let the clock run out: the
+    // host's screen read "Waiting..." for them until Reveal Results was pressed,
+    // which looked like the game waiting on the friend when it was waiting on
+    // the host. The `reveal` phase is written only AFTER the blank fill (the
+    // host's own path and op_advance_phase both fill first), so by then an
+    // empty row is that player's answer. A real answer landing a moment later
+    // still arrives as an UPDATE and redraws the row.
+    const stillWaiting = (!answer || isPlaceholder || isEmptyRow) && !roundClosed();
     const isDisqualified = state.disqualifiedQuestions?.has(state.currentQuestion);
 
     if (!stillWaiting) {

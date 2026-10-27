@@ -162,6 +162,12 @@ jobs:
       - name: Chaos mode — honks while answering, and a player's own sound switch
         run: node tests/harness/scenario-chaos.mjs
 
+      # The clock runs out on somebody who did not answer and the host has not
+      # pressed Reveal yet. Reported 2026-10-27: the host read "Waiting..." for
+      # the friend every time, as though the round were waiting on them.
+      - name: Time's up — nobody reads Waiting once the round has closed
+        run: node tests/harness/scenario-timesup.mjs
+
       # Measures every screen at both phone widths. The robots sign in as
       # nobody, so they cannot see a layout that only breaks for an account
       # with a tier badge — which is exactly the bug that reached a live game.

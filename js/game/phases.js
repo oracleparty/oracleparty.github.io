@@ -705,6 +705,22 @@ export async function handlePhaseTransition(phase) {
       // left the player sitting on the question screen with the room gone.
       if (!state.onRevealScreen) {
         showRevealScreen();
+      } else {
+        // ALREADY ON THE REVEAL (this phone answered early): the round has just
+        // closed, so redraw it. Rows that read "Waiting..." a moment ago are
+        // now each player's answer — the blank fill ran before this phase was
+        // written — and nothing else redraws them until somebody presses
+        // Reveal Results. The time-left bar goes too: there is none.
+        const revealTimer = $('#reveal-timer');
+        if (revealTimer) revealTimer.style.display = 'none';
+        renderRevealAnswers(state.currentAnswers);
+        const round = state.currentQuestion;
+        fetchAnswersForQuestion(state.room.id, round).then(rows => {
+          if (state.currentQuestion !== round || state.resultsRevealed || !state.onRevealScreen) return;
+          state.currentAnswers = currentGameAnswers(rows);
+          renderRevealAnswers(state.currentAnswers);
+          updateRevealButtonText();
+        }).catch(() => {});
       }
       break;
     case 'answer_reveal':
