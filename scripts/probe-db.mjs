@@ -52,6 +52,12 @@ const TABLES = [
   // not a fault: the collection ships empty by design and a slot with no word
   // simply does not exist for players.
   'title_words',
+  // Migrations 071 and 072 — claps, and the bot's own record. The owner ran
+  // both on 2026-10-19 with no verification rows pasted, and none of these was
+  // on this list, so nothing had ever confirmed they exist. bot_history is
+  // public to read (072), so its row count here is the real count: zero after
+  // a game with a bot means the bot's results are not being recorded.
+  'answer_claps', 'clap_history', 'bot_history', 'bot_proficiency',
 ];
 
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
