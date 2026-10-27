@@ -443,16 +443,39 @@ try {
   await host.page.waitForTimeout(2000);
   note(`Alice is on ${await activeScreen(host)}`);
 
-  const reviewBtn = host.page.locator('#btn-review-questions');
-  if (!await reviewBtn.isVisible().catch(() => false)) {
-    problems.push(`Review Questions not offered on ${await activeScreen(host)}`);
-  } else {
+  // REVIEW QUESTIONS, on BOTH phones (2026-10-27, owner's decisions): it is a
+  // RECORD — nobody gets a right/wrong toggle after the results — and a
+  // non-host sees everybody's answers, not only their own. And it opens at
+  // once: it used to wait on two reads in series, "many seconds" on a real link.
+  for (const r of [host, bob]) {
+    const reviewBtn = r.page.locator('#btn-review-questions');
+    if (!await reviewBtn.isVisible().catch(() => false)) {
+      problems.push(`${r.name}: Review Questions not offered on ${await activeScreen(r)}`);
+      continue;
+    }
+    // A slow link for this one tap, so "opens at once" means something: the
+    // overlay must not wait for the round trip.
+    await r.slowConnection?.(1500);
+    const t0 = Date.now();
     await reviewBtn.click().catch(() => {});
-    await host.page.waitForTimeout(1800);
-    const listed = await host.page.evaluate(() =>
-      document.querySelectorAll('#review-list > *').length).catch(() => -1);
-    note(`review overlay listed ${listed} entries`);
-    if (listed <= 0) problems.push('Review Questions opened but listed nothing');
+    await r.page.waitForSelector('#review-overlay.active', { timeout: 10000 }).catch(() => {});
+    const openedIn = Date.now() - t0;
+    await r.slowConnection?.(0);
+    await r.page.waitForTimeout(2500);
+    const seen = await r.page.evaluate(() => ({
+      items: document.querySelectorAll('#review-list .review-item').length,
+      rows: document.querySelectorAll('#review-list .review-answer-row').length,
+      names: [...new Set([...document.querySelectorAll('#review-list .review-answer-row__name')].map(e => e.textContent.trim()))],
+      toggles: document.querySelectorAll('#review-list .answer-toggle').length,
+    })).catch(() => null);
+    note(`${r.name}: review opened in ${openedIn}ms — ${JSON.stringify(seen)}`);
+    if (!seen || seen.items <= 0) problems.push(`${r.name}: Review Questions opened but listed nothing`);
+    else {
+      if (seen.toggles > 0) problems.push(`${r.name}: Review Questions still offers ${seen.toggles} right/wrong toggle(s) — the results are a record`);
+      if (seen.names.length < 2) problems.push(`${r.name}: Review Questions shows only ${JSON.stringify(seen.names)} — everybody's answers should be there`);
+    }
+    if (openedIn > 1200) problems.push(`${r.name}: Review Questions took ${openedIn}ms to open on a 1500ms link — it is waiting on the network`);
+    await r.page.click('#btn-close-review').catch(() => {});
   }
 
   for (const r of [host, bob]) {

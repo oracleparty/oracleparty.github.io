@@ -1196,11 +1196,11 @@ export const STATES = {
       // score, and the locked wager or "Waiting...". This mock had drifted to a
       // name with no title, which is why nothing saw a long title cut off
       // (reported 2026-10-27: "Phantom World Apprenti…").
-      const TITLES = ['Phantom World Apprentice', 'Legendary Chrono Scholar', 'Novice', '', 'Epic Science Oracle', 'Guest'];
+      const TITLES = ['Phantom World Apprentice', 'Legendary Chrono Scholar', 'Novice', 'Guest', 'Epic Science Oracle', 'Guest'];
       const WAGERS = [20, 10, 0];
       document.getElementById('fw-player-list').innerHTML = P.map((p, i) => {
         const locked = i < 3;
-        const title = TITLES[i] ? '<span class="player-title">' + TITLES[i] + '</span>' : '';
+        const title = '<span class="player-title">' + TITLES[i] + '</span>';
         const honk = i === 0 ? '<span class="honk-slot" aria-hidden="true"></span>' : '<button class="honk-btn" aria-label="Quack">&#x1F986;</button>';
         return '<div class="fw-player-row">' + av(p) +
           '<div class="name-stack"><span class="fw-player-row__name">' + p.name + '</span>' + title + '</div>' +
@@ -1319,18 +1319,24 @@ export const STATES = {
       if (overlay) overlay.classList.add('active');
       const list = document.getElementById('review-list');
       if (list) {
+        // The SAME markup renderReviewList builds: every player's answer, a
+        // tinted chip and a mark, your own name in bold, no toggles. This mock
+        // used to draw `.review-card` classes that exist nowhere in the app.
+        const P = [['ArchaeologistAnna', true], ['TimeTraveler42', false], ['QuizMasterMax', false]];
         const questions = [
-          { q: 'What ancient wonder was located in the city of Babylon?', a: 'Hanging Gardens', yours: 'Hanging Gardens', correct: true, w: 7 },
-          { q: 'Who painted the ceiling of the Sistine Chapel?', a: 'Michelangelo', yours: 'Michelangelo', correct: true, w: 9 },
-          { q: 'What year did the Berlin Wall fall?', a: '1989', yours: '1991', correct: false, w: 4 },
+          { q: 'What ancient wonder was located in the city of Babylon?', a: 'Hanging Gardens', said: [['Hanging Gardens', 1], ['The gardens', 1], ['', 0]] },
+          { q: 'Who painted the ceiling of the Sistine Chapel?', a: 'Michelangelo', said: [['Michelangelo', 1], ['Raphael', 0], ['Michaelangelo', 1]] },
+          { q: 'What year did the Berlin Wall fall?', a: '1989', said: [['1991', 0], ['1989', 1], ['1989', 1]] },
         ];
         list.innerHTML = questions.map((q, i) =>
-          '<div class="review-card">' +
-          '<div class="review-card__header">Q' + (i + 1) + ' · Wager: ' + q.w + '</div>' +
-          '<div class="review-card__question">' + q.q + '</div>' +
-          '<div class="review-card__answer">Answer: <strong>' + q.a + '</strong></div>' +
-          '<div class="review-card__yours ' + (q.correct ? 'review-card__yours--correct' : 'review-card__yours--incorrect') + '">You said: ' + q.yours + '</div>' +
-          '</div>'
+          '<div class="review-item"><div class="review-item__num">Question ' + (i + 1) + '</div>' +
+          '<div class="review-item__q">' + q.q + '</div><div class="review-item__a">' + q.a + '</div>' +
+          '<div class="review-item__answers">' + q.said.map(([t, ok], j) =>
+            '<div class="review-answer-row' + (P[j][1] ? ' review-answer-row--mine' : '') + '">' +
+            '<span class="review-answer-row__name">' + P[j][0] + '</span>' +
+            '<span class="review-answer-row__text ' + (ok ? 'review-item__player-answer--correct' : 'review-item__player-answer--incorrect') + (t ? '' : ' review-answer-row__text--empty') + '">' + (t || 'No answer') + '</span>' +
+            '<span class="review-answer-row__mark">' + (ok ? '\u2713' : '\u2717') + '</span></div>').join('') +
+          '</div><div class="review-item__feedback"><button class="feedback-btn">👍</button><button class="feedback-btn">👎</button><button class="feedback-btn feedback-btn--flag">🚩</button></div></div>'
         ).join('');
       }
     },

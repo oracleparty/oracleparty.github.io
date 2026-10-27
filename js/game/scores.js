@@ -862,7 +862,10 @@ function renderFinalWagerPlayers(lockedWagers) {
 
   $('#fw-player-list').innerHTML = sorted.map(p => {
     const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
+    // ALWAYS a second line, as in the lobby: "Guest" for a player with no
+    // title, and a blank that still holds the height for a bot. A row without
+    // one stood 10px shorter than the rest (the layout sweep, 2026-10-27).
+    const titleHtml = `<span class="player-title">${p.is_bot ? '&nbsp;' : escapeHtml(p.title || 'Guest')}</span>`;
     const score = state.scores[p.id] || 0;
     const wagerVal = wagers[String(p.id)];
     const wagerDisplay = wagerVal !== undefined
@@ -1641,6 +1644,7 @@ export async function showResultsScreen() {
   // the screen.
   const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
   state.scores = computeScoresFromAnswers(allAnswers, state.players);
+  rememberReviewAnswers(allAnswers);   // Review Questions opens from this, at once
 
   writeRoomScores();
 
@@ -1972,28 +1976,31 @@ async function handleQuitGame() {
   navigateWithFade('index.html');
 }
 
-async function handleReviewQuestions() {
-  const overlay = $('#review-overlay');
+/**
+ * Post-game Review Questions.
+ *
+ * A RECORD, NOT A SECOND JUDGING SCREEN — the owner's decision, 2026-10-27.
+ * The host could flip verdicts here, after the winner had already been shown
+ * to everybody; corrections belong to the game itself (the reveal, and Edit
+ * Scores on the scoreboard), where everyone watches them happen. So nobody gets
+ * a toggle here, and EVERYBODY sees everybody's answers — a non-host used to
+ * see only their own, though every answer had been on the reveal for all.
+ *
+ * AND IT OPENS AT ONCE. It used to await two reads in series — every answer in
+ * the game, then this phone's question ratings — before the overlay appeared,
+ * which on a real link was "many seconds" after the tap for both players. The
+ * results screen has just read every answer, so the list is drawn from that
+ * (`_reviewAnswers`); both reads still go out, together, and redraw it if
+ * anything changed.
+ */
+let _reviewAnswers = null;
+export function rememberReviewAnswers(answers) { _reviewAnswers = answers; }
+
+function renderReviewList(allAnswers) {
   const list = $('#review-list');
-
-  // Fetch player answers for the game
-  const allAnswers = answersForCurrentGame(await fetchAllAnswers(state.room.id), state.questions);
-  const myAnswers = allAnswers.filter(a => a.player_id === state.room.playerId);
-
-  // Build lookup: question_number → answer record
-  const answerByQ = {};
-  for (const a of myAnswers) {
-    if (a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__') {
-      answerByQ[a.question_number] = a;
-    }
-  }
-
-  // Always fetch latest feedback from DB (merges with any in-memory state)
-  const ratings = await fetchQuestionFeedback(state.room.id, getDisplayName());
-  for (const r of ratings) _qbFeedback[r.question_id] = { type: r.feedback_type, reason: r.flag_reason || null };
-
-  // Build question list (all regular + final wager question)
   const totalQ = Math.min(state.questions.length, state.totalQuestions + 1);
+  const stillHere = new Set(state.players.map(p => String(p.id)));
+  const flagReasonLabels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', alternate_answer: 'another valid answer', other: 'other' };
   list.innerHTML = '';
 
   for (let i = 0; i < totalQ; i++) {
@@ -2002,53 +2009,30 @@ async function handleReviewQuestions() {
 
     const isFinal = i === state.totalQuestions;
     const label = isFinal ? 'Final Question' : `Question ${i + 1}`;
-    const myAnswer = answerByQ[i];
     const fb = _qbFeedback[q.id] || null;
     const existingType = fb?.type || null;
+    const disqualified = state.disqualifiedQuestions?.has(i);
 
-    let playerAnswerHtml = '';
-    if (myAnswer) {
-      const correctClass = myAnswer.is_correct
-        ? 'review-item__player-answer--correct'
-        : 'review-item__player-answer--incorrect';
-      playerAnswerHtml = `<div class="review-item__player-answer ${correctClass}">${escapeHtml(myAnswer.submitted_answer)}</div>`;
-    }
+    // Only people still in the room: since migration 052 an answer outlives
+    // its seat, and a departed player's row would read "Unknown".
+    const qAnswers = (allAnswers || []).filter(a => a.question_number === i
+      && a.submitted_answer !== '__WAGER_LOCKED__'
+      && stillHere.has(String(a.player_id)));
+    const answersHtml = qAnswers.length === 0 ? '' : '<div class="review-item__answers">' + qAnswers.map(a => {
+      const player = state.players.find(p => String(p.id) === String(a.player_id));
+      const mine = String(a.player_id) === String(state.room.playerId);
+      const text = (a.submitted_answer || '').trim();
+      const right = !!a.is_correct && !disqualified;
+      const answerClass = disqualified ? '' : (right ? 'review-item__player-answer--correct' : 'review-item__player-answer--incorrect');
+      // A MARK as well as a colour, so a colour-blind player can read it.
+      const mark = disqualified ? '' : (right ? '\u2713' : '\u2717');
+      return `<div class="review-answer-row${mine ? ' review-answer-row--mine' : ''}">
+        <span class="review-answer-row__name">${escapeHtml(player?.display_name || '')}</span>
+        <span class="review-answer-row__text ${answerClass}${text ? '' : ' review-answer-row__text--empty'}">${text ? escapeHtml(text) : 'No answer'}</span>
+        <span class="review-answer-row__mark" aria-label="${right ? 'correct' : 'wrong'}">${mark}</span>
+      </div>`;
+    }).join('') + '</div>';
 
-    // Host: show ALL player answers with toggle switches for score correction
-    let hostAnswersHtml = '';
-    // Same rule as the reveal and the score-edit sheet: a disqualified round
-    // shows what happened but offers no way to re-judge it.
-    if (canJudge() && !state.disqualifiedQuestions?.has(i)) {
-      // Only people still in the room. Until migration 052 an answer died with
-      // its player row, so a departed player could never appear here; 052 drops
-      // that key deliberately (it is what lets a rejoining player recover their
-      // score), and without this filter the host's review grew a row labelled
-      // "Unknown" for everybody who had left, each with a live toggle offering
-      // to re-judge somebody whose score is rendered nowhere.
-      const stillHere = new Set(state.players.map(p => String(p.id)));
-      const qAnswers = allAnswers.filter(a => a.question_number === i && a.submitted_answer && a.submitted_answer !== '__WAGER_LOCKED__'
-        && stillHere.has(String(a.player_id)));
-      if (qAnswers.length > 0) {
-        const isFinalWager = i === state.totalQuestions;
-        hostAnswersHtml = '<div class="review-item__answers">' + qAnswers.map(a => {
-          const player = state.players.find(p => p.id === a.player_id);
-          const name = player ? escapeHtml(player.display_name) : 'Unknown';
-          const isCorrect = a.is_correct || false;
-          const toggleClass = isCorrect ? 'answer-toggle--correct' : 'answer-toggle--incorrect';
-          const answerClass = isCorrect ? 'review-item__player-answer--correct' : 'review-item__player-answer--incorrect';
-          return `<div class="review-answer-row" data-answer-id="${a.id}" data-question-idx="${i}" data-is-final="${isFinalWager}">
-            <span class="review-answer-row__name">${name}</span>
-            <span class="review-answer-row__text ${answerClass}">${escapeHtml(a.submitted_answer)}</span>
-            <div class="answer-toggle ${toggleClass} answer-toggle--host" data-answer-id="${a.id}">
-              <div class="answer-toggle__thumb"></div>
-            </div>
-          </div>`;
-        }).join('') + '</div>';
-      }
-    }
-
-    // Flag reason label for previously-flagged questions
-    const flagReasonLabels = { wrong_answer: 'wrong answer', ambiguous: 'ambiguous', offensive: 'offensive', alternate_answer: 'another valid answer', other: 'other' };
     const flagReasonHtml = (existingType === 'flag' && fb.reason)
       ? `<span class="review-item__flag-reason">Flagged: ${flagReasonLabels[fb.reason] || fb.reason}</span>`
       : '';
@@ -2057,10 +2041,10 @@ async function handleReviewQuestions() {
     const isFlagged = existingType === 'thumbs_down' || existingType === 'flag';
     item.className = 'review-item' + (isFlagged ? ' review-item--flagged' : '');
     item.innerHTML = `
-      <div class="review-item__num">${label}</div>
+      <div class="review-item__num">${label}${disqualified ? ' &middot; disqualified' : ''}</div>
       <div class="review-item__q">${escapeHtml(getQuestionText(q))}</div>
       <div class="review-item__a">${escapeHtml(getCorrectAnswer(q))}</div>
-      ${canControlGame() ? hostAnswersHtml : playerAnswerHtml}
+      ${answersHtml}
       <div class="review-item__feedback">
         <button class="feedback-btn${existingType === 'thumbs_up' ? ' feedback-btn--active' : ''}" data-type="thumbs_up" data-qid="${q.id}" aria-label="Thumbs up">👍</button>
         <button class="feedback-btn${existingType === 'thumbs_down' ? ' feedback-btn--active' : ''}" data-type="thumbs_down" data-qid="${q.id}" aria-label="Thumbs down">👎</button>
@@ -2070,141 +2054,93 @@ async function handleReviewQuestions() {
     `;
     list.appendChild(item);
   }
+}
 
-  // Attach feedback handlers (synced with _qbFeedback)
-  list.querySelectorAll('.feedback-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const type = btn.dataset.type;
-      const qid = btn.dataset.qid;
+function attachReviewFeedbackHandler() {
+  const list = $('#review-list');
+  // ONE delegated listener, attached once, so a redraw neither loses the
+  // handlers nor stacks a second set on the same buttons.
+  if (list.dataset.feedbackWired) return;
+  list.dataset.feedbackWired = '1';
+  list.addEventListener('click', (e) => {
+    const btn = e.target.closest('.feedback-btn');
+    if (!btn || !list.contains(btn)) return;
+    e.stopPropagation();
+    const type = btn.dataset.type;
+    const qid = btn.dataset.qid;
+    const reviewItem = btn.closest('.review-item');
+    const reasonLabel = reviewItem.querySelector('.review-item__flag-reason');
 
-      const reviewItem = btn.closest('.review-item');
-      const reasonLabel = reviewItem.querySelector('.review-item__flag-reason');
-
-      if (type === 'flag') {
-        const wasActive = btn.classList.contains('feedback-btn--active');
-        btn.classList.toggle('feedback-btn--active');
-        if (!wasActive) {
-          _qbFeedback[qid] = { type: 'flag', reason: 'other' };
-          upsertQuestionFeedback({
-            questionId: qid,
-            roomId: state.room.id,
-            playerName: getDisplayName(),
-            feedbackType: 'flag',
-            flagReason: 'other'
-          });
-          if (reasonLabel) reasonLabel.textContent = 'Flagged: other';
-          else btn.insertAdjacentHTML('afterend', '<span class="review-item__flag-reason">Flagged: other</span>');
-        } else {
-          _qbFeedback[qid] = null;
-          deleteQuestionFeedbackByVoter({ questionId: qid, voterId: getVoterId() });
-          if (reasonLabel) reasonLabel.remove();
-        }
-        // Update flagged highlight
-        const fbObj = _qbFeedback[qid];
-        const fbType = fbObj?.type || null;
-        reviewItem.classList.toggle('review-item--flagged', fbType === 'flag' || fbType === 'thumbs_down');
-        return;
-      }
-
-      // Thumbs up/down toggle
-      const otherType = type === 'thumbs_up' ? 'thumbs_down' : 'thumbs_up';
-      const siblings = btn.parentElement.querySelectorAll('.feedback-btn');
-      siblings.forEach(s => {
-        if (s.dataset.type === otherType) s.classList.remove('feedback-btn--active');
-      });
+    if (type === 'flag') {
+      const wasActive = btn.classList.contains('feedback-btn--active');
       btn.classList.toggle('feedback-btn--active');
-
-      if (btn.classList.contains('feedback-btn--active')) {
-        _qbFeedback[qid] = { type, reason: null };
+      if (!wasActive) {
+        _qbFeedback[qid] = { type: 'flag', reason: 'other' };
         upsertQuestionFeedback({
           questionId: qid,
           roomId: state.room.id,
           playerName: getDisplayName(),
-          feedbackType: type,
-          flagReason: null
+          feedbackType: 'flag',
+          flagReason: 'other'
         });
+        if (reasonLabel) reasonLabel.textContent = 'Flagged: other';
+        else btn.insertAdjacentHTML('afterend', '<span class="review-item__flag-reason">Flagged: other</span>');
       } else {
         _qbFeedback[qid] = null;
         deleteQuestionFeedbackByVoter({ questionId: qid, voterId: getVoterId() });
+        if (reasonLabel) reasonLabel.remove();
       }
-      // Update flagged highlight
-      const fbObj = _qbFeedback[qid];
-      const fbType = fbObj?.type || null;
+      const fbType = _qbFeedback[qid]?.type || null;
       reviewItem.classList.toggle('review-item--flagged', fbType === 'flag' || fbType === 'thumbs_down');
+      return;
+    }
+
+    // Thumbs up/down toggle
+    const otherType = type === 'thumbs_up' ? 'thumbs_down' : 'thumbs_up';
+    btn.parentElement.querySelectorAll('.feedback-btn').forEach(s => {
+      if (s.dataset.type === otherType) s.classList.remove('feedback-btn--active');
     });
-  });
+    btn.classList.toggle('feedback-btn--active');
 
-  // Host/co-host: wire toggle handlers for score correction
-  if (canControlGame()) {
-    list.querySelectorAll('.answer-toggle--host').forEach(toggle => {
-      toggle.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const answerId = toggle.dataset.answerId;
-        const answer = allAnswers.find(a => String(a.id) === String(answerId));
-        if (!answer) return;
-        if (state.disqualifiedQuestions?.has(answer.question_number)) return;
-        const row = toggle.closest('.review-answer-row');
-        const isFinalWager = row?.dataset.isFinal === 'true';
-
-        const newCorrect = !answer.is_correct;
-        const newScore = newCorrect ? answer.wager : (isFinalWager ? -answer.wager : 0);
-
-        // Captured before the optimistic change so a refusal restores exactly
-        // what was there.
-        const prevCorrect = answer.is_correct;
-        const prevScore = answer.score_earned;
-
-        // Update local state
-        answer.is_correct = newCorrect;
-        answer.score_earned = newScore;
-
-        // Update toggle visual
-        toggle.classList.toggle('answer-toggle--correct', newCorrect);
-        toggle.classList.toggle('answer-toggle--incorrect', !newCorrect);
-
-        // Update answer text color
-        const textEl = row?.querySelector('.review-answer-row__text');
-        if (textEl) {
-          textEl.classList.toggle('review-item__player-answer--correct', newCorrect);
-          textEl.classList.toggle('review-item__player-answer--incorrect', !newCorrect);
-        }
-
-        // Persist to DB then re-render results behind the overlay
-        const servedRow = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
-        if (!servedRow.ok && servedRow.unavailable) {
-          await updateAnswerJudgment(answerId, newCorrect, newScore);
-        } else if (!servedRow.ok) {
-          // Same rule as the other two override paths: a direct write after a
-          // real failure is a no-op that reports success (049).
-          answer.is_correct = prevCorrect;
-          answer.score_earned = prevScore;
-          toggle.classList.toggle('answer-toggle--correct', prevCorrect);
-          toggle.classList.toggle('answer-toggle--incorrect', !prevCorrect);
-          if (textEl) {
-            textEl.classList.toggle('review-item__player-answer--correct', prevCorrect);
-            textEl.classList.toggle('review-item__player-answer--incorrect', !prevCorrect);
-          }
-          showToast("Couldn't change that judgement — try again", 'error');
-          return;   // do NOT amend the player's permanent history
-        }
-
-        // AMEND, not upsert — a retroactive correction is not a second attempt.
-        const player = state.players.find(p => String(p.id) === String(answer.player_id));
-        if (player?.user_id && answer.question_id) {
-          amendQuestionHistory(player.user_id, answer.question_id, newCorrect, state.room.id);
-        }
-
-        showResultsScreen();
+    if (btn.classList.contains('feedback-btn--active')) {
+      _qbFeedback[qid] = { type, reason: null };
+      upsertQuestionFeedback({
+        questionId: qid,
+        roomId: state.room.id,
+        playerName: getDisplayName(),
+        feedbackType: type,
+        flagReason: null
       });
-    });
-  }
+    } else {
+      _qbFeedback[qid] = null;
+      deleteQuestionFeedbackByVoter({ questionId: qid, voterId: getVoterId() });
+    }
+    const fbType = _qbFeedback[qid]?.type || null;
+    reviewItem.classList.toggle('review-item--flagged', fbType === 'flag' || fbType === 'thumbs_down');
+  });
+}
 
+async function handleReviewQuestions() {
+  const overlay = $('#review-overlay');
+  attachReviewFeedbackHandler();
+  $('#btn-close-review').onclick = () => overlay.classList.remove('active');
+
+  // Drawn and shown FIRST, from what the results screen already read.
+  renderReviewList(_reviewAnswers || []);
   overlay.classList.add('active');
 
-  $('#btn-close-review').onclick = () => {
-    overlay.classList.remove('active');
-  };
+  // Then both reads together, and one redraw if either changed anything.
+  const [rawAnswers, ratings] = await Promise.all([
+    fetchAllAnswers(state.room.id).catch(() => null),
+    fetchQuestionFeedback(state.room.id, getDisplayName()).catch(() => []),
+  ]);
+  if (!overlay.classList.contains('active')) return;   // closed meanwhile
+  for (const r of (ratings || [])) _qbFeedback[r.question_id] = { type: r.feedback_type, reason: r.flag_reason || null };
+  if (rawAnswers) _reviewAnswers = answersForCurrentGame(rawAnswers, state.questions);
+  const scroller = $('#review-list');
+  const keep = scroller?.scrollTop || 0;
+  renderReviewList(_reviewAnswers || []);
+  if (scroller) scroller.scrollTop = keep;
 }
 
 

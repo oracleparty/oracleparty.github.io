@@ -281,8 +281,16 @@ function clapBtnHtml(player, answer, submittedText) {
   // looks for `.clap-btn` never mistake it for something that can be pressed.
   const slot = '<span class="clap-slot" aria-hidden="true"><span class="clap-btn__icon">&#x1F44F;</span><span class="clap-btn__count"></span></span>';
   if (!answer?.id || !submittedText) return slot;
-  if (String(player.id) === String(state.room.playerId)) return slot;
   const n = clapsForAnswer(state.claps, answer.id);
+  // YOUR OWN ANSWER SHOWS ITS COUNT — read-only, the same slot made visible.
+  // It was an invisible spacer, so nobody ever saw the claps their own answer
+  // got: in a two-player game that is every clap there is. Reported 2026-10-27,
+  // "if two ppl clapped shouldn't I see 2?". Still not a button — you cannot
+  // clap yourself — and repaintClaps keeps the number current.
+  if (String(player.id) === String(state.room.playerId)) {
+    return `<span class="clap-slot clap-slot--own${n ? ' clap-slot--shown' : ''}" data-clap-own="${answer.id}"
+      title="${clapLabel(answer.id, n, false)}"><span class="clap-btn__icon">&#x1F44F;</span><span class="clap-btn__count">${n || ''}</span></span>`;
+  }
   const mine = iClapped(state.claps, answer.id, state.room.playerId);
   return `<button class="clap-btn${mine ? ' clap-btn--mine' : ''}"
     data-clap-answer="${answer.id}"
@@ -330,6 +338,13 @@ export function repaintClaps() {
     // own row the one row still reserving the column — the shove above, inverted.
     for (const el of container.querySelectorAll('.clap-btn, .clap-slot')) el.remove();
     return;
+  }
+  for (const own of container.querySelectorAll('.clap-slot--own')) {
+    const n = clapsForAnswer(state.claps, own.dataset.clapOwn);
+    own.classList.toggle('clap-slot--shown', n > 0);
+    const countEl = own.querySelector('.clap-btn__count');
+    if (countEl) countEl.textContent = n || '';
+    own.setAttribute('title', clapLabel(own.dataset.clapOwn, n, false));
   }
   for (const btn of container.querySelectorAll('.clap-btn')) {
     const answerId = btn.dataset.clapAnswer;

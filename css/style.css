@@ -4083,6 +4083,15 @@ body::after {
   line-height: 1;
   visibility: hidden;
 }
+/* Your own answer, once somebody has clapped it: the count, read-only. Same box
+   as the slot, so nothing on the row moves when it appears. */
+.clap-slot--own.clap-slot--shown {
+  visibility: visible;
+  opacity: 0.85;
+}
+.clap-slot--own .clap-btn__count {
+  color: var(--color-text-dim);
+}
 
 /* A TAP SHRINKS IT, IN CSS, WITH NO JAVASCRIPT INVOLVED.
    This is the whole lesson of the dead-tap playtest: `.wager-btn:active` fires
@@ -5045,6 +5054,35 @@ body::after {
   font-size: var(--text-sm);
   min-width: 0;
   word-break: break-word;
+}
+/* The answer is a tinted chip, the same look as the reveal's verdicts. */
+.review-answer-row__text.review-item__player-answer--correct,
+.review-answer-row__text.review-item__player-answer--incorrect {
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-sm);
+}
+.review-answer-row__text--empty {
+  font-style: italic;
+  opacity: 0.75;
+}
+/* A mark as well as a colour — the verdict must be readable without hue. */
+.review-answer-row__mark {
+  flex: 0 0 1.2em;
+  text-align: center;
+  font-weight: 700;
+  color: var(--color-text-dim);
+}
+/* One column of names, so every answer starts at the same x. */
+.review-answer-row .review-answer-row__name {
+  flex: 0 0 38%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-answer-row--mine .review-answer-row__name {
+  color: var(--color-text);
+  font-weight: 700;
 }
 
 /* --- Chat Bar (slim bar below header) --- */

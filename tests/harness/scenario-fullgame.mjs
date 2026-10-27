@@ -411,6 +411,28 @@ try {
           if (!clapProbe.onOthers) await r.page.waitForTimeout(250);
         }
         if (!clapProbe.onOthers && sawEmpty) clapProbe.onOthers = sawEmpty;
+
+        // THE PERSON WHO WAS CLAPPED SEES IT. Their own row has no button, and
+        // until 2026-10-27 it showed nothing at all — so in a two-player game
+        // nobody ever saw a clap they received ("if two ppl clapped shouldn't I
+        // see 2?"). Polled in the same turn, like the watchers above.
+        const ans = table.store.table('answers').find(a => String(a.id) === String(target));
+        for (const w of everyone) {
+          const pid = await w.page.evaluate(() => window.__state?.room?.playerId).catch(() => null);
+          if (!ans || String(pid) !== String(ans.player_id)) continue;
+          const until = Date.now() + 6000;
+          while (Date.now() < until) {
+            clapProbe.onAuthor = await w.page.evaluate((id) => {
+              const el = document.querySelector(`#reveal-answers .clap-slot--own[data-clap-own="${id}"]`);
+              if (!el) return { found: false };
+              return { found: true, count: (el.querySelector('.clap-btn__count')?.textContent || '').trim(),
+                       visible: getComputedStyle(el).visibility === 'visible' };
+            }, target).catch(() => null);
+            if (clapProbe.onAuthor?.count) break;
+            await w.page.waitForTimeout(250);
+          }
+          clapProbe.author = w.name;
+        }
       }
     }
 
@@ -861,6 +883,10 @@ try {
         if (clapProbe.onOthers.mine) {
           problems.push('another phone shows somebody else\'s clap as its own');
         }
+      }
+      note(`on the clapped player's own screen (${clapProbe.author}): ${JSON.stringify(clapProbe.onAuthor)}`);
+      if (!clapProbe.onAuthor?.found || clapProbe.onAuthor.count !== '1' || !clapProbe.onAuthor.visible) {
+        problems.push(`the player whose answer was clapped cannot see it on their own row: ${JSON.stringify(clapProbe.onAuthor)}`);
       }
       // TAKING IT BACK. Asserted unconditionally — if the undo never ran, that
       // is itself the failure rather than a quietly skipped check.
