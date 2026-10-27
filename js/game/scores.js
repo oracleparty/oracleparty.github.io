@@ -1985,6 +1985,7 @@ async function handleQuitGame() {
  * Scores on the scoreboard), where everyone watches them happen. So nobody gets
  * a toggle here, and EVERYBODY sees everybody's answers — a non-host used to
  * see only their own, though every answer had been on the reveal for all.
+ * Green and red carry the verdict; the owner asked for no ✓/✗ marks.
  *
  * AND IT OPENS AT ONCE. It used to await two reads in series — every answer in
  * the game, then this phone's question ratings — before the overlay appeared,
@@ -2024,12 +2025,9 @@ function renderReviewList(allAnswers) {
       const text = (a.submitted_answer || '').trim();
       const right = !!a.is_correct && !disqualified;
       const answerClass = disqualified ? '' : (right ? 'review-item__player-answer--correct' : 'review-item__player-answer--incorrect');
-      // A MARK as well as a colour, so a colour-blind player can read it.
-      const mark = disqualified ? '' : (right ? '\u2713' : '\u2717');
       return `<div class="review-answer-row${mine ? ' review-answer-row--mine' : ''}">
         <span class="review-answer-row__name">${escapeHtml(player?.display_name || '')}</span>
         <span class="review-answer-row__text ${answerClass}${text ? '' : ' review-answer-row__text--empty'}">${text ? escapeHtml(text) : 'No answer'}</span>
-        <span class="review-answer-row__mark" aria-label="${right ? 'correct' : 'wrong'}">${mark}</span>
       </div>`;
     }).join('') + '</div>';
 

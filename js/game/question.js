@@ -260,13 +260,14 @@ function answerForBots() {
 function renderWagerGrid() {
   const grid = $('#wager-grid');
   grid.innerHTML = '';
-  // Three or four rows of SQUARE buttons do not fit a small phone with the
-  // question and the pinned answer box: measured at 390x560, a 20-question
-  // game ran 36px past the edge and the fourth row sat under the answer box
-  // (reported 2026-10-27 with a photograph). Past two rows the buttons go
-  // shorter rather than the screen scrolling — a scroller costs taps (see the
-  // 2026-09-14 entry in CLAUDE.md). Ten or fewer are untouched.
-  grid.classList.toggle('wager-grid--compact', state.totalQuestions > 10);
+  // Three or four rows of wagers do not fit a small phone with the question and
+  // the pinned answer box: measured at 390x560, a 20-question game ran 36px
+  // past the edge and the fourth row sat under the answer box (reported
+  // 2026-10-27 with a photograph). The buttons STAY SQUARE — the owner's call,
+  // it is the look of the grid — and the air around the question card is
+  // trimmed instead (see .wager-grid--many in the stylesheet). Ten or fewer
+  // wagers are untouched.
+  grid.classList.toggle('wager-grid--many', state.totalQuestions > 10);
 
   for (let i = 1; i <= state.totalQuestions; i++) {
     const btn = document.createElement('button');

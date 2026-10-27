@@ -3477,11 +3477,14 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* More than two rows: shorter than square, never under the 44px tap floor.
-   Set by renderWagerGrid; measured to fit 20 wagers at 390x560. */
-.wager-grid--compact .wager-btn {
-  aspect-ratio: auto;
-  height: 46px;
+/* More than two rows of wagers: the buttons stay square and the question card
+   gives up its padding instead. Measured at 390x560: 20 wagers ran 36px past
+   the edge; this returns ~43px. Set by renderWagerGrid. :has() needs iOS 15.4;
+   without it the screen scrolls under the pinned answer box, as before. */
+.game-content:has(.wager-grid--many) .question-card {
+  padding-top: var(--space-xs);
+  padding-bottom: var(--space-xs);
+  margin-bottom: var(--space-sm);
 }
 
 .wager-btn:active {
@@ -5064,13 +5067,6 @@ body::after {
 .review-answer-row__text--empty {
   font-style: italic;
   opacity: 0.75;
-}
-/* A mark as well as a colour — the verdict must be readable without hue. */
-.review-answer-row__mark {
-  flex: 0 0 1.2em;
-  text-align: center;
-  font-weight: 700;
-  color: var(--color-text-dim);
 }
 /* One column of names, so every answer starts at the same x. */
 .review-answer-row .review-answer-row__name {

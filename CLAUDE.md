@@ -130,8 +130,11 @@
 > fingers); it now repaints badges only (`updateHonkBadges` in `honk.js`). The
 > sender cloned a new `<audio>` per tap and never reused one; a ring of 8 now.
 >
-> **Layout, measured:** more than 10 wagers → 46px-tall buttons
-> (`.wager-grid--compact`); 20 wagers ran 36px past 390x560 and now fit. The
+> **Layout, measured:** 20 wagers ran 36px past 390x560. The first fix made the
+> buttons 46px rectangles and the owner rejected it — the square IS the look.
+> With more than 10 wagers (`.wager-grid--many`) the question card gives up its
+> padding instead (~43px back) and the squares fit. A three-line question at
+> 375x560 is still a few px tight; the sticky answer box covers that case. The
 > final-wager list loses its side padding, reserves the honk slot, fixes the
 > score/wager columns, shows ⏳ instead of "Waiting...", and always carries a
 > second line ("Guest"): titles get 188px at 375 (needed 152). Its mock had

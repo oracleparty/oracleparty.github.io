@@ -664,7 +664,7 @@ export const STATES = {
       let html = '';
       for (let i = 1; i <= 20; i++) html += '<button class="wager-btn">' + i + '</button>';
       grid.innerHTML = html;
-      grid.classList.add('wager-grid--compact');   // renderWagerGrid's rule: more than 10
+      grid.classList.add('wager-grid--many');   // renderWagerGrid's rule: more than 10
     },
   },
 
@@ -1334,8 +1334,7 @@ export const STATES = {
           '<div class="review-item__answers">' + q.said.map(([t, ok], j) =>
             '<div class="review-answer-row' + (P[j][1] ? ' review-answer-row--mine' : '') + '">' +
             '<span class="review-answer-row__name">' + P[j][0] + '</span>' +
-            '<span class="review-answer-row__text ' + (ok ? 'review-item__player-answer--correct' : 'review-item__player-answer--incorrect') + (t ? '' : ' review-answer-row__text--empty') + '">' + (t || 'No answer') + '</span>' +
-            '<span class="review-answer-row__mark">' + (ok ? '\u2713' : '\u2717') + '</span></div>').join('') +
+            '<span class="review-answer-row__text ' + (ok ? 'review-item__player-answer--correct' : 'review-item__player-answer--incorrect') + (t ? '' : ' review-answer-row__text--empty') + '">' + (t || 'No answer') + '</span>' + '</div>').join('') +
           '</div><div class="review-item__feedback"><button class="feedback-btn">👍</button><button class="feedback-btn">👎</button><button class="feedback-btn feedback-btn--flag">🚩</button></div></div>'
         ).join('');
       }
