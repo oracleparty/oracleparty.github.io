@@ -111,7 +111,13 @@
 > make things quieter. That was the owner's open question and this is the
 > recommended answer — revisit if they decide otherwise.
 >
-> **075 NOT APPLIED until the owner runs it.** The switch is hidden until
+> **075 IS APPLIED — MEASURED by the CI probe on `cf2bc3b`**: `rooms` now
+> carries `chaos`, and the column check reads all present. **071 and 072 are
+> measured by the same run**, for the first time: `clap_history` holds 2 rows,
+> `bot_history` 28 and `bot_proficiency` 3, so claps and the bot's own record
+> are live and being written. The probe watches all four tables now.
+>
+> **075 was NOT APPLIED at first.** The switch is hidden until
 > `chaosAvailable()` can read the column, so before then it is a missing feature,
 > never a dead control. 061 grants rooms columns by name, so 075 GRANTs `chaos`
 > or the host's write would be refused with 42501. The fake store's grant list
