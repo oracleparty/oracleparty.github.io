@@ -95,6 +95,52 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-27 — a playthrough list: Waiting after time's up, review, claps, layout
+>
+> **"Stuck until I pressed Reveal — every time he didn't submit in time."** The
+> round HAD closed: the friend's phone auto-submits and the host's fill writes a
+> blank before `reveal` is written. But `stillWaiting` ended only at
+> `resultsRevealed`, so the host read "Waiting..." for the friend until pressing
+> Reveal Results — the screen pointing at the wrong person. `roundClosed()` in
+> `reveal.js` ends it at the `reveal` phase, and a phone already on the reveal
+> redraws then. **The host still presses Reveal Results** — that is the design
+> (the dramatic reveal is a person's decision); what was wrong was the label.
+> `scenario-timesup` (in CI) checks both directions; the old code fails with the
+> reported row word for word.
+>
+> **Review Questions is a RECORD (owner's decision).** No right/wrong toggles for
+> anybody after the results; corrections belong to the game (reveal, Edit
+> Scores). Everyone sees everyone's answers, with a ✓/✗ mark as well as colour.
+> It opens from the answers `showResultsScreen` already read
+> (`rememberReviewAnswers`) and re-reads afterwards: **3.4s → 50ms** on a 1500ms
+> link. `scenario-social` checks both phones; break-tested, four failures.
+>
+> **Your own answer shows its clap count** (read-only `.clap-slot--own`). It was
+> an invisible spacer, so in a two-player game nobody ever saw a clap they
+> received — "if two ppl clapped shouldn't I see 2?". `scenario-fullgame` checks
+> the clapped player's row; break-tested.
+>
+> **The bot's card drew no chart**: `fetchBotProficiency` returned ratios where
+> `buildRadarAxes` reads `{met, mastered}`, and so did the stated-skill fallback.
+> The fake store now derives `bot_proficiency` from `bot_history`;
+> `scenario-bots` requires the chart. Break-tested.
+>
+> **Honk lag past ~100 — a lead, not a measurement on an iPhone.** The lobby
+> redrew the whole player list on every honk on every phone (rows rebuilt under
+> fingers); it now repaints badges only (`updateHonkBadges` in `honk.js`). The
+> sender cloned a new `<audio>` per tap and never reused one; a ring of 8 now.
+>
+> **Layout, measured:** more than 10 wagers → 46px-tall buttons
+> (`.wager-grid--compact`); 20 wagers ran 36px past 390x560 and now fit. The
+> final-wager list loses its side padding, reserves the honk slot, fixes the
+> score/wager columns, shows ⏳ instead of "Waiting...", and always carries a
+> second line ("Guest"): titles get 188px at 375 (needed 152). Its mock had
+> drifted to rows with no title, which is why nothing saw the cut.
+>
+> **Open, the owner's call:** the top bar — three mockups sent (today; one quiet
+> line with modes in the gear; modes in a strip under the timer). Nothing
+> changed until they choose.
+
 > ## 2026-10-26 (later) — Chaos mode (migration 075), and honks ignore the silent switch
 >
 > **The owner's design, settled in conversation.** Ordinarily honks are dropped
