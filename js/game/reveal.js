@@ -26,7 +26,7 @@ import { describeDifficulty } from '../difficulty-band.js';
 import { countAnswersFrom, findNextAvailableWager, answersForCurrentGame,
          buildDisqualifiedSet, buildUsedWagersMap } from './scoring-helpers.js';
 import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
-import { sendHonk, getHonkCount } from '../honk.js';
+import { sendHonk, getHonkCount, updateHonkBadges as paintHonkBadges } from '../honk.js';
 import { attachProfileCardHandler } from '../profile.js';
 import { screenStillFits } from './phase-order.js';
 import { showChatBar } from './chat.js';
@@ -189,16 +189,8 @@ function renderDifficultyBand(el, band) {
 }
 
 export function updateHonkBadges() {
-  document.querySelectorAll('.honk-badge[data-honk-player]').forEach(badge => {
-    const pid = badge.dataset.honkPlayer;
-    const count = getHonkCount(pid);
-    if (count > 0) {
-      badge.textContent = count;
-      badge.style.display = '';
-    } else {
-      badge.style.display = 'none';
-    }
-  });
+  // One implementation, in honk.js, shared with the lobby.
+  paintHonkBadges();
 }
 
 function honkAvatarHtml(player) {

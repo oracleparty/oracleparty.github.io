@@ -867,10 +867,13 @@ function renderFinalWagerPlayers(lockedWagers) {
     const wagerVal = wagers[String(p.id)];
     const wagerDisplay = wagerVal !== undefined
       ? `<span class="fw-player-row__wager">${wagerVal}</span>`
-      : `<span class="fw-player-row__wager fw-player-row__wager--waiting">Waiting...</span>`;
+      // An hourglass, not the word: "Waiting..." took 70px of a row whose title
+      // was being cut for want of 20 (2026-10-27). Labelled for screen readers.
+      : `<span class="fw-player-row__wager fw-player-row__wager--waiting" role="img" aria-label="Waiting" title="Waiting">⏳</span>`;
 
     const isMe = String(p.id) === String(state.room.playerId);
-    const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
+    // An empty slot where there is no duck, so the columns line up.
+    const honkBtn = (isMe || p.is_bot) ? '<span class="honk-slot" aria-hidden="true"></span>' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
 
     return `
       <div class="fw-player-row" data-player-id="${p.id}" data-profile-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>

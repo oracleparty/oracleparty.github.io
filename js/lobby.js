@@ -51,7 +51,7 @@ import {
   chaosAvailable
 } from './supabase.js';
 import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
-import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkChaos, attachHonkSoundToggle } from './honk.js';
+import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkChaos, attachHonkSoundToggle, updateHonkBadges } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
@@ -251,9 +251,9 @@ async function init() {
   attachListeners();
 
   // Honk system
-  initHonkSystem(room.id, room.playerId, () => {
-    renderPlayers();
-  });
+  // Repaint the counts only. A whole-list redraw per honk rebuilt the rows
+  // under people's fingers mid-spam — see updateHonkBadges.
+  initHonkSystem(room.id, room.playerId, () => updateHonkBadges());
   attachHonkSoundToggle($('#btn-honk-sound'));
   chaosAvailable().then(ok => {
     if (ok) settingsModal?.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));

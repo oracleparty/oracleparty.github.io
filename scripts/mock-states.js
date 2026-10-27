@@ -647,6 +647,27 @@ export const STATES = {
     },
   },
 
+  // A 20-question game, the longest the host can choose: four rows of wagers.
+  // Reported 2026-10-27 with a photograph — the fourth row sat under the pinned
+  // answer box with empty space above it. No mock had ever drawn more than 15.
+  'question-20-wagers': {
+    page: 'game',
+    screen: 'question-screen',
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      document.getElementById('question-category').textContent = '🍔 Food & Drink';
+      document.getElementById('question-progress').textContent = 'Question 1 of 20';
+      document.getElementById('question-text').textContent = 'Which country is the origin of the cocktail Mojito?';
+      document.getElementById('timer-text').textContent = '30';
+      document.getElementById('timer-bar').style.width = '100%';
+      const grid = document.getElementById('wager-grid');
+      let html = '';
+      for (let i = 1; i <= 20; i++) html += '<button class="wager-btn">' + i + '</button>';
+      grid.innerHTML = html;
+      grid.classList.add('wager-grid--compact');   // renderWagerGrid's rule: more than 10
+    },
+  },
+
   'question-mid-timer': {
     page: 'game',
     screen: 'question-screen',
@@ -1170,12 +1191,22 @@ export const STATES = {
       if (ma) ma.innerHTML = av(P[0]) + av(P[2]) + av(P[4]);
       if (ha) ha.innerHTML = av(P[1]);
 
+      // The SAME markup showFinalWagerScreen builds: a name stack with the
+      // title under the name, a honk button for everybody but yourself, the
+      // score, and the locked wager or "Waiting...". This mock had drifted to a
+      // name with no title, which is why nothing saw a long title cut off
+      // (reported 2026-10-27: "Phantom World Apprenti…").
+      const TITLES = ['Phantom World Apprentice', 'Legendary Chrono Scholar', 'Novice', '', 'Epic Science Oracle', 'Guest'];
+      const WAGERS = [20, 10, 0];
       document.getElementById('fw-player-list').innerHTML = P.map((p, i) => {
         const locked = i < 3;
-        return '<div class="fw-player-row"><div class="avatar-wrap">' + av(p) + '</div>' +
-          '<span class="fw-player-row__name">' + p.name + '</span>' +
-          '<span class="fw-player-row__score">' + (42 - i * 7) + ' pts</span>' +
-          '<span class="fw-player-row__wager' + (locked ? '' : ' fw-player-row__wager--waiting') + '">' + (locked ? '🔒' : '...') + '</span></div>';
+        const title = TITLES[i] ? '<span class="player-title">' + TITLES[i] + '</span>' : '';
+        const honk = i === 0 ? '<span class="honk-slot" aria-hidden="true"></span>' : '<button class="honk-btn" aria-label="Quack">&#x1F986;</button>';
+        return '<div class="fw-player-row">' + av(p) +
+          '<div class="name-stack"><span class="fw-player-row__name">' + p.name + '</span>' + title + '</div>' +
+          honk +
+          '<span class="fw-player-row__score">' + (42 - i * 7) + '</span>' +
+          '<span class="fw-player-row__wager' + (locked ? '' : ' fw-player-row__wager--waiting') + '">' + (locked ? WAGERS[i] : '⏳') + '</span></div>';
       }).join('');
     },
   },
@@ -1196,7 +1227,7 @@ export const STATES = {
       // Mark all players as locked
       document.querySelectorAll('.fw-player-row__wager--waiting').forEach(el => {
         el.classList.remove('fw-player-row__wager--waiting');
-        el.textContent = '🔒';
+        el.textContent = '10';
       });
     },
   },

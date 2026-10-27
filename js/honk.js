@@ -41,6 +41,9 @@ let _honkMuted = false;
 // iOS can suspend the context (a call, a backgrounded tab), so every tap asks it
 // to resume, and the pool is topped up on later taps too.
 const POOL_SIZE = 4;
+const SEND_POOL_SIZE = 8;
+const _sendPool = [];      // the sender's own honks, played inside the tap
+let _sendNext = 0;
 const _pool = [];          // unlocked <audio> elements, round-robin
 let _poolNext = 0;
 let _ctx = null;
@@ -171,12 +174,20 @@ function playHonk({ received = false } = {}) {
     }
     if (_playThroughContext()) return;
   }
-  // Clone the Audio element so rapid honks OVERLAP rather than interrupt
-  // each other. The previous "currentTime = 0; play()" pattern restarted
-  // the single shared element on every tap, so a 10-tap spam played 10
-  // cut-off halves of the sound. Cloning lets each honk play to completion
-  // in parallel — comedic chorus instead of stuttered one-shot.
-  const a = honkAudio.cloneNode();
+  // A ROUND-ROBIN of a few elements so rapid honks OVERLAP rather than
+  // interrupt each other. A single shared element restarted on every tap, so a
+  // 10-tap spam played 10 cut-off halves of the sound.
+  //
+  // It used to CLONE A NEW ELEMENT PER TAP, and that is the reported "quacks
+  // start lagging after about a hundred" (2026-10-27, Chaos mode): every clone
+  // is a media player of its own, none was ever reused, and a phone's media
+  // stack slows as they pile up. Eight in rotation is a chorus at any speed a
+  // thumb can manage — the oldest is restarted, which nobody can hear under
+  // seven others. A lead from reading, not a measurement on an iPhone.
+  let a = _sendPool[_sendNext % SEND_POOL_SIZE];
+  if (!a) { a = honkAudio.cloneNode(); _sendPool[_sendNext % SEND_POOL_SIZE] = a; }
+  _sendNext++;
+  try { a.currentTime = 0; } catch { /* not seekable yet */ }
   a.volume = 1.0;
   a.play().catch(() => {});
 }
@@ -300,6 +311,27 @@ export function sendHonk(targetPlayerId) {
     payload: {
       target_id: targetPlayerId,
       from_id: localPlayerId
+    }
+  });
+}
+
+/**
+ * Repaint every honk count badge on the page in place.
+ *
+ * The ONE thing a honk changes in a player list. The lobby used to redraw the
+ * whole list on every honk, on every phone — so spamming rebuilt the rows under
+ * people's fingers (a button replaced between touchstart and click never fires)
+ * and cut every avatar shake short. Every list tags its badge with
+ * data-honk-player, so this needs to know nothing about which screen it is on.
+ */
+export function updateHonkBadges() {
+  document.querySelectorAll('.honk-badge[data-honk-player]').forEach(badge => {
+    const count = getHonkCount(badge.dataset.honkPlayer);
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
     }
   });
 }

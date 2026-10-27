@@ -503,6 +503,46 @@ try {
     problems.push(`the bot used a wager outside 1..${n}: ${JSON.stringify(wagers)}`);
   }
 
+  // THE BOT'S CARD DRAWS ITS CHART, from what it actually did (migration 072).
+  // Reported 2026-10-27 with a photograph: the card said "this is what it has
+  // actually scored" above no chart at all. fetchBotProficiency handed the
+  // chart bare ratios where it reads {met, mastered}, so it saw no data.
+  heading("the bot's card shows its chart");
+  {
+    const botRecords = table.store.table('bot_proficiency');
+    note(`bot_proficiency rows: ${botRecords.length}`);
+    const sel = botRow ? `[data-profile-player-id="${botRow.id}"]` : null;
+    const opened = sel && await host.page.evaluate(s => {
+      const el = [...document.querySelectorAll(s)].find(e => e.offsetParent !== null);
+      if (!el) return false;
+      (el.querySelector('.avatar, [class*="avatar"]') || el).click();
+      return true;
+    }, sel).catch(() => false);
+    if (!opened) {
+      note('INCONCLUSIVE: no visible row for the bot to tap on the host\'s screen');
+    } else {
+      await host.page.waitForTimeout(1500);
+      const card = await host.page.evaluate(() => {
+        const sheet = document.querySelector('#profile-card-sheet');
+        return {
+          open: !!sheet && sheet.classList.contains('active'),
+          chart: !!sheet?.querySelector('.profile-card__radar svg'),
+          caption: (sheet?.querySelector('.profile-card__guest-hint')?.textContent || '').trim(),
+        };
+      });
+      note(`bot card: ${JSON.stringify(card)}`);
+      if (!card.open) problems.push('tapping the bot opened no card');
+      else if (botRecords.length && !card.chart) {
+        problems.push(`the bot has a recorded history and its card draws no chart ("${card.caption}")`);
+      }
+      // Closed the way a person closes it, or the open sheet swallows the
+      // remove-bot tap further down and that check fails for the wrong reason.
+      await host.page.click('#profile-card-backdrop').catch(() => {});
+      await host.page.waitForTimeout(500);
+      await host.page.evaluate(() => document.querySelector('#profile-card-sheet')?.classList.remove('active')).catch(() => {});
+    }
+  }
+
   // ============================================================
   // 6. NO WRONG ANSWER IS EVER INVENTED
   // ============================================================

@@ -500,7 +500,9 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
       if (measured) {
         if (recorded[key] != null) byCategory[key] = recorded[key];
       } else if (recorded === null) {
-        byCategory[key] = botSkillFor(key, BOT_ACCURACY);
+        // A stated skill is a ratio, not a count, so it is expressed as one
+        // question met — buildRadarAxes only ever reads mastered / met.
+        byCategory[key] = { met: 1, mastered: botSkillFor(key, BOT_ACCURACY) };
       }
     }
     const axesInput = Object.entries(CATEGORY_META)

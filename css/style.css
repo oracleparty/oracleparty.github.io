@@ -3477,6 +3477,13 @@ body::after {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* More than two rows: shorter than square, never under the 44px tap floor.
+   Set by renderWagerGrid; measured to fit 20 wagers at 390x560. */
+.wager-grid--compact .wager-btn {
+  aspect-ratio: auto;
+  height: 46px;
+}
+
 .wager-btn:active {
   transform: scale(0.93);
 }
@@ -4545,7 +4552,20 @@ body::after {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-md);
+  /* No side padding: the list already sits inside the screen's own, and the
+     33px it cost is what cut "Phantom World Apprentice" to "…Apprenti…" at
+     375px (reported 2026-10-27). */
+  padding: var(--space-xs) 0;
+}
+.fw-player-row .name-stack {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Every row holds the honk column, including your own (which has no duck), so
+   the duck, score and wager are one column each instead of three ragged ones. */
+.fw-player-row .honk-slot {
+  min-width: 28px;
+  flex-shrink: 0;
 }
 
 .fw-player-row__name {
@@ -4563,6 +4583,8 @@ body::after {
   font-size: var(--text-sm);
   color: var(--color-text-dim);
   flex-shrink: 0;
+  min-width: 1.6rem;
+  text-align: right;
 }
 
 .fw-player-row__wager {
@@ -4570,7 +4592,8 @@ body::after {
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--color-primary);
-  min-width: 50px;
+  /* Sized for "20", not for a word: a waiting player shows an hourglass. */
+  min-width: 1.6rem;
   text-align: right;
   flex-shrink: 0;
 }
@@ -4578,7 +4601,6 @@ body::after {
 .fw-player-row__wager--waiting {
   color: var(--color-text-muted);
   font-weight: 400;
-  font-style: italic;
 }
 
 /* --- Results Screen --- */

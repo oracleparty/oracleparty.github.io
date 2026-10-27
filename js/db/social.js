@@ -1349,7 +1349,10 @@ export async function fetchBotProficiency(botKey) {
   const out = {};
   for (const r of (data || [])) {
     const met = Number(r.questions_met) || 0;
-    if (met > 0) out[r.category] = (Number(r.questions_mastered) || 0) / met;
+    // The SAME {met, mastered} shape buildRadarAxes reads for a player. It
+    // returned a bare ratio, which buildRadarAxes reads as no data at all — so
+    // the bot's card never drew a chart, recorded or not.
+    if (met > 0) out[r.category] = { met, mastered: Number(r.questions_mastered) || 0 };
   }
   return out;
 }

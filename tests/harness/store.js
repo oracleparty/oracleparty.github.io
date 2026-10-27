@@ -892,6 +892,31 @@ export class FakeStore {
    * assert a percentage the ratings do not support — which is the harness
    * telling itself a story rather than testing the app.
    */
+  /**
+   * Rebuild bot_proficiency from bot_history (migration 072's view): one row
+   * per bot per category, counting distinct questions met and the ones whose
+   * LAST sighting was right. A view on the live database; derived here for the
+   * same reason as host_reputation below.
+   */
+  _recomputeBotProficiency() {
+    const qs = new Map(this.table('questions').map(q => [String(q.id), q]));
+    const acc = new Map();
+    for (const h of this.table('bot_history')) {
+      const q = qs.get(String(h.question_id));
+      if (!q) continue;
+      for (const category of (q.categories || [])) {
+        const k = `${h.bot_key}\u0000${category}`;
+        const row = acc.get(k) || { bot_key: h.bot_key, category, questions_met: 0, questions_mastered: 0 };
+        row.questions_met++;
+        if (h.last_correct) row.questions_mastered++;
+        acc.set(k, row);
+      }
+    }
+    const out = this.table('bot_proficiency');
+    out.length = 0;
+    out.push(...acc.values());
+  }
+
   _recomputeHostReputation() {
     const byHost = new Map();
     for (const r of this.table('host_ratings')) {
@@ -1165,6 +1190,8 @@ export class FakeStore {
           });
         }
       }
+
+      if (botSeen.size) this._recomputeBotProficiency();
 
       // The count returned is HUMANS, unchanged — callers read it as "how many
       // people's rounds were recorded" and the SQL keeps it that way too.
