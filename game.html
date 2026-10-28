@@ -273,10 +273,8 @@
           <p id="fw-status" class="waiting-text hidden">Wager locked &mdash; waiting for others...</p>
         </div>
 
-        <!-- Player wager list (shows wagers as they come in) -->
-        <div id="fw-player-list" class="fw-player-list"></div>
-
-        <!-- Inline difficulty vote -->
+        <!-- Inline difficulty vote — ABOVE the player list, so the two things
+             a player must touch are both on screen (owner, 2026-10-28) -->
         <div class="dv-inline">
           <div class="dv-inline__title">Vote on Difficulty</div>
           <div class="dv-inline__options">
@@ -294,6 +292,9 @@
             </div>
           </div>
         </div>
+
+        <!-- Player wager list (shows wagers as they come in) -->
+        <div id="fw-player-list" class="fw-player-list"></div>
       </div>
 
       <div class="game-footer">

@@ -3493,6 +3493,14 @@ body::after {
   padding-bottom: var(--space-xs);
   margin-bottom: var(--space-md);
 }
+/* An iPhone SE in Safari (560px visible) cannot spare the full air above the
+   answer box in a 20-wager game: 2px short, measured by the sweep's FIT pass.
+   Shorter screens give a little back; every taller phone keeps the 42px. */
+@media (max-height: 600px) {
+  #question-screen .game-content:has(.wager-grid--many) #answer-form {
+    margin-top: var(--space-md);
+  }
+}
 /* The question sits EVENLY between the timer and "Choose your wager":
    measured 26px of air above the text and 26px below (it was 39 and 17,
    which read as the question sliding down the screen — owner, 2026-10-28). */
@@ -3601,6 +3609,10 @@ body::after {
  * decision the keyboard rules below already make and for the same stated
  * reason: the thing that gives way must never be the thing you are aiming at. */
 #question-screen #answer-form {
+  /* More air above the answer box than between the wagers: it is a heavy
+     block, and at the old 8px (25px in all) it read as crowding the grid.
+     Owner's pick from a side-by-side, 2026-10-28. */
+  margin-top: var(--space-lg);
   position: sticky;
   bottom: 0;
   z-index: 1;
