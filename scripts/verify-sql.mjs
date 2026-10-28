@@ -93,6 +93,7 @@ const MIGRATIONS = [
   '074_a_locked_wager_names_no_question.sql',
   '075_chaos_mode.sql',
   '076_claps_are_live.sql',
+  '077_friend_requests_are_live.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.

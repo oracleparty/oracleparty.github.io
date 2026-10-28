@@ -33,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20261028k">
+  <link rel="stylesheet" href="css/style.css?v=20261028l">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body style="opacity:0">
@@ -373,6 +373,8 @@
       <div class="room-settings__locked">
         <div class="room-settings__row"><span>Category</span><b id="room-settings-category"></b></div>
         <div class="room-settings__row"><span>Questions</span><b id="room-settings-questions"></b></div>
+        <div class="room-settings__row"><span>Question Timer</span><b id="room-settings-timer"></b></div>
+        <div class="room-settings__row hidden" data-chaos-setting><span>Chaos Mode</span><b id="room-settings-chaos"></b></div>
         <p class="settings-group__hint">Set before the game started.</p>
       </div>
 
@@ -385,28 +387,6 @@
           <button class="toggle-option" data-value="4">Fast</button>
         </div>
         <p class="settings-group__hint">Auto-advances between rounds after answers are revealed.</p>
-      </div>
-
-      <div class="settings-group hidden" data-chaos-setting>
-        <div class="settings-group__label">Chaos Mode</div>
-        <div class="room-settings__value" data-value-for="chaos"></div>
-        <div class="toggle-group" data-game-setting="chaos">
-          <button class="toggle-option active" data-value="0">Off</button>
-          <button class="toggle-option" data-value="1">On 🔥</button>
-        </div>
-        <p class="settings-group__hint">Honks sound and show even while people are answering. Everyone can see it's on.</p>
-      </div>
-
-      <div class="settings-group">
-        <div class="settings-group__label">Question Timer</div>
-        <div class="room-settings__value" data-value-for="questionTimer"></div>
-        <div class="toggle-group" data-game-setting="questionTimer">
-          <button class="toggle-option" data-value="15">15s</button>
-          <button class="toggle-option" data-value="30">30s</button>
-          <button class="toggle-option" data-value="45">45s</button>
-          <button class="toggle-option" data-value="60">60s</button>
-        </div>
-        <p class="settings-group__hint">Applies starting from the next question.</p>
       </div>
 
       <div class="room-settings__host-only">
@@ -502,7 +482,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/game/init.js?v=20261028k"></script>
+  <script type="module" src="js/game/init.js?v=20261028l"></script>
 
 </body>
 </html>

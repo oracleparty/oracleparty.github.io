@@ -1027,13 +1027,21 @@ function _showFriendRequestToast(senderName, requestId) {
   toast.onclick = async (e) => {
     const accept = e.target.closest('[data-fr-accept]');
     const decline = e.target.closest('[data-fr-decline]');
+    // NO parseInt, for the reason the profile's own Accept gives: the live
+    // friend_requests.id is not known to be an integer, and parseInt of a
+    // uuid is NaN or a wrong number. This popup had never fired (the table
+    // was not in the Realtime publication until migration 077), so the fault
+    // had never had a chance to show. And a refusal says so rather than
+    // closing as though it worked.
     if (accept) {
       accept.disabled = true;
-      await acceptFriendRequest(parseInt(accept.dataset.frAccept));
+      const { error } = await acceptFriendRequest(accept.dataset.frAccept);
+      if (error) { logger.error('Auth', 'acceptFriendRequest failed', error); accept.disabled = false; accept.textContent = 'Error'; return; }
       toast.remove();
     } else if (decline) {
       decline.disabled = true;
-      await declineFriendRequest(parseInt(decline.dataset.frDecline));
+      const { error } = await declineFriendRequest(decline.dataset.frDecline);
+      if (error) { logger.error('Auth', 'declineFriendRequest failed', error); decline.disabled = false; decline.textContent = 'Error'; return; }
       toast.remove();
     }
   };

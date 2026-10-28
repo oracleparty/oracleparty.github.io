@@ -102,11 +102,16 @@ function fillRoomSettingsSheet(sheet) {
   if (cat) cat.textContent = getCategoryLabel();
   const qs = sheet.querySelector('#room-settings-questions');
   if (qs) qs.textContent = String(state.totalQuestions || '');
+  // LOCKED ONCE THE GAME STARTS, for the host too (owner, 2026-10-28): the
+  // timer and Chaos change the rules of a round, so they are set in the lobby
+  // and shown here as facts. Auto-Proceed is pacing, not a rule, and stays.
+  const timer = sheet.querySelector('#room-settings-timer');
+  if (timer) timer.textContent = `${state.timerSeconds || 30}s`;
+  const chaos = sheet.querySelector('#room-settings-chaos');
+  if (chaos) chaos.textContent = state.room?.settings?.chaos ? 'On 🔥' : 'Off';
 
   const words = {
     autoProceed: ({ 0: 'Off', 8: 'Slow', 4: 'Fast' })[state.autoProceedSeconds || 0] || 'Off',
-    chaos: state.room?.settings?.chaos ? 'On 🔥' : 'Off',
-    questionTimer: `${state.timerSeconds || 30}s`,
   };
   sheet.querySelectorAll('.room-settings__value[data-value-for]').forEach(el => {
     el.textContent = words[el.dataset.valueFor] ?? '';
@@ -139,12 +144,8 @@ function syncHostSettingsToggles() {
   sheet.querySelectorAll('.toggle-group[data-game-setting]').forEach(group => {
     const key = group.dataset.gameSetting;
     let currentValue;
-    if (key === 'chaos') {
-      currentValue = state.room?.settings?.chaos ? '1' : '0';
-    } else if (key === 'autoProceed') {
+    if (key === 'autoProceed') {
       currentValue = String(state.autoProceedSeconds || 0);
-    } else if (key === 'questionTimer') {
-      currentValue = String(state.timerSeconds || 30);
     }
     group.querySelectorAll('.toggle-option').forEach(opt => {
       opt.classList.toggle('active', opt.dataset.value === currentValue);
@@ -156,25 +157,14 @@ async function handleGameSettingChange(key, value) {
   // The toggles are hidden for anybody else; this is the guard behind that.
   if (!canEditRoomSettings()) return;
   const numVal = Number(value);
-  const columnMap = {
-    autoProceed: 'auto_proceed',
-    questionTimer: 'question_timer'
-  };
-
-  if (key === 'chaos') {
-    const on = value === '1';
-    if (state.room?.settings) state.room.settings.chaos = on;
-    sessionStorage.setItem('oracle_party_room', JSON.stringify(state.room));
-    syncChaosDisplay();
-    await updateGameState(state.room.id, { chaos: on });
-    return;
-  }
+  // Auto-Proceed is the only setting that changes mid-game; the timer and
+  // Chaos are locked once the game has started (see fillRoomSettingsSheet).
+  const columnMap = { autoProceed: 'auto_proceed' };
+  if (!columnMap[key]) return;
 
   // Update local state
   if (key === 'autoProceed') {
     state.autoProceedSeconds = numVal;
-  } else if (key === 'questionTimer') {
-    state.timerSeconds = numVal;
   }
 
   // Update room settings

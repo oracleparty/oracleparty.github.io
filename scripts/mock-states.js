@@ -2738,13 +2738,13 @@ export const STATES = {
       if (sheet) sheet.classList.add('active');
       const ap = document.querySelector('[data-game-setting="autoProceed"] [data-value="0"]');
       if (ap) ap.classList.add('active');
-      const qt = document.querySelector('[data-game-setting="questionTimer"] [data-value="30"]');
-      if (qt) qt.classList.add('active');
-      // The fixed half, filled as fillRoomSettingsSheet fills it.
+      // The fixed half, filled as fillRoomSettingsSheet fills it. The timer
+      // and Chaos are locked once a game starts (owner, 2026-10-28).
       document.getElementById('room-settings-category').textContent = '⏳ History';
       document.getElementById('room-settings-questions').textContent = '10';
-      document.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
-      document.querySelectorAll('[data-game-setting="chaos"] .toggle-option').forEach(o => o.classList.toggle('active', o.dataset.value === '1'));
+      document.getElementById('room-settings-timer').textContent = '30s';
+      document.getElementById('room-settings-chaos').textContent = 'On 🔥';
+      document.querySelectorAll('#host-settings-sheet [data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
       document.querySelectorAll('.host-settings-gear').forEach(g => g.classList.remove('hidden'));
     },
   },
@@ -2761,7 +2761,7 @@ export const STATES = {
       const by = document.getElementById('room-settings-by');
       by.textContent = 'Set by the host · ArchaeologistAnna';
       by.classList.remove('hidden');
-      const words = { autoProceed: 'Off', chaos: 'On 🔥', questionTimer: '30s' };
+      const words = { autoProceed: 'Off' };
       document.querySelectorAll('.room-settings__value[data-value-for]').forEach(el => {
         el.textContent = words[el.dataset.valueFor];
       });

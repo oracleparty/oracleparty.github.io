@@ -96,6 +96,30 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (after last) — 076 is applied; the timer and Chaos lock at the start; friend requests were never live
+>
+> **076 IS APPLIED — the owner pasted its rows:** `answer_claps ok`, and
+> rooms, players, answers, chat_messages all ok. **The same check read
+> `friend_requests NOT LIVE`**: `js/auth.js` listens for a new request to pop
+> up "X sent a friend request", and that popup has never appeared. Migration
+> 077 adds the table to the publication — **NOT APPLIED until the owner runs
+> it**. The popup also called `parseInt` on the request id (the fault the
+> profile's own Accept fixed on 2026-08-31) and closed even on a refusal; both
+> fixed, never seen because the popup never fired.
+>
+> **The timer and Chaos are locked once a game starts (owner: "chaos mode /
+> base settings should be locked after starting").** The in-game sheet shows
+> them as fixed rows beside Category and Questions, for the host too. **Auto-
+> Proceed stays changeable** — pacing, not a rule; that was my recommendation
+> on the owner's "not sure what should be allowed", and is theirs to reverse.
+> The lobby still sets all of them. `scenario-chaos` now fails if the host's
+> sheet offers a Chaos or timer switch mid-game; it reaches Chaos OFF for its
+> honk check by changing the room row directly, since nothing in a game can.
+>
+> **Results: owner likes B's scoreboard and wants the fun answers seen.**
+> Mockup D sent — the top favourite answer as one line between the winner and
+> the scoreboard, "+N more" to open the rest. Nothing built until they choose.
+
 > ## 2026-10-28 (last) — Submit and the final wager stop waiting on the network
 >
 > **The owner: "each click be instant and snappy and the next screen loading

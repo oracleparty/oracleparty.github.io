@@ -194,7 +194,7 @@ try {
         readonly: !!sh?.classList.contains('is-readonly'),
         toggles: [...sh.querySelectorAll('.toggle-group')].filter(vis).length,
         returnBtn: vis(sh.querySelector('#btn-return-to-lobby')),
-        chaosWords: (sh.querySelector('[data-value-for="chaos"]')?.textContent || '').trim(),
+        chaosWords: (sh.querySelector('#room-settings-chaos')?.textContent || '').trim(),
         questions: (sh.querySelector('#room-settings-questions')?.textContent || '').trim(),
       };
     }).catch(() => null);
@@ -225,14 +225,39 @@ try {
   note(`ducks ${before.ducks}->${after.ducks}, sounds ${before.plays}->${after.plays}`);
   if (after.plays <= before.plays) problems.push('Bob turned honk sound back on and a received honk played nothing');
 
-  heading('the host turns Chaos OFF from the in-game gear');
+  heading('Chaos is LOCKED once the game has started — the host gets no switch for it');
+  // Owner, 2026-10-28: Chaos and the timer change the rules, so they are set
+  // in the lobby. The host's in-game sheet shows them as facts.
   await host.page.locator('.screen.active .host-settings-gear').click().catch(() => {});
-  await host.page.waitForSelector('[data-game-setting="chaos"] [data-value="0"]', { state: 'visible', timeout: 5000 })
-    .catch(() => problems.push('the in-game settings sheet does not offer Chaos'));
-  await host.page.click('[data-game-setting="chaos"] [data-value="0"]').catch(() => {});
-  await host.page.click('#host-settings-backdrop').catch(() => {});
+  await host.page.waitForTimeout(500);
+  const hostLocked = await host.page.evaluate(() => {
+    const sh = document.querySelector('#host-settings-sheet');
+    const vis = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+    return {
+      chaosSwitch: !!sh.querySelector('[data-game-setting="chaos"]'),
+      timerSwitch: !!sh.querySelector('[data-game-setting="questionTimer"]'),
+      chaosRow: vis(sh.querySelector('#room-settings-chaos')) ? sh.querySelector('#room-settings-chaos').textContent.trim() : null,
+      timerRow: (sh.querySelector('#room-settings-timer')?.textContent || '').trim(),
+    };
+  });
+  note(`host's sheet mid-game: ${JSON.stringify(hostLocked)}`);
+  if (hostLocked.chaosSwitch || hostLocked.timerSwitch) problems.push(`the host can still change a locked setting mid-game: ${JSON.stringify(hostLocked)}`);
+  if (hostLocked.chaosRow !== 'On 🔥') problems.push(`the host's sheet does not say Chaos is on: ${JSON.stringify(hostLocked)}`);
+  if (!/^\d+s$/.test(hostLocked.timerRow)) problems.push(`the host's sheet does not state the timer: ${JSON.stringify(hostLocked)}`);
+  // The backdrop's centre sits under the sheet's own panel, so a positional
+  // click lands on the panel and the sheet stays open; press the backdrop itself.
+  await host.page.evaluate(() => document.querySelector('#host-settings-backdrop')?.click()).catch(() => {});
+
+  // The rest of this test needs Chaos OFF during a question. Nothing in the
+  // game can do that now, so the room row is changed underneath the phones —
+  // what checks the default still holds, not how it got there.
+  {
+    const r = room();
+    const old = { ...r };
+    r.chaos = false;
+    table.store._broadcast('UPDATE', 'rooms', { ...r }, old);
+  }
   await host.page.waitForTimeout(1500);
-  if (room()?.chaos !== false) problems.push('turning Chaos off in the game did not reach the room');
   if (await gearMarked()) problems.push('Chaos is off and Bob\'s gear carries a mode marker');
 
   heading('Chaos OFF, Bob still answering — the honk is dropped, as by default');
@@ -256,13 +281,13 @@ try {
     else {
       if (!b.readonly || b.toggles > 0) problems.push(`a player was offered the room's controls: ${JSON.stringify(b)}`);
       if (b.returnBtn) problems.push('a player was offered Return to Lobby');
-      if (b.chaosWords !== 'Off') problems.push(`the host turned Chaos off and the player's sheet reads "${b.chaosWords}"`);
+      if (b.chaosWords !== 'Off') problems.push(`Chaos is off and the player's sheet reads "${b.chaosWords}"`);
       if (b.questions !== String(QUESTIONS)) problems.push(`the player's sheet says ${b.questions} questions, not ${QUESTIONS}`);
     }
     await closeSheet(bob);
     const h = await openSheet(host);
     note(`Alice's sheet: ${JSON.stringify(h && { readonly: h.readonly, toggles: h.toggles, returnBtn: h.returnBtn })}`);
-    if (!h?.open || h.readonly || h.toggles < 2 || !h.returnBtn) problems.push(`the host's sheet lost its controls: ${JSON.stringify(h)}`);
+    if (!h?.open || h.readonly || h.toggles !== 1 || !h.returnBtn) problems.push(`the host's sheet lost its controls: ${JSON.stringify(h)}`);
     await closeSheet(host);
     await host.page.waitForTimeout(400);
   }
