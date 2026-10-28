@@ -91,6 +91,11 @@ export function recordFault(type, message, detail) {
 
 function _showErrorToast(message) {
   if (currentLevel < LOG_LEVELS.debug) return; // suppress in production
+  // "Script error." is all a browser will say about an error in a script from
+  // another origin — no file, no line, nothing a player can act on. Reported
+  // from a real join (2026-10-28). It is still written to error_logs above;
+  // only the toast goes, because a red "Error" that names nothing is noise.
+  if (/^script error\.?$/i.test(String(message).trim())) return;
   import('./utils.js').then(({ showToast }) => {
     showToast(`Error: ${String(message).substring(0, 80)}`, 'error');
   }).catch(() => {});

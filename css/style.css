@@ -6407,6 +6407,9 @@ body::after {
 
 .profile-tab {
   flex: 1;
+  /* The request count sits BESIDE the word. Without this it wrapped under
+     "Friends" and read as a red 1 floating loose on the page. */
+  white-space: nowrap;
   padding: var(--space-sm) var(--space-md);
   font-family: var(--font-heading);
   font-size: var(--text-sm);

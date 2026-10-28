@@ -678,6 +678,20 @@ try {
         await bob.page.waitForTimeout(2200);
         const bobFriendsTab = bob.page.locator('.profile-tab[data-tab="friends"]').first();
         if (await bobFriendsTab.isVisible().catch(() => false)) {
+          // The request count sits BESIDE "Friends" (owner's photo, 2026-10-28:
+          // it wrapped under the word and read as a red 1 floating loose).
+          const badgeLine = await bob.page.evaluate(() => {
+            const b = document.getElementById('friends-tab-badge');
+            const t = b?.closest('.profile-tab');
+            if (!b || b.classList.contains('hidden') || !t) return null;
+            const r = b.getBoundingClientRect(), tr = t.getBoundingClientRect();
+            const word = document.createRange(); word.selectNodeContents(t.firstChild);
+            const wr = word.getBoundingClientRect();
+            return { shown: true, sameLine: Math.abs((r.top + r.bottom) / 2 - (wr.top + wr.bottom) / 2) < 6, tabH: Math.round(tr.height) };
+          });
+          note(`friends tab badge: ${JSON.stringify(badgeLine)}`);
+          if (!badgeLine) problems.push('a pending friend request shows no count on the Friends tab');
+          else if (!badgeLine.sameLine) problems.push('the Friends tab count wrapped under the word — it floats loose on the page');
           await bobFriendsTab.click().catch(() => {});
           await bob.page.waitForTimeout(1500);
           const accept = bob.page.locator('button:has-text("Accept"), .friend-accept-btn, [data-accept-request]').first();
@@ -695,6 +709,11 @@ try {
             if (stillPending.length) {
               problems.push('an accepted friend request is still pending');
             }
+            const badgeAfter = await bob.page.evaluate(() => {
+              const b = document.getElementById('friends-tab-badge');
+              return b && !b.classList.contains('hidden') ? b.textContent : null;
+            });
+            if (badgeAfter) problems.push(`the Friends tab still counts "${badgeAfter}" request(s) after the last one was accepted`);
           }
         }
       }

@@ -96,6 +96,32 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (later) — a friend's report: a floating red 1, OLED, "Script error"
+>
+> **The red 1 was the pending friend-request count, and it had two faults.**
+> It wrapped UNDER "Friends" (the tab is ~100px wide) and read as a badge
+> floating loose; and it was set once at page load and never again, so
+> accepting the only request left it on the tab. `.profile-tab` is `nowrap`,
+> and `loadFriendsTab` sets the count from the list it just read. The pending
+> list's handler was also `addEventListener` on every redraw, so after one
+> accept the next tap fired twice; it is `onclick` now. `scenario-account`
+> checks the count is on the word's line and gone after the accept; each half
+> break-tested separately. **The owner's screenshot never arrived** — this is
+> the only red count on that page, but it is a match, not a confirmation.
+>
+> **OLED "resets every time" did NOT reproduce.** Toggled on the profile, it
+> held across index, join, lobby and back, switch still on. The code writes
+> and reads one localStorage key consistently. **Lead, not measured:** a
+> browser that does not keep localStorage — an app's built-in browser
+> (Messenger, Instagram, Discord, Snapchat) opening the invite link — would
+> forget it every time, and such browsers inject scripts that throw, which
+> is also the commonest source of a bare "Script error.".
+>
+> **"Script error." is no longer toasted** (`_showErrorToast` in
+> `logger.js`); it is still written to `error_logs`. It is all a browser says
+> about an error in another origin's script, so the toast named nothing. The
+> slow join that followed is **not explained**.
+
 > ## 2026-10-28 — room settings for everyone, a dot instead of "🔥 Chaos", and real phone sizes
 >
 > **Every player has the gear now (owner's choice from a mockup).** The host's

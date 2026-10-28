@@ -1626,6 +1626,13 @@ async function loadFriendsTab(userId) {
   } catch (err) {
     logger.error('Profile', 'fetchPendingRequests failed', err);
   }
+  // The tab's count follows the list. It was set once when the page loaded
+  // and never again, so accepting the only request left a red "1" on the tab.
+  const tabBadge = $('#friends-tab-badge');
+  if (tabBadge) {
+    tabBadge.textContent = pending.length;
+    tabBadge.classList.toggle('hidden', pending.length === 0);
+  }
   if (pending.length > 0) {
     pendingSection.style.display = '';
     const senderIds = pending.map(r => r.sender_id);
@@ -1648,8 +1655,10 @@ async function loadFriendsTab(userId) {
       </div>`;
     }).join('');
 
-    // Wire accept/decline + profile card tap
-    pendingListEl.addEventListener('click', async (e) => {
+    // Wire accept/decline + profile card tap. onclick, not addEventListener:
+    // this function runs again after every accept or decline, and each run
+    // added another listener, so the next tap fired twice.
+    pendingListEl.onclick = async (e) => {
       const acceptBtn = e.target.closest('[data-accept]');
       const declineBtn = e.target.closest('[data-decline]');
       if (acceptBtn) {
@@ -1716,7 +1725,7 @@ async function loadFriendsTab(userId) {
           avatarEmoji: row.dataset.profileEmoji || null
         });
       }
-    });
+    };
   } else {
     pendingSection.style.display = 'none';
   }
