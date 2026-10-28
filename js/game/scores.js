@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
-import { logger } from '../logger.js';
+import { logger, recordFault } from '../logger.js';
 import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS, FINAL_WAGER_TIMER_SECONDS, FINAL_QUESTION_SWAP_TIMEOUT_MS } from '../constants.js';
 import {
   supabase,
@@ -538,7 +538,10 @@ export function showFinalWagerScreen() {
   renderFinalWagerPlayers();
   updateFinalWagerPlayerList();
 
-  // Option buttons (0 / 10 / 20) — selection is changeable until lock-in
+  // Option buttons (0 / 10 / 20). A TAP LOCKS IT — the owner's call
+  // (2026-10-28): "Do i really need a lock in button or should it just lock
+  // automatically?" The separate Lock In step cost a second tap and, after it,
+  // a screen that no longer fitted. The button stays in the page, never shown.
   const lockBtn = $('#btn-fw-lock');
   lockBtn.style.display = 'none';
   options.forEach(btn => {
@@ -555,11 +558,9 @@ export function showFinalWagerScreen() {
       btn.classList.add('fw-option--selected');
       state.finalWager = parseInt(btn.dataset.wager, 10);
       state.finalWagerSelected = true;
-      // Show lock-in button (player can change mind until they tap it)
-      lockBtn.style.display = '';
+      lockInFinalWager();
     };
   });
-  lockBtn.onclick = () => lockInFinalWager();
 
   if (state.finalWagerLocked) {
     // Already locked in (reconnect)
@@ -1650,6 +1651,15 @@ export async function showResultsScreen() {
 
 
   $('#results-category').textContent = getCategoryLabel();
+
+  // A PLAYER WHO ANSWERED THIS GAME BUT HOLDS NO SEAT is missing from the
+  // ranking below. Reported 2026-10-28 ("my friend didn't leave") with the
+  // cause unknown, so it is written down when it happens rather than guessed.
+  const seated = new Set(state.players.map(p => String(p.id)));
+  const unseated = [...new Set(allAnswers.map(a => String(a.player_id)))].filter(id => !seated.has(id));
+  if (unseated.length) {
+    recordFault('ResultsMissing', `${unseated.length} player(s) answered this game but hold no seat at results`, { seats: state.players.map(p => p.display_name), unseated }, 'warn');
+  }
 
   // Sort players by final score
   const sorted = [...state.players].sort((a, b) =>

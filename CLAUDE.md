@@ -96,6 +96,39 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (last) — Submit and the final wager stop waiting on the network
+>
+> **The owner: "each click be instant and snappy and the next screen loading
+> instant and snappy too".** Two changes, measured with one phone on a slow link.
+>
+> - **Submit shows the reveal at once.** `doSubmitAnswer` puts this phone's
+>   answer in `state.currentAnswers` as an `optimistic-` row and draws the
+>   reveal before the write; the server's row replaces it, and a failed write
+>   takes it back off and returns to the question. `showRevealScreen` draws
+>   from the cache first and re-reads behind it (keeping an optimistic row the
+>   read does not have yet). `scenario-latency` times Submit to the reveal at
+>   `--lag=800`: **574ms after, 2180ms before** (break-tested by stashing the
+>   change). The 500ms fade is most of what is left.
+> - **The final wager locks on tap (owner's decision).** `#btn-fw-lock` stays in
+>   the page and is never shown; tapping 0/10/20 calls `lockInFinalWager()`.
+>   The robots check `#fw-status` instead of pressing Lock In.
+> - **The Chaos dot on the gear is gone (owner: "unsustainable if i add other
+>   game options later").** The rules are in the settings sheet and on the lobby
+>   card; `scenario-chaos` now fails if the gear carries a marker.
+>
+> **"My friend didn't leave" — a player missing from the results. NOT
+> EXPLAINED.** The ranking is `state.players`; a seat swept mid-game (45s of
+> silence after the page reported closing, or 120s without) is not in it. Two
+> rows now reach `error_logs` so the next one can be read rather than guessed:
+> `[SeatSwept]` (whose phone judged whom gone, the silence by that phone's
+> clock, whether the page had reported closing) and `[ResultsMissing]` (somebody
+> answered this game and holds no seat at the results). Both log at warn.
+>
+> **Results layout: two mockups sent, nothing changed.** At 320x523 the winner
+> block takes ~170px and the scoreboard is below the fold. Proposed a one-line
+> winner, with or without the scoreboard moved above Favourite Answers (which
+> sits above it on the owner's earlier call).
+
 > ## 2026-10-28 (latest) — the owner's phone is 320 wide, and a media query lied about its height
 >
 > **MEASURED FROM TWO PHOTOS: the owner's iPhone uses DISPLAY ZOOM.** The 28px

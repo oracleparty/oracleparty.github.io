@@ -59,14 +59,13 @@ export function initHostSettingsPanel() {
 
 /**
  * Apply the room's Chaos setting on this phone: lift the no-honks-while-
- * answering rule, and mark every gear with a dot so nobody reads a honk
- * mid-question as a bug. Every phone calls this, not only the host.
+ * answering rule. Every phone calls this, not only the host.
  *
- * A DOT ON THE GEAR, NOT A WORD IN THE HEADER (owner, 2026-10-28). The header
- * is "where am I" — subject, round, time — and a room rule is a different kind
- * of fact; "🔥 Chaos" also read as a streak. The dot says "this room has a
- * special rule on", and the words are one tap away in the room settings sheet,
- * which every player can open now.
+ * NOTHING ON THE GEAR (owner, 2026-10-28). A dot for Chaos was tried and the
+ * owner turned it down: "This is unsustainable if i add other game options
+ * later" — one marker per mode does not scale, and a dot that means "some
+ * rule is on" says nothing. The room's rules are in the settings sheet every
+ * player can open, and on the lobby's room card.
  */
 export function syncChaosDisplay() {
   const on = !!state.room?.settings?.chaos;
@@ -74,8 +73,8 @@ export function syncChaosDisplay() {
   // A pill from an older build of this page, if one was drawn, goes.
   document.querySelectorAll('.game-progress .chaos-pill').forEach(p => p.remove());
   document.querySelectorAll('.host-settings-gear').forEach(gear => {
-    gear.classList.toggle('has-mode', on);
-    gear.setAttribute('aria-label', on ? 'Room settings — Chaos mode is on' : 'Room settings');
+    gear.classList.remove('has-mode');
+    gear.setAttribute('aria-label', 'Room settings');
   });
 }
 

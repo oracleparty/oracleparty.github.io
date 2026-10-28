@@ -410,7 +410,7 @@ try {
       if (!answered.has('final')) {
         const opt = host.page.locator('#final-wager-screen [data-wager]').first();
         if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
-        if (await clickIfReady(host, '#btn-fw-lock')) answered.add('final');
+        if (await host.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false)) answered.add('final');
       }
       await clickIfReady(host, '#btn-fw-reveal');
     } else if (screen === 'reveal-screen') {

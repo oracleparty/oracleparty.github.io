@@ -4440,22 +4440,6 @@ body::after {
   position: absolute;
   inset: -8px;
 }
-/* A ROOM MODE IS ON (Chaos today). A dot instead of a word or an emoji in the
-   header: 🔥 read as "streak", and the words belong one tap away in the sheet.
-   The ring in the page colour keeps it legible on all three themes. */
-.host-settings-gear.has-mode::after {
-  content: '';
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--color-danger);
-  box-shadow: 0 0 0 2px var(--color-bg);
-  pointer-events: none;
-}
-
 /* The room settings sheet: the host's controls, or everyone else's read-only
    view of the same settings. One sheet, one rule (.is-readonly). */
 .room-settings__by {

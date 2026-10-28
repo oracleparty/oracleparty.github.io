@@ -261,9 +261,36 @@ try {
     await host.page.locator('#btn-submit-answer').click().catch(() => {});
   }, SUBMIT_PROBE);
 
+  // THE NEXT SCREEN, NOT JUST THE BUTTON (owner, 2026-10-28: "each click be
+  // instant and snappy and the next screen loading instant"). Submit used to
+  // move the screen only after the save AND the waiting screen's own read —
+  // two trips. Bob's tap is timed to the waiting screen being up.
   await bob.page.locator('.wager-btn').first().click().catch(() => {});
   await bob.page.fill('#answer-input', 'Answer 1').catch(() => {});
+  const tSubmit = Date.now();
   await bob.page.locator('#btn-submit-answer').click().catch(() => {});
+  await bob.page.waitForFunction(() => {
+    const r = document.getElementById('reveal-screen');
+    // On its way in: the fade has STARTED (500ms by design, the owner's call
+    // to keep), which is the moment a person sees the screen move.
+    return r && getComputedStyle(r).display !== 'none';
+  }, null, { timeout: 15000 }).catch(() => {});
+  const submitToScreen = Date.now() - tSubmit;
+  const mineShown = await bob.page.evaluate(() =>
+    [...document.querySelectorAll('#reveal-answers .answer-row')].some(r => /Answer 1/.test(r.textContent))).catch(() => false);
+  const bobState = await bob.page.evaluate(() => ({ screen: document.querySelector('.screen.active')?.id,
+    phase: window.__state?.gamePhase, submitted: window.__state?.hasSubmitted,
+    btn: document.getElementById('btn-submit-answer')?.textContent, err: document.getElementById('wager-error')?.textContent })).catch(() => null);
+  if (submitToScreen > 800) note(`Bob after Submit: ${JSON.stringify(bobState)}`);
+  note(`Bob: Submit -> waiting screen ${submitToScreen}ms (one trip is ${LAG}ms); his own answer on it: ${mineShown}`);
+  // The limit is the screen fade (500ms, the owner's call to keep) plus a
+  // margin — NOT a multiple of the link. Measured 565ms at both 300 and 800ms
+  // of lag once the screen stopped waiting; before, it was two round trips
+  // PLUS the fade.
+  if (submitToScreen > 800) {
+    problems.push(`Submit took ${submitToScreen}ms to reach the waiting screen on a ${LAG}ms link — it is waiting on the network before moving`);
+  }
+  if (!mineShown) problems.push("the waiting screen came up without the player's own answer on it");
   await host.page.waitForTimeout(2500);
 
   for (const r of [host, bob]) {

@@ -80,9 +80,37 @@ export async function showRevealScreen() {
   // Reset feedback UI
   resetFeedbackUI();
 
-  // Fetch existing answers (some players may not have submitted yet) and cache them
   const currentQ = state.currentQuestion;
-  const fetched = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, currentQ));
+
+  // DRAW FIRST, READ AFTER (owner, 2026-10-28: "the next screen loading
+  // instant"). This screen used to read everybody's answers before it drew
+  // anything — a whole trip on top of the Submit that brought the player here.
+  // Now it draws from what this phone already knows for this round (its own
+  // answer always, since Submit puts it in the cache first) and the read fills
+  // in the rest a moment later. A reconnect with the results already revealed
+  // keeps the old order: that path draws verdicts, and an empty list there is
+  // a wrong screen rather than an early one.
+  if (!state.resultsRevealed) {
+    state.currentAnswers = (state.currentAnswers || []).filter(a => Number(a.question_number) === currentQ);
+    renderRevealAnswers(state.currentAnswers);
+    fetchAnswersForQuestion(state.room.id, currentQ).then(raw => {
+      if (!state.onRevealScreen || state.currentQuestion !== currentQ || state.resultsRevealed) return;
+      const fetched = currentGameAnswers(raw);
+      // Keep this phone's own answer if the read beat its save.
+      const pending = state.currentAnswers.filter(a => String(a.id).startsWith('optimistic-')
+        && !fetched.some(f => String(f.player_id) === String(a.player_id)));
+      state.currentAnswers = [...fetched, ...pending];
+      renderRevealAnswers(state.currentAnswers);
+      const t = $('#reveal-timer');
+      if (t) t.style.display = (!state.timerExpired && submittedCount(state.currentAnswers) < state.players.length) ? '' : 'none';
+      if (canControlGame()) updateRevealButtonText();
+    }).catch(err => logger.warn('Game', 'reveal: answers read failed; the cache stands', err));
+  }
+
+  // Fetch existing answers (some players may not have submitted yet) and cache them
+  const fetched = state.resultsRevealed
+    ? currentGameAnswers(await fetchAnswersForQuestion(state.room.id, currentQ))
+    : state.currentAnswers;
 
   // THE PHONE MAY HAVE MOVED ON WHILE THAT READ WAS OUT. A reveal put up now
   // would cover the scoreboard, or the next question, with a round the room

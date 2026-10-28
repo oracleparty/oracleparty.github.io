@@ -808,6 +808,30 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   let submitResult;
   let serverRefusal = null;   // why the server said no, for the message below
 
+  // THE SCREEN MOVES ON THE TAP, NOT AFTER THE SAVE (owner, 2026-10-28: "each
+  // click be instant and snappy and the next screen loading instant"). A
+  // deliberate Submit used to wait for the write AND then for the waiting
+  // screen's own read of everybody's answers — two trips before anything
+  // moved, measured by the owner as "over 5 seconds" on a real connection.
+  // Now this phone's answer goes into the round's cache and the waiting screen
+  // is drawn at once; the write carries on underneath. If it FAILS, the player
+  // is put back on the question with their text still in the box (below), so
+  // nothing is ever lost silently. Auto-submits and callers that own the
+  // screen are unchanged.
+  let optimisticId = null;
+  if (!autoSubmit && thenShowReveal && _showRevealScreen) {
+    optimisticId = `optimistic-${state.room.playerId}-${state.currentQuestion}`;
+    state.currentAnswers = (state.currentAnswers || []).filter(a =>
+      !(String(a.player_id) === String(state.room.playerId)
+        && Number(a.question_number) === Number(state.currentQuestion)));
+    state.currentAnswers.push({
+      id: optimisticId, room_id: state.room.id, player_id: state.room.playerId,
+      question_number: state.currentQuestion, question_id: q.id,
+      submitted_answer: answer, wager, is_correct: isCorrect, score_earned: scoreEarned,
+    });
+    _showRevealScreen();
+  }
+
   if (autoSubmit && isBlank) {
     submitResult = await insertBlankAnswers([{
       roomId: state.room.id,
@@ -870,6 +894,13 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   // blank for them), and silently loses their actual answer.
   if (submitResult && submitResult.error && !autoSubmit) {
     state.hasSubmitted = false;
+    if (optimisticId) {
+      // The screen moved on the tap; the save did not land. Back to the
+      // question, the typed answer still in the box.
+      state.currentAnswers = (state.currentAnswers || []).filter(a => a.id !== optimisticId);
+      state.onRevealScreen = false;
+      showScreen($('#question-screen'));
+    }
     $('#answer-input').disabled = false;
     // refreshSubmitButton puts BOTH back — the enabled state and the word — so
     // a failed send cannot leave "Sending…" standing on a live button.
@@ -904,6 +935,17 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   // Track question answered (fire-and-forget, skip final wager round)
   if (!state.isFinalWagerRound) {
     incrementQuestionsAnswered(state.room.id, state.room.playerId);
+  }
+
+  if (optimisticId) {
+    // Swap the stand-in for the server's own row (its verdict and id), unless
+    // Realtime has already delivered it.
+    const real = Array.isArray(submitResult?.data) ? submitResult.data[0] : submitResult?.data;
+    state.currentAnswers = (state.currentAnswers || []).filter(a => a.id !== optimisticId);
+    if (real?.id && !state.currentAnswers.some(a => String(a.id) === String(real.id))) {
+      state.currentAnswers.push(real);
+    }
+    return;   // the waiting screen is already up
   }
 
   // Immediately transition to reveal screen — unless the caller owns it.

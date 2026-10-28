@@ -272,7 +272,7 @@ try {
         // identical to one working perfectly.
         const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
         if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
-        if (await clickIfReady(r, '#btn-fw-lock')) answered.add(key);
+        if (await r.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false)) answered.add(key);
       }
       // The host must NOT move on until the clock has actually run out, or
       // Carol never gets the twenty seconds this is measuring — she reaches the
@@ -774,12 +774,13 @@ try {
     problems.push('every final wager is 0 — nobody was able to choose one, which is what an already-expired wager clock looks like');
   }
 
-  // Bob tapped 20 and never pressed Lock In. What he tapped must be what he
+  // Bob tapped 20 (a tap IS the lock now — there is no Lock In button). What
+  // he tapped must be what he
   // wagered — which the blank fill used to overwrite with 0 (migration 050).
   const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
   const bobFinal = table.store.table('answers')
     .find(a => String(a.player_id) === String(bobId) && a.question_number === finalQ);
-  note(`Bob chose 20 without locking; he wagered: ${bobFinal ? bobFinal.wager : '(none)'}`);
+  note(`Bob tapped 20; he wagered: ${bobFinal ? bobFinal.wager : '(none)'}`);
   if (bobFinal && bobFinal.wager !== 20) {
     problems.push(`Bob tapped 20 on the final wager and was committed to ${bobFinal.wager}`);
   }

@@ -419,7 +419,7 @@ try {
         if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
         await r.page.locator('#final-wager-screen .dv-option[data-difficulty="hard"]')
           .first().click().catch(() => {});
-        if (await clickIfReady(r, '#btn-fw-lock')) answered.add(key);
+        if (await r.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false)) answered.add(key);
       }
       if (r === host) await clickIfReady(r, '#btn-fw-reveal');
       return screen;

@@ -421,7 +421,7 @@ try {
         if (screen === 'final-wager-screen') {
           const o = r.page.locator('#final-wager-screen [data-wager]').first();
           if (await o.isVisible().catch(() => false)) await o.click().catch(() => {});
-          await clickIfReady(r, '#btn-fw-lock');
+          await r.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false);
         } else {
           const input = r.page.locator('#answer-input');
           if (await input.isVisible().catch(() => false)) {

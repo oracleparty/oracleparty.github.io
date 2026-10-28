@@ -8,7 +8,7 @@ import { findNextAvailableWager, countAnswersFrom } from './scoring-helpers.js';
 import { isStaleRoomEvent } from './phase-order.js';
 import { getCountdownElapsed, isStampForCurrentRound } from './timer-helpers.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
-import { logger } from '../logger.js';
+import { logger, recordFault } from '../logger.js';
 import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TOLERANCE_MS } from '../constants.js';
 import {
   updateGameState,
@@ -1206,6 +1206,7 @@ export function showSeatLostNotice() {
   modal.classList.add('active');
 }
 
+const _sweptLogged = new Set();
 export async function checkStalePresence() {
   if (_seatLost) return;
   setStaleCheckCount(_staleCheckCount + 1);
@@ -1241,6 +1242,15 @@ export async function checkStalePresence() {
     // Slow path: no beacon but heartbeat stopped for 3 min → remove
     const threshold = hasDisconnected ? DISCONNECTED_TIMEOUT_MS : STALE_TIMEOUT_MS;
     if (silenceMs < threshold) continue;
+
+    // WRITTEN DOWN, because "my friend didn't leave" (2026-10-28) is a player
+    // missing from the results with nothing anywhere saying why. If a seat is
+    // swept mid-game this row says whose phone judged it, how long it had been
+    // silent by THIS phone's clock, and whether the page had reported closing.
+    if (!_sweptLogged.has(id)) {
+      _sweptLogged.add(id);
+      recordFault('SeatSwept', `${p.display_name || id} judged gone in ${state.gamePhase} q${state.currentQuestion}: silent ${Math.round(silenceMs / 1000)}s by this phone's clock${hasDisconnected ? ', page had reported closing' : ''}`, { by: getDisplayName(), last_seen_at: p.last_seen_at, disconnected_at: p.disconnected_at }, 'warn');
+    }
 
     if (p.is_host) {
       // Stale host: earliest connected player kicks them (deterministic)

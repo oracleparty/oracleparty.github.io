@@ -190,7 +190,7 @@ try {
         if (!done.has(key)) {
           const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
           if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
-          if (await clickIfReady(r, '#btn-fw-lock')) done.add(key);
+          if (await r.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false)) done.add(key);
         }
         // THE HOST PRESSES IT — the ordinary case, and the reported one.
         if (r === host && done.has(key) && done.has('Bob:final')) {

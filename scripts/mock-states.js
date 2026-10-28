@@ -1203,7 +1203,7 @@ export const STATES = {
 
       document.getElementById('fw-category').textContent = '⏳ History';
       document.getElementById('fw-current-score').textContent = '42';
-      document.getElementById('btn-fw-lock').style.display = '';
+      // No Lock In button: tapping an amount locks it (owner, 2026-10-28).
 
       // The 20-second wager clock. Shown mid-count rather than at 20s, because
       // the bar at 100% is indistinguishable from a bar with no fill rule.
@@ -1251,8 +1251,6 @@ export const STATES = {
     screen: 'final-wager-screen',
     inherits: 'final-wager-choosing',
     inject: () => {
-      const lockBtn = document.getElementById('btn-fw-lock');
-      if (lockBtn) lockBtn.style.display = 'none';
       const status = document.getElementById('fw-status');
       if (status) status.classList.remove('hidden');
       // Locked in, so there is nothing left to count. A clock still running
@@ -2747,8 +2745,7 @@ export const STATES = {
       document.getElementById('room-settings-questions').textContent = '10';
       document.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
       document.querySelectorAll('[data-game-setting="chaos"] .toggle-option').forEach(o => o.classList.toggle('active', o.dataset.value === '1'));
-      // The gear carries the mode dot whenever Chaos is on.
-      document.querySelectorAll('.host-settings-gear').forEach(g => { g.classList.remove('hidden'); g.classList.add('has-mode'); });
+      document.querySelectorAll('.host-settings-gear').forEach(g => g.classList.remove('hidden'));
     },
   },
 

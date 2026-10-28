@@ -137,7 +137,7 @@ try {
           if (!answered.has(key)) {
             const opt = r.page.locator('#final-wager-screen [data-wager]').first();
             if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
-            if (await clickIfReady(r, '#btn-fw-lock')) answered.add(key);
+            if (await r.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false)) answered.add(key);
           }
           if (r === host) await clickIfReady(r, '#btn-fw-reveal');
         } else if (screen !== 'results-screen' && r === host) {

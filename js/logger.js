@@ -89,8 +89,8 @@ function _logToSupabase(payload) {
  * to you. NOT for routine chatter — it shares the same ten-per-minute limit as
  * the crash handlers, and filling that with noise is how a real one gets dropped.
  */
-export function recordFault(type, message, detail) {
-  logger.error(type, message, detail);
+export function recordFault(type, message, detail, level = 'error') {
+  logger[level](type, message, detail);
   if (_isRateLimited()) return;
   let extra = '';
   try {

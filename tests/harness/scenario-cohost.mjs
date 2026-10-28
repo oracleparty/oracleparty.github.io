@@ -623,7 +623,7 @@ try {
         if (!done.has(key)) {
           const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
           if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
-          if (await clickIfReady(r, '#btn-fw-lock')) done.add(key);
+          if (await r.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false)) done.add(key);
         }
         // THE CO-HOST, not the host. That is the whole point of the section.
         if (r === bob && done.has(key) && await clickIfReady(bob, '#btn-fw-reveal')) {

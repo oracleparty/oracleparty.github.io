@@ -174,11 +174,14 @@ try {
   const counts = () => bob.page.evaluate(() => ({ ducks: window.__ducks, plays: window.__plays }));
   const onQuestion = () => bob.page.evaluate(() =>
     document.querySelector('.screen.active')?.id === 'question-screen' && !window.__state?.hasSubmitted);
-  // Chaos shows as a DOT on the gear in the game header (owner, 2026-10-28),
-  // not a word: the words are in the room settings sheet every player can open.
-  const headerPill = () => bob.page.evaluate(() => {
+  // NOTHING marks the gear for a mode (owner, 2026-10-28: a dot per mode "is
+  // unsustainable if i add other game options later"). The words are in the
+  // room settings sheet. So the gear must carry no badge either way.
+  const gearMarked = () => bob.page.evaluate(() => {
     const g = document.querySelector('.screen.active .host-settings-gear');
-    return !!g && !g.classList.contains('hidden') && g.classList.contains('has-mode');
+    if (!g) return false;
+    const after = getComputedStyle(g, '::after');
+    return g.classList.contains('has-mode') || (after.content !== 'none' && after.content !== '' && after.width !== 'auto' && parseFloat(after.width) > 0);
   }).catch(() => false);
   const openSheet = async r => {
     await r.page.locator('.screen.active .host-settings-gear').click().catch(() => {});
@@ -201,7 +204,7 @@ try {
   heading('round 0: Chaos ON, Bob answering, sound OFF');
   await bob.page.waitForSelector('#answer-input', { state: 'visible', timeout: 20000 })
     .catch(() => problems.push('Bob never got an answer box'));
-  if (!await headerPill()) problems.push('Chaos is on and Bob\'s question screen does not say so');
+  if (await gearMarked()) problems.push('Chaos is on and Bob\'s gear carries a mode marker — the owner turned the dot down');
 
   let before = await counts();
   if (!await onQuestion()) problems.push('Bob was not on the question screen when the honk was sent');
@@ -230,7 +233,7 @@ try {
   await host.page.click('#host-settings-backdrop').catch(() => {});
   await host.page.waitForTimeout(1500);
   if (room()?.chaos !== false) problems.push('turning Chaos off in the game did not reach the room');
-  if (await headerPill()) problems.push('Chaos is off and Bob\'s screen still says Chaos');
+  if (await gearMarked()) problems.push('Chaos is off and Bob\'s gear carries a mode marker');
 
   heading('Chaos OFF, Bob still answering — the honk is dropped, as by default');
   note(`Bob: ${await bob.page.evaluate(() => `${document.querySelector('.screen.active')?.id} submitted=${window.__state?.hasSubmitted}`)}`);
