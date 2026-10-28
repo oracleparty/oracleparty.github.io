@@ -3,7 +3,7 @@
 // In-game host settings panel, gear icon, return to lobby.
 // ============================================
 
-import { state, _isLeaving, setIsLeaving, _hostSettingsConfirmTimer, setHostSettingsConfirmTimer } from './state.js';
+import { state, getCategoryLabel, _isLeaving, setIsLeaving, _hostSettingsConfirmTimer, setHostSettingsConfirmTimer } from './state.js';
 import { $, navigateWithFadeReplace } from '../utils.js';
 import { logger } from '../logger.js';
 import { RETURN_HOME_DELAY_MS } from '../constants.js';
@@ -59,24 +59,58 @@ export function initHostSettingsPanel() {
 
 /**
  * Apply the room's Chaos setting on this phone: lift the no-honks-while-
- * answering rule, and show "🔥 Chaos" in every screen header so nobody reads a
- * honk mid-question as a bug. Every phone calls this, not only the host.
+ * answering rule, and mark every gear with a dot so nobody reads a honk
+ * mid-question as a bug. Every phone calls this, not only the host.
+ *
+ * A DOT ON THE GEAR, NOT A WORD IN THE HEADER (owner, 2026-10-28). The header
+ * is "where am I" — subject, round, time — and a room rule is a different kind
+ * of fact; "🔥 Chaos" also read as a streak. The dot says "this room has a
+ * special rule on", and the words are one tap away in the room settings sheet,
+ * which every player can open now.
  */
 export function syncChaosDisplay() {
   const on = !!state.room?.settings?.chaos;
   setHonkChaos(on);
-  document.querySelectorAll('.game-progress').forEach(progress => {
-    let pill = progress.querySelector('.chaos-pill');
-    if (!pill) {
-      if (!on) return;
-      pill = document.createElement('span');
-      pill.className = 'chaos-pill chaos-pill--header';
-      pill.textContent = '🔥 Chaos';
-      pill.title = 'Chaos mode: honks sound even while people answer';
-      const gear = progress.querySelector('.host-settings-gear');
-      progress.insertBefore(pill, gear || null);
-    }
-    pill.classList.toggle('hidden', !on);
+  // A pill from an older build of this page, if one was drawn, goes.
+  document.querySelectorAll('.game-progress .chaos-pill').forEach(p => p.remove());
+  document.querySelectorAll('.host-settings-gear').forEach(gear => {
+    gear.classList.toggle('has-mode', on);
+    gear.setAttribute('aria-label', on ? 'Room settings — Chaos mode is on' : 'Room settings');
+  });
+}
+
+/** Is this phone allowed to change the room's settings? The host only. */
+function canEditRoomSettings() {
+  return !!state.room?.isHost;
+}
+
+/**
+ * Fill the sheet's read-only half: the settings fixed for the game (category,
+ * question count — fixed for the host too once the game has started), and
+ * each changeable setting written as words for anybody who cannot change it.
+ */
+function fillRoomSettingsSheet(sheet) {
+  const readonly = !canEditRoomSettings();
+  sheet.classList.toggle('is-readonly', readonly);
+
+  const by = sheet.querySelector('#room-settings-by');
+  if (by) {
+    const host = (state.players || []).find(p => p.is_host);
+    by.textContent = host ? `Set by the host · ${host.display_name}` : 'Set by the host';
+    by.classList.toggle('hidden', !readonly);
+  }
+  const cat = sheet.querySelector('#room-settings-category');
+  if (cat) cat.textContent = getCategoryLabel();
+  const qs = sheet.querySelector('#room-settings-questions');
+  if (qs) qs.textContent = String(state.totalQuestions || '');
+
+  const words = {
+    autoProceed: ({ 0: 'Off', 8: 'Slow', 4: 'Fast' })[state.autoProceedSeconds || 0] || 'Off',
+    chaos: state.room?.settings?.chaos ? 'On 🔥' : 'Off',
+    questionTimer: `${state.timerSeconds || 30}s`,
+  };
+  sheet.querySelectorAll('.room-settings__value[data-value-for]').forEach(el => {
+    el.textContent = words[el.dataset.valueFor] ?? '';
   });
 }
 
@@ -84,8 +118,9 @@ function openHostSettingsSheet() {
   const sheet = $('#host-settings-sheet');
   if (!sheet) return;
 
-  // Sync toggle states from current settings
+  // Sync toggle states from current settings, and the read-only view
   syncHostSettingsToggles();
+  fillRoomSettingsSheet(sheet);
 
   sheet.classList.add('active');
 }
@@ -119,6 +154,8 @@ function syncHostSettingsToggles() {
 }
 
 async function handleGameSettingChange(key, value) {
+  // The toggles are hidden for anybody else; this is the guard behind that.
+  if (!canEditRoomSettings()) return;
   const numVal = Number(value);
   const columnMap = {
     autoProceed: 'auto_proceed',
@@ -157,6 +194,7 @@ async function handleGameSettingChange(key, value) {
 }
 
 function handleReturnToLobby() {
+  if (!canEditRoomSettings()) return;   // the button is hidden for everyone else
   const btn = $('#btn-return-to-lobby');
   if (!btn) return;
 
@@ -218,8 +256,12 @@ async function executeReturnToLobby() {
   navigateWithFadeReplace('lobby.html');
 }
 
+// EVERY PLAYER HAS THE GEAR (owner, 2026-10-28): the host's opens the controls,
+// everybody else's opens the same settings read-only. Hidden only where the
+// game itself hides it — the countdown, leaving, a lost seat.
 export function showHostSettingsGear() {
-  if (!state.room?.isHost) return;
+  if (!state.room) return;
+  syncChaosDisplay();
   document.querySelectorAll('.host-settings-gear').forEach(btn => btn.classList.remove('hidden'));
 }
 

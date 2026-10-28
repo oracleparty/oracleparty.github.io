@@ -122,6 +122,28 @@ try {
   if (room()?.chaos !== true) problems.push('turning Chaos on in the lobby did not reach the room');
   if (!await bobPill()) problems.push('the host turned Chaos on and Bob cannot see it');
 
+  heading('Bob opens the lobby settings — read-only');
+  await bob.page.click('#btn-settings').catch(() => problems.push('a player has no settings button in the lobby'));
+  await bob.page.waitForTimeout(500);
+  const lob = await bob.page.evaluate(() => {
+    const m = document.querySelector('#settings-modal');
+    const vis = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+    return {
+      open: !!m?.classList.contains('active'),
+      readonly: !!m?.classList.contains('is-readonly'),
+      toggles: [...m.querySelectorAll('.toggle-group')].filter(vis).length,
+      chaos: (m.querySelector('[data-chaos-setting] .room-settings__value')?.textContent || '').trim(),
+    };
+  }).catch(() => null);
+  note(`Bob's lobby settings: ${JSON.stringify(lob)}`);
+  if (!lob?.open) problems.push('a player tapped the lobby settings and nothing opened');
+  else {
+    if (!lob.readonly || lob.toggles > 0) problems.push(`a player was offered the lobby's controls: ${JSON.stringify(lob)}`);
+    if (!/^On/.test(lob.chaos)) problems.push(`the player's lobby settings do not say Chaos is on (read "${lob.chaos}")`);
+  }
+  await bob.page.click('#btn-close-settings').catch(() => {});
+  await bob.page.waitForTimeout(300);
+
   heading("Bob's own sound switch");
   await bob.page.click('#btn-honk-sound').catch(() => problems.push('Bob has no honk sound switch in the lobby'));
   const stored = await bob.page.evaluate(() => localStorage.getItem('oracle_party_honk_sound_off'));
@@ -152,15 +174,35 @@ try {
   const counts = () => bob.page.evaluate(() => ({ ducks: window.__ducks, plays: window.__plays }));
   const onQuestion = () => bob.page.evaluate(() =>
     document.querySelector('.screen.active')?.id === 'question-screen' && !window.__state?.hasSubmitted);
+  // Chaos shows as a DOT on the gear in the game header (owner, 2026-10-28),
+  // not a word: the words are in the room settings sheet every player can open.
   const headerPill = () => bob.page.evaluate(() => {
-    const p = document.querySelector('.screen.active .chaos-pill');
-    return !!p && !p.classList.contains('hidden');
+    const g = document.querySelector('.screen.active .host-settings-gear');
+    return !!g && !g.classList.contains('hidden') && g.classList.contains('has-mode');
   }).catch(() => false);
+  const openSheet = async r => {
+    await r.page.locator('.screen.active .host-settings-gear').click().catch(() => {});
+    await r.page.waitForTimeout(500);
+    return r.page.evaluate(() => {
+      const sh = document.querySelector('#host-settings-sheet');
+      const vis = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+      return {
+        open: !!sh?.classList.contains('active'),
+        readonly: !!sh?.classList.contains('is-readonly'),
+        toggles: [...sh.querySelectorAll('.toggle-group')].filter(vis).length,
+        returnBtn: vis(sh.querySelector('#btn-return-to-lobby')),
+        chaosWords: (sh.querySelector('[data-value-for="chaos"]')?.textContent || '').trim(),
+        questions: (sh.querySelector('#room-settings-questions')?.textContent || '').trim(),
+      };
+    }).catch(() => null);
+  };
+  const closeSheet = r => r.page.click('#host-settings-backdrop').catch(() => {});
 
   heading('round 0: Chaos ON, Bob answering, sound OFF');
   await bob.page.waitForSelector('#answer-input', { state: 'visible', timeout: 20000 })
     .catch(() => problems.push('Bob never got an answer box'));
   if (!await headerPill()) problems.push('Chaos is on and Bob\'s question screen does not say so');
+
   let before = await counts();
   if (!await onQuestion()) problems.push('Bob was not on the question screen when the honk was sent');
   await honkBob();
@@ -199,6 +241,27 @@ try {
   if (!await onQuestion()) problems.push('INCONCLUSIVE: Bob left the question screen before the Chaos-off honk');
   else if (after.ducks > before.ducks || after.plays > before.plays) {
     problems.push('Chaos is off and a honk still reached Bob while he was answering — the default changed');
+  }
+
+  heading('every player can open the room settings — read-only unless host');
+  // Last, so opening sheets cannot cost Bob the question screen the honk
+  // checks above need. Chaos is OFF by now, so the sheet must say so.
+  {
+    const b = await openSheet(bob);
+    note(`Bob's sheet: ${JSON.stringify(b)}`);
+    if (!b?.open) problems.push('a player tapped the gear and no room settings opened');
+    else {
+      if (!b.readonly || b.toggles > 0) problems.push(`a player was offered the room's controls: ${JSON.stringify(b)}`);
+      if (b.returnBtn) problems.push('a player was offered Return to Lobby');
+      if (b.chaosWords !== 'Off') problems.push(`the host turned Chaos off and the player's sheet reads "${b.chaosWords}"`);
+      if (b.questions !== String(QUESTIONS)) problems.push(`the player's sheet says ${b.questions} questions, not ${QUESTIONS}`);
+    }
+    await closeSheet(bob);
+    const h = await openSheet(host);
+    note(`Alice's sheet: ${JSON.stringify(h && { readonly: h.readonly, toggles: h.toggles, returnBtn: h.returnBtn })}`);
+    if (!h?.open || h.readonly || h.toggles < 2 || !h.returnBtn) problems.push(`the host's sheet lost its controls: ${JSON.stringify(h)}`);
+    await closeSheet(host);
+    await host.page.waitForTimeout(400);
   }
 } catch (e) {
   problems.push(`scenario crashed: ${e.stack || e}`);

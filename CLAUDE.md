@@ -95,6 +95,41 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 — room settings for everyone, a dot instead of "🔥 Chaos", and real phone sizes
+>
+> **Every player has the gear now (owner's choice from a mockup).** The host's
+> opens the controls; everyone else's opens the SAME settings read-only, with
+> "Set by the host · name". In the game the sheet also lists Category and
+> Questions as fixed rows — fixed for the host too once a game has started,
+> which was the owner's own point. The lobby's settings button works the same
+> way (`fillReadonlySettings` in `js/lobby.js`, `fillRoomSettingsSheet` in
+> `js/game/host.js`); both read the values off the controls the host would
+> press, so the words cannot disagree with them. Toggle handlers and
+> `handleSettingChange` refuse non-hosts behind the hidden controls.
+>
+> **Chaos shows as a DOT on the gear, not a word in the header.** The owner
+> found "🔥" reads as a streak, 🌪️ bland, 🦆 confusing, and spelled-out words
+> clunky; the header is "where am I", and a room rule belongs one tap away. The
+> lobby room card keeps its "🔥 Chaos" pill. `scenario-chaos` now checks the dot,
+> a player's read-only sheet in BOTH places (no toggles, no Return to Lobby,
+> the right words) and the host's controls; break-tested in each.
+>
+> **The question count moved right**, beside the gear: with three items,
+> space-between put it in the middle of the bar on every player's phone.
+>
+> **Layout sweep, owner: "are you covering me for all my bases?"** It renders
+> 360px wide now (Android) as well as 375 and 430, and a FIT pass checks the
+> question screen at five real visible sizes (360x640, 375x560, 393x659,
+> 412x780, 430x740): no scroll, nothing under the pinned answer box. Break-tested
+> against the old spacing: it reproduces the photographed fault at 375x560.
+> The final wager's controls are reported (not failed): after moving the vote
+> above the player list it fits every size but the SE, where the vote cards are
+> 67px short.
+>
+> **Spacing, the owner's picks:** the question sits evenly between timer and
+> wagers (26/25px); the wager grid is centred; 42px of air above the answer box
+> (16 on screens under 600px tall in 20-wager games, which were 2px short).
+
 > ## 2026-10-27 — a playthrough list: Waiting after time's up, review, claps, layout
 >
 > **"Stuck until I pressed Reveal — every time he didn't submit in time."** The

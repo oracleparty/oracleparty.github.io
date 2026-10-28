@@ -429,9 +429,11 @@ async function init() {
   // Track presence as "in game"
   updatePresence({ activity: 'game', roomId: state.room.id, category: state.room.category });
 
+  // Every phone: the gear opens the room's settings for everybody — editable
+  // for the host, read-only for the rest (owner, 2026-10-28).
+  initHostSettingsPanel();
   if (state.room.isHost || state.room.isCohost) {
     await initHostGame(roomSnapshot);
-    if (state.room.isHost) initHostSettingsPanel();
   } else {
     await initPlayerGame();
   }

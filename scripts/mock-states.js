@@ -295,6 +295,33 @@ export const STATES = {
     },
   },
 
+  // A PLAYER opening the lobby's settings (owner, 2026-10-28): the same modal,
+  // read-only. Mirrors fillReadonlySettings() in js/lobby.js — change together.
+  'lobby-settings-player': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-settings',
+    inject: () => {
+      const modal = document.getElementById('settings-modal');
+      modal.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
+      modal.querySelectorAll('[data-setting="chaos"] .toggle-option').forEach(o => o.classList.toggle('active', o.dataset.value === '1'));
+      modal.classList.add('is-readonly');
+      const title = modal.querySelector('.modal__title');
+      title.textContent = 'Room Settings';
+      const by = document.createElement('p');
+      by.className = 'room-settings__by';
+      by.textContent = 'Set by the host · ArchaeologistAnna';
+      title.after(by);
+      modal.querySelectorAll('.toggle-group[data-setting]').forEach(group => {
+        const v = document.createElement('div');
+        v.className = 'room-settings__value';
+        v.textContent = (group.querySelector('.toggle-option.active')?.textContent || '').trim();
+        group.before(v);
+      });
+      document.getElementById('btn-close-settings').textContent = 'Close';
+    },
+  },
+
   'lobby-waiting': {
     page: 'lobby',
     screen: 'lobby-screen',
@@ -2704,6 +2731,32 @@ export const STATES = {
       if (ap) ap.classList.add('active');
       const qt = document.querySelector('[data-game-setting="questionTimer"] [data-value="30"]');
       if (qt) qt.classList.add('active');
+      // The fixed half, filled as fillRoomSettingsSheet fills it.
+      document.getElementById('room-settings-category').textContent = '⏳ History';
+      document.getElementById('room-settings-questions').textContent = '10';
+      document.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
+      document.querySelectorAll('[data-game-setting="chaos"] .toggle-option').forEach(o => o.classList.toggle('active', o.dataset.value === '1'));
+      // The gear carries the mode dot whenever Chaos is on.
+      document.querySelectorAll('.host-settings-gear').forEach(g => { g.classList.remove('hidden'); g.classList.add('has-mode'); });
+    },
+  },
+
+  // What every OTHER player sees on tapping the gear (owner, 2026-10-28): the
+  // same settings, as words, with no controls and no Return to Lobby.
+  'player-settings-sheet': {
+    page: 'game',
+    screen: 'question-screen',
+    inherits: 'host-settings-sheet',
+    inject: () => {
+      const sheet = document.getElementById('host-settings-sheet');
+      sheet.classList.add('is-readonly');
+      const by = document.getElementById('room-settings-by');
+      by.textContent = 'Set by the host · ArchaeologistAnna';
+      by.classList.remove('hidden');
+      const words = { autoProceed: 'Off', chaos: 'On 🔥', questionTimer: '30s' };
+      document.querySelectorAll('.room-settings__value[data-value-for]').forEach(el => {
+        el.textContent = words[el.dataset.valueFor];
+      });
     },
   },
 

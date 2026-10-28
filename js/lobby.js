@@ -1170,6 +1170,11 @@ function setHostRole(isHost, { cohost } = {}) {
  * knowing whether anything changed.
  */
 function syncHostUI() {
+  // EVERYBODY has the settings button (owner, 2026-10-28): the host's opens the
+  // controls, everyone else's the same settings read-only — see openSettingsModal.
+  btnSettings.classList.remove('hidden');
+  btnSettings.setAttribute('aria-label', room.isHost ? 'Settings' : 'Room settings');
+  attachSettingsListeners();
   if (room.isHost) {
     activateHostUI();
   } else {
@@ -1189,7 +1194,6 @@ function activateHostUI() {
 
 function deactivateHostUI() {
   btnStartGame.classList.add('hidden');
-  btnSettings.classList.add('hidden');
   btnReady.classList.remove('hidden');
 }
 
@@ -1326,7 +1330,7 @@ function attachSettingsListeners() {
     if (e.target === settingsModal) closeSettingsModal();
   });
   settingsCategoryGrid.addEventListener('click', (e) => {
-    if (e.target.closest('#settings-category-tap')) {
+    if (e.target.closest('#settings-category-tap') && room.isHost) {
       openLobbyCategorySheet();
     }
   });
@@ -1381,6 +1385,7 @@ function attachSettingsListeners() {
   });
   settingsModal.querySelectorAll('.toggle-group').forEach(group => {
     group.addEventListener('click', (e) => {
+      if (!room.isHost) return;   // hidden for everyone else; this is the guard behind it
       const option = e.target.closest('.toggle-option');
       if (!option) return;
       group.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
@@ -1992,7 +1997,41 @@ function updateCategoryDisplay() {
 function openSettingsModal() {
   renderSettingsCategories();
   syncTogglesToSettings();
+  fillReadonlySettings();
   settingsModal.classList.add('active');
+}
+
+/**
+ * Everyone but the host sees the room's settings as words: each setting's
+ * current value, read off the toggle the host would press, so the words can
+ * never disagree with the controls. The game page's sheet works the same way.
+ */
+function fillReadonlySettings() {
+  const readonly = !room.isHost;
+  settingsModal.classList.toggle('is-readonly', readonly);
+  const title = settingsModal.querySelector('.modal__title');
+  if (title) title.textContent = readonly ? 'Room Settings' : 'Game Settings';
+  let by = settingsModal.querySelector('.room-settings__by');
+  if (!by && title) {
+    by = document.createElement('p');
+    by.className = 'room-settings__by';
+    title.after(by);
+  }
+  if (by) {
+    const host = (players || []).find(p => p.is_host);
+    by.textContent = host ? `Set by the host · ${host.display_name}` : 'Set by the host';
+    by.classList.toggle('hidden', !readonly);
+  }
+  settingsModal.querySelectorAll('.toggle-group[data-setting]').forEach(group => {
+    let value = group.parentElement.querySelector(':scope > .room-settings__value');
+    if (!value) {
+      value = document.createElement('div');
+      value.className = 'room-settings__value';
+      group.before(value);
+    }
+    value.textContent = (group.querySelector('.toggle-option.active')?.textContent || '').trim();
+  });
+  btnCloseSettings.textContent = readonly ? 'Close' : 'Done';
 }
 
 function closeSettingsModal() {
@@ -2126,6 +2165,7 @@ function syncTogglesToSettings() {
 }
 
 async function handleSettingChange(key, value) {
+  if (!room.isHost) return;
   const columnMap = {
     category: 'category',
     subcategory: 'subcategory',
