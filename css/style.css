@@ -967,6 +967,11 @@ body::after {
   opacity: 0.7;
 }
 
+/* THE BADGE'S ANCHOR. .home-avatar__badge is position:absolute, and with no
+   positioned button around it, it anchored to the whole dock and drew a red 1
+   at the right edge of the screen (a friend's photo, 2026-10-28). */
+#home-avatar { position: relative; }
+
 .home__dock-btn--avatar {
   opacity: 0.85;
 }

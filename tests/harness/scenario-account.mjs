@@ -673,6 +673,23 @@ try {
           }
         }
 
+        // --- 3b. the home page's request count sits ON the profile button ---
+        // A friend's photo (2026-10-28): the red 1 was at the right edge of
+        // the screen, because the button was not positioned and the badge
+        // anchored to the whole dock instead.
+        await bob.goto('index.html');
+        await bob.page.waitForSelector('.home-avatar__badge', { timeout: 12000 }).catch(() => {});
+        const homeBadge = await bob.page.evaluate(() => {
+          const b = document.querySelector('.home-avatar__badge');
+          const a = document.getElementById('home-avatar');
+          if (!b || !a) return null;
+          const r = b.getBoundingClientRect(), ar = a.getBoundingClientRect();
+          return { text: b.textContent, off: Math.round(Math.max(ar.left - r.right, r.left - ar.right, ar.top - r.bottom, r.top - ar.bottom, 0)), badgeX: Math.round(r.left), buttonX: Math.round(ar.left) };
+        });
+        note(`home badge: ${JSON.stringify(homeBadge)}`);
+        if (!homeBadge) problems.push('a pending friend request shows no count on the home page');
+        else if (homeBadge.off > 0) problems.push(`the home page's request count floats ${homeBadge.off}px away from the profile button it belongs to`);
+
         // --- 4. the recipient sees it and can accept ---
         await bob.goto('profile.html');
         await bob.page.waitForTimeout(2200);

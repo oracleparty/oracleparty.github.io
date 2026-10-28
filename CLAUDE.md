@@ -98,7 +98,18 @@
 
 > ## 2026-10-28 (later) — a friend's report: a floating red 1, OLED, "Script error"
 >
-> **The red 1 was the pending friend-request count, and it had two faults.**
+> **THE PHOTO THEN ARRIVED AND THE RED 1 WAS SOMEWHERE ELSE: the HOME page.**
+> `.home-avatar__badge` is `position: absolute` and the dock's profile button
+> was not positioned, so the badge anchored to the whole dock and drew at the
+> right edge of the screen. `#home-avatar { position: relative }`.
+> `scenario-account` measures it against the button; without the rule it
+> reports *"floats 208px away"*, the badge at x=376 of 393 — the photo. The
+> photo is Safari, so the in-app-browser lead below does not fit this friend.
+>
+> **The Friends TAB count, below, was a guess at the photo before it came and
+> was the wrong place — but its two faults were real and stay fixed.**
+>
+> **The Friends tab's count had two faults.**
 > It wrapped UNDER "Friends" (the tab is ~100px wide) and read as a badge
 > floating loose; and it was set once at page load and never again, so
 > accepting the only request left it on the tab. `.profile-tab` is `nowrap`,
@@ -106,8 +117,7 @@
 > list's handler was also `addEventListener` on every redraw, so after one
 > accept the next tap fired twice; it is `onclick` now. `scenario-account`
 > checks the count is on the word's line and gone after the accept; each half
-> break-tested separately. **The owner's screenshot never arrived** — this is
-> the only red count on that page, but it is a match, not a confirmation.
+> break-tested separately.
 >
 > **OLED "resets every time" did NOT reproduce.** Toggled on the profile, it
 > held across index, join, lobby and back, switch still on. The code writes
@@ -115,7 +125,8 @@
 > browser that does not keep localStorage — an app's built-in browser
 > (Messenger, Instagram, Discord, Snapchat) opening the invite link — would
 > forget it every time, and such browsers inject scripts that throw, which
-> is also the commonest source of a bare "Script error.".
+> is also the commonest source of a bare "Script error.". **The friend's photo
+> is plain Safari, which makes that lead unlikely for them.** Open.
 >
 > **"Script error." is no longer toasted** (`_showErrorToast` in
 > `logger.js`); it is still written to `error_logs`. It is all a browser says
