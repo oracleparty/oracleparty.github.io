@@ -1214,9 +1214,13 @@ export const STATES = {
       const ea = document.querySelector('[data-dv-avatars="easy"]');
       const ma = document.querySelector('[data-dv-avatars="medium"]');
       const ha = document.querySelector('[data-dv-avatars="hard"]');
-      if (ea) ea.innerHTML = av(P[3]) + av(P[5]);
-      if (ma) ma.innerHTML = av(P[0]) + av(P[2]) + av(P[4]);
-      if (ha) ha.innerHTML = av(P[1]);
+      // The SAME 22px dot _renderInlineDvTally builds. This used .avatar
+      // (28px), which wrapped three voters onto a second row that the app
+      // never draws and made the cards ~30px taller than they are.
+      const dv = (p) => '<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:' + p.color + ';font-size:12px;color:#fff;">' + p.emoji + '</span>';
+      if (ea) ea.innerHTML = dv(P[3]) + dv(P[5]);
+      if (ma) ma.innerHTML = dv(P[0]) + dv(P[2]) + dv(P[4]);
+      if (ha) ha.innerHTML = dv(P[1]);
 
       // The SAME markup showFinalWagerScreen builds: a name stack with the
       // title under the name, a honk button for everybody but yourself, the

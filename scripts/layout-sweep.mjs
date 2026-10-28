@@ -584,13 +584,16 @@ function measureFit() {
   // THE FINAL WAGER IS A LIST, AND MAY SCROLL. Its player list grows with the
   // room, so what must fit is the three things a player has to touch: the
   // amount, Lock In, and the difficulty vote.
+  // Measured against the bottom of the CONTENT, not the window: a card behind
+  // the footer is just as out of sight as one below the glass.
   if (scr.id === 'final-wager-screen') {
+    const floor = content.getBoundingClientRect().bottom;
     for (const sel of ['.fw-option', '#btn-fw-lock', '.dv-option']) {
       for (const el of scr.querySelectorAll(sel)) {
         const r = el.getBoundingClientRect();
         if (r.width < 4 || getComputedStyle(el).display === 'none') continue;
-        if (r.bottom > innerHeight + 0.5) {
-          out.push(`${sel} "${(el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 14)}" ends ${Math.round(r.bottom - innerHeight)}px below the screen`);
+        if (r.bottom > floor + 0.5) {
+          out.push(`${sel} "${(el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 14)}" ends ${Math.round(r.bottom - floor)}px below what the screen shows`);
           break;
         }
       }
@@ -643,11 +646,9 @@ if (!flags.widths && fitNames.length) {
         if (STRESS) { await p.evaluate(applyStress, STRESS_TEXT); await p.waitForTimeout(150); }
         const f = await p.evaluate(measureFit);
         if (f.length) {
-          // The final wager's difficulty vote is below the fold on every phone
-          // measured (2026-10-28) and where it belongs is the owner's call, not
-          // a layout fault to fail the build on. Reported every run until
-          // they decide; the question screen fails hard.
-          const reportOnly = state.screen === 'final-wager-screen';
+          // Both screens fail hard. The final wager was report-only until the
+          // owner decided (2026-10-28): it should fit cleanly on every size.
+          const reportOnly = false;
           if (!reportOnly) faults += f.length;
           console.log(`\n${reportOnly ? '·' : '✗'} FIT ${name} @ ${width}x${height}${reportOnly ? '  (reported, not failed — owner to decide)' : ''}`);
           for (const x of f) console.log(`    DOES NOT FIT  ${x}`);

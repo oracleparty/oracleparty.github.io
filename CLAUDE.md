@@ -57,9 +57,10 @@
 >    migration reads as a missing feature, never as an error. 072 has no visible
 >    tell at all — the bot's card falls back to its stated skill — so ask for its
 >    rows.
-> 5. **Paste back the verification rows for 067 and 068.** Both were run on
->    the owner's word and nothing here has seen a single row. (069, 070 and 073
->    are measured — see the table above.)
+> 5. **067 and 068: the owner recalls the checks passing** (2026-10-28,
+>    "pretty sure the sql passed as well"). Still no row seen here, so it is a
+>    memory rather than a paste; do not chase it further unless something
+>    points at those two. (069, 070 and 073 are measured — see the table above.)
 >
 > **SUPABASE'S SQL EDITOR MAY NOT SHOW `RAISE NOTICE` OUTPUT.** 073's check was
 > rewritten as a plain SELECT returning one row per rule so the answer lands in
@@ -122,9 +123,16 @@
 > question screen at five real visible sizes (360x640, 375x560, 393x659,
 > 412x780, 430x740): no scroll, nothing under the pinned answer box. Break-tested
 > against the old spacing: it reproduces the photographed fault at 375x560.
-> The final wager's controls are reported (not failed): after moving the vote
-> above the player list it fits every size but the SE, where the vote cards are
-> 67px short.
+> **The final wager fits every size now, and FAILS the build if it does not**
+> (owner: "it should fit cleanly no matter the screen size"). Under 600px tall
+> its gaps shrink together (title a step smaller, amount squares 60px, the
+> vote cards' padding) — nothing removed, taller phones untouched. The vote
+> ends 40px clear on the SE, room for a second row of voter dots. The check
+> now measures against the content's bottom, not the window: a card behind
+> the footer is out of sight too. **The mock had drifted** — 28px `.avatar`
+> voters where the app draws 22px dots, wrapping to a second row no phone
+> shows. Break-tested: without the block, *"ends 64px below what the screen
+> shows"* at 375x560.
 >
 > **Spacing, the owner's picks:** the question sits evenly between timer and
 > wagers (26/25px); the wager grid is centred; 42px of air above the answer box

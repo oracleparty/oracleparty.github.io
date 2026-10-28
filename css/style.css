@@ -9096,3 +9096,20 @@ body.kb-open #question-screen .question-card {
   -webkit-tap-highlight-color: transparent;
 }
 .lobby-bar .honk-sound-toggle { min-width: 32px; height: 32px; font-size: 14px; opacity: 0.8; }
+
+/* THE FINAL WAGER ON A SHORT SCREEN (owner, 2026-10-28: "it should fit
+   cleanly no matter the screen size"). At 375x560 — an SE in Safari with both
+   bars — the difficulty vote ended 67px below the screen, behind a scroll
+   nobody knows is there. Nothing is removed: every gap here was sized for a
+   tall phone, and on a short one they shrink together so the rhythm stays
+   even. 600px and up is untouched. The amount buttons stay SQUARE. */
+@media (max-height: 600px) {
+  .final-wager__title { font-size: var(--text-2xl); margin-bottom: 0; }
+  .final-wager__subtitle { margin-bottom: var(--space-sm); }
+  .final-wager__warning { margin-bottom: var(--space-md); }
+  .final-wager__options { margin-bottom: var(--space-sm); }
+  .fw-option { width: 60px; height: 60px; }
+  .dv-inline { margin-top: var(--space-md); padding-top: var(--space-sm); }
+  .dv-inline__title { margin-bottom: var(--space-sm); }
+  .dv-inline .dv-option { min-height: 64px; padding: var(--space-sm); }
+}
