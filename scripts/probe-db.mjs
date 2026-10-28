@@ -9,6 +9,11 @@
 // database reports whether the door is open without anything being written,
 // changed or removed. A 2xx with an empty result means "allowed, nothing
 // matched"; 401/403 means RLS refused.
+//
+// WHAT IT CANNOT SEE: which tables are in the supabase_realtime publication.
+// That is pg_publication_tables, which PostgREST does not expose — so migration
+// 076 (answer_claps made live) can only be confirmed by its own SELECT in the
+// SQL Editor, and a table missing from it reads perfectly healthy here.
 // ============================================
 
 const URL_BASE = 'https://zzpqymehapwbjupphxec.supabase.co';

@@ -59,6 +59,12 @@ export class FakeStore {
     this._denied = new Set();      // tables whose writes are refused, RLS-style
     this._slowReads = new Map();   // table -> extra ms, for forcing a race to lose
     this._dropEvents = new Map();  // table -> how many realtime events to swallow
+    // Tables NOT in the supabase_realtime publication: writes land, nobody is
+    // told. answer_claps starts here because migration 071 never added it, and
+    // that is the live database until 076 is run (owner's report, 2026-10-28:
+    // neither phone ever saw the other's clap while this harness delivered
+    // every one). store.publish('answer_claps') models 076 applied.
+    this._unpublished = new Set(['answer_claps']);
     this._missing = new Set();     // tables that answer as if they do not exist
     this._hiddenFunctions = new Set();  // RPCs that answer PGRST202
     this._slowFunctions = new Map();    // RPC -> ms before it answers
@@ -207,6 +213,8 @@ export class FakeStore {
    * the list afterwards.
    */
   dropEvents(table, count) { this._dropEvents.set(table, count); }
+  publish(table) { this._unpublished.delete(table); }
+  unpublish(table) { this._unpublished.add(table); }
 
   /** Refuse every write to `table`, the way an RLS policy does: zero rows, no error. */
   /**
@@ -417,6 +425,7 @@ export class FakeStore {
   _broadcast(eventType, table, newRow, oldRow) {
     // Postgres sends only the primary key for DELETE (default REPLICA IDENTITY).
     const payloadOld = eventType === 'DELETE' && oldRow ? { id: oldRow.id } : oldRow;
+    if (this._unpublished.has(table)) return;
     const toDrop = this._dropEvents.get(table) || 0;
     if (toDrop > 0) {
       this._dropEvents.set(table, toDrop - 1);

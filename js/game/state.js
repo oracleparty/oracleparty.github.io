@@ -46,6 +46,8 @@ export const state = {
   // finding. Re-read on every round, so a dropped request costs one round's
   // claps rather than the rest of the game.
   clapsUnavailable: false,
+  clapPollId: null,
+  _clapInFlight: false,
   timerId: null,
   channels: [],
   chatOpen: false,

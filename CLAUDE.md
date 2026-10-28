@@ -96,6 +96,36 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (evening) — claps were never live, honks on silent, Script error
+>
+> **"Still can't see the clap from my friend or vice versa."** Migration 071
+> created `answer_claps` and **never added it to the `supabase_realtime`
+> publication — no migration in this repo has ever touched it**; rooms,
+> players, answers were added in the dashboard by hand. So every clap was saved
+> and no other phone was told. The fake store delivered every table, which is
+> why `scenario-fullgame` passed; it now treats `answer_claps` as unpublished
+> (`store.publish()` models 076). The reveal re-reads claps every
+> `CLAP_POLL_MS` (3s), skipped while this phone's own clap is in flight; that
+> is also the ONLY road for a withdrawn clap, since a filtered Realtime DELETE
+> is never delivered. Break-tested: with the poll off, *"another phone shows
+> the clap count as "", not 1"* — the report. **Migration 076 adds the table
+> to the publication; NOT APPLIED until the owner runs it**, and the probe
+> cannot see publication membership, so only 076's own SELECT confirms it.
+>
+> **Honks on silent, a lead:** creating an AudioContext makes iOS treat the
+> page's audio as ambient, which then holds `<audio>` to the switch too.
+> `honk.js` sets `navigator.audioSession.type = 'playback'` (Safari 16.4+).
+> Not measured; may pause another app's music.
+>
+> **"Script error." now records context** in `error_logs` (online, visible, the
+> last 8 warnings/errors from `logger`), because the message names nothing.
+> Leading suspect, not established: an error inside supabase-js (cross-origin
+> from esm.sh) during network trouble — both reports came with slow requests.
+>
+> **Submit "takes a few seconds":** one request, no lock inside
+> `op_submit_answer`; it costs one trip to the database. Not changed; making it
+> optimistic is a design question put to the owner.
+
 > ## 2026-10-28 (later) — a friend's report: a floating red 1, OLED, "Script error"
 >
 > **THE PHOTO THEN ARRIVED AND THE RED 1 WAS SOMEWHERE ELSE: the HOME page.**

@@ -7,11 +7,25 @@
 const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
 let currentLevel = LOG_LEVELS.debug; // show everything in dev; call setLevel('warn') for prod
 
+// THE LAST FEW THINGS THAT WENT WRONG, kept so a "Script error." can say what
+// the app was doing when it arrived. That message names no file and no line —
+// it is all Safari will say about an error inside a script from another origin,
+// and the database library is one — so on its own an error_logs row reading
+// "Script error." could never be acted on (reported twice, 2026-10-28).
+const _breadcrumbs = [];
+function _crumb(level, module, msg, err) {
+  const detail = err && (err.message || err.code) ? ` (${err.code ? err.code + ' ' : ''}${err.message || ''})` : '';
+  _breadcrumbs.push(`${new Date().toISOString().slice(11, 19)} ${level} [${module}] ${String(msg).slice(0, 120)}${detail.slice(0, 120)}`);
+  if (_breadcrumbs.length > 8) _breadcrumbs.shift();
+}
+
 export const logger = {
   error: (module, msg, err) => {
+    _crumb('E', module, msg, err);
     if (currentLevel >= LOG_LEVELS.error) console.error(`[${module}] ${msg}`, err ?? '');
   },
   warn: (module, msg, err) => {
+    _crumb('W', module, msg, err);
     if (currentLevel >= LOG_LEVELS.warn) console.warn(`[${module}] ${msg}`, err ?? '');
   },
   info: (module, msg, data) => {
@@ -107,7 +121,13 @@ function initErrorTracking(client) {
   window.onerror = (message, source, lineno, colno, error) => {
     logger.error('Global', `Unhandled: ${message}`, { source, lineno, colno });
     if (!_isRateLimited()) {
-      _logToSupabase({ type: 'onerror', message: String(message), source, lineno, colno, stack: error?.stack });
+      // A bare "Script error." carries no source and no stack, so the row gets
+      // the context instead: online or not, visible or not, and the breadcrumbs.
+      const opaque = /^script error\.?$/i.test(String(message).trim());
+      const context = opaque
+        ? `online=${navigator.onLine} visible=${document.visibilityState} | ${_breadcrumbs.join(' | ') || 'no warnings before it'}`
+        : null;
+      _logToSupabase({ type: 'onerror', message: String(message), source: source || context, lineno, colno, stack: error?.stack || (opaque ? context : undefined) });
       _showErrorToast(message);
     }
   };

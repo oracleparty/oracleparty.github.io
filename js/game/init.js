@@ -1143,6 +1143,10 @@ function cleanup() {
     clearInterval(state._advancePollId);
     state._advancePollId = null;
   }
+  if (state.clapPollId) {
+    clearInterval(state.clapPollId);
+    state.clapPollId = null;
+  }
   // NESTED INSIDE THE BLOCK ABOVE UNTIL NOW, WHICH MADE IT UNREACHABLE WHEN IT
   // MATTERED. The countdown backstop runs during the COUNTDOWN; _advancePollId
   // is only set by startPhaseBackstop, which runs during a QUESTION. So the one

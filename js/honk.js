@@ -14,6 +14,20 @@ let localPlayerId = null;
 // Honk sound effect from MP3 file
 const honkAudio = new Audio('honk.mp3');
 honkAudio.preload = 'auto';
+
+// THE SILENT SWITCH, A SECOND TIME (2026-10-28: "when friend was on silent mode
+// he couldn't hear my quacks"). The <audio> pool below was meant to ignore the
+// switch, but this module also creates an AudioContext on the first tap, and
+// iOS Safari then treats the page's audio as AMBIENT — which obeys the switch
+// for <audio> elements too. Safari 16.4+ lets a page say what its sound is:
+// 'playback' is the documented category that plays on silent, which is the
+// owner's call for honks (a game sound, not a notification). Elsewhere the
+// property does not exist and this does nothing. A lead, not a measurement —
+// nothing here runs iOS. The known cost: a playback sound can pause music
+// another app is playing.
+try {
+  if (navigator.audioSession && 'type' in navigator.audioSession) navigator.audioSession.type = 'playback';
+} catch { /* not settable here; the old behaviour stands */ }
 let _honkMuted = false;
 
 // Mobile browsers require a user gesture before playing audio.

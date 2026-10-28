@@ -10,7 +10,7 @@ import { state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getC
          _qbFeedback, setQbFeedback } from './state.js';
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast } from '../utils.js';
 import { logger } from '../logger.js';
-import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
+import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS, CLOCK_STAMP_TIMEOUT_MS, CLAP_POLL_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
          disqualifyRoundOnServer, undisqualifyRoundOnServer, updateGameState, setPhaseOnServer,
          upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,
@@ -406,6 +406,41 @@ export async function loadClaps() {
   state.clapsUnavailable = rows === null;
   state.claps = rows || [];
   repaintClaps();
+  startClapPoll();
+}
+
+/**
+ * Re-read the claps while the reveal is on screen.
+ *
+ * THE OWNER'S REPORT, 2026-10-28: "still can't see the clap from my friend or
+ * vice versa". Migration 071 created answer_claps and never added it to the
+ * supabase_realtime publication, so no clap was ever delivered live — each
+ * phone saw only its own until the next round's read. 076 adds it; this is
+ * what makes claps work whether or not 076 has been run, and it is the ONLY
+ * thing that carries a withdrawn clap, because Realtime never delivers a
+ * DELETE through a room_id filter (the payload holds only the key).
+ *
+ * Skipped while this phone's own clap is in flight: a read taken before the
+ * write lands would briefly take the optimistic clap back off the screen.
+ */
+function startClapPoll() {
+  if (state.clapPollId || state.clapsUnavailable) return;
+  state.clapPollId = setInterval(async () => {
+    if (!state.onRevealScreen || !state.room?.id) {
+      clearInterval(state.clapPollId);
+      state.clapPollId = null;
+      return;
+    }
+    if (state._clapInFlight) return;
+    const key = state.clapsGameKey;
+    const rows = await fetchClaps(state.room.id, key);
+    if (!rows || state._clapInFlight || state.clapsGameKey !== key) return;
+    const before = JSON.stringify(state.claps.map(c => [c.answer_id, c.voter_player_id]).sort());
+    const after = JSON.stringify(rows.map(c => [c.answer_id, c.voter_player_id]).sort());
+    if (before === after) return;
+    state.claps = rows;
+    repaintClaps();
+  }, CLAP_POLL_MS);
 }
 
 /**
@@ -443,12 +478,18 @@ async function handleClapTap(btn) {
   }];
   repaintClaps();
 
-  const { ok, result } = await clapAnswerOnServer({
-    roomId: state.room.id,
-    voterPlayerId: state.room.playerId,
-    questionNumber: round,
-    answerId,
-  });
+  state._clapInFlight = true;
+  let ok, result;
+  try {
+    ({ ok, result } = await clapAnswerOnServer({
+      roomId: state.room.id,
+      voterPlayerId: state.room.playerId,
+      questionNumber: round,
+      answerId,
+    }));
+  } finally {
+    state._clapInFlight = false;
+  }
 
   if (ok && ['clapped', 'moved', 'withdrawn'].includes(result)) return;
 

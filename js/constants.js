@@ -24,6 +24,10 @@ export const PHASE_ADVANCE_GRACE_MS = 8000;
 // milliseconds early gets a correct "not due" and then NOTHING EVER ASKS AGAIN
 // — the stall, reintroduced by its own fix.
 export const PHASE_BACKSTOP_POLL_MS = 3000;
+// How often the reveal re-reads this round's claps. A backstop for Realtime:
+// answer_claps was never added to the realtime publication (fixed by 076), and
+// a filtered Realtime DELETE — taking a clap back — is never delivered at all.
+export const CLAP_POLL_MS = 3000;
 
 // How long the host waits for the database to stamp a round's clock before
 // falling back to its own estimate of server time.
