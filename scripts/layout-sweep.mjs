@@ -354,8 +354,13 @@ function measure(stressText) {
       for (const [, heights] of byRow) {
         if (heights.length < 2) continue;
         const min = Math.min(...heights), max = Math.max(...heights);
-        // 1px is sub-pixel rounding, not raggedness.
-        if (max - min > 1) {
+        // 1px is sub-pixel rounding, not raggedness. The category grid gets
+        // 2: CI reported [158, 156] at 430px twice (2026-09-05, 2026-10-28),
+        // each time passing on the same commit run again — two cards rounding
+        // a fraction apart, which CLAUDE.md said to answer with the tolerance,
+        // not the grid. Scoped, so every other list stays at 1.
+        const tolerance = sel === '.category-grid' ? 2 : 1;
+        if (max - min > tolerance) {
           out.ragged.push(`${sel} items side by side differ by ${max - min}px: [${heights.join(', ')}]`);
         }
       }
