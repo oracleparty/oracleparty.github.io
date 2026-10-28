@@ -102,8 +102,8 @@
 > rooms, players, answers, chat_messages all ok. **The same check read
 > `friend_requests NOT LIVE`**: `js/auth.js` listens for a new request to pop
 > up "X sent a friend request", and that popup has never appeared. Migration
-> 077 adds the table to the publication — **NOT APPLIED until the owner runs
-> it**. The popup also called `parseInt` on the request id (the fault the
+> 077 adds the table to the publication — **APPLIED 2026-10-28: the owner ran
+> it and reported its checks ok** (reported, not pasted). The popup also called `parseInt` on the request id (the fault the
 > profile's own Accept fixed on 2026-08-31) and closed even on a refusal; both
 > fixed, never seen because the popup never fired.
 >
