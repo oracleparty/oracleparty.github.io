@@ -6,7 +6,8 @@
 import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
          showScreen, _isLeaving } from './state.js';
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
-import { logger } from '../logger.js';
+import { logger, recordFault } from '../logger.js';
+import { lastRequestMs } from '../db/client.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
 import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
@@ -816,6 +817,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
       wager
     }]).then(() => ({ data: null, error: null }), error => ({ data: null, error }));
   } else {
+    const sentAt = performance.now();
     const server = await submitAnswerViaServer({
       roomId: state.room.id,
       playerId: state.room.playerId,
@@ -823,6 +825,16 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
       answer,
       wager
     });
+    // A SLOW SUBMIT SAYS WHERE ITS TIME WENT (owner: "over 5 seconds to send
+    // sometimes"). Total from the tap's request to the answer, against the
+    // network time of the request itself; the gap is the phone waiting before
+    // the request left.
+    const totalMs = Math.round(performance.now() - sentAt);
+    if (totalMs >= 2000) {
+      const netMs = lastRequestMs('rest:rpc/op_submit_answer');
+      recordFault('SlowSubmit', `Submit took ${totalMs}ms`,
+        `network ${netMs ?? '?'}ms, waiting in the phone ${netMs == null ? '?' : totalMs - netMs}ms, round ${state.currentQuestion}, auto=${autoSubmit}`);
+    }
     if (server.row && !server.row.rejected) {
       verdict = !!server.row.is_correct;
       if (server.row.score_earned != null) earnedFinal = server.row.score_earned;

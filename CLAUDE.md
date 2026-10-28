@@ -96,6 +96,23 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (late) — "answers take over 5 seconds": measuring it on the phone
+>
+> **Not explained, and now instrumented.** `op_submit_answer` takes no lock
+> and the client sends one request, so the time is the request's. Every
+> supabase-js request now goes through `timedFetch` in `js/db/client.js`; one
+> over 2s is written to `error_logs` as `[SlowRequest]`, and a Submit over 2s
+> as `[SlowSubmit]` with its total, its own network time
+> (`lastRequestMs('rest:rpc/op_submit_answer')`) and the gap — time waiting
+> INSIDE the phone before the request left (supabase-js gates requests on its
+> auth session). Verified in the harness at a 2.5s link: the row lands; its
+> network figure reads `?` there because the harness bypasses `fetch`. **Read
+> the Error Logs panel after the next game** before changing anything.
+>
+> **"I hear two honks" did not reproduce:** one tap is one play on each phone,
+> measured. Leading explanation: a call (FaceTime) carrying the friend's phone's
+> honk, newly audible since the silent-switch fix. Asked.
+
 > ## 2026-10-28 (night) — a phone that missed one message stayed on a dead question for ever
 >
 > **Owner's photo: question 10 of 20, timer at 0, "Time's up — your last

@@ -13,7 +13,51 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 export const SUPABASE_URL = 'https://zzpqymehapwbjupphxec.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_UJtIRllW5SWhMbqynb-3QQ_HWIV2OSd';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ============================================
+// HOW LONG DID THAT REQUEST TAKE — measured on the real phone.
+//
+// Owner, 2026-10-28: "Answers are taking over 5 seconds to send sometimes."
+// Nothing in this repo can see a phone's connection — the robots' database is
+// in memory — so every request is timed here, and one slower than
+// SLOW_REQUEST_MS is written to error_logs (the admin page's Error Logs) with
+// what it was. lastRequestMs() lets a caller compare its own end-to-end time
+// with the network's: the difference is time spent waiting INSIDE the phone
+// before the request left (supabase-js holds every request behind its auth
+// session check), which is a different fault from a slow road.
+// ============================================
+const SLOW_REQUEST_MS = 2000;
+const _lastMs = new Map();   // short request name -> ms of its last fetch
+
+function _requestName(url) {
+  try {
+    const u = new URL(url);
+    return u.pathname.replace(/^\/(rest|auth|functions)\/v1\//, '$1:').slice(0, 60);
+  } catch { return String(url).slice(0, 60); }
+}
+
+export function lastRequestMs(name) { return _lastMs.get(name) ?? null; }
+
+async function timedFetch(input, init) {
+  const url = typeof input === 'string' ? input : input?.url || '';
+  const name = _requestName(url);
+  const t0 = performance.now();
+  try {
+    return await fetch(input, init);
+  } finally {
+    const ms = Math.round(performance.now() - t0);
+    _lastMs.set(name, ms);
+    // Never time the error log's own write: a slow one would log itself.
+    if (ms >= SLOW_REQUEST_MS && !name.includes('error_logs')) {
+      import('../logger.js').then(({ recordFault }) => recordFault('SlowRequest',
+        `${name} took ${ms}ms on the network`,
+        `online=${navigator.onLine} visible=${document.visibilityState}`)).catch(() => {});
+    }
+  }
+}
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: timedFetch },
+});
 
 
 // ============================================
