@@ -4126,6 +4126,22 @@ body::after {
   color: var(--color-text-dim);
 }
 
+/* ONE FIXED WIDTH FOR THE BUTTON AND THE SLOT, so the answer beside them is
+   the same width on every row whatever font draws the 👏. They measured equal
+   here (38.44px at 320) and came out different on CI's machine — a <button>
+   takes the browser's own font and the slot's span takes the page's, and an
+   emoji's width depends on which font draws it. One row's answer then wrapped
+   and the rest did not: `#reveal-answers stacked rows differ by 24px` at 320,
+   2026-10-28. 2.75rem is the width they already had (38.5px at 320, 44px at
+   375), now stated rather than left to the glyph. */
+.clap-btn,
+.clap-slot {
+  width: 2.75rem;
+  box-sizing: border-box;
+  font: inherit;
+  overflow: visible;
+}
+
 /* A TAP SHRINKS IT, IN CSS, WITH NO JAVASCRIPT INVOLVED.
    This is the whole lesson of the dead-tap playtest: `.wager-btn:active` fires
    on touch whatever the handler is doing, so "no press animation at all" was

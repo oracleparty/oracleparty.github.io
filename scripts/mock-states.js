@@ -834,7 +834,11 @@ export const STATES = {
       const answers = [
         { p: P[0], a: 'Hanging Gardens', c: true, w: 7, clap: 0, mine: false },
         { p: P[1], a: 'Colossus', c: false, w: 5, clap: 3, mine: true },
-        { p: P[2], a: 'hanging gardens of babylon', c: true, w: 8, clap: 1, mine: false },
+        // Was 'hanging gardens of babylon', which sat within a couple of pixels
+        // of the line at 320 wide: one line here, two on CI's fonts, so the
+        // ragged-row check depended on the runner (2026-10-28). Wrapping is
+        // checked by --stress, which puts a long answer on EVERY row.
+        { p: P[2], a: 'gardens of babylon', c: true, w: 8, clap: 1, mine: false },
         { p: P[3], a: 'The Hanging Gardens', c: true, w: 3, clap: 0, mine: false, me: true },
         { p: P[4], a: 'Tower of Babel', c: false, w: 6, clap: 12, mine: false },
         { p: P[5], a: 'Gardens of Babylon', c: true, w: 4, clap: 0, mine: false },
