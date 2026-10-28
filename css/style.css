@@ -3452,6 +3452,10 @@ body::after {
   gap: var(--space-xs);
   width: 100%;
   max-width: 320px;
+  /* Centred: it is narrower than the answer box below it, and left-aligned it
+     sat 20px off the screen's middle on a 390px phone (2026-10-28). */
+  margin-left: auto;
+  margin-right: auto;
   margin-bottom: var(--space-sm);
 }
 
@@ -3481,11 +3485,17 @@ body::after {
    gives up its padding instead. Measured at 390x560: 20 wagers ran 36px past
    the edge; this returns ~43px. Set by renderWagerGrid. :has() needs iOS 15.4;
    without it the screen scrolls under the pinned answer box, as before. */
+.game-content:has(.wager-grid--many) {
+  padding-top: var(--space-xs);
+}
 .game-content:has(.wager-grid--many) .question-card {
   padding-top: var(--space-xs);
   padding-bottom: var(--space-xs);
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-md);
 }
+/* The question sits EVENLY between the timer and "Choose your wager":
+   measured 26px of air above the text and 26px below (it was 39 and 17,
+   which read as the question sliding down the screen — owner, 2026-10-28). */
 
 .wager-btn:active {
   transform: scale(0.93);
