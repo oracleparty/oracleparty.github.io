@@ -49,6 +49,8 @@ import { sendHonk, getHonkCount, setHonkMuted } from '../honk.js';
 import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { screenStillFits } from './phase-order.js';
+import { showPodium } from './podium.js';
+import { resultsRowsHtml, favouritesHtml, wireFavouriteDots, fitScoreboard } from './results-view.js';
 import {
   state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getCategoryLabel,
   getQuestionText, getCorrectAnswer,
@@ -1499,30 +1501,26 @@ function renderFavouriteAnswers(allAnswers) {
   const { entries, more } = favouriteAnswers(state.claps, { limit: 3 });
   if (!entries.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
 
-  const rows = entries.map(e => {
+  const cards = entries.map(e => {
     const answer = allAnswers.find(a => String(a.id) === String(e.answerId));
     // A clap whose answer we cannot find belongs to a game this client no
     // longer has loaded. Skipping is the only honest option — a card cannot
     // quote a line it does not have.
-    if (!answer) return '';
+    if (!answer) return null;
     const player = state.players.find(p => String(p.id) === String(answer.player_id));
-    const qText = getQuestionText(e.questionNumber) || '';
-    const who = player?.display_name || 'Someone';
-    return `<div class="fav-answer">
-      ${qText ? `<div class="fav-answer__q">${escapeHtml(qText)}</div>` : ''}
-      <div class="fav-answer__a">${escapeHtml((answer.submitted_answer || '').trim())}</div>
-      <div class="fav-answer__who">
-        <span class="fav-answer__name">${escapeHtml(who)}</span>
-        <span class="fav-answer__claps"><span aria-hidden="true">&#x1F44F;</span> ${e.claps}</span>
-      </div>
-    </div>`;
-  }).filter(Boolean).join('');
+    return {
+      question: getQuestionText(e.questionNumber) || '',
+      answer: (answer.submitted_answer || '').trim(),
+      who: player?.display_name || 'Someone',
+      claps: e.claps,
+    };
+  }).filter(Boolean);
 
-  if (!rows) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  if (!cards.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
 
-  host.innerHTML = `<div class="fav-answers__title">Favourite Answers</div>
-    ${rows}
-    ${more ? `<div class="fav-answers__more">+${more} more tied</div>` : ''}`;
+  host.innerHTML = favouritesHtml(cards, more);
+  wireFavouriteDots(host);
+  fitScoreboard();
   host.style.display = '';
 }
 
@@ -1688,54 +1686,14 @@ export async function showResultsScreen() {
     logger.warn('Claps', 'could not draw the favourite answers', e);
   }
 
-  // Winner celebration
-  const winner = sorted[0];
-  if (winner) {
-    const winnerAvatar = renderAvatar({ displayName: winner.display_name, avatarColor: winner.avatar_color, avatarEmoji: winner.avatar_emoji, size: '48px' });
-    $('#results-winner').innerHTML = `
-      <div class="results-winner__badge">🏆</div>
-      ${winnerAvatar}
-      <div class="results-winner__name">${escapeHtml(winner.display_name)}</div>
-      <div class="results-winner__score">${state.scores[winner.id] || 0} points</div>
-    `;
-  }
-
-  // Scoreboard
-  const PLACE_LABELS = ['1st', '2nd', '3rd'];
-  $('#results-list').innerHTML = sorted.map((p, i) => {
-    const fwAnswer = fwAnswers.find(a => String(a.player_id) === String(p.id));
-    const fwDelta = fwAnswer ? fwAnswer.score_earned : 0;
-    const fwSign = fwDelta > 0 ? '+' : '';
-    const fwClass = fwDelta > 0 ? 'score-anim-row__delta--positive' :
-                    fwDelta < 0 ? 'score-anim-row__delta--negative' :
-                    'score-anim-row__delta--zero';
-    const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
-    const placeLabel = PLACE_LABELS[i] || `${i + 1}th`;
-    const placeClass = i < 3 ? `results-row__place--${PLACE_LABELS[i]}` : '';
-
-    const isMe = String(p.id) === String(state.room.playerId);
-    const honks = getHonkCount(p.id);
-    const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
-    const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
-
-    return `
-      <div class="results-row" data-player-id="${p.id}" data-profile-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
-        <span class="results-row__place ${placeClass}">${placeLabel}</span>
-        <div class="avatar-wrap">
-          ${avatarHtml}
-          ${honkBadge}
-        </div>
-        <div class="name-stack">
-          <span class="results-row__name">${escapeHtml(p.display_name)}${p.is_host ? ' <span class="badge badge--host">Host</span>' : ''}</span>
-          ${titleHtml}
-        </div>
-        ${honkBtn}
-        <span class="results-row__fw-delta ${fwClass}">${fwSign}${fwDelta}</span>
-        <span class="results-row__score">${state.scores[p.id] || 0}</span>
-      </div>
-    `;
-  }).join('');
+  // No winner block: the podium before this screen crowned them, and saying it
+  // twice cost the scoreboard its room (owner's design, 2026-10-28).
+  $('#results-list').innerHTML = resultsRowsHtml(sorted, {
+    scoreOf: p => state.scores[p.id] || 0,
+    fwDeltaOf: p => fwAnswers.find(a => String(a.player_id) === String(p.id))?.score_earned || 0,
+    meId: state.room.playerId,
+    honkCountOf: getHonkCount,
+  });
 
 
   // ROUTED THROUGH showScreen(), NOT transitionScreens().
@@ -1752,7 +1710,25 @@ export async function showResultsScreen() {
   // it was applied to two of the six in-game switches. This is the shape this
   // project records more than any other: the same rule stated N times and
   // followed N-2.
-  Promise.resolve(showScreen($('#results-screen'))).then(showChatBar);
+  // THE PODIUM FIRST, once per game, then this screen. A podium that fails
+  // resolves at once (showPodium never rejects), and a phone that comes back to
+  // a game already on its results goes straight to the scoreboard: the podium
+  // is the moment the game ends, and that moment has passed for it.
+  const podiumKey = state.countdownStartedAt || state.room.id;
+  const goToScoreboard = () => Promise.resolve(showScreen($('#results-screen'))).then(() => { showChatBar(); fitScoreboard(); });
+  if (state._podiumFor !== podiumKey && !state._resultsFromRejoin) {
+    state._podiumFor = podiumKey;
+    state._podiumRunning = true;
+    hideChatBar();
+    showPodium({ sorted, scores: state.scores, allAnswers }).then(() => {
+      state._podiumRunning = false;
+      if (state.gamePhase === 'results') goToScoreboard();
+    });
+  } else if (!state._podiumRunning) {
+    // A re-render (a host's correction arriving) while the podium is still up
+    // only refreshes the scoreboard behind it; the podium decides when to go.
+    goToScoreboard();
+  }
 
   // AFTER the screen, never before it. recordClapsOnServer is idempotent on
   // (user, room, game), so every phone calling it writes once in total —

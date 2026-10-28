@@ -44,6 +44,89 @@ function makeInject(bodyFn) {
   return bodyFn;
 }
 
+
+// A podium mock: players, a per-round history ending on `finals`, and the real
+// module drawing it. `me` is the index of this phone's player in score order.
+function podiumState({ finals, me = 0 }) {
+  return {
+    page: 'game',
+    screen: 'podium-screen',
+    injectArgs: () => ({ P: PLAYERS, finals, me }),
+    inject: async ({ P, finals, me }) => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      window.__podiumSpeed = 1e6;   // straight to the final frame
+      const { state } = await import('/js/game/state.js');
+      const { showPodium } = await import('/js/game/podium.js');
+      const TOTAL = 8;
+      const titles = ['Keeper of Secrets', 'Student of the Ages', 'Guest', 'Novice', 'Guest', 'Novice'];
+      const players = finals.map((f, i) => ({
+        id: 'p' + i, display_name: P[i].name, avatar_color: P[i].color, avatar_emoji: P[i].emoji, title: titles[i],
+      }));
+      const answers = [];
+      players.forEach((p, i) => {
+        // a plausible climb: the regular rounds add up to a positive total, the
+        // final wager lands the real final score
+        const before = Math.max(4, finals[i] > 0 ? Math.round(finals[i] * 0.8) : 10 - i);
+        let left = before;
+        for (let q = 0; q < TOTAL; q++) {
+          const step = q === TOTAL - 1 ? left : Math.min(left, Math.round(before / TOTAL) + ((q + i) % 3 === 0 ? 1 : 0));
+          answers.push({ player_id: p.id, question_number: q, score_earned: step });
+          left -= step;
+        }
+        answers.push({ player_id: p.id, question_number: TOTAL, score_earned: finals[i] - before });
+      });
+      state.room = { ...(state.room || {}), playerId: players[me].id };
+      state.totalQuestions = TOTAL;
+      const scores = Object.fromEntries(players.map((p, i) => [p.id, finals[i]]));
+      showPodium({ sorted: players, scores, allAnswers: answers });
+      await new Promise(r => setTimeout(r, 150));
+    },
+  };
+}
+
+// The results screen — rows and carousel built by the REAL
+// js/game/results-view.js, the same way the podium mocks use podium.js. The
+// hand-built rows this replaces drifted from the app more than once.
+function resultsState({ n = 6, favs = 0, more = 0, hostReview = true }) {
+  return {
+    page: 'game',
+    screen: 'results-screen',
+    injectArgs: () => ({ P: PLAYERS, n, favs, more, hostReview }),
+    inject: async ({ P, n, favs, more, hostReview }) => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const { resultsRowsHtml, favouritesHtml, wireFavouriteDots, fitScoreboard } = await import('/js/game/results-view.js');
+      document.getElementById('results-category').textContent = '⏳ History';
+      const finals = [62, 55, 48, 35, 28, 22];
+      const fw = [20, -10, 10, 0, -20, 10];
+      const titles = ['Keeper of Secrets', 'Student of the Ages', 'Guest', 'Novice', 'Guest', 'Novice'];
+      const players = P.slice(0, n).map((p, i) => ({
+        id: p.id, display_name: p.name, avatar_color: p.color, avatar_emoji: p.emoji,
+        title: titles[i], is_host: !!p.isHost, _score: finals[i], _fw: fw[i],
+      }));
+      document.getElementById('results-list').innerHTML = resultsRowsHtml(players, {
+        scoreOf: p => p._score, fwDeltaOf: p => p._fw, meId: players[Math.min(2, n - 1)].id,
+      });
+      const fav = document.getElementById('results-favourites');
+      const cards = [
+        { question: 'What mythical creature is half human and half horse?', answer: 'a very confused horse', who: 'TimeTraveler42', claps: 4 },
+        { question: 'Which ancient wonder was located in the city of Babylon?', answer: 'the one with all the plants hanging off it, you know the one', who: 'ArchaeologistAnna', claps: 2 },
+        { question: 'What is the capital of Australia?', answer: 'Sydney (wrong, I know)', who: 'MaximilianTheGreat99', claps: 2 },
+      ].slice(0, favs);
+      if (cards.length) {
+        fav.innerHTML = favouritesHtml(cards, more);
+        fav.style.display = '';
+        wireFavouriteDots(fav);
+      }
+      if (hostReview) {
+        const row = document.getElementById('reveal-host-review');
+        document.getElementById('results-host-review-slot').appendChild(row);
+        row.style.display = '';
+      }
+      fitScoreboard();
+    },
+  };
+}
+
 export const STATES = {
   // ==========================================
   // INDEX.HTML
@@ -1268,88 +1351,28 @@ export const STATES = {
   // ==========================================
   // GAME.HTML — Results
   // ==========================================
-  'results-winner': {
-    page: 'game',
-    screen: 'results-screen',
-    injectArgs: () => PLAYERS,
-    inject: (P) => {
-      function av(p) { return '<div class="avatar" style="background:' + p.color + '">' + p.emoji + '</div>'; }
-      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+  // Six players, no claps: the commonest shape, and the one that must fit.
+  'results-board': resultsState({ n: 6 }),
+  // Three players with a full carousel: what a small game looks like.
+  'results-three': resultsState({ n: 3, favs: 3 }),
+  // THE PODIUM — rendered by the REAL js/game/podium.js (it imports nothing
+  // that reaches Supabase, deliberately), driven to its final frame. A mock
+  // that rebuilt the podium by hand would drift from it; this one cannot.
+  'podium-3': podiumState({ finals: [62, 55, 48] }),
+  'podium-negative': podiumState({ finals: [30, 12, -20] }),
+  'podium-all-negative': podiumState({ finals: [-2, -8, -15] }),
+  'podium-two': podiumState({ finals: [62, 55] }),
+  'podium-tie': podiumState({ finals: [62, 62, 48] }),
+  'podium-you-fifth': podiumState({ finals: [62, 55, 48, 35, 28, 22], me: 4 }),
 
-      document.getElementById('results-category').textContent = '⏳ History';
-      document.getElementById('results-winner').innerHTML =
-        '<div class="results-winner__badge">🏆</div>' +
-        // The SAME avatar showResultsScreen draws (renderAvatar, 48px). The
-        // mock left it out, so nothing ever saw it sitting off-centre.
-        '<div class="avatar" style="background:' + P[0].color + ';width:48px;height:48px;font-size:calc(48px * 0.55);">' + P[0].emoji + '</div>' +
-        '<div class="results-winner__name">' + P[0].name + '</div>' +
-        '<div class="results-winner__score">62 points</div>';
-
-      const scores = [
-        { p: P[0], score: 62, rank: '1st' },
-        { p: P[2], score: 55, rank: '2nd' },
-        { p: P[3], score: 48, rank: '3rd' },
-        { p: P[5], score: 35, rank: '4th' },
-        { p: P[1], score: 28, rank: '5th' },
-        { p: P[4], score: 22, rank: '6th' },
-      ];
-
-      // Mirrors renderResultsList() in js/game/scores.js. The old markup put a
-      // `.results-rank` span first — a class that exists nowhere in the app or
-      // the stylesheet — and omitted the name-stack the real row is built on,
-      // so this preview never showed the layout it claimed to.
-      const PLACE = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
-      const PLACE_CLASS = ['results-row__place--1st', 'results-row__place--2nd', 'results-row__place--3rd'];
-      document.getElementById('results-list').innerHTML = scores.map((s, i) =>
-        '<div class="results-row">' +
-        '<span class="results-row__place ' + (PLACE_CLASS[i] || '') + '">' + PLACE[i] + '</span>' +
-        '<div class="avatar-wrap">' + av(s.p) + '</div>' +
-        '<div class="name-stack"><span class="results-row__name">' + s.p.name +
-        (s.p.isHost ? ' <span class="badge badge--host">Host</span>' : '') + '</span></div>' +
-        '<span class="results-row__score">' + s.score + '</span></div>'
-      ).join('');
-    },
-  },
-
-  // FAVOURITE ANSWERS, the card above the scoreboard.
-  //
-  // Three entries with DIFFERENT clap counts, a long answer, a long name and a
-  // question long enough to need truncating — because every one of those is a
-  // way this card can go wrong and none of them show up with tidy sample data.
-  // The "+2 more tied" line is here too: it is the card admitting it is showing
-  // three of five equal answers rather than implying these three were special.
-  'results-favourites': {
-    page: 'game',
-    screen: 'results-screen',
-    inherits: 'results-winner',
-    inject: () => {
-      const host = document.getElementById('results-favourites');
-      if (!host) return;
-      const favs = [
-        { q: 'What mythical creature is half human and half horse?',
-          a: 'a very confused horse', who: 'TimeTraveler42', n: 4 },
-        { q: 'Which ancient wonder was located in the city of Babylon?',
-          a: 'the one with all the plants hanging off it, you know the one', who: 'ArchaeologistAnna', n: 2 },
-        { q: 'What is the capital of Australia?',
-          a: 'Sydney (wrong, I know)', who: 'MaximilianTheGreat99', n: 2 },
-      ];
-      host.innerHTML = '<div class="fav-answers__title">Favourite Answers</div>' +
-        favs.map(f => '<div class="fav-answer">' +
-          '<div class="fav-answer__q">' + f.q + '</div>' +
-          '<div class="fav-answer__a">' + f.a + '</div>' +
-          '<div class="fav-answer__who">' +
-            '<span class="fav-answer__name">' + f.who + '</span>' +
-            '<span class="fav-answer__claps"><span aria-hidden="true">&#x1F44F;</span> ' + f.n + '</span>' +
-          '</div></div>').join('') +
-        '<div class="fav-answers__more">+2 more tied</div>';
-      host.style.display = '';
-    },
-  },
+  // Six players AND a carousel AND the host review: the busiest the screen
+  // gets, so this is where the scoreboard has to scroll — and say so.
+  'results-favourites': resultsState({ n: 6, favs: 3, more: 2 }),
 
   'results-review': {
     page: 'game',
     screen: 'results-screen',
-    inherits: 'results-winner',
+    inherits: 'results-board',
     inject: () => {
       const overlay = document.getElementById('review-overlay');
       if (overlay) overlay.classList.add('active');

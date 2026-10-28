@@ -365,6 +365,10 @@ export class PlaytestTable {
       route.fulfill({ status: 200, contentType: 'font/woff2', body: '' }));
 
     await page.addInitScript(n => { window.__robotId = n; }, name);
+    // The end-of-game podium replays the game for ~5s and then waits ~3s; a
+    // robot has no eyes for it, so it plays at 20x unless a scenario turns it
+    // back down (scenario-podium does, to look at it).
+    await page.addInitScript(() => { if (window.__podiumSpeed == null) window.__podiumSpeed = 20; });
 
     // Set before any navigation, so initAuth() sees a session on first load.
     // The shape matches what supabase-js hands back: the app only reads

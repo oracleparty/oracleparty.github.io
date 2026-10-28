@@ -714,6 +714,26 @@ try {
     note(`${r.name} is on ${await activeScreen(r)}`);
   }
 
+  // --- The podium ---
+  //
+  // Every phone that reached results must have been shown the podium first,
+  // and must have moved on from it to the scoreboard. Both halves: a podium
+  // that never draws passes "reached results", and one that never lets go
+  // passes "podium shown".
+  if (reachedResults) {
+    for (const r of everyone) {
+      const p = await r.page.evaluate(() => ({
+        shown: window.__state?._podiumShown || 0,
+        screen: document.querySelector('.screen.active')?.id || null,
+        cols: document.querySelectorAll('#podium .podium__col').length,
+      })).catch(() => null);
+      note(`${r.name}'s podium: ${JSON.stringify(p)}`);
+      if (!p || p.shown !== 1) problems.push(`${r.name} reached results without being shown the podium exactly once (${p?.shown})`);
+      else if (p.cols !== 3) problems.push(`${r.name}'s podium stood ${p.cols} players, not 3`);
+      if (p && p.screen === 'podium-screen') problems.push(`${r.name} is still on the podium — it never moved on to the scoreboard`);
+    }
+  }
+
   // --- The Favourite Answers card ---
   //
   // Nothing checked this card at all until it was moved behind the screen

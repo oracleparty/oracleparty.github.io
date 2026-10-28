@@ -96,6 +96,44 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (final) — the end of a game is two screens: a podium, then the scoreboard
+>
+> **Designed with the owner over a long run of mockups; every look decision is
+> theirs.** `js/game/podium.js` draws it, `js/game/podium-logic.js` (no imports,
+> 15 tests) holds the ranking, the order the steps stand in and the replay curve.
+>
+> - **The podium:** gold in the middle (with two players gold is on the LEFT),
+>   metallic rings, a medal on each avatar, points on plain gradient steps
+>   flush with the zero line — **no sheen**, the owner rejected it. Gold's step
+>   is a fixed size and the others are in proportion; a score below zero hangs
+>   striped below the floor and may run off the screen (no white strip, no
+>   rounded end). Everyone below zero flips it: gold hangs 40px. Ties stand
+>   level. The winner's avatar sits equidistant from the headline and its own
+>   name — asked for three times before it was measured; keep it measured.
+> - **The replay:** every bar starts at 0 and glides through the running totals
+>   **without stopping** (owner: "glide, never stop"; a cubic through the raw
+>   points eased to a halt at every question). Same 3.2s for 8 questions or 20,
+>   then a slower final-wager beat, then medals, headline and a gold glow. A
+>   player who crosses below zero has their AVATAR turned upside down (never the
+>   medal), only when the winner is above zero. The medal-falling gags were all
+>   scratched by the owner.
+> - **Tap to continue**, or it moves on 3s after the replay. A phone that
+>   rejoins a game already on its results skips it.
+> - **The scoreboard screen** opens on the scoreboard (the winner block is gone —
+>   the podium said it), medals 🥇🥈🥉 in the place column by competition rank,
+>   rows compact enough that six fit at 320x523, then Favourite Answers as a swipe
+>   carousel (86% cards, dots), then Rate your host on one line. The board scrolls
+>   itself; the fade and "▾ scroll for all N" appear ONLY when it overflows.
+>   Markup lives in `js/game/results-view.js` (no Supabase) so the mocks render
+>   the real thing — the hand-built results mock had drifted twice.
+>
+> `scenario-fullgame` requires every phone to be shown the podium exactly once
+> AND to leave it for the scoreboard; break-tested both halves (skipping it, and
+> a podium that never lets go). The layout sweep now skips text on a gradient
+> that carries its own shadow (it read white-on-gold as white-on-page, 1.07) and
+> treats an x-snapping box as a deliberate carousel. **Not seen on a real phone
+> yet**, and the replay's smoothness is a feel nobody here can measure.
+
 > ## 2026-10-28 (after last) — 076 is applied; the timer and Chaos lock at the start; friend requests were never live
 >
 > **076 IS APPLIED — the owner pasted its rows:** `answer_claps ok`, and
@@ -5042,6 +5080,8 @@ not build it on `game_history.score`.
 │   │   ├── question.js     Question screen, wagers, submit, timer
 │   │   ├── reveal.js       Answer reveal, host judgment override, feedback UI
 │   │   ├── scores.js       Scores, final wager, results
+│   │   ├── podium.js       The end-of-game podium and its race replay
+│   │   ├── results-view.js Results rows + Favourite Answers carousel (no Supabase)
 │   │   ├── chat.js         In-game chat
 │   │   ├── host.js         Host settings panel
 │   │   ├── state.js        Shared mutable game state
@@ -5070,6 +5110,7 @@ not build it on `game_history.score`.
 │   │   ├── title-tiers.js        which tiers a topic offers, and at what count
 │   │   ├── game/phase-order.js  may a returning phone follow the room's phase
 │   │   ├── game/clap-logic.js    claps: counting, one-per-round, lifetime totals
+│   │   ├── game/podium-logic.js  podium ranking, step order, the replay curve
 │   │   └── game/bot-logic.js     bot decisions
 │   └── constants.js    All timing + threshold values
 ├── migrations/         Hand-applied SQL (see #7 above)
@@ -5093,7 +5134,8 @@ not build it on `game_history.score`.
 **join.html** `#join-screen`
 **lobby.html** `#lobby-screen`
 **game.html** `#countdown-screen` → `#question-screen` → `#reveal-screen` →
-`#scores-screen` → (repeat) → `#final-wager-screen` → `#results-screen`
+`#scores-screen` → (repeat) → `#final-wager-screen` → `#podium-screen` →
+`#results-screen`
 
 ## Game Flow
 
@@ -5109,7 +5151,9 @@ not build it on `game_history.score`.
    (thumbs up / thumbs down / flag with a reason).
 7. **Scores** — animated scoreboard between rounds.
 8. **Final wager** — bet 0, 10 or 20 points before the last question.
-9. **Results** — final ranking, then back to the lobby or home.
+9. **Podium** — gold, silver and bronze, with a replay of the race; tap on.
+10. **Results** — the full scoreboard, favourite answers, then back to the lobby
+    or home.
 
 ## Scoring
 

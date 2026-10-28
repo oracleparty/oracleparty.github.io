@@ -826,6 +826,8 @@ export async function handlePhaseTransition(phase) {
       showQuestionScreen();
       return; // already set gamePhase
     case 'results':
+      // A phone loading straight into a finished game skips the podium.
+      state._resultsFromRejoin = prevPhase === 'loading';
       showResultsScreen();
       break;
     default:

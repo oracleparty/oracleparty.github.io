@@ -251,7 +251,12 @@ function measure(stressText) {
       // Reporting every visible-overflow box flagged each hieroglyph watermark
       // (deliberately drawn larger than its box) as a fault. A sweep that
       // reports known-good decoration alongside real bugs is one nobody reads.
-      if (st.overflowX === 'auto' || st.overflowX === 'scroll') {
+      // A box that SNAPS on x is a carousel — Favourite Answers is one — and
+      // swiping it sideways is the whole point. Anything else that scrolls on
+      // x is the page coming loose under a thumb.
+      if (st.scrollSnapType.startsWith('x')) {
+        // deliberate
+      } else if (st.overflowX === 'auto' || st.overflowX === 'scroll') {
         out.scrollers.push(`${describe(el)} scrollW=${el.scrollWidth} clientW=${el.clientWidth} overflow-x=${st.overflowX}`);
       } else if (st.overflowX === 'hidden') {
         out.clipped.push(`${describe(el)} scrollW=${el.scrollWidth} clientW=${el.clientWidth}`);
@@ -310,6 +315,17 @@ function measure(stressText) {
 
     const fg = parseRgb(st.color);
     if (!fg || fg.a < 0.5) continue;
+    // A gradient has no single background colour, so effectiveBg walks past it
+    // to the page and reports white-on-white (the podium's steps read 1.07).
+    // Text that sits on a gradient AND carries its own shadow is not something
+    // this check can measure; say nothing rather than something false.
+    let onGradient = false;
+    for (let a = el; a; a = a.parentElement) {
+      const as = getComputedStyle(a);
+      if (parseRgb(as.backgroundColor)?.a > 0.5) break;
+      if (/gradient/.test(as.backgroundImage)) { onGradient = true; break; }
+    }
+    if (onGradient && st.textShadow && st.textShadow !== 'none') continue;
     const bg = effectiveBg(el);
     const L1 = lum(fg), L2 = lum(bg);
     const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
