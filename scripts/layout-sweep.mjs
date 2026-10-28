@@ -77,7 +77,26 @@ for (const a of process.argv.slice(2)) {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/);
   if (m) flags[m[1]] = m[2] ?? true;
 }
-const WIDTHS = (flags.widths || '375,430').split(',').map(Number);
+// 360 is the commonest Android width; 375 and 430 are the small and large
+// iPhones. Added 2026-10-28 at the owner's request ("are you covering me for
+// all my bases?") — no check had ever rendered this app 360px wide.
+const WIDTHS = (flags.widths || '360,375,430').split(',').map(Number);
+
+// THE HEIGHTS A PHONE ACTUALLY SHOWS, for the screens that must fit without
+// scrolling. Every other check here renders at a fixed 800px, which is taller
+// than most phones show inside a browser — so "fits" was only ever measured by
+// hand. Width x VISIBLE height, browser bars included:
+const FIT_SIZES = [
+  [360, 640],   // small Android, Chrome
+  [375, 560],   // iPhone SE, Safari with both bars — the tightest case
+  [393, 659],   // iPhone 14/15/16 Pro, Safari with both bars
+  [412, 780],   // Pixel, Chrome
+  [430, 740],   // Pro Max / Plus, Safari with both bars
+];
+// Screens whose controls must all be reachable without scrolling. A scroller
+// costs taps (see the 2026-09-14 entry in CLAUDE.md), so on these a scroll is
+// a fault, not a style choice.
+const FIT_SCREENS = new Set(['question-screen', 'final-wager-screen']);
 const STRESS = !!flags.stress;
 // CLAUDE.md requires checking light, dark and OLED for any visual change, and
 // nothing enforced it. Unreadable text is the failure these themes actually
@@ -553,6 +572,93 @@ for (const name of names) {
       await context.close();
     }
    }
+  }
+}
+
+// ---- FIT: does each must-fit screen fit every real phone height? ----------
+function measureFit() {
+  const scr = document.querySelector('.screen.active');
+  const content = scr?.querySelector('.game-content');
+  const out = [];
+  if (!content) return out;
+  // THE FINAL WAGER IS A LIST, AND MAY SCROLL. Its player list grows with the
+  // room, so what must fit is the three things a player has to touch: the
+  // amount, Lock In, and the difficulty vote.
+  if (scr.id === 'final-wager-screen') {
+    for (const sel of ['.fw-option', '#btn-fw-lock', '.dv-option']) {
+      for (const el of scr.querySelectorAll(sel)) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 4 || getComputedStyle(el).display === 'none') continue;
+        if (r.bottom > innerHeight + 0.5) {
+          out.push(`${sel} "${(el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 14)}" ends ${Math.round(r.bottom - innerHeight)}px below the screen`);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+  const scrolls = content.scrollHeight - content.clientHeight;
+  if (scrolls > 1) out.push(`content needs ${scrolls}px more than the screen has, so it scrolls`);
+  const form = scr.querySelector('#answer-form');
+  const grid = scr.querySelector('#wager-grid');
+  if (form && grid && getComputedStyle(grid).display !== 'none') {
+    const overlap = grid.getBoundingClientRect().bottom - form.getBoundingClientRect().top;
+    if (overlap > 0.5) out.push(`the pinned answer box covers ${Math.round(overlap)}px of the wagers`);
+  }
+  for (const b of scr.querySelectorAll('button')) {
+    const r = b.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || getComputedStyle(b).visibility === 'hidden') continue;
+    if (r.bottom > innerHeight + 0.5) out.push(`"${(b.textContent || '').trim().slice(0, 20)}" ends ${Math.round(r.bottom - innerHeight)}px below the screen`);
+  }
+  return out;
+}
+
+const fitNames = names.filter(n => FIT_SCREENS.has(STATES[n].screen) && !STATES[n].widths);
+if (!flags.widths && fitNames.length) {
+  console.log(`\nFIT — ${fitNames.length} must-fit state(s) x ${FIT_SIZES.map(s => s.join('x')).join(', ')}`);
+  for (const name of fitNames) {
+    const state = STATES[name];
+    for (const [width, height] of FIT_SIZES) {
+      const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+      const p = await context.newPage();
+      p.on('pageerror', () => {});
+      await p.route('**/*', route =>
+        route.request().url().startsWith(`http://127.0.0.1:${port}`) ? route.continue() : route.abort());
+      try {
+        await p.goto(`http://127.0.0.1:${port}/${state.page}.html`, { waitUntil: 'domcontentloaded', timeout: 8000 });
+        await p.evaluate((screenId) => {
+          document.body.style.opacity = '1';
+          document.querySelectorAll('.modal-overlay').forEach(m => { m.style.display = 'none'; });
+          document.querySelectorAll('.screen').forEach(s => { s.style.display = 'none'; s.classList.remove('active'); });
+          const t = document.getElementById(screenId);
+          if (t) { t.style.display = 'flex'; t.classList.add('active'); }
+        }, state.screen);
+        if (state.inherits && STATES[state.inherits]) {
+          const base = STATES[state.inherits];
+          await p.evaluate(base.inject, base.injectArgs ? base.injectArgs() : undefined);
+        }
+        if (state.inject) await p.evaluate(state.inject, state.injectArgs ? state.injectArgs() : undefined);
+        await p.evaluate(() => document.fonts && document.fonts.ready).catch(() => {});
+        await p.waitForTimeout(300);
+        if (STRESS) { await p.evaluate(applyStress, STRESS_TEXT); await p.waitForTimeout(150); }
+        const f = await p.evaluate(measureFit);
+        if (f.length) {
+          // The final wager's difficulty vote is below the fold on every phone
+          // measured (2026-10-28) and where it belongs is the owner's call, not
+          // a layout fault to fail the build on. Reported every run until
+          // they decide; the question screen fails hard.
+          const reportOnly = state.screen === 'final-wager-screen';
+          if (!reportOnly) faults += f.length;
+          console.log(`\n${reportOnly ? '·' : '✗'} FIT ${name} @ ${width}x${height}${reportOnly ? '  (reported, not failed — owner to decide)' : ''}`);
+          for (const x of f) console.log(`    DOES NOT FIT  ${x}`);
+        }
+      } catch (e) {
+        faults++;
+        console.log(`\n✗ FIT ${name} @ ${width}x${height} — threw: ${e.message.split('\n')[0]}`);
+      } finally {
+        await context.close();
+      }
+    }
   }
 }
 
