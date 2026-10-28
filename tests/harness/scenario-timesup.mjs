@@ -95,6 +95,15 @@ try {
     problems.push('while the clock is still running Bob does not read "Waiting..." — an answer may still be on its way');
   }
 
+  // THE MESSAGE THAT ENDS THE ROUND NEVER REACHES BOB (owner's photo,
+  // 2026-10-28: question 10 of 20, timer at 0, "Time's up — your last answer
+  // stands", and the game stuck there). On a bad connection one Realtime event
+  // goes missing, and nothing brought the phone back: the backstop ignored the
+  // server saying the round was over, and the 60s poll only caught up a phone
+  // that had been in the BACKGROUND. The next room event is the round closing;
+  // swallow it, for Bob only — a lost frame belongs to one connection.
+  bob.deafTables = new Set(['rooms']);
+
   heading('the clock runs out; the host does NOT press Reveal Results');
   for (let i = 0; i < 60 && room()?.game_phase !== 'reveal'; i++) await host.page.waitForTimeout(500);
   note(`room phase: ${room()?.game_phase}`);
@@ -115,6 +124,29 @@ try {
     problems.push(`time is up and Alice's screen still reads "Waiting..." on ${worst} row(s) — the round closed, it is waiting on the host`);
   }
   if (!bobRow) problems.push('Bob has no row on the reveal at all');
+
+  heading('Bob, who never heard the round close, catches up by himself');
+  bob.deafTables = null;   // he hears again; only the closing event was lost
+  // The backstop asks 8s after the clock and then every 3s; well inside 20s.
+  // Judged on the PHASE each phone believes, not the screen: Bob's own
+  // auto-submit puts the reveal screen up while his game still thinks it is
+  // on the question, which is the stuck state, only better dressed.
+  for (const r of [host, bob]) {
+    const t0 = Date.now();
+    let st = null;
+    while (Date.now() - t0 < 20000) {
+      st = await r.page.evaluate(() => ({
+        screen: document.querySelector('.screen.active')?.id,
+        phase: window.__state?.gamePhase,
+      })).catch(() => null);
+      if (st && st.phase !== 'question') break;
+      await r.page.waitForTimeout(500);
+    }
+    note(`${r.name}: ${JSON.stringify(st)} after ${Date.now() - t0}ms (room: ${room()?.game_phase})`);
+    if (!st || st.phase === 'question') {
+      problems.push(`${r.name} missed the message that closed the round and never caught up — still on the question, which is the owner's photo`);
+    }
+  }
 } catch (e) {
   problems.push(`scenario crashed: ${e.stack || e}`);
 } finally {

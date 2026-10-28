@@ -68,7 +68,7 @@ import {
 } from './host.js';
 import {
   showQuestionScreen,
-  registerShowRevealScreen, registerRevealHelpers,
+  registerShowRevealScreen, registerRevealHelpers, registerResyncWithRoom,
 } from './question.js';
 import {
   showRevealScreen, enableRevealButton,
@@ -1026,8 +1026,15 @@ async function syncToCurrentState() {
     }
 
     if (!questionChanged) {
-      // Only sync phase if we were actually hidden (missed Realtime messages)
-      if (wasHidden && roomData.game_phase && roomData.game_phase !== state.gamePhase) {
+      // A PHONE CAN MISS AN EVENT WITHOUT EVER BEING HIDDEN. This used to
+      // catch up only a phone that had been backgrounded, so one that simply
+      // lost a Realtime message on a bad connection — screen on the whole time
+      // — sat on a question the room had finished, for the rest of the game
+      // (owner's photo, 2026-10-28). The direction rule below is what stops a
+      // stale read dragging us backwards, and it is the whole of the guard:
+      // a read cannot be AHEAD of the room, only behind, and behind is refused.
+      void wasHidden;
+      if (roomData.game_phase && roomData.game_phase !== state.gamePhase) {
         // Don't sync backwards — only advance to later phases.
         // This prevents a stale DB read from regressing local state.
         // THE RULE LIVES IN phase-order.js, and it is there rather than here
@@ -1247,6 +1254,7 @@ function cleanup() {
 // ============================================
 registerHostCleanup(cleanup);
 registerShowRevealScreen(showRevealScreen);
+registerResyncWithRoom(() => syncToCurrentState());
 registerRevealHelpers({ enableNextQuestion, enableRevealButton, updateRevealButtonText });
 registerRevealScoresRef({
   handleShowScores, updateScores, clearAutoProceed,

@@ -18,6 +18,10 @@ import { answerQuestionForBots, answerFinalQuestionForBots } from './bots.js';
 // Forward reference — set by init.js to avoid circular imports
 let _showRevealScreen = null;
 export function registerShowRevealScreen(fn) { _showRevealScreen = fn; }
+// Re-read the room and follow it. init.js owns it; registered, because
+// importing init.js from here would be a cycle.
+let _resyncWithRoom = null;
+export function registerResyncWithRoom(fn) { _resyncWithRoom = fn; }
 
 // Forward references for reveal functions called from handleTimerExpired
 let _enableNextQuestion = null;
@@ -496,6 +500,20 @@ function startPhaseBackstop() {
     advancePhaseOnServer(state.room.id, state.room.playerId).then(did => {
       if (did && did !== 'not due' && did !== 'nothing to do' && did !== 'already moved') {
         logger.warn('Game', `nobody was driving the round, so this phone asked the server: ${did}`);
+      }
+      // THE SERVER JUST SAID THIS PHONE IS BEHIND, AND IT USED TO BE IGNORED.
+      // "nothing to do" means the room is past the question; "already moved"
+      // means somebody else ended it a moment ago. Either way the event that
+      // carried that news never arrived here — Realtime lost it — and this
+      // phone would go on asking every 3 seconds for ever, on a question that
+      // was over. Owner's photo, 2026-10-28: question 10 of 20, timer at 0,
+      // "Time's up — your last answer stands", the game stuck. Read the room
+      // and follow it; a slow request still answering a later question's
+      // phase cannot move us backwards (shouldSyncPhase decides).
+      if ((did === 'nothing to do' || did === 'already moved' || did === 'question -> reveal')
+          && _resyncWithRoom && state.currentQuestion === armedFor
+          && (state.gamePhase === 'question' || state.gamePhase === 'final_question')) {
+        _resyncWithRoom();
       }
     });
   }, PHASE_BACKSTOP_POLL_MS);

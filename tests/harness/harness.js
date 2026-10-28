@@ -279,6 +279,9 @@ export class PlaytestTable {
         filter: cfg.filter,
         events: cfg.events,
         deliver: async payload => {
+          // ONE PHONE MISSING A MESSAGE. store.dropEvents swallows an event for
+          // everybody; a real lost frame belongs to one connection.
+          if (robot.deafTables?.has(cfg.table)) return;
           // A slow link delays what ARRIVES as well as what is sent, or the
           // phone would be slow to ask and instant to hear, which is no phone.
           if (robot.latencyMs) await lag();

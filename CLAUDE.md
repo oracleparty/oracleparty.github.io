@@ -96,6 +96,32 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (night) — a phone that missed one message stayed on a dead question for ever
+>
+> **Owner's photo: question 10 of 20, timer at 0, "Time's up — your last
+> answer stands", the game stuck.** The round HAD closed on the server (the
+> refused submit proves a blank was filed); the phone never heard the Realtime
+> event, and TWO recovery paths both declined to act:
+>
+> - **The backstop ignored the server telling it so.** `startPhaseBackstop`
+>   asks `op_advance_phase` every 3s; a room past the question answers
+>   `nothing to do` (or `already moved`), and the client treated that as "fine"
+>   and asked again for ever. It now re-reads the room (`registerResyncWithRoom`
+>   → `syncToCurrentState`).
+> - **The 60s poll only caught up a phone that had been BACKGROUNDED.** Within
+>   one round, the phase sync was gated on `wasHidden`, so a phone with its
+>   screen on that lost one frame was never repaired. The gate is gone;
+>   `shouldSyncPhase` was always the real guard — a read can be behind the
+>   room, never ahead, and behind is refused.
+>
+> If the stuck phone is the HOST it is a deadlock: Next lives on the reveal
+> screen it cannot reach. `scenario-timesup` makes Bob deaf to `rooms`
+> (`robot.deafTables`, harness — ONE phone, where `store.dropEvents` is
+> everybody) across the round's close and judges the PHASE each phone holds,
+> not the screen: Bob's own auto-submit puts the reveal screen up while his game
+> still says `question`. Break-tested: with both old paths, *"Bob … still on the
+> question, which is the owner's photo"* after 20s.
+
 > ## 2026-10-28 (evening) — claps were never live, honks on silent, Script error
 >
 > **"Still can't see the clap from my friend or vice versa."** Migration 071
