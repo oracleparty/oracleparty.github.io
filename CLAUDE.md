@@ -96,6 +96,29 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-28 (latest) — the owner's phone is 320 wide, and a media query lied about its height
+>
+> **MEASURED FROM TWO PHOTOS: the owner's iPhone uses DISPLAY ZOOM.** The 28px
+> gear and the 72px wager squares both render 1.23x, which is a 320px-wide
+> page; about 523px of it is visible between Safari's bars. Narrower than
+> anything the sweep rendered (360 was the floor). `WIDTHS` now starts at 320
+> (all 62 states clean) and FIT has `[320, 523, 692]`.
+>
+> **THE SHORT-SCREEN RULES NEVER FIRED ON IT.** They were `@media (max-height:
+> 600px)`; Safari answers a media query with the window as if its toolbars were
+> hidden (~692 there), while each `.screen` is 100dvh, the 523 actually seen.
+> Photographed: full-size squares, the vote below the fold, a scrollbar. Both
+> rules are `@container gamescreen` now, on `#question-screen` and
+> `#final-wager-screen`. **Lead, not an iPhone measurement** — but the FIT case
+> imitates it (window 692, screens held to 523) and with the old `@media` rule
+> reports the vote *"58px below what the screen shows"*, the photo.
+>
+> **The results winner's avatar sat at the left edge** under a centred trophy
+> and name — a fixed-size box ignores `text-align`. Centred; the mock now draws
+> the avatar, which it had left out, so nothing had ever seen it.
+>
+> **Open, owner's call:** whether the final wager keeps its Lock In button.
+
 > ## 2026-10-28 (late) — "answers take over 5 seconds": measuring it on the phone
 >
 > **Not explained, and now instrumented.** `op_submit_answer` takes no lock

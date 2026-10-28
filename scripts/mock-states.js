@@ -1277,6 +1277,9 @@ export const STATES = {
       document.getElementById('results-category').textContent = '⏳ History';
       document.getElementById('results-winner').innerHTML =
         '<div class="results-winner__badge">🏆</div>' +
+        // The SAME avatar showResultsScreen draws (renderAvatar, 48px). The
+        // mock left it out, so nothing ever saw it sitting off-centre.
+        '<div class="avatar" style="background:' + P[0].color + ';width:48px;height:48px;font-size:calc(48px * 0.55);">' + P[0].emoji + '</div>' +
         '<div class="results-winner__name">' + P[0].name + '</div>' +
         '<div class="results-winner__score">62 points</div>';
 

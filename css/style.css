@@ -3504,7 +3504,7 @@ body::after {
 /* An iPhone SE in Safari (560px visible) cannot spare the full air above the
    answer box in a 20-wager game: 2px short, measured by the sweep's FIT pass.
    Shorter screens give a little back; every taller phone keeps the 42px. */
-@media (max-height: 600px) {
+@container gamescreen (max-height: 600px) {
   #question-screen .game-content:has(.wager-grid--many) #answer-form {
     margin-top: var(--space-md);
   }
@@ -4790,6 +4790,13 @@ body::after {
   0%   { opacity: 0; transform: scale(0) rotate(-20deg); }
   60%  { opacity: 1; transform: scale(1.2) rotate(5deg); }
   100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+/* The winner's picture is a fixed-size box, which text-align cannot centre,
+   so it sat hard against the left edge under a centred trophy and name
+   (owner's photo, 2026-10-28). */
+.results-winner .avatar {
+  margin: 0 auto var(--space-sm);
 }
 
 .results-winner__name {
@@ -9110,8 +9117,16 @@ body.kb-open #question-screen .question-card {
    bars — the difficulty vote ended 67px below the screen, behind a scroll
    nobody knows is there. Nothing is removed: every gap here was sized for a
    tall phone, and on a short one they shrink together so the rhythm stays
-   even. 600px and up is untouched. The amount buttons stay SQUARE. */
-@media (max-height: 600px) {
+   even. 600px and up is untouched. The amount buttons stay SQUARE.
+
+   A CONTAINER QUERY ON THE SCREEN, NOT A MEDIA QUERY ON THE WINDOW. The first
+   version was @media (max-height: 600px) and it never fired on the owner's
+   iPhone: Safari answers a media query with the window as if its toolbars were
+   hidden (~692px there, with Display Zoom), while the screen itself is 100dvh
+   — the ~523px actually visible. Photographed: full-size squares and the vote
+   below the fold. The screen's own height is the one that matters. */
+#question-screen, #final-wager-screen { container: gamescreen / size; }
+@container gamescreen (max-height: 600px) {
   .final-wager__title { font-size: var(--text-2xl); margin-bottom: 0; }
   .final-wager__subtitle { margin-bottom: var(--space-sm); }
   .final-wager__warning { margin-bottom: var(--space-md); }

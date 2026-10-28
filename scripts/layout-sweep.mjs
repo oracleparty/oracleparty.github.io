@@ -80,13 +80,21 @@ for (const a of process.argv.slice(2)) {
 // 360 is the commonest Android width; 375 and 430 are the small and large
 // iPhones. Added 2026-10-28 at the owner's request ("are you covering me for
 // all my bases?") — no check had ever rendered this app 360px wide.
-const WIDTHS = (flags.widths || '360,375,430').split(',').map(Number);
+const WIDTHS = (flags.widths || '320,360,375,430').split(',').map(Number);
 
 // THE HEIGHTS A PHONE ACTUALLY SHOWS, for the screens that must fit without
 // scrolling. Every other check here renders at a fixed 800px, which is taller
 // than most phones show inside a browser — so "fits" was only ever measured by
 // hand. Width x VISIBLE height, browser bars included:
 const FIT_SIZES = [
+  // The owner's own phone (2026-10-28): an iPhone Pro with DISPLAY ZOOM, which
+  // makes it a 320px-wide page drawn 23% larger — measured from their photos
+  // (a 28px gear and the 72px wager squares both 1.23x). About 523px visible.
+  // The third number is the WINDOW height Safari reports (toolbars imagined
+  // away); the screen itself is held to the visible height. On an iPhone those
+  // differ, and a rule keyed on the window never fires — which is exactly what
+  // the owner photographed.
+  [320, 523, 692],
   [360, 640],   // small Android, Chrome
   [375, 560],   // iPhone SE, Safari with both bars — the tightest case
   [393, 659],   // iPhone 14/15/16 Pro, Safari with both bars
@@ -611,7 +619,8 @@ function measureFit() {
   for (const b of scr.querySelectorAll('button')) {
     const r = b.getBoundingClientRect();
     if (r.width < 4 || r.height < 4 || getComputedStyle(b).visibility === 'hidden') continue;
-    if (r.bottom > innerHeight + 0.5) out.push(`"${(b.textContent || '').trim().slice(0, 20)}" ends ${Math.round(r.bottom - innerHeight)}px below the screen`);
+    const scrBottom = scr.getBoundingClientRect().bottom;
+    if (r.bottom > scrBottom + 0.5) out.push(`"${(b.textContent || '').trim().slice(0, 20)}" ends ${Math.round(r.bottom - scrBottom)}px below the screen`);
   }
   return out;
 }
@@ -621,8 +630,8 @@ if (!flags.widths && fitNames.length) {
   console.log(`\nFIT — ${fitNames.length} must-fit state(s) x ${FIT_SIZES.map(s => s.join('x')).join(', ')}`);
   for (const name of fitNames) {
     const state = STATES[name];
-    for (const [width, height] of FIT_SIZES) {
-      const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+    for (const [width, height, windowHeight] of FIT_SIZES) {
+      const context = await browser.newContext({ viewport: { width, height: windowHeight || height }, deviceScaleFactor: 1 });
       const p = await context.newPage();
       p.on('pageerror', () => {});
       await p.route('**/*', route =>
@@ -636,6 +645,8 @@ if (!flags.widths && fitNames.length) {
           const t = document.getElementById(screenId);
           if (t) { t.style.display = 'flex'; t.classList.add('active'); }
         }, state.screen);
+        // An iPhone: the screen is the visible height inside a taller window.
+        if (windowHeight) await p.evaluate(h => document.querySelectorAll('.screen').forEach(s => { s.style.height = h + 'px'; }), height);
         if (state.inherits && STATES[state.inherits]) {
           const base = STATES[state.inherits];
           await p.evaluate(base.inject, base.injectArgs ? base.injectArgs() : undefined);
@@ -650,7 +661,7 @@ if (!flags.widths && fitNames.length) {
           // owner decided (2026-10-28): it should fit cleanly on every size.
           const reportOnly = false;
           if (!reportOnly) faults += f.length;
-          console.log(`\n${reportOnly ? '·' : '✗'} FIT ${name} @ ${width}x${height}${reportOnly ? '  (reported, not failed — owner to decide)' : ''}`);
+          console.log(`\n${reportOnly ? '·' : '✗'} FIT ${name} @ ${width}x${height}${windowHeight ? ` (window ${windowHeight})` : ''}${reportOnly ? '  (reported, not failed — owner to decide)' : ''}`);
           for (const x of f) console.log(`    DOES NOT FIT  ${x}`);
         }
       } catch (e) {
