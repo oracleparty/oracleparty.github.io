@@ -1277,6 +1277,40 @@ console.log('\n--- CAN A REJOINING PLAYER RECOVER THEIR ANSWERS? ---');
 }
 
 // ============================================
+// WHAT DO THE PLAY COUNTS ADD UP TO?
+//
+// Reported 2026-10-29: "the total play counts disappeared / reset". The host
+// screen shows get_category_play_counts(); game_plays is what it counts. Both
+// are printed, with the oldest and newest rows, so a reset (rows gone) can be
+// told apart from a display fault (rows there, numbers not shown).
+// ============================================
+
+console.log('\n--- PLAY COUNTS (what the host screen shows) ---');
+{
+  const rpc = await req('rpc/get_category_play_counts', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  let rows = [];
+  try { rows = JSON.parse(rpc.body || '[]'); } catch { /* ignore */ }
+  if (rpc.status < 200 || rpc.status >= 300 || !Array.isArray(rows)) {
+    console.log(`  get_category_play_counts: HTTP ${rpc.status} ${String(rpc.body).slice(0, 200)}`);
+  } else {
+    const cat = rows.filter(r => !r.subcategory);
+    const total = cat.reduce((s, r) => s + (r.play_count || 0), 0);
+    console.log(`  get_category_play_counts: ${rows.length} rows, category-level total ${total}`);
+    for (const r of cat.sort((a, b) => b.play_count - a.play_count)) console.log(`    ${String(r.category).padEnd(18)} ${r.play_count}`);
+  }
+  const gp = await req('game_plays?select=category,completed,games_played,started_at,completed_at&order=started_at.asc&limit=5000');
+  let all = [];
+  try { all = JSON.parse(gp.body || '[]'); } catch { /* ignore */ }
+  if (!Array.isArray(all)) all = [];
+  const done = all.filter(r => r.completed);
+  const rounds = all.reduce((s, r) => s + (r.games_played || 0), 0);
+  console.log(`  game_plays: ${all.length} rows, ${done.length} completed, games_played summed ${rounds}`);
+  if (all.length) console.log(`    oldest started ${all[0].started_at}, newest started ${all[all.length - 1].started_at}`);
+}
+
+// ============================================
 // CAN A LOCKED FINAL WAGER BE SAVED?
 //
 // Reported 2026-10-26: on the final-wager screen everybody's row read
