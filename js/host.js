@@ -116,7 +116,7 @@ async function init() {
     return fresh;
   });
   const playCountsLoaded = fetchCategoryPlayCounts()
-    .catch(e => { logger.warn('Host', 'Could not load play counts', e); return {}; });
+    .catch(e => { logger.warn('Host', 'Could not load play counts', e); return null; });
 
   // 3) Auth (required before fetching user-specific data)
   try {
@@ -138,11 +138,12 @@ async function init() {
   ]);
 
   // 5) Apply results
+  // A failed read stays UNKNOWN — a blank line, never "0 plays" on every card.
   if (playCounts && typeof playCounts === 'object') categoryPlayCounts = playCounts;
   if (masteryData && masteryData.length) {
     for (const m of masteryData) _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
   }
-  _playCountsKnown = true;
+  _playCountsKnown = !!(playCounts && typeof playCounts === 'object');
 
   // 6) Patch the cards already on screen. A rebuild would close a subject the
   // player has already opened, now that the cards are tappable from the start.

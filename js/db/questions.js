@@ -819,8 +819,10 @@ export async function fetchCategoryPlayCounts() {
   const { data, error } = await supabase.rpc('get_category_play_counts');
 
   if (error) {
+    // null, not {}: an empty map reads as "0 plays" on every card, which is a
+    // claim the database never made. The caller leaves the line blank instead.
     logger.error('Supabase', 'fetchCategoryPlayCounts failed', error);
-    return {};
+    return null;
   }
 
   // Build a flat map: 'history' → count, 'history/ancient' → count
