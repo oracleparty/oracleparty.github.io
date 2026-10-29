@@ -418,8 +418,15 @@ export async function loadClaps() {
     state.claps = [];
     state.clapsGameKey = key;
   }
+  const gen = state._clapTapGen || 0;
   const rows = await fetchClaps(state.room.id, key);
   if (state.clapsGameKey !== key) return;   // a new game started while we read
+  // A tap landed while this read was out: its answer predates the tap and
+  // would take the clap back off the screen. The poll reads again shortly.
+  if ((state._clapTapGen || 0) !== gen || state._clapInFlight) {
+    startClapPoll();
+    return;
+  }
 
   // NULL MEANS THE FEATURE IS NOT THERE, and the button goes with it. Migration
   // 071 is applied by hand, so "the JavaScript is live and the SQL is not" is a
@@ -459,10 +466,20 @@ function startClapPoll() {
       state.clapPollId = null;
       return;
     }
-    if (state._clapInFlight) return;
+    // ONE READ AT A TIME, AND A READ OLDER THAN THE LAST TAP IS DISCARDED.
+    // On a slow database (2026-10-29: reads of 2-5s, measured) a read that set
+    // off BEFORE a tap came back AFTER it, with the in-flight flag already
+    // clear, and put the screen back to before the clap — "claps disappearing"
+    // until the next read restored it. _clapTapGen moves on every tap.
+    if (state._clapInFlight || state._clapPollBusy) return;
     const key = state.clapsGameKey;
-    const rows = await fetchClaps(state.room.id, key);
-    if (!rows || state._clapInFlight || state.clapsGameKey !== key) return;
+    const gen = state._clapTapGen || 0;
+    state._clapPollBusy = true;
+    let rows;
+    try { rows = await fetchClaps(state.room.id, key); }
+    finally { state._clapPollBusy = false; }
+    if (!rows || state._clapInFlight || state.clapsGameKey !== key
+        || (state._clapTapGen || 0) !== gen) return;
     const before = JSON.stringify(state.claps.map(c => [c.answer_id, c.voter_player_id]).sort());
     const after = JSON.stringify(rows.map(c => [c.answer_id, c.voter_player_id]).sort());
     if (before === after) return;
@@ -506,6 +523,7 @@ async function handleClapTap(btn) {
   }];
   repaintClaps();
 
+  state._clapTapGen = (state._clapTapGen || 0) + 1;
   state._clapInFlight = true;
   let ok, result;
   try {

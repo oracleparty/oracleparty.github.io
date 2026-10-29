@@ -198,6 +198,9 @@ export class FakeStore {
    * invisible here by luck rather than by design.
    */
   slowReads(table, ms) { this._slowReads.set(table, ms); }
+  /** Reads of `table` are answered `ms` late with the rows as they were when asked. */
+  slowReadReplies(table, ms) { (this._slowReadReplies ||= new Map()).set(table, ms); }
+  normalReadReplies(table) { this._slowReadReplies?.delete(table); }
   /** Undo slowReads. */
   normalReads(table) { this._slowReads.delete(table); }
 
@@ -530,6 +533,20 @@ export class FakeStore {
   }
 
   async execute(op) {
+    // A read whose ANSWER is late: the rows are taken now and handed back
+    // later, so a write that lands in between is missing from them. That is a
+    // slow database answering an old question, and it is what took a clap back
+    // off the screen on 2026-10-29. See slowReadReplies().
+    const lateReply = op?.action === 'select' && this._slowReadReplies?.get(op.table);
+    if (lateReply) {
+      const result = await this._executeNow(op);
+      await new Promise(r => setTimeout(r, lateReply));
+      return result;
+    }
+    return this._executeNow(op);
+  }
+
+  async _executeNow(op) {
     if (this.latencyMs) await new Promise(r => setTimeout(r, this.latencyMs));
     this.log.push(op);
 

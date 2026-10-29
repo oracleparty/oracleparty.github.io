@@ -96,6 +96,25 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-29 (playtest) — the database itself was slow; claps flickered off
+>
+> **MEASURED, by the probe that ran DURING the owner's game (01:23–01:27 UTC,
+> game started 01:25):** time spent INSIDE Supabase (`x-envoy-upstream-service-
+> time`) was up to **3.9s** against a usual 24–67ms; the first request 3.5s;
+> single checks took 5–15s. From a datacenter, no phone involved — so the slow
+> buttons, "Revealing…", "Waiting…" after the timer and refused submits that
+> night were the database, not the app or the Wi-Fi. Why it was slow is NOT
+> established; the Supabase dashboard (database health / disk IO budget) is
+> where to look.
+>
+> **Claps disappearing was ALSO a real client fault the slowness exposed.** The
+> clap poll's read, sent before a tap, answered after it and was believed,
+> taking the clap off until the next read. `_clapTapGen` moves on every tap and
+> a read older than it is discarded; one poll read at a time.
+> `store.slowReadReplies` (rows taken now, answered late) reproduces it:
+> `scenario-fullgame` reported *"the clap disappeared … gone 3000ms after the
+> tap"* on the old code.
+
 > ## 2026-10-29 — "the total play counts disappeared / reset": they did not
 >
 > **MEASURED by the probe on `55ba688`:** `game_plays` holds 56 rows back to

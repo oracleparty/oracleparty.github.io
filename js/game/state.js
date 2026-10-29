@@ -48,6 +48,8 @@ export const state = {
   clapsUnavailable: false,
   clapPollId: null,
   _clapInFlight: false,
+  _clapTapGen: 0,        // moves on every clap tap; a read older than it is discarded
+  _clapPollBusy: false,
   timerId: null,
   channels: [],
   chatOpen: false,

@@ -358,6 +358,12 @@ try {
     // a check that looked at the clapper's own screen, and is exactly the
     // "it worked for me" bug this game is made of.
     if (r !== host && screen === 'reveal-screen' && !clapProbe.pressed) {
+      // A SLOW DATABASE ANSWERS OLD QUESTIONS (2026-10-29: "claps
+      // disappearing", on a night reads took 2-5s). The clap poll's read is
+      // already out when the tap lands, and its late answer predates the tap.
+      // Give claps reads a late reply and wait long enough for one to be out.
+      table.store.slowReadReplies('answer_claps', 4000);
+      await r.page.waitForTimeout(3500);
       const target = await r.page.evaluate(() => {
         const btn = document.querySelector('#reveal-answers .clap-btn');
         if (!btn) return null;
@@ -374,6 +380,15 @@ try {
           return { mine: !!btn?.classList.contains('clap-btn--mine'),
                    count: (btn?.querySelector('.clap-btn__count')?.textContent || '').trim() };
         }, target).catch(() => null);
+        // AND IT MUST STAY. Sampled through the late reply's arrival.
+        for (let t = 0; t < 25 && !clapProbe.flicker; t++) {
+          await r.page.waitForTimeout(200);
+          const mine = await r.page.evaluate((id) => !!document
+            .querySelector(`.clap-btn[data-clap-answer="${id}"]`)?.classList.contains('clap-btn--mine'), target)
+            .catch(() => true);
+          if (!mine) clapProbe.flicker = `gone ${(t + 1) * 200}ms after the tap`;
+        }
+        table.store.normalReadReplies('answer_claps');
 
         // THEN EVERY OTHER PHONE, IN THIS SAME TURN, until one shows it.
         //
@@ -890,6 +905,9 @@ try {
       // the fault this project has recorded more than any other.
       if (!clapProbe.onClapper?.mine) {
         problems.push('the clap did not show on the phone that tapped it');
+      }
+      if (clapProbe.flicker) {
+        problems.push(`the clap disappeared from the clapper's own screen (${clapProbe.flicker}) — a read sent before the tap answered after it and was believed`);
       }
       // AND IT MUST REACH THE OTHER PHONES. Passing on the clapper's screen
       // alone would prove only that the optimistic update works — Realtime
