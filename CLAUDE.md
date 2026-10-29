@@ -127,16 +127,20 @@
 >   Markup lives in `js/game/results-view.js` (no Supabase) so the mocks render
 >   the real thing — the hand-built results mock had drifted twice.
 >
-> **THE EQUAL GAP SHIPPED 4px OFF, and the owner caught it from a screenshot**
-> (2026-10-29): 16px above the winner's picture, 20px below, because the layout
-> measured from the medal badge, which hangs below the picture. The layout now
-> stands gold at its final height, MEASURES the gap and corrects by the
-> difference — 20/20 at 320x523, 375x667 and 430x932, every podium mock. Same
-> report: when everyone is below zero a step was still reserved above the floor
-> that nobody stands on, leaving 92px of empty screen above the pictures; that
-> room goes to the hanging bars now. **The layout sweep fails the build if the
-> two gaps differ by more than 1px**; break-tested (it reports *"16px above, 20px
-> below"* with the correction removed).
+> **THE EQUAL GAP: I HAD THE WRONG TWO GAPS, TWICE** (2026-10-29). The owner's
+> rule is that the winner's picture, name and title are ONE BLOCK centred
+> between the headline and the top of gold's step: headline -> picture equals
+> title -> step (24px, `GOLD_GAP`). I built headline -> picture equals picture
+> -> name, shipped it 4px off on top, and only the interview tool with two
+> drawn options settled it. **When a spacing rule is described in words, draw
+> the candidate readings and ask before building.** Gold's step is always tall
+> enough to hold its number, so its "over" label is hidden and its room becomes
+> the gap — for BOTH golds in a tie, or the second sat 22px higher, touching
+> the headline. When everyone is below zero no step is reserved above the
+> floor (it left 92px of empty screen above the pictures). Measured 24/24 at
+> 320x523, 375x667 and 430x932 on every podium mock. **The layout sweep fails
+> the build if the two gaps differ by more than 1px**; break-tested by pushing
+> the step 8px off (*"24px above, 32px below"*).
 >
 > `scenario-fullgame` requires every phone to be shown the podium exactly once
 > AND to leave it for the scoreboard; break-tested both halves (skipping it, and
