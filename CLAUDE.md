@@ -96,6 +96,16 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-29 — "the total play counts disappeared / reset": they did not
+>
+> **MEASURED by the probe on `55ba688`:** `game_plays` holds 56 rows back to
+> 2026-08-20 and `get_category_play_counts` totals **78** — nothing was lost.
+> The same run took ~4 minutes against a usual 45s: the live database was
+> answering slowly. A FAILED play-count read returned `{}`, and Choose Category
+> then printed **"0 plays" on every card** — the most likely thing the owner
+> saw. It returns `null` now and the line stays blank. The probe prints the
+> play totals on every run from now on.
+
 > ## 2026-10-28 (final) — the end of a game is two screens: a podium, then the scoreboard
 >
 > **Designed with the owner over a long run of mockups; every look decision is
