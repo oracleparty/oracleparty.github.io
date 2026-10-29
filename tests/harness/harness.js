@@ -369,6 +369,16 @@ export class PlaytestTable {
     // robot has no eyes for it, so it plays at 20x unless a scenario turns it
     // back down (scenario-podium does, to look at it).
     await page.addInitScript(() => { if (window.__podiumSpeed == null) window.__podiumSpeed = 20; });
+    // The podium waits for a TAP (owner, 2026-10-29), and a robot taps once the
+    // replay has had a moment — scenario-fullgame checks every phone leaves it.
+    await page.addInitScript(() => {
+      setInterval(() => {
+        const s = document.getElementById('podium-screen');
+        if (!s?.classList.contains('active') || window.__podiumNoTap) return;
+        s._robotSeen = (s._robotSeen || 0) + 1;
+        if (s._robotSeen >= 3) { s._robotSeen = 0; s.click(); }
+      }, 300);
+    });
 
     // Set before any navigation, so initAuth() sees a session on first load.
     // The shape matches what supabase-js hands back: the app only reads

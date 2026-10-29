@@ -13,7 +13,6 @@ export const PODIUM_TIMING = Object.freeze({
   RUN: 3200,     // ALL the regular questions together, whatever their number
   FINAL: 1300,   // the final wager gets its own, slower beat
   SETTLE: 700,   // medals, the headline and the glow arrive
-  HOLD: 3000,    // then the screen waits this long before moving on by itself
 });
 
 /**

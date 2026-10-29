@@ -24,7 +24,10 @@ import {
 
 const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const LABEL_INSIDE_MIN = 46;   // px a bar needs before its number fits inside it
-const FOOT_RESERVE = 64;       // the "tap to continue" card, when nothing hangs below the floor
+// Below the floor when nothing hangs there. The foot is laid out BELOW the
+// stage, so this is only breathing room — at 64 it left ~70px of empty screen
+// under the steps, and the owner found the steps short (2026-10-29).
+const FOOT_RESERVE = 10;
 const NEG_RESERVE = 62;        // room under the floor for a hanging bar's number
 const DOWN_PX = 40;            // the winner's drop when even the winner is below zero
 const UP_MAX = 250;
@@ -110,7 +113,6 @@ function runPodium({ sorted, scores, allAnswers }, done) {
     <div class="podium__foot${anyNeg ? ' podium__foot--float' : ''}">
       ${meLine}
       <div class="podium__next">${anyNeg ? 'Tap to continue' : 'Tap to see the full scoreboard'}</div>
-      <div class="podium__bar"><span></span></div>
     </div>`;
 
   showScreen(screen);
@@ -199,7 +201,8 @@ function runPodium({ sorted, scores, allAnswers }, done) {
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const END = replayEnd();
   const FINISH = END + PODIUM_TIMING.SETTLE;
-  const LEAVE = FINISH + PODIUM_TIMING.HOLD;
+  // TAP ONLY (owner, 2026-10-29): it used to move on by itself 3s after the
+  // replay, and that is a moment somebody can miss by looking up.
 
   // Crossing below zero tips the avatar over (only when the winner is above
   // zero — when everybody is below, a whole row of upside-down faces is the
@@ -241,8 +244,6 @@ function runPodium({ sorted, scores, allAnswers }, done) {
       const pulse = Math.sin(clamp01((t - END) / 700) * Math.PI);
       gold.avatar.style.boxShadow = `0 0 ${28 + 18 * pulse}px ${6 + 10 * pulse}px rgba(226,181,58,${0.45 + 0.3 * pulse})`;
     }
-    const fill = host.querySelector('.podium__bar span');
-    if (fill) fill.style.width = `${Math.round(clamp01((t - FINISH) / PODIUM_TIMING.HOLD) * 100)}%`;
   };
 
   let raf = 0, finished = false, start = performance.now();
@@ -257,7 +258,7 @@ function runPodium({ sorted, scores, allAnswers }, done) {
     if (finished) return;
     const t = reduce ? FINISH + (now - start) : (now - start) * speed;
     paint(Math.min(t, FINISH));
-    if (t >= LEAVE) { finish(); return; }
+    if (t >= FINISH) return;   // the replay is over; the screen waits for a tap
     raf = requestAnimationFrame(tick);
   };
   paint(reduce ? FINISH : 0);

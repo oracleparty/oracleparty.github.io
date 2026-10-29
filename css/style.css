@@ -9261,5 +9261,3 @@ body.kb-open #question-screen .question-card {
 .podium__you b { color: var(--color-primary); }
 .podium__foot--float .podium__you { margin-bottom: 4px; font-size: .7rem; }
 .podium__next { font-size: .7rem; color: var(--color-text-dim); }
-.podium__bar { height: 3px; border-radius: 2px; background: var(--color-surface-light); overflow: hidden; margin: 6px auto 0; width: 60%; }
-.podium__bar span { display: block; height: 100%; width: 0; background: var(--color-primary); }

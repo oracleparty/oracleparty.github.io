@@ -146,8 +146,12 @@
 >   player who crosses below zero has their AVATAR turned upside down (never the
 >   medal), only when the winner is above zero. The medal-falling gags were all
 >   scratched by the owner.
-> - **Tap to continue**, or it moves on 3s after the replay. A phone that
->   rejoins a game already on its results skips it.
+> - **Tap to continue — tap ONLY (owner, 2026-10-29)**; it used to move on 3s
+>   after the replay and the owner missed it. Robots tap it from `harness.js`.
+>   A phone that rejoins a game already on its results skips it.
+> - **Steps ~35% taller (owner: "they just weren't that tall")**: with nothing
+>   below zero, `FOOT_RESERVE` was 64px of empty floor ABOVE a foot that is
+>   laid out below the stage anyway; it is 10 now. Gold 181px -> 243px at 320x523.
 > - **The scoreboard screen** opens on the scoreboard (the winner block is gone —
 >   the podium said it), medals 🥇🥈🥉 in the place column by competition rank,
 >   rows compact enough that six fit at 320x523, then Favourite Answers as a swipe
