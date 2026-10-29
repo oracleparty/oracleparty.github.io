@@ -1800,7 +1800,7 @@ export async function showResultsScreen() {
     const guestAccuracy = guestTotal > 0 ? Math.round((guestCorrect / guestTotal) * 100) : 0;
     const guestScore = state.scores[state.room.playerId] || 0;
     const categoryLabel = CATEGORY_META[state.room.category]?.label || state.room.category;
-    const isWinner = winner && String(winner.id) === String(state.room.playerId);
+    const isWinner = sorted[0] && String(sorted[0].id) === String(state.room.playerId);
 
     // Rotating perks — pick a different benefit each nudge
     const personalizedPerk = {
