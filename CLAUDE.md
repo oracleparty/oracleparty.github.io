@@ -127,6 +127,17 @@
 >   Markup lives in `js/game/results-view.js` (no Supabase) so the mocks render
 >   the real thing — the hand-built results mock had drifted twice.
 >
+> **THE EQUAL GAP SHIPPED 4px OFF, and the owner caught it from a screenshot**
+> (2026-10-29): 16px above the winner's picture, 20px below, because the layout
+> measured from the medal badge, which hangs below the picture. The layout now
+> stands gold at its final height, MEASURES the gap and corrects by the
+> difference — 20/20 at 320x523, 375x667 and 430x932, every podium mock. Same
+> report: when everyone is below zero a step was still reserved above the floor
+> that nobody stands on, leaving 92px of empty screen above the pictures; that
+> room goes to the hanging bars now. **The layout sweep fails the build if the
+> two gaps differ by more than 1px**; break-tested (it reports *"16px above, 20px
+> below"* with the correction removed).
+>
 > `scenario-fullgame` requires every phone to be shown the podium exactly once
 > AND to leave it for the scoreboard; break-tested both halves (skipping it, and
 > a podium that never lets go). The layout sweep now skips text on a gradient

@@ -134,28 +134,55 @@ function runPodium({ sorted, scores, allAnswers }, done) {
     const goldCol = cols.find(c => c.slot.medal === 1) || cols[0];
     const H = stage.clientHeight;
     const nameEl = goldCol.el.querySelector('.podium__name');
-    // The gap above the winner's avatar is the gap below it (the owner's rule):
-    // headline -> avatar equals avatar -> name.
-    const gap = Math.max(10, nameEl.getBoundingClientRect().top - goldCol.face.getBoundingClientRect().bottom);
-    // Everything that stands ON the step: face, name, title, and the air above the step.
+    const pic = goldCol.avatar.getBoundingClientRect();
+    // The gap above the winner's PICTURE is the gap below it (the owner's
+    // rule): headline -> picture equals picture -> name. Measured from the
+    // picture itself — the medal badge hangs below it and is not the edge.
+    const gap = Math.max(10, nameEl.getBoundingClientRect().top - pic.bottom);
+    // Everything that stands ON the step: picture, name, title, and the air above the step.
     const last = goldCol.el.querySelector('.podium__ttl') || nameEl;
-    const content = last.getBoundingClientRect().bottom - goldCol.face.getBoundingClientRect().top
+    const content = last.getBoundingClientRect().bottom - pic.top
       + parseFloat(getComputedStyle(goldCol.step).marginTop || '0')
       + goldCol.over.getBoundingClientRect().height;
-    const below = allNeg ? Math.max(120, H * 0.45) : anyNeg ? NEG_RESERVE : FOOT_RESERVE;
-    pit = below;
-    UP = Math.max(60, H - below - content - gap);
-    // A tall phone would stretch gold's step past anything that reads as a
-    // podium. Past UP_MAX the spare height goes above the headline and below
-    // the floor instead, so the composition sits in the middle of the screen.
-    if (UP > UP_MAX) {
-      const extra = UP - UP_MAX;
-      host.querySelector('.podium__head').style.paddingTop = `${12 + extra * 0.55}px`;
-      pit += extra * 0.45;
-      UP = UP_MAX;
+    if (allNeg) {
+      // Nobody stands above the floor, so no step is reserved: everything
+      // below the names is room for the bars to hang. Reserving one left a
+      // band of empty screen above the pictures.
+      UP = 0;
+      pit = Math.max(120, H - content - gap);
+    } else {
+      const below = anyNeg ? NEG_RESERVE : FOOT_RESERVE;
+      pit = below;
+      UP = Math.max(60, H - below - content - gap);
+      // A tall phone would stretch gold's step past anything that reads as a
+      // podium. Past UP_MAX the spare height goes above the headline and below
+      // the floor instead, so the composition sits in the middle of the screen.
+      if (UP > UP_MAX) {
+        const extra = UP - UP_MAX;
+        host.querySelector('.podium__head').style.paddingTop = `${12 + extra * 0.55}px`;
+        pit += extra * 0.45;
+        UP = UP_MAX;
+      }
     }
     stage.style.setProperty('--pit', `${pit}px`);
     cols.forEach(c => { c.el.querySelector('.podium__pit').style.height = `${pit}px`; });
+
+    // Arithmetic got within a few px; the rule is exact. Stand gold at its
+    // final height, MEASURE the gap above the picture, and correct by the
+    // difference — in UP normally, in the hang room when everyone is below.
+    const title = host.querySelector('.podium__title');
+    const before = goldCol.step.style.height;
+    goldCol.step.style.height = `${UP}px`;
+    const above = goldCol.avatar.getBoundingClientRect().top - title.getBoundingClientRect().bottom;
+    const fix = above - gap;
+    if (allNeg) {
+      pit = Math.max(120, pit + fix);
+      stage.style.setProperty('--pit', `${pit}px`);
+      cols.forEach(c => { c.el.querySelector('.podium__pit').style.height = `${pit}px`; });
+    } else {
+      UP = Math.max(60, UP + fix);
+    }
+    goldCol.step.style.height = before;
   };
   layout();
 

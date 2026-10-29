@@ -393,6 +393,20 @@ function measure(stressText) {
       }
     }
   }
+
+  // The podium's winner sits exactly between the headline and their own name:
+  // the gap above the picture equals the gap below it (the owner's rule,
+  // asked for over several rounds). Reported as ragged so it fails the build.
+  const podTitle = root.querySelector('#podium .podium__title');
+  const podGold = root.querySelector('#podium .podium__col--1');
+  if (podTitle && podGold && podTitle.getBoundingClientRect().height > 0) {
+    const pic = podGold.querySelector('.avatar').getBoundingClientRect();
+    const above = Math.round(pic.top - podTitle.getBoundingClientRect().bottom);
+    const below = Math.round(podGold.querySelector('.podium__name').getBoundingClientRect().top - pic.bottom);
+    if (Math.abs(above - below) > 1) {
+      out.ragged.push(`podium winner is not centred between headline and name: ${above}px above, ${below}px below`);
+    }
+  }
   // ============================================
   // A CONTROL THAT CANNOT BE TAPPED
   //
