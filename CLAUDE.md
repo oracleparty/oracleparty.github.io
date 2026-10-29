@@ -9135,6 +9135,11 @@ active screen and console errors. **A retry that announces itself is a
 measurement; a silent one is a bug being hidden.** Verified by forcing the first
 attempt to fail with a 1ms timeout.
 
+**MEASURED 2026-10-29: SLOW, NOT STUCK.** A CI failure showed the first reload
+finishing on its own and aborting the retry (`ERR_ABORTED`, "frame was
+detached"), with every later check passing on the reloaded page. The retry now
+waits for the reload already under way before starting another.
+
 **Robots can sign in now** — `table.seatSignedIn(name, { tier, title, isAdmin })`.
 It writes a `profiles` row and injects a session the shim serves from
 `window.__fakeSession`, which is what `initAuth()` reads, so the app cannot tell

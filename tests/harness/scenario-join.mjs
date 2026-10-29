@@ -82,9 +82,15 @@ async function reloadAndReport(robot, label) {
     // mitigations guessed at without establishing.
     note(`reload at ${label} timed out once, retrying — ${firstErr.message.split('\n')[0]}`);
     try {
-      await robot.page.waitForTimeout(2000);
-      await robot.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-      note(`retry succeeded at ${label} — the page was slow, not stuck`);
+      // WAIT FOR THE RELOAD ALREADY UNDER WAY BEFORE STARTING ANOTHER. CI on
+      // 2026-10-29 showed the first one was slow, not stuck: it finished while
+      // the second reload was going out, aborted it (ERR_ABORTED, "frame was
+      // detached"), and every check after it passed on the reloaded page.
+      const settled = await robot.page.waitForFunction(
+        () => document.readyState !== 'loading' && !!document.querySelector('.screen'),
+        null, { timeout: 30000 }).then(() => true).catch(() => false);
+      if (!settled) await robot.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+      note(`retry succeeded at ${label} — the page was slow, not stuck${settled ? ' (the first reload finished on its own)' : ''}`);
       return true;
     } catch (err) {
       const diag = await robot.page.evaluate(() => ({
