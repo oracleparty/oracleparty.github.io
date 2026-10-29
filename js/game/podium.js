@@ -27,7 +27,8 @@ const LABEL_INSIDE_MIN = 46;   // px a bar needs before its number fits inside i
 const FOOT_RESERVE = 64;       // the "tap to continue" card, when nothing hangs below the floor
 const NEG_RESERVE = 62;        // room under the floor for a hanging bar's number
 const DOWN_PX = 40;            // the winner's drop when even the winner is below zero
-const UP_MAX = 250;            // gold's step on a tall phone; the owner's 320x523 gets ~230
+const UP_MAX = 250;
+const GOLD_GAP = 24;            // headline -> winner's picture, and winner's title -> gold step            // gold's step on a tall phone; the owner's 320x523 gets ~230
 
 let _running = null;
 
@@ -134,16 +135,19 @@ function runPodium({ sorted, scores, allAnswers }, done) {
     const goldCol = cols.find(c => c.slot.medal === 1) || cols[0];
     const H = stage.clientHeight;
     const nameEl = goldCol.el.querySelector('.podium__name');
+    // The winner's picture, name and title are ONE block, centred between the
+    // headline and the top of gold's step (the owner's rule, 2026-10-29):
+    // headline -> picture equals title -> step. Gold's step is always tall
+    // enough for its number to sit inside, so its "over" label never shows
+    // and gives its room to the gap.
+    const gap = GOLD_GAP;
+    for (const c of cols.filter(c => c.slot.medal === 1)) {   // a tie is two golds
+      c.over.style.display = 'none';
+      c.step.style.marginTop = `${gap}px`;
+    }
     const pic = goldCol.avatar.getBoundingClientRect();
-    // The gap above the winner's PICTURE is the gap below it (the owner's
-    // rule): headline -> picture equals picture -> name. Measured from the
-    // picture itself — the medal badge hangs below it and is not the edge.
-    const gap = Math.max(10, nameEl.getBoundingClientRect().top - pic.bottom);
-    // Everything that stands ON the step: picture, name, title, and the air above the step.
     const last = goldCol.el.querySelector('.podium__ttl') || nameEl;
-    const content = last.getBoundingClientRect().bottom - pic.top
-      + parseFloat(getComputedStyle(goldCol.step).marginTop || '0')
-      + goldCol.over.getBoundingClientRect().height;
+    const content = last.getBoundingClientRect().bottom - pic.top + gap;
     if (allNeg) {
       // Nobody stands above the floor, so no step is reserved: everything
       // below the names is room for the bars to hang. Reserving one left a
