@@ -96,6 +96,18 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-29 (later) — the podium in a real game stood at 60px: measured while hidden
+>
+> **The owner saw short steps and could not screenshot them; every mock showed
+> tall ones.** The mocks start ON the podium. A real game arrives from another
+> screen, and `showScreen` fades — leaving `#podium-screen` `display:none` for
+> 500ms while `layout()` measured it: 0px tall, so gold's step fell to its 60px
+> floor (243px at 320x523 once fixed). The screen is displayed (still opacity 0)
+> before measuring, and the replay starts when the fade lands. Reproduced with a
+> mock that starts on the final wager screen; `scenario-fullgame` now requires
+> gold's step over 150px and reports *"gold step was 60px"* on the old code.
+> **A mock that begins where the real path ends cannot see the path.**
+
 > ## 2026-10-29 (playtest) — the database itself was slow; claps flickered off
 >
 > **MEASURED, by the probe that ran DURING the owner's game (01:23–01:27 UTC,

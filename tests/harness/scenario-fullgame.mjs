@@ -739,12 +739,16 @@ try {
     for (const r of everyone) {
       const p = await r.page.evaluate(() => ({
         shown: window.__state?._podiumShown || 0,
+        goldPx: window.__state?._podiumGoldPx,
         screen: document.querySelector('.screen.active')?.id || null,
         cols: document.querySelectorAll('#podium .podium__col').length,
       })).catch(() => null);
       note(`${r.name}'s podium: ${JSON.stringify(p)}`);
       if (!p || p.shown !== 1) problems.push(`${r.name} reached results without being shown the podium exactly once (${p?.shown})`);
       else if (p.cols !== 3) problems.push(`${r.name}'s podium stood ${p.cols} players, not 3`);
+      // Measured while the screen was still fading in, it read 0px tall and
+      // every step fell to its floor — the owner's "much shorter" (2026-10-29).
+      if (p && p.shown === 1 && !(p.goldPx > 150)) problems.push(`${r.name}'s gold step was ${p.goldPx}px — the podium was measured while it was still hidden`);
       if (p && p.screen === 'podium-screen') problems.push(`${r.name} is still on the podium — it never moved on to the scoreboard`);
     }
   }

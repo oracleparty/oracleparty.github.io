@@ -115,7 +115,13 @@ function runPodium({ sorted, scores, allAnswers }, done) {
       <div class="podium__next">${anyNeg ? 'Tap to continue' : 'Tap to see the full scoreboard'}</div>
     </div>`;
 
-  showScreen(screen);
+  const shown = showScreen(screen);
+  // MEASURE IN THE REAL BOX. Coming from another screen, showScreen fades and
+  // leaves this one display:none for the whole fade, so it measured 0px tall
+  // and every step fell to its 60px floor — the owner's "much shorter", which
+  // the mocks never saw because they start already on this screen. Displayed
+  // without .active it is still invisible (opacity 0) until the fade lands.
+  screen.style.display = '';
 
   // ----- measure, then lay out -----
   const stage = host.querySelector('.podium__stage');
@@ -191,6 +197,7 @@ function runPodium({ sorted, scores, allAnswers }, done) {
     goldCol.step.style.height = before;
   };
   layout();
+  state._podiumGoldPx = UP;   // read by scenario-fullgame: a podium measured while hidden stands 60
 
   // The reference for positive bars: the winner, or anybody's best running
   // total if that was higher, so nobody's bar outgrows the frame mid-replay.
@@ -263,7 +270,12 @@ function runPodium({ sorted, scores, allAnswers }, done) {
   };
   paint(reduce ? FINISH : 0);
   screen.addEventListener('click', finish);
-  raf = requestAnimationFrame(tick);
+  // The replay starts once the screen can be seen, not under the fade.
+  Promise.resolve(shown).then(() => {
+    if (finished) return;
+    start = performance.now();
+    raf = requestAnimationFrame(tick);
+  });
   state._podiumShown = (state._podiumShown || 0) + 1;
   return { finish };
 }
