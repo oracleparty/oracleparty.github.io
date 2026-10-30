@@ -141,6 +141,16 @@
 > questions a word, ANSWER the question about the agreed ladder — do not swap in
 > new words.
 >
+> **Space, LOCKED by the owner:** Uncommon **Spacey**, Rare **Gassy**, Epic
+> **Mooning**, Legendary **Supermassive** — ESCALATING CHEEKINESS (dazed, a
+> fart, flashing someone, the biggest of all), not a size climb; I read it as
+> size and put Gassy above Mooning, which the owner rightly called out.
+> Supermassive waits: Space has 86 questions and Legendary needs 100.
+> **Do not insert it early** — `applyLiveTargets` falls back to the saved
+> target when a topic is too small, so a row written now would be earnable.
+> The other 11 Science words were handed to the owner as one SQL paste
+> (2026-10-30), tested on a scratch Postgres; ask for its verdict rows.
+>
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
 > above the last (Caveman → Toddler was too little, Caveman → Hipster too much);
