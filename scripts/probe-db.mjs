@@ -605,6 +605,8 @@ if (fb.status === 200) {
 const RPC_PROBES = [
   // no arguments, and read-only, so this one really is called
   ['get_category_play_counts', null],
+  // Migration 078 — no arguments, read-only, so it really is called.
+  ['get_topic_sizes', null],
   ['get_mastery_counts', { p_user_id: NOT_A_UUID }],
   ['record_question_outcome', { p_question_id: NOT_A_UUID, p_is_correct: true, p_overridden: false }],
   ['increment_questions_answered', { p_room_id: NOT_A_UUID, p_player_id: NOT_A_UUID }],
@@ -867,6 +869,9 @@ const CONSEQUENCES = [
   { object: 'get_category_play_counts', kind: 'rpc',
     fix: 'run migrations/021_play_count_access.sql',
     breaks: ['every category shows 0 plays on the host screen'] },
+  { object: 'get_topic_sizes', kind: 'rpc',
+    fix: 'run migrations/078_topic_sizes.sql',
+    breaks: ['title goals stay at the number saved with each word instead of following the topic size (works, just not live)'] },
   // Deliberately listed even though it is harmless: an entry saying "this is
   // missing and it does not matter" is worth more than silence, which reads
   // the same as "not checked".

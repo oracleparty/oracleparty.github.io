@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  TOPIC_FLOOR, TOPIC_SHARE, SUBJECT_RULE,
+  TOPIC_FLOOR, TOPIC_SHARE, TOPIC_CAP, SUBJECT_RULE,
   tiersForTopic, topicTarget, subjectTargets, meetsTopic, isMiscTopic,
+  liveTarget, shapeTopicSizes,
   placeholderWord, PLACEHOLDER_MAX,
 } from '../js/title-tiers.js';
 
@@ -11,73 +12,93 @@ describe('which tiers a topic offers', () => {
     expect(tiersForTopic(5)).toEqual([]);
   });
 
-  it('opens up as the topic grows', () => {
+  it('opens up as the topic grows: 60 / 70 / 80 / 100', () => {
     expect(tiersForTopic(60)).toEqual(['uncommon']);
-    expect(tiersForTopic(80)).toEqual(['uncommon', 'epic']);
-    expect(tiersForTopic(100)).toEqual(['uncommon', 'epic', 'legendary']);
-    expect(tiersForTopic(339)).toEqual(['uncommon', 'epic', 'legendary']);
+    expect(tiersForTopic(70)).toEqual(['uncommon', 'rare']);
+    expect(tiersForTopic(80)).toEqual(['uncommon', 'rare', 'epic']);
+    expect(tiersForTopic(100)).toEqual(['uncommon', 'rare', 'epic', 'legendary']);
+    expect(tiersForTopic(339)).toEqual(['uncommon', 'rare', 'epic', 'legendary']);
   });
 });
 
 describe('topic targets', () => {
-  it('is a share of the topic, rounded up', () => {
-    expect(topicTarget(110, 'uncommon')).toBe(28);   // 27.5
-    expect(topicTarget(110, 'epic')).toBe(83);       // 82.5
-    expect(topicTarget(110, 'legendary')).toBe(110);
+  it('is a share of the topic, rounded up, while under the cap', () => {
+    expect(topicTarget(86, 'uncommon')).toBe(22);    // 21.5
+    expect(topicTarget(103, 'rare')).toBe(52);       // 51.5
+    expect(topicTarget(151, 'epic')).toBe(114);      // 113.25
+    expect(topicTarget(151, 'legendary')).toBe(151);
+  });
+
+  // THE OWNER'S CAPS (2026-10-30): whichever comes first, the share or the cap.
+  it('never asks more than 25 / 100 / 250 for the easier steps', () => {
+    expect(topicTarget(151, 'uncommon')).toBe(25);
+    expect(topicTarget(400, 'rare')).toBe(100);
+    expect(topicTarget(600, 'epic')).toBe(250);
+    expect(topicTarget(600, 'legendary')).toBe(600);   // no cap: meant to be hard
   });
 
   it('refuses a tier the topic is too small for', () => {
+    expect(topicTarget(69, 'rare')).toBeNull();
     expect(topicTarget(70, 'epic')).toBeNull();
     expect(topicTarget(90, 'legendary')).toBeNull();
     expect(topicTarget(50, 'uncommon')).toBeNull();
   });
 
-  // THE LADDER MUST NEVER INVERT. A fixed count would: "30 right" in a
-  // 40-question topic is harder than 75% of it, so epic would be easier than
-  // uncommon. Shares cannot cross, and this is what pins that.
+  // THE LADDER MUST NEVER INVERT, caps included: a higher step is never
+  // easier than the one below it, at any size.
   it('never lets a higher tier be easier than a lower one', () => {
-    for (let size = 60; size <= 400; size++) {
-      const u = topicTarget(size, 'uncommon');
-      const e = topicTarget(size, 'epic');
-      const l = topicTarget(size, 'legendary');
-      if (e != null) expect(e).toBeGreaterThan(u);
-      if (l != null) expect(l).toBeGreaterThan(e);
+    for (let size = 60; size <= 2000; size++) {
+      const ladder = ['uncommon', 'rare', 'epic', 'legendary']
+        .map(t => topicTarget(size, t)).filter(x => x != null);
+      for (let i = 1; i < ladder.length; i++) expect(ladder[i]).toBeGreaterThan(ladder[i - 1]);
     }
   });
 
-  // A topic at its floor must still be worth something. 25% of exactly 60 is
-  // 15 questions — small, but a real body of knowledge rather than a handful.
   it('is meaningful even at the floor', () => {
     expect(topicTarget(60, 'uncommon')).toBe(15);
+    expect(topicTarget(70, 'rare')).toBe(35);
     expect(topicTarget(80, 'epic')).toBe(60);
     expect(topicTarget(100, 'legendary')).toBe(100);
   });
 });
 
 describe('subject targets', () => {
-  const sizes = { ancient: 110, medieval: 96, early: 84, modern: 115 };
-  const t = subjectTargets(405, sizes);
+  const t = subjectTargets(405);
+  it('keeps the on-ramp cheap', () => expect(t.common).toBe(10));
+  it('asks for all of it at mythic', () => expect(t.mythic).toBe(405));
+  it('has no subject-wide rare any more (it moved onto the topics)', () => {
+    expect(t.rare).toBeUndefined();
+  });
+});
 
-  it('keeps the on-ramp cheap', () => {
-    expect(t.common).toBe(10);
+describe('live targets follow the topic size', () => {
+  const rows = [
+    { category: 'science', subcategory: 'human-body', n: 151 },
+    { category: 'science', subcategory: 'space', n: 86 },
+    { category: 'science', subcategory: null, n: 3 },
+    { category: 'world-geography', subcategory: 'human-countries', n: 146 },
+    { category: 'world-geography', subcategory: 'human-countries-capitals', n: 121 },
+  ];
+  const keys = { science: ['human-body', 'space', 'elements'], 'world-geography': ['human', 'human-countries'] };
+  const sizes = shapeTopicSizes(rows, Object.keys(keys), c => keys[c]);
+
+  it('sums a topic by prefix, the way questions are picked', () => {
+    expect(sizes['world-geography'].sizes.human).toBe(267);
+    expect(sizes['world-geography'].sizes['human-countries']).toBe(267);
+    expect(sizes.science.sizes.elements).toBe(0);
+    expect(sizes.science.subjectSize).toBe(240);
   });
 
-  it('asks a quarter of EVERY topic for the breadth word', () => {
-    expect(t.rare.everyTopic).toEqual({ ancient: 28, medieval: 24, early: 21, modern: 29 });
+  it('gives each word its goal from today\'s size', () => {
+    expect(liveTarget(sizes, 'science', 'human-body', 'rare')).toBe(76);
+    expect(liveTarget(sizes, 'science', 'space', 'legendary')).toBeNull();
+    expect(liveTarget(sizes, 'science', null, 'mythic')).toBe(240);
+    expect(liveTarget(sizes, 'science', null, 'common')).toBe(10);
   });
 
-  // WITHOUT THIS FLOOR, RARE CAN RANK BELOW UNCOMMON. A subject of two
-  // 40-question topics would want 10 + 10 = 20 right, which is less than a
-  // single uncommon in a big topic.
-  it('carries a total floor so breadth can never be cheaper than depth', () => {
-    expect(t.rare.atLeast).toBe(100);
-    const small = subjectTargets(80, { a: 40, b: 40 });
-    const spread = Object.values(small.rare.everyTopic).reduce((n, x) => n + x, 0);
-    expect(spread).toBeLessThan(small.rare.atLeast);
-  });
-
-  it('asks for all of it at mythic', () => {
-    expect(t.mythic).toBe(405);
+  it('says nothing when it cannot tell', () => {
+    expect(liveTarget(null, 'science', 'space', 'uncommon')).toBeNull();
+    expect(liveTarget(sizes, 'nature', 'animals', 'uncommon')).toBeNull();
   });
 });
 
@@ -95,17 +116,17 @@ describe('meeting a target', () => {
 
 // The numbers the owner agreed, pinned so a later edit has to be deliberate.
 describe('the agreed values', () => {
-  it('floors are 60 / 80 / 100', () => {
-    expect(TOPIC_FLOOR).toEqual({ uncommon: 60, epic: 80, legendary: 100 });
+  it('floors are 60 / 70 / 80 / 100', () => {
+    expect(TOPIC_FLOOR).toEqual({ uncommon: 60, rare: 70, epic: 80, legendary: 100 });
   });
-  it('shares are 25 / 75 / 100 percent', () => {
-    expect(TOPIC_SHARE).toEqual({ uncommon: 0.25, epic: 0.75, legendary: 1.00 });
+  it('shares are a quarter, half, three quarters and all', () => {
+    expect(TOPIC_SHARE).toEqual({ uncommon: 0.25, rare: 0.50, epic: 0.75, legendary: 1.00 });
   });
-  it('subject words are 10 right, a quarter of every topic, and all of it', () => {
-    expect(SUBJECT_RULE.common.right).toBe(10);
-    expect(SUBJECT_RULE.rare.everyTopicShare).toBe(0.25);
-    expect(SUBJECT_RULE.rare.floorRight).toBe(100);
-    expect(SUBJECT_RULE.mythic.share).toBe(1.00);
+  it('caps are 25 / 100 / 250, none on legendary', () => {
+    expect(TOPIC_CAP).toEqual({ uncommon: 25, rare: 100, epic: 250 });
+  });
+  it('subject words are 10 right, and all of it', () => {
+    expect(SUBJECT_RULE).toEqual({ common: { right: 10 }, mythic: { share: 1.00 } });
   });
 });
 
@@ -120,13 +141,13 @@ describe('misc topics', () => {
   });
 
   it('still lets ordinary topics through', () => {
-    expect(tiersForTopic(148, 'space')).toEqual(['uncommon', 'epic', 'legendary']);
+    expect(tiersForTopic(148, 'space')).toEqual(['uncommon', 'rare', 'epic', 'legendary']);
     // Not every key containing "misc" is one — only the topic itself.
-    expect(tiersForTopic(148, 'miscellany-of-arms')).toEqual(['uncommon', 'epic', 'legendary']);
+    expect(tiersForTopic(148, 'miscellany-of-arms')).toEqual(['uncommon', 'rare', 'epic', 'legendary']);
   });
 
   it('is unchanged when no key is given', () => {
-    expect(tiersForTopic(148)).toEqual(['uncommon', 'epic', 'legendary']);
+    expect(tiersForTopic(148)).toEqual(['uncommon', 'rare', 'epic', 'legendary']);
   });
 });
 

@@ -96,6 +96,36 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-30 (later) — the title ladder, settled with the owner
+>
+> **The owner's rules, by interview; the words are still theirs to write.**
+>
+> | step | rule | topic must hold | most it asks |
+> |---|---|---|---|
+> | Common | 10 right in the subject | — | 10 |
+> | Uncommon | ¼ of one topic | 60+ | 25 |
+> | Rare | ½ of one topic (was "¼ of every topic") | 70+ | 100 |
+> | Epic | ¾ of one topic | 80+ | 250 |
+> | Legendary | all of one topic | 100+ | no cap |
+> | Mythic | all of the subject | — | no cap |
+>
+> **GOALS ARE LIVE NOW — this reverses "targets are frozen" below.** The owner:
+> goals follow how many questions a topic has today; the caps keep the easier
+> steps reachable as the bank grows ("whichever comes first, % or #"). Earned
+> words are kept forever. `liveTarget` / `shapeTopicSizes` in `title-tiers.js`,
+> applied by `applyLiveTargets` in `titles.js` from `loadTitleWords`.
+> **Migration 078 (`get_topic_sizes`) is NOT APPLIED until the owner runs it**;
+> until then every word keeps the number saved with it (`savedRight`), which is
+> exactly the old behaviour. `title_words.target_right` is that fallback now.
+> Break-tested: removing the caps fails two checks by name.
+>
+> **How to show the owner anything here:** one table, rules spelled out, real
+> numbers, no options to pick from. Three redesigns were rejected for being
+> unasked (a single subject-wide track, topic trophies) or unclear. A future
+> admin view carries the full rules; a simpler player view (words + bars, rare
+> ones hidden as ???) comes later. **Polymath** (Common in all 12 subjects) was
+> liked and is NOT built.
+
 > ## 2026-10-30 — the play counts were blank for a signed-in player, and never lost
 >
 > **Owner: "blank on every card", signed in.** `game_plays` still holds every

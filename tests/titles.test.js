@@ -10,7 +10,7 @@ import {
   evaluateUnlocks,
   hasReachedApprentice,
   buildDisplayTitle,
-  categoryRollupRows, rowProficiency, sumProficiency, rightIn, describeRequirement, applyWordOverlay, clearWordOverlay, overlayWordId,
+  categoryRollupRows, rowProficiency, sumProficiency, rightIn, describeRequirement, applyWordOverlay, clearWordOverlay, overlayWordId, applyLiveTargets,
   mergedCategoryRows,
   tierProgress,
   TIER_ORDER,
@@ -1169,5 +1169,37 @@ describe('editing a title word that is already in use', () => {
     const text = buildDisplayTitle(mixed);
     expect(text).toContain('Luminous');
     expect(text).not.toContain('w:');
+  });
+});
+
+
+// GOALS FOLLOW THE TOPIC'S SIZE TODAY (owner, 2026-10-30), and the number saved
+// with a word is only the fallback for when the sizes cannot be read.
+describe('live goals', () => {
+  afterEach(() => { applyLiveTargets(null); clearWordOverlay(); });
+  const row = { slot: 2, category: 'science', subcategory: 'human-body', tier: 'rare', word: 'Pulse', target_right: 40 };
+  const sizesAt = n => ({ science: { subjectSize: n + 100, sizes: { 'human-body': n } } });
+  const goal = () => TITLE_WORDS[overlayWordId('science', 'human-body', 'rare')].unlock.condition.right;
+
+  it('moves the goal with the topic, capped', () => {
+    applyWordOverlay([row]);
+    applyLiveTargets(sizesAt(151));
+    expect(goal()).toBe(76);
+    applyLiveTargets(sizesAt(400));
+    expect(goal()).toBe(100);
+  });
+
+  it('falls back to the saved goal when sizes are unknown', () => {
+    applyWordOverlay([row]);
+    applyLiveTargets(sizesAt(151));
+    applyLiveTargets(null);
+    expect(goal()).toBe(40);
+  });
+
+  it('keeps a code word on its saved goal when its topic is under the floor', () => {
+    const chronicles = Object.values(TITLE_WORDS).find(w => w.word === 'Chronicles');
+    const saved = chronicles.unlock.condition.right;
+    applyLiveTargets({ history: { subjectSize: 700, sizes: { ancient: 58 } } });
+    expect(chronicles.unlock.condition.right).toBe(saved);
   });
 });

@@ -75,6 +75,24 @@ export async function fetchCategories() {
 }
 
 /**
+ * How many askable questions each (category, subcategory) holds, in one
+ * request (migration 078). Title goals follow these sizes live.
+ *
+ * null when it cannot be read — not installed yet, or a failed request — and
+ * the caller then keeps the target saved with each word, which is what the app
+ * did before 078. Never [] for a failure: "no questions" and "could not look"
+ * are different answers (CLAUDE.md #6).
+ */
+export async function fetchTopicSizes() {
+  const { data, error } = await supabase.rpc('get_topic_sizes');
+  if (error) {
+    logger.warn('Supabase', 'fetchTopicSizes failed (migration 078 may not be applied)', error);
+    return null;
+  }
+  return Array.isArray(data) ? data : null;
+}
+
+/**
  * Count questions matching a category + optional subcategory.
  */
 export async function fetchQuestionCount(category, subcategory = null) {

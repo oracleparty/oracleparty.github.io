@@ -31,6 +31,16 @@ try {
     difficulty: 'medium', format: 'open', fun_fact: null, discarded: false,
   })));
 
+  // A topic big enough for words of its own (70+ askable questions), so the
+  // Title Words panel has a subject with several word boxes to type across.
+  // Since 2026-10-30 a subject's own row carries only Common (in code) and
+  // Mythic; the rest of the ladder lives on topics.
+  table.store.seed('questions', Array.from({ length: 70 }, (_, i) => ({
+    id: `q-space-${i}`, question: `Space question ${i}?`, correct_answer: `Star ${i}`,
+    acceptable_answers: ['x'], categories: ['science'], subcategory: 'space',
+    difficulty: 'medium', format: 'open', fun_fact: null, discarded: false,
+  })));
+
   // Two more for the answer-key review. They differ in exactly one thing —
   // whether somebody has already added an alternate — because that is the
   // distinction the scan is built on and the one most likely to break.

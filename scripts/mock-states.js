@@ -1547,16 +1547,16 @@ export const STATES = {
             <button type="button" class="btn btn-secondary tw-subject__save">Save 2 words</button>
           </div>
           ${slot('common', 'History', '10 right in the whole subject', { code: true })}
-          ${slot('rare', 'Sovereign', 'a quarter of every topic, 100+ overall', { dirty: true })}
           ${slot('mythic', 'Everlasting', 'all 405', { status: 'Not saved \u2014 Permission denied \u2014 the word was not saved' })}
           <div class="tw-topic">
             <div class="tw-topic__head">
               <span class="tw-topic__name">Ancient &amp; Classical Civilisations</span>
               <span class="tw-topic__size">110</span>
             </div>
-            ${slot('uncommon', 'Chronicles', '28 right \u00b7 set at 22', { dirty: true })}
-            ${slot('epic', '', '83 right')}
-            ${slot('legendary', 'Antiquity', '110 right')}
+            ${slot('uncommon', 'Chronicles', '25 right \u00b7 \u00bc of topic, max 25, topics 60+', { dirty: true })}
+            ${slot('rare', 'Sovereign', '55 right \u00b7 \u00bd of topic, max 100, topics 70+', { dirty: true })}
+            ${slot('epic', '', '83 right \u00b7 \u00be of topic, max 250, topics 80+')}
+            ${slot('legendary', 'Antiquity', '110 right \u00b7 all of topic, topics 100+')}
           </div>
           <div class="tw-topic">
             <div class="tw-topic__head">
@@ -2037,7 +2037,7 @@ export const STATES = {
           ['locked', '——', 'legendary', '327 right in Modern'],
         ], '__TOGGLE__🏛️ History|5 / 7|open'],
         [null, null, 0, 0, [
-          ['earned', 'Science', 'rare', 'A quarter of every topic'],
+          ['earned', 'Science', 'common', '10 right in Science'],
         ], '__TOGGLE__🔬 Science|1 / 1|closed'],
         ['Standing', 'The rank you have reached, and one-off feats.', 1, 8, [
           ['earned', 'Apprentice', 'common', 'Reach Apprentice in any subject'],

@@ -14,7 +14,10 @@
 // ============================================
 
 import { fetchTitleWords } from './db/social.js';
-import { applyWordOverlay } from './titles.js';
+import { fetchTopicSizes } from './db/questions.js';
+import { applyWordOverlay, applyLiveTargets } from './titles.js';
+import { shapeTopicSizes } from './title-tiers.js';
+import { CATEGORY_META, flattenSubcategories } from './categories.js';
 import { logger } from './logger.js';
 
 // A page may await this before it draws, so it needs a deadline of its own. A
@@ -41,14 +44,21 @@ export function loadTitleWords() {
   if (_loaded) return _loaded;
   _loaded = (async () => {
     try {
-      const rows = await Promise.race([
-        fetchTitleWords(),
-        new Promise(resolve => setTimeout(() => resolve(null), TITLE_WORDS_TIMEOUT_MS)),
+      const deadline = () => new Promise(resolve => setTimeout(() => resolve(null), TITLE_WORDS_TIMEOUT_MS));
+      // Both reads go out together: the words, and every topic's size today,
+      // which the goals follow (owner, 2026-10-30). Either may fail alone.
+      const [rows, sizeRows] = await Promise.all([
+        Promise.race([fetchTitleWords(), deadline()]),
+        Promise.race([fetchTopicSizes().catch(() => null), deadline()]),
       ]);
+      const sizes = sizeRows
+        ? shapeTopicSizes(sizeRows, Object.keys(CATEGORY_META), cat => flattenSubcategories(cat).map(s => s.key))
+        : null;
       // null means the read FAILED; [] means nothing is written yet. Treating
       // those alike is the mistake CLAUDE.md #6 catalogues five times over.
-      if (rows === null) return 0;
+      if (rows === null) { applyLiveTargets(sizes); return 0; }
       const n = applyWordOverlay(rows);
+      applyLiveTargets(sizes);
       if (n) logger.debug('Titles', `${n} owner-written words applied`);
       return n;
     } catch (err) {

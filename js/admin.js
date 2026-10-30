@@ -9,7 +9,7 @@ import { CATEGORY_META, flattenSubcategories } from './categories.js';
 import { findAnswersNeedingReview } from './answer-health.js';
 import { TITLE_WORDS, overlayWordId, clearWordOverlay } from './titles.js';
 import { loadTitleWords, resetTitleWordCache } from './title-content.js';
-import { tiersForTopic, topicTarget, subjectTargets, TOPIC_FLOOR, placeholderWord } from './title-tiers.js';
+import { tiersForTopic, topicTarget, subjectTargets, TOPIC_FLOOR, TOPIC_SHARE, TOPIC_CAP, placeholderWord } from './title-tiers.js';
 
 // Chip order for the question editor. CATEGORY_META's own order is the order
 // the host screen shows, so the two agree.
@@ -2057,6 +2057,13 @@ let _topicSizes = null;
  */
 const TOPIC_COUNT_BATCH = 8;
 
+/** A topic tier's rule in a few words: "½ of topic, max 100, topics 70+". */
+function topicRule(tier) {
+  const frac = { 0.25: '¼', 0.5: '½', 0.75: '¾', 1: 'all' }[TOPIC_SHARE[tier]] || String(TOPIC_SHARE[tier]);
+  const cap = TOPIC_CAP[tier] ? `, max ${TOPIC_CAP[tier]}` : '';
+  return `${frac} of topic${cap}, topics ${TOPIC_FLOOR[tier]}+`;
+}
+
 async function measureTopicSizes() {
   if (_topicSizes) return _topicSizes;
 
@@ -2129,7 +2136,7 @@ async function loadTitleWordsPanel() {
   for (const [catKey, meta] of Object.entries(CATEGORY_META)) {
     const subs = flattenSubcategories(catKey);
     const { sizes, subjectSize } = measured[catKey];
-    const st = subjectTargets(subjectSize, sizes);
+    const st = subjectTargets(subjectSize);
 
     const slot = (tier, sub, target, need, label) => {
       const found = titleWordFor(2, catKey, sub, tier);
@@ -2147,12 +2154,6 @@ async function loadTitleWordsPanel() {
         // silently fails would be the "Saved!" lie this page has shipped three
         // times already.
         editable: !found || found[0] === overlayWordId(catKey, sub, tier),
-        // The share this tier asks for TODAY. A written word keeps the target
-        // it was frozen at, so when the bank grows the two differ — and that
-        // difference is the only signal the owner gets that re-freezing is
-        // available. It is never applied automatically: a goal that recedes on
-        // its own is the worst thing a collection can do.
-        frozen: found ? (found[1].unlock?.condition?.right ?? null) : null,
         // Scaffolding, not a written word. Counted apart at the top and marked
         // on the row, because "how much is left to do" is the only number on
         // this page the owner actually needs.
@@ -2169,8 +2170,6 @@ async function loadTitleWordsPanel() {
     // #4 is about.
     const subjectSlots = [
       slot('common', null, st.common, `${st.common} right in the whole subject`, meta.label || catKey),
-      slot('rare', null, st.rare.atLeast,
-        `a quarter of every topic, ${st.rare.atLeast}+ overall`, meta.label || catKey),
       slot('mythic', null, st.mythic, `all ${st.mythic}`, meta.label || catKey),
     ].filter(sl => Number.isFinite(sl.target) && sl.target >= 1);
 
@@ -2178,7 +2177,7 @@ async function loadTitleWordsPanel() {
       const size = sizes[sub.key] || 0;
       const tiers = tiersForTopic(size, sub.key).map(tier => {
         const target = topicTarget(size, tier);
-        return slot(tier, sub.key, target, `${target} right`, sub.label);
+        return slot(tier, sub.key, target, `${target} right · ${topicRule(tier)}`, sub.label);
       });
       return { key: sub.key, label: sub.label, size, tiers };
     });
@@ -2201,9 +2200,6 @@ async function loadTitleWordsPanel() {
   // regular, and a regular row is what lets the eye scan a column of ~130 slots
   // for the empty ones.
   const slotHtml = (catKey, sl) => {
-    // A written word whose frozen target no longer matches today's share. Shown,
-    // never acted on — saving again is what re-freezes it.
-    const drifted = sl.word && sl.frozen != null && sl.target != null && sl.frozen !== sl.target;
     return `
     <div class="tw-slot${sl.word ? '' : ' tw-slot--empty'}${sl.placeholder ? ' tw-slot--placeholder' : ''}"
          data-cat="${escapeHtml(catKey)}" data-sub="${escapeHtml(sl.sub || '')}"
@@ -2218,8 +2214,7 @@ async function loadTitleWordsPanel() {
            ${sl.word ? '<button class="btn btn-secondary btn-danger-text tw-slot__remove" type="button">Remove</button>' : ''}`
         : `<span class="tw-slot__word">${escapeHtml(sl.word)}</span>
            <span class="tw-slot__incode">in code</span>`}</span>
-      <span class="tw-slot__need">${sl.placeholder ? '<b>placeholder</b> &middot; ' : ''}${escapeHtml(String(sl.need))}${
-        drifted ? ` &middot; set at ${sl.frozen}` : ''}</span>
+      <span class="tw-slot__need">${sl.placeholder ? '<b>placeholder</b> &middot; ' : ''}${escapeHtml(String(sl.need))}</span>
       <span class="tw-slot__status" role="status"></span>
     </div>`;
   };
@@ -2230,7 +2225,7 @@ async function loadTitleWordsPanel() {
       <b>${needWriting}</b> empty.
       ${needWriting ? '<button type="button" class="btn btn-secondary btn-block" id="tw-fill" style="margin-top:var(--space-sm);">Fill the ' + needWriting + ' empty slots with placeholders</button>' : ''}
       ${qualifying} of ${totalTopics} topics are big enough for words of their own
-      (${TOPIC_FLOOR.uncommon}+ questions).
+      (${TOPIC_FLOOR.uncommon}+ questions). Goals follow each topic's size today.
       A slot with no word does not exist for players.
     </p>
   ` + subjects.map(r => `

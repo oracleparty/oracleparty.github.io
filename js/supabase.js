@@ -43,7 +43,7 @@ export {
   fetchMasteryCounts,
   upsertQuestionFeedback, deleteQuestionFeedbackByVoter, fetchQuestionFeedback,
   fetchCategoryPlayCounts, recordQuestionOutcome, recordAnswerText, fetchAnswerTally,
-  fetchQuestionPlayStats,
+  fetchQuestionPlayStats, fetchTopicSizes,
 } from './db/questions.js';
 
 // --- Chat ---

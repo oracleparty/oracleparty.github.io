@@ -1268,11 +1268,10 @@ export async function saveTitleWord({ slot = 2, category, subcategory = null, ti
   const text = String(word || '').trim();
   const target = Number(targetRight);
   if (!category || !tier || !text) return { error: new Error('missing category, tier or word') };
-  // THE TARGET IS FROZEN HERE, at the number the rule produces today. It must
-  // never be recomputed afterwards: a share recalculated live means growing the
-  // question bank pushes everybody's goal further away, which is the worst
-  // thing a collection can do. Saving the same word again is how the owner
-  // deliberately re-freezes it.
+  // The target saved here is a FALLBACK. Goals follow each topic's real size
+  // (owner, 2026-10-30; liveTarget in title-tiers.js), and this number is only
+  // used when the sizes cannot be read — before migration 078, or on a failed
+  // request. It is still required: a slot with no target is not a real slot.
   if (!Number.isFinite(target) || target < 1) {
     return { error: new Error('missing target — this slot does not exist') };
   }

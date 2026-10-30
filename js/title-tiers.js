@@ -3,8 +3,9 @@
 //
 // THE SINGLE DEFINITION OF WHAT EARNS A WORD. Designed with the owner on
 // 2026-08-29; see "The agreed shape of titles" in CLAUDE.md for why each piece
-// is the way it is. Nothing here is wired into gameplay yet — the admin page
-// reads it first, so the owner can see which topics qualify and what to write.
+// is the way it is. Revised with the owner on 2026-10-30: Rare is half of one
+// topic, goals follow the topic's real size, and Uncommon / Rare / Epic are
+// capped at 25 / 100 / 250.
 //
 // NO IMPORTS, deliberately. Everything else in this project that needed unit
 // testing pulls the Supabase client from esm.sh somewhere up its import chain,
@@ -24,31 +25,43 @@ export const TIERS = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic
 /**
  * How big a topic must be before it offers a tier at all.
  *
- * A 30-question topic cannot carry a meaningful 25% word, and 100% of it is not
- * the same achievement as 100% of a 300-question one. Below the floor a topic
- * still counts towards its SUBJECT's words — it just has none of its own.
+ * A 30-question topic cannot carry a meaningful word, and 100% of it is not the
+ * same achievement as 100% of a 300-question one. Below the floor a topic still
+ * counts towards its SUBJECT's words — it just has none of its own.
+ *
+ * Owner's numbers (2026-10-30): 60 / 70 / 80 / 100 — each harder step needs a
+ * bigger topic.
  */
-export const TOPIC_FLOOR = { uncommon: 60, epic: 80, legendary: 100 };
+export const TOPIC_FLOOR = { uncommon: 60, rare: 70, epic: 80, legendary: 100 };
 
-/** The share of a topic you must get right. */
-export const TOPIC_SHARE = { uncommon: 0.25, epic: 0.75, legendary: 1.00 };
+/** The share of a topic you must get right. A quarter, half, three quarters, all. */
+export const TOPIC_SHARE = { uncommon: 0.25, rare: 0.50, epic: 0.75, legendary: 1.00 };
+
+/**
+ * The most a step can ever ask, however big its topic grows (owner, 2026-10-30).
+ *
+ * Goals follow the topic's REAL size, so adding questions raises them. The caps
+ * keep the easier words reachable: a quarter of a 400-question topic would be
+ * 100 right, which is no longer an "uncommon" word. You earn it at whichever
+ * comes first — the share or the cap. Legendary and Mythic have no cap; they
+ * are meant to be the hard ones.
+ */
+export const TOPIC_CAP = { uncommon: 25, rare: 100, epic: 250 };
 
 /**
  * Subject-level words.
  *
  * `common` is the on-ramp — deliberately cheap, because somebody who unlocks
- * nothing in their first month never comes back to unlock anything.
+ * nothing in their first month never comes back to unlock anything. Always 10.
  *
- * `rare` is BREADTH: a share of EVERY topic in the subject, which is different
- * work from going deep in one. Its `floorRight` stops it coming out easier than
- * uncommon in a subject whose topics are all small — without that guard a
- * subject with two 40-question topics would hand out a rare for 20 right.
+ * `mythic` is the whole subject, perfectly.
  *
- * `mythic` is the whole subject, perfectly. No floor needed: it is its own.
+ * Rare used to live here as "a quarter of EVERY topic" — the owner found it the
+ * odd one out (the middle step with the fewest words) and moved it onto the
+ * topic ladder as "half of one topic" on 2026-10-30.
  */
 export const SUBJECT_RULE = {
   common:  { right: 10 },
-  rare:    { everyTopicShare: 0.25, floorRight: 100 },
   mythic:  { share: 1.00 },
 };
 
@@ -74,41 +87,76 @@ export function isMiscTopic(key) {
  */
 export function tiersForTopic(size, key = null) {
   if (isMiscTopic(key)) return [];
-  return ['uncommon', 'epic', 'legendary'].filter(t => size >= TOPIC_FLOOR[t]);
+  return ['uncommon', 'rare', 'epic', 'legendary'].filter(t => size >= TOPIC_FLOOR[t]);
 }
 
 /**
- * The frozen target for one topic word: how many questions you must get right.
+ * How many questions right a topic word asks for, at the topic's size TODAY.
  *
- * FROZEN MEANS COMPUTED ONCE AND STORED. Recomputing this live would move a
- * player's goal backwards every time the bank grew — "13 more to go" becoming
- * "31 more to go" is the worst feeling in a collection. This function is how the
- * number is first arrived at, not how it is read afterwards.
+ * LIVE, ON THE OWNER'S INSTRUCTION (2026-10-30). This used to be frozen when a
+ * word was written; the owner's rule is that the goal follows how many
+ * questions there really are, with TOPIC_CAP keeping the easier steps
+ * reachable. A word already earned is kept forever — only the goal for people
+ * still climbing moves.
  *
  * Returns null when the topic is too small to offer that tier.
  */
 export function topicTarget(size, tier) {
   if (!TOPIC_SHARE[tier]) return null;
-  if (size < TOPIC_FLOOR[tier]) return null;
-  return Math.ceil(size * TOPIC_SHARE[tier]);
+  if (!(size >= TOPIC_FLOOR[tier])) return null;
+  const share = Math.ceil(size * TOPIC_SHARE[tier]);
+  const cap = TOPIC_CAP[tier];
+  return cap ? Math.min(share, cap) : share;
+}
+
+/** The targets for a subject's own words: Common and Mythic. */
+export function subjectTargets(subjectSize) {
+  return {
+    common:  SUBJECT_RULE.common.right,
+    mythic:  Math.ceil(subjectSize * SUBJECT_RULE.mythic.share),
+  };
 }
 
 /**
- * The frozen targets for a subject's words.
+ * The live target for a word, given today's topic sizes, or null when the
+ * sizes do not say (not loaded, a topic too small, a tier with no rule).
  *
- * `rare` returns a per-topic requirement AND the overall floor, because both
- * must hold: a quarter of every topic, and 100 right in the subject altogether.
+ * `sizes` is the shape shapeTopicSizes returns. Common is always its fixed 10,
+ * so it never needs a size.
  */
-export function subjectTargets(subjectSize, topicSizes) {
-  const everyTopic = {};
-  for (const [key, size] of Object.entries(topicSizes || {})) {
-    everyTopic[key] = Math.ceil(size * SUBJECT_RULE.rare.everyTopicShare);
+export function liveTarget(sizes, category, subcategory, tier) {
+  if (tier === 'common') return SUBJECT_RULE.common.right;
+  const subject = sizes?.[category];
+  if (!subject) return null;
+  if (!subcategory) {
+    if (tier !== 'mythic' || !(subject.subjectSize >= 1)) return null;
+    return subjectTargets(subject.subjectSize).mythic;
   }
-  return {
-    common:  SUBJECT_RULE.common.right,
-    rare:    { everyTopic, atLeast: SUBJECT_RULE.rare.floorRight },
-    mythic:  Math.ceil(subjectSize * SUBJECT_RULE.mythic.share),
-  };
+  const size = subject.sizes?.[subcategory];
+  if (size == null) return null;
+  return topicTarget(size, tier);
+}
+
+/**
+ * Turn get_topic_sizes rows into { category: { subjectSize, sizes: { key: n } } }.
+ *
+ * A topic's size is every stored subcategory that STARTS WITH its key, because
+ * that is how the game picks questions (`LIKE 'key%'`) — `human` includes
+ * `human-countries`. `topicKeysFor(category)` lists the keys to measure, so this
+ * module needs no imports.
+ */
+export function shapeTopicSizes(rows, categories, topicKeysFor) {
+  const out = {};
+  for (const cat of categories) {
+    const mine = (rows || []).filter(r => r.category === cat);
+    const sizes = {};
+    for (const key of topicKeysFor(cat)) {
+      sizes[key] = mine.reduce((n, r) =>
+        (r.subcategory && String(r.subcategory).startsWith(key) ? n + Number(r.n || 0) : n), 0);
+    }
+    out[cat] = { subjectSize: mine.reduce((n, r) => n + Number(r.n || 0), 0), sizes };
+  }
+  return out;
 }
 
 /**

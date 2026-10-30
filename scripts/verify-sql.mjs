@@ -94,6 +94,7 @@ const MIGRATIONS = [
   '075_chaos_mode.sql',
   '076_claps_are_live.sql',
   '077_friend_requests_are_live.sql',
+  '078_topic_sizes.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.

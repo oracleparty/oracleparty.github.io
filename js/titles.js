@@ -5,6 +5,7 @@
 // ============================================
 
 import { MIN_QUESTIONS_FOR_TITLE, LOYAL_DAYS, ANCIENT_DAYS, NIGHT_OWL_START_HOUR, NIGHT_OWL_END_HOUR } from './constants.js';
+import { liveTarget } from './title-tiers.js';
 
 // ============================================
 // MASTER WORD LIST
@@ -801,11 +802,9 @@ export function overlayWordId(category, subcategory, tier) {
  * A row whose slot is already defined in code WINS OVER THE CODE, so the owner
  * can correct a word without a deploy. Returns how many were applied.
  *
- * THE TARGET COMES FROM THE ROW, not from recomputing the share. It was frozen
- * when the word was written, deliberately: a share recomputed live means adding
- * questions to the bank moves everybody's goal further away. It also means this
- * needs no counting at all, where computing it here would cost about fifty
- * requests on every profile load.
+ * The target here is the one SAVED with the row. applyLiveTargets then points
+ * it at the topic's size today (owner, 2026-10-30), keeping the saved number as
+ * the fallback for when sizes cannot be read.
  */
 export function applyWordOverlay(rows) {
   let applied = 0;
@@ -835,6 +834,32 @@ export function applyWordOverlay(rows) {
     applied++;
   }
   return applied;
+}
+
+/**
+ * Point every subject word's goal at the topic's size TODAY (owner, 2026-10-30).
+ *
+ * Goals follow how many questions a topic really has, capped for the easier
+ * steps (title-tiers.js). The number written with a word is kept as
+ * `savedRight` and used whenever the sizes do not say — not loaded, migration
+ * 078 not run, or a topic under the floor — so an old word stays earnable at
+ * exactly the goal it had. Earned words are never taken away; this only moves
+ * the goal for people still climbing.
+ *
+ * `sizes` is shapeTopicSizes' output, or null. Returns how many goals moved.
+ */
+export function applyLiveTargets(sizes) {
+  let moved = 0;
+  for (const def of Object.values(TITLE_WORDS)) {
+    if (def?.slot !== 2 || def.unlock?.type !== 'count') continue;
+    const c = def.unlock.condition;
+    if (!c?.category) continue;
+    if (def.savedRight == null) def.savedRight = c.right;
+    const live = sizes ? liveTarget(sizes, c.category, c.subcategory || null, def.rarity) : null;
+    const next = Number.isFinite(live) && live >= 1 ? live : def.savedRight;
+    if (next !== c.right) { c.right = next; moved++; }
+  }
+  return moved;
 }
 
 /** Drop every overlay word. Used when reloading, and by tests. */

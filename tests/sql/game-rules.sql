@@ -2622,4 +2622,22 @@ BEGIN
 END $$;
 
 
+-- 078: topic sizes count what the game can ASK, per category a question carries.
+DO $$
+DECLARE body bigint; elem bigint;
+BEGIN
+  INSERT INTO questions (question, correct_answer, categories, subcategory, format) VALUES
+    ('t78 a', 'x', ARRAY['science'], 'human-body', 'open'),
+    ('t78 b', 'x', ARRAY['science','nature'], 'human-body', 'open'),
+    ('t78 c', 'x', ARRAY['science'], 'human-body', 'multiple-choice'),
+    ('t78 d', 'x', ARRAY['science'], 'elements', 'open');
+  SELECT n INTO body FROM get_topic_sizes() WHERE category = 'science' AND subcategory = 'human-body';
+  SELECT n INTO elem FROM get_topic_sizes() WHERE category = 'nature' AND subcategory = 'human-body';
+  INSERT INTO result (check_name, got, want) VALUES
+    ('078: a topic counts only questions the game can ask', body::text, '2'),
+    ('078: a question in two categories counts in both', elem::text, '1');
+  DELETE FROM questions WHERE question LIKE 't78 %';
+END $$;
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

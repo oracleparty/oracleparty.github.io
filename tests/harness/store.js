@@ -1061,6 +1061,22 @@ export class FakeStore {
       return null;
     }
 
+    // Migration 078: askable questions per (category, subcategory).
+    if (name === 'get_topic_sizes') {
+      const counts = new Map();
+      for (const q of this.table('questions')) {
+        if ((q.format || 'open') !== 'open') continue;
+        for (const cat of (q.categories || [])) {
+          const key = `${cat}|${q.subcategory ?? ''}`;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+      }
+      return [...counts].map(([key, n]) => {
+        const [category, sub] = key.split('|');
+        return { category, subcategory: sub || null, n };
+      });
+    }
+
     // Counts rounds, not records — see record_game_play above.
     if (name === 'get_category_play_counts') {
       const byCat = new Map();
