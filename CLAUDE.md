@@ -132,6 +132,15 @@
 > drift into Animals; a pun (Gutsy) was rejected for breaking the
 > real-science-word pattern. Not yet entered on the admin page.
 >
+> **Elements, LOCKED "for now" by the owner:** Uncommon **Basic**, Rare
+> **Unstable**, Epic **Periodic**, Legendary **Elemental** — boring, a mess, on
+> a schedule, a force of nature. The rule that made it work: every word is real
+> chemistry AND a joke about a person, and the joke meanings must climb without
+> echoing (Periodic above Unstable reads as "more together"; Elemental at the
+> top, away from Basic, reads as power rather than "elementary"). When the owner
+> questions a word, ANSWER the question about the agreed ladder — do not swap in
+> new words.
+>
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
 > above the last (Caveman → Toddler was too little, Caveman → Hipster too much);
