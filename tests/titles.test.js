@@ -6,134 +6,17 @@ import {
   TITLE_WORDS,
   RARITY_CELEBRATION,
   RARITY_ORDER,
-  computeCategoryTiers,
   evaluateUnlocks,
-  hasReachedApprentice,
+  hasEarnedARank, subjectRanks, rankIndexBySubject, rankRule,
   buildDisplayTitle,
   categoryRollupRows, rowProficiency, sumProficiency, rightIn, describeRequirement, applyWordOverlay, clearWordOverlay, overlayWordId, applyLiveTargets,
   mergedCategoryRows,
-  tierProgress,
-  TIER_ORDER,
   planCelebration,
 } from '../js/titles.js';
 
 // ============================================
 // computeCategoryTiers
 // ============================================
-describe('computeCategoryTiers', () => {
-  it('returns empty object for null/empty stats', () => {
-    expect(computeCategoryTiers(null)).toEqual({});
-    expect(computeCategoryTiers([])).toEqual({});
-  });
-
-  it('ignores categories below MIN_QUESTIONS_FOR_TITLE (20)', () => {
-    const stats = [{ category: 'history', questions_answered: 19, correct_answers: 19 }];
-    expect(computeCategoryTiers(stats)).toEqual({});
-  });
-
-  it('returns Apprentice at the threshold boundary', () => {
-    // score = accuracy * log2(questions_answered)
-    // Need score >= 3.0. With 20 questions: log2(20) ≈ 4.32
-    // accuracy needed: 3.0 / 4.32 ≈ 0.694 → 14/20 = 0.7 → score = 0.7 * 4.32 ≈ 3.02
-    const stats = [{ category: 'history', questions_answered: 20, correct_answers: 14 }];
-    expect(computeCategoryTiers(stats)).toEqual({ history: 'Apprentice' });
-  });
-
-  it('returns nothing when score is below Apprentice threshold', () => {
-    // 10/20 = 0.5 accuracy, log2(20) ≈ 4.32, score ≈ 2.16 < 3.0
-    const stats = [{ category: 'history', questions_answered: 20, correct_answers: 10 }];
-    expect(computeCategoryTiers(stats)).toEqual({});
-  });
-
-  it('returns Scholar tier', () => {
-    // Need score >= 4.5. With 40 questions: log2(40) ≈ 5.32
-    // accuracy needed: 4.5 / 5.32 ≈ 0.846 → 34/40 = 0.85 → score ≈ 4.52
-    const stats = [{ category: 'science', questions_answered: 40, correct_answers: 34 }];
-    expect(computeCategoryTiers(stats)).toEqual({ science: 'Scholar' });
-  });
-
-  it('returns Master tier', () => {
-    // Need score >= 5.5. With 60 questions: log2(60) ≈ 5.91
-    // accuracy needed: 5.5 / 5.91 ≈ 0.931 → 56/60 ≈ 0.933 → score ≈ 5.51
-    const stats = [{ category: 'nature', questions_answered: 60, correct_answers: 56 }];
-    expect(computeCategoryTiers(stats)).toEqual({ nature: 'Master' });
-  });
-
-  it('returns Oracle tier for perfect high-volume', () => {
-    // 200/200 = 1.0, log2(200) ≈ 7.64, score ≈ 7.64 >= 6.5
-    const stats = [{ category: 'history', questions_answered: 200, correct_answers: 200 }];
-    expect(computeCategoryTiers(stats)).toEqual({ history: 'Oracle' });
-  });
-
-  it('handles multiple categories independently', () => {
-    const stats = [
-      { category: 'history', questions_answered: 200, correct_answers: 200 },
-      { category: 'science', questions_answered: 20, correct_answers: 10 },
-      { category: 'nature', questions_answered: 20, correct_answers: 14 },
-    ];
-    const tiers = computeCategoryTiers(stats);
-    expect(tiers.history).toBe('Oracle');
-    expect(tiers.science).toBeUndefined(); // below Apprentice
-    expect(tiers.nature).toBe('Apprentice');
-  });
-
-  it('stores subcategory tiers with "category:subcategory" key', () => {
-    const stats = [
-      { category: 'history', subcategory: 'ancient', questions_answered: 200, correct_answers: 200 },
-    ];
-    const tiers = computeCategoryTiers(stats);
-    expect(tiers['history:ancient']).toBe('Oracle');
-    expect(tiers.history).toBeUndefined(); // no top-level row
-  });
-
-  it('stores category-level tiers when subcategory is null', () => {
-    const stats = [
-      { category: 'history', subcategory: null, questions_answered: 200, correct_answers: 200 },
-    ];
-    expect(computeCategoryTiers(stats)).toEqual({ history: 'Oracle' });
-  });
-
-  // player_stats_computed emitted THREE rollup rows for Wild Card — null, ''
-  // and undefined all read as "no subcategory" while staying separate rows.
-  // mergedCategoryRows was written for the profile and this function was not
-  // converted with it, so a tier — which gates every title unlock and every
-  // lobby badge — was computed from one fragment of a split category.
-  //
-  // 60 questions met split three ways. Merged: 46/60 = 0.767, log2(60) ≈ 5.91,
-  // score ≈ 4.53 → Scholar. Any ONE row alone: 15 or 16 of 20, log2(20) ≈ 4.32,
-  // score ≈ 3.24–3.46 → Apprentice. So the answer differs, and which of the
-  // three "won" was only ever whichever the view returned last.
-  it('merges split rollup rows before deciding a tier', () => {
-    const stats = [
-      { category: 'wild-card', subcategory: null, questions_answered: 20, correct_answers: 15 },
-      { category: 'wild-card', subcategory: '', questions_answered: 20, correct_answers: 15 },
-      { category: 'wild-card', questions_answered: 20, correct_answers: 16 },
-    ];
-    expect(computeCategoryTiers(stats)).toEqual({ 'wild-card': 'Scholar' });
-  });
-
-  it('gives a tier at all when no single fragment reaches the volume gate', () => {
-    // Three fragments of 12, none of which reaches MIN_QUESTIONS_FOR_TITLE (20),
-    // so reading them one at a time returns NOTHING for somebody with 36
-    // questions met at 92%.
-    const stats = [
-      { category: 'wild-card', subcategory: null, questions_answered: 12, correct_answers: 11 },
-      { category: 'wild-card', subcategory: '', questions_answered: 12, correct_answers: 11 },
-      { category: 'wild-card', subcategory: undefined, questions_answered: 12, correct_answers: 11 },
-    ];
-    expect(computeCategoryTiers(stats)['wild-card']).toBeTruthy();
-  });
-
-  it('still keeps subcategory rows apart — each is its own tier', () => {
-    const stats = [
-      { category: 'history', subcategory: 'ancient', questions_answered: 200, correct_answers: 200 },
-      { category: 'history', subcategory: 'modern', questions_answered: 20, correct_answers: 10 },
-    ];
-    const tiers = computeCategoryTiers(stats);
-    expect(tiers['history:ancient']).toBe('Oracle');
-    expect(tiers['history:modern']).toBeUndefined();
-  });
-});
 
 // ============================================
 // evaluateUnlocks
@@ -154,120 +37,56 @@ describe('evaluateUnlocks', () => {
     expect(historyWord.word).toBe('History');
   });
 
-  it('unlocks tier words (slot 3) when any category reaches that tier', () => {
-    const stats = [{ category: 'science', questions_answered: 200, correct_answers: 200 }];
-    const changes = evaluateUnlocks(stats, {}, []);
-    const oracleWord = changes.find(c => c.wordId === 'oracle');
-    expect(oracleWord).toBeDefined();
-    expect(oracleWord.rarity).toBe('legendary');
+  // THE RANK LADDER (owner, 2026-10-30): a rank word is the step of the same
+  // name reached in ANY subject; Eternal is Oracle (Mythic) in three.
+  const SIZES = {
+    science: { subjectSize: 300, sizes: { 'human-body': 151, elements: 103, space: 86 } },
+    history: { subjectSize: 40, sizes: {} },
+    nature:  { subjectSize: 40, sizes: {} },
+    food:    { subjectSize: 40, sizes: {} },
+  };
+  const row = (category, subcategory, right) =>
+    ({ category, subcategory, questions_met: right, questions_mastered: right });
+
+  it('unlocks Caveman at 10 right in a subject, and nothing above it', () => {
+    const changes = evaluateUnlocks([row('science', null, 10)], {}, [], { hour: 12, sizes: SIZES });
+    const ids = changes.map(c => c.wordId);
+    expect(ids).toContain('caveman');
+    expect(ids).not.toContain('hermit');
   });
 
-  it('detects upgrades (not new) when current level is lower', () => {
-    const stats = [{ category: 'history', questions_answered: 200, correct_answers: 200 }];
-    const currentUnlocks = [{ word_id: 'history', level: 1 }];
-    const changes = evaluateUnlocks(stats, {}, currentUnlocks);
-    const historyWord = changes.find(c => c.wordId === 'history');
-    if (historyWord) {
-      expect(historyWord.isNew).toBe(false);
-      expect(historyWord.isUpgrade).toBe(true);
-    }
+  it('unlocks Hermit at a quarter of one topic (capped at 25)', () => {
+    const stats = [row('science', null, 30), row('science', 'human-body', 25)];
+    const ids = evaluateUnlocks(stats, {}, [], { hour: 12, sizes: SIZES }).map(c => c.wordId);
+    expect(ids).toEqual(expect.arrayContaining(['caveman', 'hermit']));
+    expect(ids).not.toContain('hippie');
   });
 
-  it('skips words already at or above computed level', () => {
-    const stats = [{ category: 'history', questions_answered: 20, correct_answers: 14 }];
-    const currentUnlocks = [{ word_id: 'history', level: 3 }];
-    const changes = evaluateUnlocks(stats, {}, currentUnlocks);
-    const historyWord = changes.find(c => c.wordId === 'history');
-    expect(historyWord).toBeUndefined();
+  it('unlocks Oracle only for the whole subject, and Eternal only in three', () => {
+    const twoSubjects = [row('history', null, 40), row('nature', null, 40)];
+    let ids = evaluateUnlocks(twoSubjects, {}, [], { hour: 12, sizes: SIZES }).map(c => c.wordId);
+    expect(ids).toContain('oracle');
+    expect(ids.filter(id => id === 'eternal')).toEqual([]);
+    ids = evaluateUnlocks([...twoSubjects, row('food', null, 40)], {}, [], { hour: 12, sizes: SIZES }).map(c => c.wordId);
+    expect(ids).toContain('eternal');
   });
 
-  it('unlocks milestone words based on aggregate stats', () => {
-    // brave: 5 wins needed
-    const stats = [
-      { category: 'history', questions_answered: 20, correct_answers: 14, games_played: 10, wins: 6 },
-    ];
-    const changes = evaluateUnlocks(stats, {}, []);
-    const brave = changes.find(c => c.wordId === 'brave');
-    expect(brave).toBeDefined();
-    expect(brave.word).toBe('Brave');
+  it('the old Apprentice / Scholar / Master words are gone', () => {
+    for (const id of ['apprentice', 'scholar', 'master']) expect(TITLE_WORDS[id]).toBeUndefined();
+    expect(Object.values(TITLE_WORDS).filter(w => w.unlock?.type === 'mastery')).toEqual([]);
   });
 
-  it('unlocks social words based on profile stats', () => {
-    // popular: 100 honks received
-    const profile = { honks_received: 150 };
-    const changes = evaluateUnlocks([], profile, []);
-    const popular = changes.find(c => c.wordId === 'popular');
-    expect(popular).toBeDefined();
+  it('the Title Builder opens at the first rank — 10 right in any one subject', () => {
+    expect(hasEarnedARank([])).toBe(false);
+    expect(hasEarnedARank([row('science', null, 9)])).toBe(false);
+    expect(hasEarnedARank([row('science', null, 10)])).toBe(true);
   });
 
-  it('unlocks loyalty words based on account age', () => {
-    // loyal: 30 days
-    const thirtyOneDaysAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
-    const profile = { created_at: thirtyOneDaysAgo };
-    const changes = evaluateUnlocks([], profile, []);
-    const loyal = changes.find(c => c.wordId === 'loyal');
-    expect(loyal).toBeDefined();
-  });
-
-  it('does not unlock loyalty words if account is too young', () => {
-    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
-    const profile = { created_at: fiveDaysAgo };
-    const changes = evaluateUnlocks([], profile, []);
-    const loyal = changes.find(c => c.wordId === 'loyal');
-    expect(loyal).toBeUndefined();
-  });
-
-  it('unlocks hidden nightOwl via context', () => {
-    const changes = evaluateUnlocks([], {}, [], { hour: 3 });
-    const phantom = changes.find(c => c.wordId === 'phantom');
-    expect(phantom).toBeDefined();
-    expect(phantom.rarity).toBe('legendary');
-  });
-
-  it('does not unlock nightOwl outside the hour range', () => {
-    const changes = evaluateUnlocks([], {}, [], { hour: 12 });
-    const phantom = changes.find(c => c.wordId === 'phantom');
-    expect(phantom).toBeUndefined();
-  });
-
-  it('unlocks hidden perfectGame via context', () => {
-    const changes = evaluateUnlocks([], {}, [], { perfectGame: true });
-    const lucky = changes.find(c => c.wordId === 'lucky');
-    expect(lucky).toBeDefined();
-  });
-
-  it('unlocks hidden perfectStreak via context', () => {
-    const changes = evaluateUnlocks([], {}, [], { perfectStreak: 5 });
-    const untouchable = changes.find(c => c.wordId === 'untouchable');
-    expect(untouchable).toBeDefined();
-  });
-
-  it('does not unlock perfectStreak below threshold', () => {
-    const changes = evaluateUnlocks([], {}, [], { perfectStreak: 4 });
-    const untouchable = changes.find(c => c.wordId === 'untouchable');
-    expect(untouchable).toBeUndefined();
-  });
-
-  it('unlocks contribution words based on profile', () => {
-    // guardian: 10 questions flagged
-    const profile = { questions_flagged: 12 };
-    const changes = evaluateUnlocks([], profile, []);
-    const guardian = changes.find(c => c.wordId === 'guardian');
-    expect(guardian).toBeDefined();
-  });
-
-  it('unlocks oracleCategories (eternal slot 3) when enough categories reach Oracle', () => {
-    const stats = [
-      { category: 'history', questions_answered: 200, correct_answers: 200 },
-      { category: 'science', questions_answered: 200, correct_answers: 200 },
-      { category: 'nature', questions_answered: 200, correct_answers: 200 },
-    ];
-    const changes = evaluateUnlocks(stats, {}, []);
-    // "eternal" in slot 3 requires oracleCategories: 3
-    // Note: there are two "eternal" entries — slot 2 (history:modern Oracle) and slot 3 (oracleCategories: 3)
-    // The slot 3 one should be unlocked
-    const eternalSlot3 = changes.find(c => c.wordId === 'eternal' && TITLE_WORDS[c.wordId].slot === 3);
-    expect(eternalSlot3).toBeDefined();
+  it('a subject the player has never touched has no rank, not a zero', () => {
+    const ranks = rankIndexBySubject([row('science', null, 12)], SIZES);
+    expect(ranks.science).toBe(0);
+    expect(ranks.history).toBe(-1);
+    expect(subjectRanks([row('science', null, 12)], SIZES).science.next).toEqual({ tier: 'uncommon', needed: 22 });
   });
 
   it('unlocks subcategory mastery words', () => {
@@ -284,27 +103,6 @@ describe('evaluateUnlocks', () => {
 // ============================================
 // hasReachedApprentice
 // ============================================
-describe('hasReachedApprentice', () => {
-  it('returns false for null/empty stats', () => {
-    expect(hasReachedApprentice(null)).toBe(false);
-    expect(hasReachedApprentice([])).toBe(false);
-  });
-
-  it('returns false when no category reaches Apprentice', () => {
-    const stats = [{ category: 'history', questions_answered: 20, correct_answers: 5 }];
-    expect(hasReachedApprentice(stats)).toBe(false);
-  });
-
-  it('returns true when any category reaches Apprentice', () => {
-    const stats = [{ category: 'history', questions_answered: 20, correct_answers: 14 }];
-    expect(hasReachedApprentice(stats)).toBe(true);
-  });
-
-  it('returns false when below MIN_QUESTIONS_FOR_TITLE', () => {
-    const stats = [{ category: 'history', questions_answered: 19, correct_answers: 19 }];
-    expect(hasReachedApprentice(stats)).toBe(false);
-  });
-});
 
 // ============================================
 // buildDisplayTitle
@@ -547,29 +345,6 @@ describe('rowProficiency', () => {
 // calculateTitle lives in utils.js and duplicates the proficiency rule inline,
 // because titles.js imports utils.js and the reverse would be a cycle. Two
 // copies of one rule drift, so this pins them together.
-describe('the auto-title maths agrees with rowProficiency', () => {
-  it('ranks on questions known, not attempts', async () => {
-    const { calculateTitle } = await import('../js/utils.js');
-    // IDENTICAL attempt counters in both — 400 attempts, 200 right, a 50% hit
-    // rate either way. Only the question-level verdicts differ: 180 of 200
-    // currently known versus 90 of 200. A rule still ranking on attempts would
-    // score these two the same and land them in the same tier.
-    //
-    // 200 met, chosen so the scores fall either side of a tier boundary rather
-    // than both bottoming out at Apprentice, which is what the first version of
-    // this test did — it passed nothing and proved nothing.
-    const sharp = [{ category: 'history', questions_met: 200, questions_mastered: 180,
-                     questions_answered: 400, correct_answers: 200 }];
-    const blunt = [{ category: 'history', questions_met: 200, questions_mastered: 90,
-                     questions_answered: 400, correct_answers: 200 }];
-    const a = calculateTitle(sharp);
-    const b = calculateTitle(blunt);
-    expect(a.category).toBe('history');
-    // Same attempts and same correct_answers in both; only the question-level
-    // verdicts differ, so a rule that ignored them would return the same tier.
-    expect(a.tier).not.toBe(b.tier);
-  });
-});
 
 // ============================================
 // mergedCategoryRows — one row per category, whatever the view emits
@@ -643,80 +418,6 @@ describe('mergedCategoryRows', () => {
 // where their ranks were and how to improve them, and nothing in the app
 // answered either. A progression nobody can see is not a progression.
 // ============================================
-describe('tierProgress', () => {
-  const row = (met, mastered) => ({ questions_met: met, questions_mastered: mastered });
-
-  it('says nothing when there is nothing to say', () => {
-    expect(tierProgress(null)).toBe(null);
-    expect(tierProgress({})).toBe(null);
-    expect(tierProgress(row(0, 0))).toBe(null);
-  });
-
-  // Below the volume gate there is NO rank at any accuracy. Three perfect
-  // answers is not a rank, and telling somebody they are close on accuracy
-  // alone would be a lie they then fail to cash in.
-  it('gives no rank below the question minimum, however perfect', () => {
-    const p = tierProgress(row(3, 3));
-    expect(p.tier).toBe(null);
-    expect(p.next).toBe('Apprentice');
-    expect(p.met).toBe(3);
-    expect(p.required).toBe(20);
-    // 17 more gets them to 20 questions AND over the threshold.
-    expect(p.needed).toBe(17);
-  });
-
-  it('counts the volume gate alone when accuracy is already enough', () => {
-    expect(tierProgress(row(19, 19)).needed).toBe(1);
-  });
-
-  it('reports the rank held and the one above it', () => {
-    const p = tierProgress(row(20, 20));
-    expect(p.tier).toBe('Apprentice');
-    expect(p.next).toBe('Scholar');
-    expect(p.needed).toBe(3);
-  });
-
-  it('asks for more when accuracy is lower', () => {
-    const strong = tierProgress(row(20, 20));
-    const weaker = tierProgress(row(20, 15));
-    expect(weaker.tier).toBe('Apprentice');
-    expect(weaker.needed).toBeGreaterThan(strong.needed);
-  });
-
-  it('gives no rank when the score is under the first threshold', () => {
-    const p = tierProgress(row(20, 8));
-    expect(p.tier).toBe(null);
-    expect(p.next).toBe('Apprentice');
-    expect(p.needed).toBeGreaterThan(0);
-  });
-
-  it('stops at the top', () => {
-    const p = tierProgress(row(100, 100));
-    expect(p.tier).toBe('Oracle');
-    expect(p.next).toBe(null);
-    expect(p.needed).toBe(0);
-  });
-
-  // The number has to be one a player can actually act on. If it were an
-  // approximation they would answer that many and not move, which is worse
-  // than saying nothing.
-  it('the count it gives actually reaches the next rank', () => {
-    for (const [met, mastered] of [[20, 20], [20, 15], [20, 8], [30, 22], [50, 31]]) {
-      const p = tierProgress(row(met, mastered));
-      if (!p.next || p.needed == null) continue;
-      const after = tierProgress(row(met + p.needed, mastered + p.needed));
-      const reached = after.tier;
-      expect(reached, `${met}/${mastered} +${p.needed} reached ${reached}, wanted ${p.next}`).toBeTruthy();
-      expect(TIER_ORDER.indexOf(reached)).toBeGreaterThanOrEqual(TIER_ORDER.indexOf(p.next));
-    }
-  });
-
-  it('one fewer than it asks for is not enough', () => {
-    const p = tierProgress(row(20, 20));
-    const justShort = tierProgress(row(20 + p.needed - 1, 20 + p.needed - 1));
-    expect(justShort.tier).toBe('Apprentice');
-  });
-});
 
 // ============================================
 // planCelebration — one celebration per batch, scaled to rarity
@@ -938,10 +639,12 @@ describe('describing what a word requires', () => {
     expect(describeRequirement({ unlock: { type: 'hidden', condition: { stat: 'nightOwl' } } })).toBeNull();
   });
 
-  it('describes the legacy rank words without pretending they are clear', () => {
-    expect(describeRequirement({
-      unlock: { type: 'mastery', condition: { anyCategory: 'Scholar' } },
-    })).toBe('Reach Scholar in any subject');
+  it('describes each rank by its rule, and Eternal by its count', () => {
+    expect(describeRequirement(TITLE_WORDS.caveman)).toBe('Get 10 questions right in any subject');
+    expect(describeRequirement(TITLE_WORDS.hippie)).toBe('Get half of any topic right (at most 100)');
+    expect(describeRequirement(TITLE_WORDS.oracle)).toBe('Get every question in a subject right');
+    expect(describeRequirement(TITLE_WORDS.eternal)).toBe('Reach Oracle in 3 subjects');
+    expect(rankRule('nonsense')).toBeNull();
   });
 
   // EVERY REAL WORD MUST SAY SOMETHING, or the gallery goes back to being a

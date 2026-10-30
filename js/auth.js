@@ -2,11 +2,11 @@
 // Oracle Party — Display Name / Auth
 // ============================================
 
-import { $, calculateTitle, escapeHtml } from './utils.js';
+import { $, escapeHtml } from './utils.js';
 import { FRIEND_REQUEST_TOAST_MS, CHAT_HISTORY_GRACE_MS, AUTH_TIMEOUT_MS, AUTH_BOOT_TIMEOUT_MS } from './constants.js';
 import { supabase, createProfile, fetchProfile, updateProfile, generateDiscriminator, fetchPlayerStats, fetchTitleUnlocks, upsertTitleUnlock, subscribeToFriendRequests, acceptFriendRequest, declineFriendRequest, unsubscribe } from './supabase.js';
 import { initGlobalPresence } from './presence.js';
-import { evaluateUnlocks, hasReachedApprentice, buildDisplayTitle, planCelebration } from './titles.js';
+import { evaluateUnlocks, hasEarnedARank, buildDisplayTitle, planCelebration } from './titles.js';
 import { loadTitleWords } from './title-content.js';
 import { showCelebration } from './celebration.js';
 import { logger, recordFault } from './logger.js';
@@ -353,16 +353,10 @@ export async function initAuth() {
 
     // Compute title (non-fatal)
     try {
-      const titleInfo = calculateTitle(stats);
-      const customTitle = buildDisplayTitle(profile);
-      profile._cachedTitle = customTitle || titleInfo.title;
-      profile._cachedTitleTier = titleInfo.tier;
-      profile._cachedTitleCategory = titleInfo.category;
+      profile._cachedTitle = buildDisplayTitle(profile) || 'Novice';
     } catch (err) {
       logger.warn('Auth', 'Title computation failed', err);
       profile._cachedTitle = 'Novice';
-      profile._cachedTitleTier = 'Novice';
-      profile._cachedTitleCategory = null;
     }
     profile._cachedStats = stats;
     _currentProfile = profile;
@@ -405,7 +399,7 @@ export async function initAuth() {
       // player was away — a loyalty streak crossing a day boundary earns
       // something with nobody playing.
       if (newUnlocks.length > 0) showCelebration(planCelebration(newUnlocks));
-      if (!profile.title_builder_unlocked && hasReachedApprentice(stats)) {
+      if (!profile.title_builder_unlocked && hasEarnedARank(stats)) {
         await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', session.user.id);
       }
     }).catch(() => {});

@@ -5,7 +5,6 @@ import {
   levenshteinDistance,
   fuzzyMatch,
   pickProfileByTag,
-  calculateTitle,
   getAvatarHue,
   shuffleArray,
 } from '../js/utils.js';
@@ -211,50 +210,6 @@ describe('fuzzyMatch', () => {
   });
 });
 
-// ============================================
-// calculateTitle
-// ============================================
-describe('calculateTitle', () => {
-  it('returns Novice with no stats', () => {
-    expect(calculateTitle([])).toEqual({ title: 'Novice', tier: 'Novice', category: null });
-    expect(calculateTitle(null)).toEqual({ title: 'Novice', tier: 'Novice', category: null });
-  });
-
-  it('returns Novice if no category has enough questions', () => {
-    const stats = [{ category: 'history', questions_answered: 10, correct_answers: 10 }];
-    expect(calculateTitle(stats)).toEqual({ title: 'Novice', tier: 'Novice', category: null });
-  });
-
-  it('returns Apprentice tier for low scores', () => {
-    const stats = [{ category: 'history', questions_answered: 20, correct_answers: 10 }];
-    const result = calculateTitle(stats);
-    expect(result.tier).toBe('Apprentice');
-    expect(result.category).toBe('history');
-    expect(result.title).toContain('The Historian');
-  });
-
-  it('returns Oracle tier for perfect high-volume performance', () => {
-    const stats = [{ category: 'science', questions_answered: 200, correct_answers: 200 }];
-    const result = calculateTitle(stats);
-    expect(result.tier).toBe('Oracle');
-    expect(result.title).toContain('The Scientist');
-  });
-
-  it('picks the category with the highest score', () => {
-    const stats = [
-      { category: 'history', questions_answered: 50, correct_answers: 25 },
-      { category: 'science', questions_answered: 50, correct_answers: 45 },
-    ];
-    const result = calculateTitle(stats);
-    expect(result.category).toBe('science');
-  });
-
-  it('uses category title mapping correctly', () => {
-    const stats = [{ category: 'food', questions_answered: 40, correct_answers: 35 }];
-    const result = calculateTitle(stats);
-    expect(result.title).toContain('The Connoisseur');
-  });
-});
 
 // ============================================
 // getAvatarHue

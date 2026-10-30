@@ -2,7 +2,7 @@
 // Oracle Party — Shared Utilities
 // ============================================
 
-import { FADE_MS, TOAST_DURATION_MS, TRANSITION_MS, FUZZY_MATCH_THRESHOLD, MIN_WORD_LENGTH_LASTNAME, MIN_QUESTIONS_FOR_TITLE, TIER_ORACLE, TIER_MASTER, TIER_SCHOLAR, TIER_APPRENTICE } from './constants.js';
+import { FADE_MS, TOAST_DURATION_MS, TRANSITION_MS, FUZZY_MATCH_THRESHOLD, MIN_WORD_LENGTH_LASTNAME } from './constants.js';
 
 /** querySelector shorthand */
 export const $ = (sel, ctx = document) => ctx.querySelector(sel);
@@ -119,68 +119,6 @@ export function renderAvatar({ displayName, avatarColor, avatarEmoji, size, extr
   const hue = getAvatarHue(displayName || '?');
   const initial = (displayName || '?')[0].toUpperCase();
   return `<div class="${cls} avatar--guest" style="background:hsl(${hue},45%,45%);${sizeStyle}">${initial}</div>`;
-}
-
-// ============================================
-// Auto-Titles
-// ============================================
-
-/** Category → Display title name mapping (from SPEC-profiles.md). */
-export const CATEGORY_TITLES = {
-  'history': 'The Historian',
-  'science': 'The Scientist',
-  'nature': 'The Naturalist',
-  'arts-literature': 'The Literati',
-  'culture-society': 'The Anthropologist',
-  'pop-culture': 'The Culturist',
-  'world-geography': 'The Cartographer',
-  'technology': 'The Technologist',
-  'sports': 'The Athlete',
-  'food': 'The Connoisseur',
-  'logic': 'The Logician',
-  'wild-card': 'The Polymath'
-};
-
-const TITLE_TIERS = [
-  { min: TIER_ORACLE, label: 'Oracle' },
-  { min: TIER_MASTER, label: 'Master' },
-  { min: TIER_SCHOLAR, label: 'Scholar' },
-  { min: TIER_APPRENTICE, label: 'Apprentice' },
-];
-
-/**
- * Calculate auto-title from player_stats rows.
- * Formula: category_score = accuracy × log2(questions_answered)
- * Minimum 20 questions in a category before it counts.
- *
- * @param {Array} stats - Array of { category, questions_answered, correct_answers }
- * @returns {{ title: string, tier: string, category: string|null }}
- */
-export function calculateTitle(stats) {
-  let bestScore = -1;
-  let bestCat = null;
-
-  for (const s of (stats || [])) {
-    // Inlined rather than imported from titles.js: utils.js is imported by
-    // titles.js, and the reverse would be a cycle. Same rule, kept in step by
-    // tests/titles.test.js, which asserts the two agree.
-    const hasNew = s.questions_met != null && s.questions_mastered != null;
-    const met = hasNew ? (s.questions_met || 0) : (s.questions_answered || 0);
-    const mastered = hasNew ? (s.questions_mastered || 0) : (s.correct_answers || 0);
-    if (met < MIN_QUESTIONS_FOR_TITLE) continue;
-    const accuracy = mastered / met;
-    const score = accuracy * Math.log2(met);
-    if (score > bestScore) {
-      bestScore = score;
-      bestCat = s.category;
-    }
-  }
-
-  if (!bestCat) return { title: 'Novice', tier: 'Novice', category: null };
-
-  const tier = TITLE_TIERS.find(t => bestScore >= t.min)?.label || 'Apprentice';
-  const catTitle = CATEGORY_TITLES[bestCat] || 'The Scholar';
-  return { title: `${catTitle} — ${tier}`, tier, category: bestCat };
 }
 
 // ============================================

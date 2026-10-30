@@ -41,7 +41,7 @@ import {
 } from '../supabase.js';
 import { favouriteAnswers } from './clap-logic.js';
 import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../auth.js';
-import { evaluateUnlocks, hasReachedApprentice, planCelebration } from '../titles.js';
+import { evaluateUnlocks, hasEarnedARank, planCelebration } from '../titles.js';
 import { loadTitleWords } from '../title-content.js';
 import { showCelebration } from '../celebration.js';
 import { CATEGORY_META } from '../categories.js';
@@ -1608,8 +1608,8 @@ async function recordFinishedGame(allAnswers) {
         for (const u of newUnlocks) {
           await upsertTitleUnlock(uid, u.wordId, u.level);
         }
-        // Check if Title Builder should unlock (first Apprentice)
-        if (!authUser.profile.title_builder_unlocked && hasReachedApprentice(freshStats)) {
+        // Check if Title Builder should unlock (first rank: Caveman)
+        if (!authUser.profile.title_builder_unlocked && hasEarnedARank(freshStats)) {
           await supabase.from('profiles').update({ title_builder_unlocked: true }).eq('user_id', uid);
         }
         // Show it. This was a console.debug for as long as the title system has

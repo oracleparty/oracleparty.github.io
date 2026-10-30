@@ -96,9 +96,22 @@
 >
 > Last verified against the code: 2026-08-30.
 
-> ## 2026-10-30 (latest) — the three reels and the rank ladder: DECIDED, NOT BUILT
+> ## 2026-10-30 (latest) — the three reels and the rank ladder: BUILT
 >
-> **Settled with the owner by interview. Nothing below is in the code yet.**
+> **Settled with the owner by interview; the rank ladder and the pairing rule
+> are now in the code** (the owner: "no one plays this game yet, let's just
+> change it"). The old accuracy x log2 rank formula is DELETED everywhere —
+> `computeCategoryTiers`, `tierProgress`, `calculateTitle`, the TIER_* constants
+> and the `mastery` unlock type. A subject's rank is `subjectRank` in
+> `title-tiers.js`: its highest step by the same rules that earn its words
+> (needs the topic sizes from 078; without them only Caveman can be judged).
+> The profile's Proficiency rows show it ("Hermit · 13 more right → Hippie"),
+> the builder opens at Caveman (`hasEarnedARank`: 10 right in a subject), and
+> Eternal is Oracle in 3 subjects. `scenario-titles` (in CI) drives the pairing
+> rule on the real page; with the rule off it reports *"the title reads
+> "Chronicles Hermit", want "Chronicles Caveman""*. **The owner must run
+> `retire-old-ranks` SQL AFTER deploying** (it was handed over in chat), or the
+> old build re-awards Apprentice on the next sign-in.
 >
 > | reel | grammar | means | fed by |
 > |---|---|---|---|

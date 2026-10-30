@@ -211,3 +211,85 @@ export function placeholderWord(tier, label) {
   const out = parts.join(' ');
   return out.length <= PLACEHOLDER_MAX ? out : full.slice(0, PLACEHOLDER_MAX).trim();
 }
+
+// ============================================
+// THE RANK LADDER (owner, 2026-10-30)
+//
+// A subject's RANK is simply the highest step reached in it, by the same rules
+// that earn its words. It replaces the old accuracy x log2(questions) formula,
+// which nobody — the owner included — could follow. One ladder, one set of
+// rules, and the rank word says which step it is:
+//
+//   Caveman, Hermit, Hippie, Pilgrim, Guru, Oracle
+//
+// A journey towards wisdom: stuck in the cave, thinking in the cave, out
+// seeking, on the sacred road, the one people travel to, the source.
+// ============================================
+
+export const RANK_TIERS = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+
+export const RANK_WORDS = {
+  common: 'Caveman', uncommon: 'Hermit', rare: 'Hippie',
+  epic: 'Pilgrim', legendary: 'Guru', mythic: 'Oracle',
+};
+
+/**
+ * Where somebody stands in ONE subject.
+ *
+ * @param {object} p
+ * @param {number} p.subjectRight   questions they currently get right in it
+ * @param {number|null} p.subjectSize askable questions in it, or null if unknown
+ * @param {Array<{key:string,size:number,right:number}>} p.topics
+ * @returns {{ index:number, tier:string|null, next:{tier:string, needed:number}|null }}
+ *
+ * index is -1 for no rank yet. `next` is the nearest step ABOVE the current
+ * one that the subject actually offers, and how many more right it would take
+ * on the cheapest road there. A step no topic is big enough to offer is
+ * skipped rather than reported as unreachable — it simply is not on this
+ * subject's ladder yet.
+ *
+ * Sizes unknown (migration 078 not reachable) means only Common can be judged,
+ * because every other step is a share of something we cannot see. That is the
+ * harmless direction: a rank shown too low, never one that was not earned.
+ */
+export function subjectRank({ subjectRight = 0, subjectSize = null, topics = [] } = {}) {
+  const words = (topics || []).filter(t => !isMiscTopic(t.key));
+  const cost = (tier) => {
+    if (tier === 'common') return Math.max(0, SUBJECT_RULE.common.right - subjectRight);
+    if (tier === 'mythic') {
+      return subjectSize >= 1 ? Math.max(0, subjectSize - subjectRight) : null;
+    }
+    let best = null;
+    for (const t of words) {
+      const target = topicTarget(t.size, tier);
+      if (target == null) continue;
+      const need = Math.max(0, target - (t.right || 0));
+      if (best == null || need < best) best = need;
+    }
+    return best;
+  };
+
+  let index = -1;
+  const costs = RANK_TIERS.map(cost);
+  costs.forEach((c, i) => { if (c === 0) index = i; });
+
+  let next = null;
+  for (let i = index + 1; i < RANK_TIERS.length; i++) {
+    if (costs[i] != null && costs[i] > 0) { next = { tier: RANK_TIERS[i], needed: costs[i] }; break; }
+  }
+  return { index, tier: index >= 0 ? RANK_TIERS[index] : null, next };
+}
+
+/**
+ * The highest rank that may sit beside a reel-2 word (owner, 2026-10-30): a
+ * rank only goes as high as your step in THAT word's subject, so "Organelle
+ * Oracle" means you really did conquer Science.
+ *
+ * @param {Object<string,number>} rankIndexBySubject
+ * @param {string|null} subject  the reel-2 word's subject, or null for none
+ */
+export function rankCapFor(rankIndexBySubject, subject) {
+  const all = Object.values(rankIndexBySubject || {});
+  if (!subject) return all.length ? Math.max(...all) : -1;
+  return rankIndexBySubject?.[subject] ?? -1;
+}

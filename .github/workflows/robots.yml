@@ -95,6 +95,11 @@ jobs:
       - name: Accounts — profile, leaderboard, friends, signed-in lobby
         run: node tests/harness/scenario-account.mjs
 
+      # The Title Builder's pairing rule: a rank may only sit beside a reel-2
+      # word whose subject you reached that step in.
+      - name: Titles — the rank pairing rule
+        run: node tests/harness/scenario-titles.mjs
+
       # The admin dashboard, gated on is_admin and unreachable until the
       # harness could sign in. Includes the check that matters most in this
       # project: when the database refuses a write it returns NO error, and the

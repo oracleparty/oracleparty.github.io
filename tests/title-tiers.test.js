@@ -4,6 +4,7 @@ import {
   tiersForTopic, topicTarget, subjectTargets, meetsTopic, isMiscTopic,
   liveTarget, shapeTopicSizes,
   placeholderWord, PLACEHOLDER_MAX,
+  subjectRank, rankCapFor, RANK_WORDS, RANK_TIERS,
 } from '../js/title-tiers.js';
 
 describe('which tiers a topic offers', () => {
@@ -180,5 +181,78 @@ describe('placeholder words', () => {
   it('trims on a word boundary rather than mid-word', () => {
     expect(placeholderWord('legendary', 'Ancient & Classical Civilisations')).toBe('Legendary Ancient');
     expect(placeholderWord('uncommon', 'Entertainment Movies')).not.toMatch(/\s$/);
+  });
+});
+
+// ============================================
+// THE RANK LADDER — a subject's rank is its highest step (owner, 2026-10-30)
+// ============================================
+describe('subjectRank', () => {
+  const topics = (r = {}) => [
+    { key: 'human-body', size: 151, right: r.body || 0 },
+    { key: 'elements', size: 103, right: r.el || 0 },
+    { key: 'space', size: 86, right: r.space || 0 },
+    { key: 'misc', size: 500, right: r.misc || 0 },
+  ];
+
+  it('has no rank below 10 right, and says how far Caveman is', () => {
+    expect(subjectRank({ subjectRight: 4, subjectSize: 340, topics: topics() }))
+      .toEqual({ index: -1, tier: null, next: { tier: 'common', needed: 6 } });
+  });
+
+  it('reaches each step by the same rule that earns its words', () => {
+    const at = (r, right) => subjectRank({ subjectRight: right, subjectSize: 340, topics: topics(r) }).tier;
+    expect(at({}, 10)).toBe('common');
+    expect(at({ space: 22 }, 30)).toBe('uncommon');      // a quarter of 86
+    expect(at({ el: 52 }, 60)).toBe('rare');             // half of 103
+    expect(at({ body: 114 }, 120)).toBe('epic');         // three quarters of 151
+    expect(at({ el: 103 }, 110)).toBe('legendary');      // every question in a topic
+    expect(at({}, 340)).toBe('mythic');                  // the whole subject
+  });
+
+  it('caps the easier steps exactly as the words are capped', () => {
+    // a quarter of 151 is 38, but Uncommon never asks more than 25
+    expect(subjectRank({ subjectRight: 30, subjectSize: 340, topics: topics({ body: 25 }) }).tier).toBe('uncommon');
+  });
+
+  it('a misc topic carries no step, however big', () => {
+    expect(subjectRank({ subjectRight: 499, subjectSize: 2000, topics: topics({ misc: 500 }) }).tier).toBe('common');
+  });
+
+  it('names the cheapest road to the next step', () => {
+    const r = subjectRank({ subjectRight: 40, subjectSize: 340, topics: topics({ space: 22, el: 40 }) });
+    expect(r.tier).toBe('uncommon');
+    expect(r.next).toEqual({ tier: 'rare', needed: 12 });  // 52 for elements beats 43 - 22 = 21 for space
+  });
+
+  it('skips a step the subject does not offer yet', () => {
+    // Only small topics: nothing reaches the 100-question Legendary floor.
+    const small = [{ key: 'a', size: 80, right: 60 }];
+    const r = subjectRank({ subjectRight: 60, subjectSize: 300, topics: small });
+    expect(r.tier).toBe('epic');
+    expect(r.next).toEqual({ tier: 'mythic', needed: 240 });
+  });
+
+  it('without topic sizes only Caveman can be judged — never a rank too high', () => {
+    expect(subjectRank({ subjectRight: 5000, subjectSize: null, topics: [] }))
+      .toEqual({ index: 0, tier: 'common', next: null });
+  });
+
+  it('the ladder is Caveman to Oracle, one word per step', () => {
+    expect(RANK_TIERS.map(t => RANK_WORDS[t]))
+      .toEqual(['Caveman', 'Hermit', 'Hippie', 'Pilgrim', 'Guru', 'Oracle']);
+  });
+});
+
+describe('rankCapFor — a rank may only sit beside a word from a subject you reached it in', () => {
+  const idx = { science: 5, history: 1 };
+  it('caps by the reel-2 word\'s subject', () => {
+    expect(rankCapFor(idx, 'science')).toBe(5);
+    expect(rankCapFor(idx, 'history')).toBe(1);
+    expect(rankCapFor(idx, 'food')).toBe(-1);
+  });
+  it('with no reel-2 word, the best subject decides', () => {
+    expect(rankCapFor(idx, null)).toBe(5);
+    expect(rankCapFor({}, null)).toBe(-1);
   });
 });

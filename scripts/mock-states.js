@@ -1314,7 +1314,7 @@ export const STATES = {
       // score, and the locked wager or "Waiting...". This mock had drifted to a
       // name with no title, which is why nothing saw a long title cut off
       // (reported 2026-10-27: "Phantom World Apprenti…").
-      const TITLES = ['Phantom World Apprentice', 'Legendary Chrono Scholar', 'Novice', 'Guest', 'Epic Science Oracle', 'Guest'];
+      const TITLES = ['Phantom World Caveman', 'Legendary Chrono Hermit', 'Novice', 'Guest', 'Epic Science Oracle', 'Guest'];
       const WAGERS = [20, 10, 0];
       document.getElementById('fw-player-list').innerHTML = P.map((p, i) => {
         const locked = i < 3;
@@ -2040,9 +2040,9 @@ export const STATES = {
           ['earned', 'Science', 'common', '10 right in Science'],
         ], '__TOGGLE__🔬 Science|1 / 1|closed'],
         ['Standing', 'The rank you have reached, and one-off feats.', 1, 8, [
-          ['earned', 'Apprentice', 'common', 'Reach Apprentice in any subject'],
-          ['locked', '——', 'rare', 'Reach Scholar in any subject'],
-        ], 'Rank in your best subject'],
+          ['earned', 'Caveman', 'common', 'Get 10 questions right in any subject'],
+          ['locked', '——', 'uncommon', 'Get a quarter of any topic right (at most 25)'],
+        ], 'Rank'],
         [null, null, 0, 0, [
           ['locked', '——', 'rare', 'Win 25 games'],
           ['locked', '——', 'rare', 'Report 10 bad questions'],
@@ -2199,8 +2199,8 @@ export const STATES = {
         list.innerHTML = [
           row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '412', '486 met', false),
           row(2, 'Sam', 'Novice', '188', '240 met', true),
-          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar of the Atomic Age', '96', '133 met', false),
-          row(4, 'Jo', 'Apprentice', '11', '19 met', false),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Atomic Pilgrim', '96', '133 met', false),
+          row(4, 'Jo', 'Caveman', '11', '19 met', false),
         ].join('');
       }
     },
@@ -2249,8 +2249,8 @@ export const STATES = {
         list.innerHTML = [
           row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '84', '22% of 388', false),
           row(2, 'Sam', 'Novice', '31', '19% of 164', true),
-          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar of the Atomic Age', '12', '9% of 133', false),
-          row(4, 'Jo', 'Apprentice', '1', '6 available', false),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Atomic Pilgrim', '12', '9% of 133', false),
+          row(4, 'Jo', 'Caveman', '1', '6 available', false),
         ].join('');
       }
     },
@@ -2311,7 +2311,7 @@ export const STATES = {
         list.innerHTML = [
           row(1, 'Bartholomew', 'Relentless Oracle of Antiquity', '94%', '233 of 248 known', false),
           row(2, 'Sam', 'Keeper of Secrets', '72%', '86 of 120 known', true),
-          row(3, 'Wilhelmina-Rose', 'Seasoned Scholar', '51%', '30 of 60 known', false),
+          row(3, 'Wilhelmina-Rose', 'Seasoned Pilgrim', '51%', '30 of 60 known', false),
         ].join('');
       }
     },
@@ -2406,7 +2406,7 @@ export const STATES = {
       const name = document.getElementById('profile-name');
       if (name) name.textContent = 'ArchaeologistAnna';
       const title = document.getElementById('profile-title');
-      if (title) title.textContent = 'Seasoned Scholar';
+      if (title) title.textContent = 'Seasoned Pilgrim';
 
       const statsEl = document.getElementById('profile-stats');
       if (statsEl) {
@@ -2527,12 +2527,12 @@ export const STATES = {
         // Sorted strongest first, each carrying the rank line — mirrors the
         // real render. All four states of that line are represented, because
         // the longest of them is what decides whether the row still fits: a
-        // rank plus a target, the volume gate, the top rank, and none at all.
+        // rank plus a target, a rank at the top, and no rank yet.
         const rows = [
-          ['⏳', 'History', 81, 'Scholar · 12 more correct → Master'],
+          ['⏳', 'History', 81, 'Pilgrim · 112 more right → Guru'],
           ['🌍', 'World Geography', 74, 'Oracle · highest rank'],
-          ['⚗️', 'Science', 64, 'Apprentice · 17 more correct → Scholar'],
-          ['🎬', 'Pop Culture', 43, '14 more questions for a rank'],
+          ['⚗️', 'Science', 64, 'Hermit · 13 more right → Hippie'],
+          ['🎬', 'Pop Culture', 43, '6 more right → Caveman'],
         ];
         catsEl.innerHTML = rows.map(([icon, label, acc, rank], i) => `
           <div class="profile-category-group" data-category="c${i}">

@@ -4,8 +4,8 @@
 // Phase 1: Word list, unlock conditions, evaluation logic.
 // ============================================
 
-import { MIN_QUESTIONS_FOR_TITLE, LOYAL_DAYS, ANCIENT_DAYS, NIGHT_OWL_START_HOUR, NIGHT_OWL_END_HOUR } from './constants.js';
-import { liveTarget } from './title-tiers.js';
+import { LOYAL_DAYS, ANCIENT_DAYS, NIGHT_OWL_START_HOUR, NIGHT_OWL_END_HOUR } from './constants.js';
+import { liveTarget, subjectRank, RANK_TIERS, RANK_WORDS, SUBJECT_RULE, TOPIC_CAP } from './title-tiers.js';
 
 // ============================================
 // MASTER WORD LIST
@@ -228,28 +228,45 @@ export const TITLE_WORDS = {
   // ============================================
   // SLOT 3: TIER (rank/achievement words)
   // ============================================
-  apprentice: {
-    slot: 3, word: 'Apprentice', rarity: 'common',
-    hint: 'The first step on a long road',
-    unlock: { type: 'mastery', condition: { anyCategory: 'Apprentice' } },
+  // THE RANK LADDER (owner, 2026-10-30). Each word is the step of the same
+  // name, reached in ANY subject — and in the Title Builder it may only sit
+  // beside a reel-2 word whose subject you have reached that step in. The old
+  // Apprentice / Scholar / Master came from an accuracy formula nobody could
+  // follow and are gone; `oracle` keeps its id, so anyone holding it keeps it.
+  caveman: {
+    slot: 3, word: 'Caveman', rarity: 'common',
+    hint: 'Still in the cave, but you found the light switch',
+    unlock: { type: 'rank', condition: { tier: 'common' } },
     levelMultiplier: 1
   },
-  scholar: {
-    slot: 3, word: 'Scholar', rarity: 'rare',
-    hint: 'Knowledge earned through dedication',
-    unlock: { type: 'mastery', condition: { anyCategory: 'Scholar' } },
+  hermit: {
+    slot: 3, word: 'Hermit', rarity: 'uncommon',
+    hint: 'Alone in the cave, thinking very hard',
+    unlock: { type: 'rank', condition: { tier: 'uncommon' } },
     levelMultiplier: 1
   },
-  master: {
-    slot: 3, word: 'Master', rarity: 'rare',
-    hint: 'Few reach this summit',
-    unlock: { type: 'mastery', condition: { anyCategory: 'Master' } },
+  hippie: {
+    slot: 3, word: 'Hippie', rarity: 'rare',
+    hint: 'Out of the cave and looking for meaning',
+    unlock: { type: 'rank', condition: { tier: 'rare' } },
+    levelMultiplier: 1
+  },
+  pilgrim: {
+    slot: 3, word: 'Pilgrim', rarity: 'epic',
+    hint: 'On the long road to wisdom',
+    unlock: { type: 'rank', condition: { tier: 'epic' } },
+    levelMultiplier: 1
+  },
+  guru: {
+    slot: 3, word: 'Guru', rarity: 'legendary',
+    hint: 'People travel to YOU now',
+    unlock: { type: 'rank', condition: { tier: 'legendary' } },
     levelMultiplier: 1
   },
   oracle: {
-    slot: 3, word: 'Oracle', rarity: 'legendary',
-    hint: 'The rarest of minds',
-    unlock: { type: 'mastery', condition: { anyCategory: 'Oracle' } },
+    slot: 3, word: 'Oracle', rarity: 'mythic',
+    hint: 'The source of every answer',
+    unlock: { type: 'rank', condition: { tier: 'mythic' } },
     levelMultiplier: 1
   },
   champion: {
@@ -267,7 +284,7 @@ export const TITLE_WORDS = {
   eternal: {
     slot: 3, word: 'Eternal', rarity: 'legendary',
     hint: 'Transcended a single domain',
-    unlock: { type: 'mastery', condition: { oracleCategories: 3 } },
+    unlock: { type: 'rank', condition: { tier: 'mythic', subjects: 3 } },
     levelMultiplier: 1
   },
   untouchable: {
@@ -352,131 +369,48 @@ export function planCelebration(newUnlocks) {
 }
 
 // ============================================
-// TIER THRESHOLDS (matches utils.js calculateTitle)
+// RANKS, BY SUBJECT
 // ============================================
 
-const TIER_THRESHOLDS = {
-  Apprentice: 3.0,
-  Scholar: 4.5,
-  Master: 5.5,
-  Oracle: 6.5
-};
+// The topic sizes the goals and ranks are measured against. Set by
+// applyLiveTargets, which every page reaches through loadTitleWords; null until
+// then, or when migration 078 cannot be read.
+let _topicSizes = null;
 
-export const TIER_ORDER = ['Apprentice', 'Scholar', 'Master', 'Oracle'];
+/** Today's topic sizes, or null when they have not been (or cannot be) read. */
+export function currentTopicSizes() { return _topicSizes; }
 
 /**
- * Where somebody stands in a category, and what it would take to move up.
+ * Every subject's rank for this player: { history: { index, tier, next }, ... }.
  *
- * → { tier, next, needed, met, required } or null when there is no data.
- *
- *   tier     the rank they hold now, or null for none yet
- *   next     the rank above it, or null at Oracle
- *   needed   how many more questions they would have to get right to reach it,
- *            or null when that is more than this can sensibly say
- *   met      distinct questions seen
- *   required MIN_QUESTIONS_FOR_TITLE — no rank at all below this, whatever the
- *            accuracy, so a player on 3 questions needs volume before anything
- *            else and should be told that rather than a misleading number
- *
- * WHY THIS EXISTS. A rank is accuracy x log2(questions met), against fixed
- * thresholds. That is a defensible rule and completely unguessable from the
- * outside: the owner asked where their ranks were and how to improve them, and
- * nothing in the app answered either question. A progression nobody can see is
- * not a progression.
- *
- * `needed` is SIMULATED rather than solved. Answering one more question right
- * moves both halves of the fraction, so there is no clean closed form, and an
- * approximation here would be a number a player then fails to hit. Stepping
- * forward is exact and costs nothing at this size.
+ * A subject appears when we know its size OR the player has a row in it, so a
+ * subject they have never touched is simply absent — no rank, not a zero.
  */
-export function tierProgress(row) {
-  const prof = rowProficiency(row);
-  if (!prof) return null;
-
-  const scoreOf = (mastered, met) => (met > 0 ? (mastered / met) * Math.log2(met) : 0);
-  const tierAt = (mastered, met) => {
-    if (met < MIN_QUESTIONS_FOR_TITLE) return null;
-    const score = scoreOf(mastered, met);
-    for (let i = TIER_ORDER.length - 1; i >= 0; i--) {
-      if (score >= TIER_THRESHOLDS[TIER_ORDER[i]]) return TIER_ORDER[i];
-    }
-    return null;
-  };
-
-  const tier = tierAt(prof.mastered, prof.met);
-  const next = tier ? TIER_ORDER[TIER_ORDER.indexOf(tier) + 1] || null : TIER_ORDER[0];
-  const base = { tier, next, met: prof.met, required: MIN_QUESTIONS_FOR_TITLE };
-  if (!next) return { ...base, needed: 0 };
-
-  // Capped rather than unbounded. A player far below a threshold is not helped
-  // by "you need 312 more" — that is a different message, and this returns null
-  // so the caller can say the honest thing instead of a discouraging one.
-  let mastered = prof.mastered;
-  let met = prof.met;
-  for (let i = 1; i <= 200; i++) {
-    mastered++; met++;
-    if (tierAt(mastered, met) === next || (tierAt(mastered, met) && TIER_ORDER.indexOf(tierAt(mastered, met)) >= TIER_ORDER.indexOf(next))) {
-      return { ...base, needed: i };
-    }
+export function subjectRanks(stats, sizes = _topicSizes) {
+  const subjects = new Set([
+    ...Object.keys(sizes || {}),
+    ...(stats || []).map(s => s.category).filter(Boolean),
+  ]);
+  const out = {};
+  for (const cat of subjects) {
+    const known = sizes?.[cat];
+    const topics = Object.entries(known?.sizes || {}).map(([key, size]) => ({
+      key, size, right: rightIn(stats, cat, key),
+    }));
+    out[cat] = subjectRank({
+      subjectRight: rightIn(stats, cat),
+      subjectSize: known ? known.subjectSize : null,
+      topics,
+    });
   }
-  return { ...base, needed: null };
+  return out;
 }
 
-// ============================================
-// UNLOCK EVALUATION
-// ============================================
-
-/**
- * Compute the category tier for each category from player_stats.
- * Returns { 'history': 'Scholar', 'science': 'Apprentice', ... }
- *
- * THE ROLLUP ROWS ARE MERGED FIRST, and leaving that out was a real bug in the
- * most consequential place it could be. player_stats_computed emitted THREE
- * rollup rows for Wild Card — the profile showed the category three times, which
- * is how it was found — because `null`, `''` and `undefined` all read as "no
- * subcategory" while staying separate rows. mergedCategoryRows was written to
- * fix the profile and this function was not converted with it.
- *
- * A tier is not a display detail: it gates every title unlock, the tier badge in
- * every lobby, and hasReachedApprentice, which is what opens the Title Builder.
- * Reading one fragment of a split category understates it twice over — the
- * fragment carries a slice of the questions, and MIN_QUESTIONS_FOR_TITLE is
- * applied to that slice, so somebody with 36 questions met split 12/12/12 gets
- * NO TIER AT ALL rather than a lower one. Which of the three won was also just
- * whichever the view happened to return last.
- *
- * SUBCATEGORY ROWS ARE NOT MERGED. Each one is its own tier under its own key,
- * which is the whole point of them; only the category-level rollups are
- * ambiguous. With a single rollup per category the merge is the identity, so
- * this is a no-op wherever the view behaves.
- */
-export function computeCategoryTiers(stats) {
-  const tiers = {};
-  const rows = [
-    ...mergedCategoryRows(stats),
-    ...(stats || []).filter(s => s.subcategory),
-  ];
-  for (const s of rows) {
-    const prof = rowProficiency(s);
-    if (!prof || prof.met < MIN_QUESTIONS_FOR_TITLE) continue;
-    const accuracy = prof.accuracy;
-    const score = accuracy * Math.log2(prof.met);
-    let tier = null;
-    if (score >= TIER_THRESHOLDS.Oracle) tier = 'Oracle';
-    else if (score >= TIER_THRESHOLDS.Master) tier = 'Master';
-    else if (score >= TIER_THRESHOLDS.Scholar) tier = 'Scholar';
-    else if (score >= TIER_THRESHOLDS.Apprentice) tier = 'Apprentice';
-    if (!tier) continue;
-    // Category-level tier (rows where subcategory is null)
-    if (!s.subcategory) {
-      tiers[s.category] = tier;
-    }
-    // Subcategory-level tier (rows where subcategory is set)
-    if (s.subcategory) {
-      tiers[`${s.category}:${s.subcategory}`] = tier;
-    }
-  }
-  return tiers;
+/** { subject: rankIndex } — the shape the Title Builder's pairing rule reads. */
+export function rankIndexBySubject(stats, sizes = _topicSizes) {
+  const out = {};
+  for (const [cat, r] of Object.entries(subjectRanks(stats, sizes))) out[cat] = r.index;
+  return out;
 }
 
 /**
@@ -594,13 +528,12 @@ function computeAggregateStats(stats) {
  * Check if a word's unlock condition is met. Returns the level (0-3).
  *
  * @param {Object} wordDef — entry from TITLE_WORDS
- * @param {Object} categoryTiers — { 'history': 'Scholar', ... }
  * @param {Object} aggStats — { totalGames, totalWins }
  * @param {Object} profile — profiles table row
  * @param {Object} [context] — optional context (e.g. { hour: 3 } for hidden checks)
  * @returns {number} 0 = locked, 1-3 = unlocked level
  */
-function computeWordLevel(wordDef, categoryTiers, aggStats, profile, context) {
+function computeWordLevel(wordDef, aggStats, profile, context) {
   const { unlock, levelMultiplier } = wordDef;
   const { type, condition } = unlock;
 
@@ -624,38 +557,13 @@ function computeWordLevel(wordDef, categoryTiers, aggStats, profile, context) {
       return have >= condition.right ? 1 : 0;
     }
 
-    case 'mastery': {
-      if (condition.category && condition.tier) {
-        // Subcategory-specific mastery: use "category:subcategory" key
-        const tierKey = condition.subcategory
-          ? `${condition.category}:${condition.subcategory}`
-          : condition.category;
-        const playerTier = categoryTiers[tierKey];
-        if (!playerTier) return 0;
-        const tierOrder = ['Apprentice', 'Scholar', 'Master', 'Oracle'];
-        const required = tierOrder.indexOf(condition.tier);
-        const achieved = tierOrder.indexOf(playerTier);
-        if (achieved < required) return 0;
-        // For mastery words, micro-level = how far above the threshold
-        // L1 = reach tier, L2 = reach next tier, L3 = reach 2 tiers above
-        baseAchieved = 1 + (achieved - required);
-      } else if (condition.anyCategory) {
-        // Any category must reach this tier
-        const tierOrder = ['Apprentice', 'Scholar', 'Master', 'Oracle'];
-        const required = tierOrder.indexOf(condition.anyCategory);
-        let best = -1;
-        for (const t of Object.values(categoryTiers)) {
-          best = Math.max(best, tierOrder.indexOf(t));
-        }
-        if (best < required) return 0;
-        baseAchieved = 1 + (best - required);
-      } else if (condition.oracleCategories) {
-        // Count how many categories have reached Oracle
-        const oracleCount = Object.values(categoryTiers).filter(t => t === 'Oracle').length;
-        if (oracleCount < condition.oracleCategories) return 0;
-        baseAchieved = Math.floor(oracleCount / condition.oracleCategories);
-      }
-      break;
+    // RANK — the step reached in any subject (or, for Eternal, in several).
+    case 'rank': {
+      const want = RANK_TIERS.indexOf(condition.tier);
+      if (want < 0) return 0;
+      const ranks = Object.values(rankIndexBySubject(context?.stats || [], context?.sizes ?? _topicSizes));
+      const reached = ranks.filter(i => i >= want).length;
+      return reached >= (condition.subjects || 1) ? 1 : 0;
     }
 
     case 'milestone': {
@@ -849,6 +757,7 @@ export function applyWordOverlay(rows) {
  * `sizes` is shapeTopicSizes' output, or null. Returns how many goals moved.
  */
 export function applyLiveTargets(sizes) {
+  if (sizes) _topicSizes = sizes;
   let moved = 0;
   for (const def of Object.values(TITLE_WORDS)) {
     if (def?.slot !== 2 || def.unlock?.type !== 'count') continue;
@@ -895,14 +804,13 @@ export function describeRequirement(wordDef, labelFor = k => k) {
         ? `Get ${condition.right} questions right in ${where}`
         : `Get ${condition.right} questions right`;
 
-    case 'mastery':
-      // LEGACY, and it reads as vague because it IS vague — "Scholar" is
-      // between 23 and 512 questions depending on accuracy. Said plainly here
-      // rather than dressed up; these words move to `count` as targets are set.
-      if (condition.anyCategory) return `Reach ${condition.anyCategory} in any subject`;
-      if (condition.oracleCategories) return `Reach Oracle in ${condition.oracleCategories} subjects`;
-      if (condition.tier && where) return `Reach ${condition.tier} in ${where}`;
-      return null;
+    case 'rank': {
+      const rule = rankRule(condition.tier);
+      if (!rule) return null;
+      return condition.subjects > 1
+        ? `Reach ${RANK_WORDS[condition.tier]} in ${condition.subjects} subjects`
+        : rule;
+    }
 
     case 'milestone':
     case 'loyalty':
@@ -928,7 +836,6 @@ export function describeRequirement(wordDef, labelFor = k => k) {
 }
 
 export function evaluateUnlocks(stats, profile, currentUnlocks, context) {
-  const categoryTiers = computeCategoryTiers(stats);
   const aggStats = computeAggregateStats(stats);
   const unlockMap = {};
   for (const u of (currentUnlocks || [])) {
@@ -942,7 +849,7 @@ export function evaluateUnlocks(stats, profile, currentUnlocks, context) {
     // questions this player currently gets right in one topic. Merged into
     // context rather than added as a parameter: every other unlock type
     // reads pre-computed summaries, and only this one needs the rows.
-    const newLevel = computeWordLevel(wordDef, categoryTiers, aggStats, profile,
+    const newLevel = computeWordLevel(wordDef, aggStats, profile,
                                       { ...(context || {}), stats: stats || [] });
     if (newLevel > currentLevel) {
       changes.push({
@@ -960,12 +867,29 @@ export function evaluateUnlocks(stats, profile, currentUnlocks, context) {
 }
 
 /**
- * Check if the player has reached Apprentice in any category.
- * This is the trigger for the Title Builder unlock.
+ * Has this player earned their first rank (Caveman) anywhere? That is what
+ * opens the Title Builder: 10 questions right in any one subject. No topic
+ * sizes are needed, so this answers correctly even before they load.
  */
-export function hasReachedApprentice(stats) {
-  const tiers = computeCategoryTiers(stats);
-  return Object.keys(tiers).length > 0;
+export function hasEarnedARank(stats) {
+  const subjects = new Set((stats || []).map(s => s.category).filter(Boolean));
+  for (const cat of subjects) {
+    if (rightIn(stats, cat) >= SUBJECT_RULE.common.right) return true;
+  }
+  return false;
+}
+
+/** What one step of the rank ladder asks for, in a sentence a player can act on. */
+export function rankRule(tier) {
+  switch (tier) {
+    case 'common':    return `Get ${SUBJECT_RULE.common.right} questions right in any subject`;
+    case 'uncommon':  return `Get a quarter of any topic right (at most ${TOPIC_CAP.uncommon})`;
+    case 'rare':      return `Get half of any topic right (at most ${TOPIC_CAP.rare})`;
+    case 'epic':      return `Get three quarters of any topic right (at most ${TOPIC_CAP.epic})`;
+    case 'legendary': return 'Get every question in a topic right';
+    case 'mythic':    return 'Get every question in a subject right';
+    default:          return null;
+  }
 }
 
 /**

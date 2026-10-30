@@ -5804,6 +5804,14 @@ body::after {
   cursor: default;
 }
 
+/* A rank you hold, but not in the subject of the reel-2 word beside it: shown
+   by name (you did earn it) in the locked colour, with a padlock, so the
+   pairing rule is visible rather than a word that silently will not select. */
+.title-wheel-item--capped::after {
+  content: ' \1F512';
+  font-style: normal;
+}
+
 /* THE WORD CARRIES ITS RARITY, matching the gallery rows.
    Scoped past the three states that already own the colour, because an
    attribute+class selector outranks a single class and would otherwise silently

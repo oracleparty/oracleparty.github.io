@@ -52,17 +52,6 @@ describe('constants sanity checks', () => {
     }
   });
 
-  describe('tier scores are in descending order', () => {
-    it('Oracle > Master > Scholar > Apprentice', () => {
-      expect(C.TIER_ORACLE).toBeGreaterThan(C.TIER_MASTER);
-      expect(C.TIER_MASTER).toBeGreaterThan(C.TIER_SCHOLAR);
-      expect(C.TIER_SCHOLAR).toBeGreaterThan(C.TIER_APPRENTICE);
-    });
-
-    it('all tier scores are positive', () => {
-      expect(C.TIER_APPRENTICE).toBeGreaterThan(0);
-    });
-  });
 
   describe('mastery thresholds are valid percentages', () => {
     it('high threshold < complete threshold', () => {

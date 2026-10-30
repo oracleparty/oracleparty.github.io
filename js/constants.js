@@ -188,12 +188,6 @@ export const MIN_QUESTIONS_FOR_CATEGORY = 10;
 export const FUZZY_MATCH_THRESHOLD = 0.25;
 export const MIN_WORD_LENGTH_LASTNAME = 3;
 
-// === TIER SCORES ===
-export const TIER_ORACLE = 6.5;
-export const TIER_MASTER = 5.5;
-export const TIER_SCHOLAR = 4.5;
-export const TIER_APPRENTICE = 3.0;
-
 // === LOYALTY (days) ===
 export const LOYAL_DAYS = 30;
 export const ANCIENT_DAYS = 365;

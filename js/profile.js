@@ -3,7 +3,7 @@
 // Avatar picker, profile page logic, bottom sheet profile card
 // ============================================
 
-import { $, $$, escapeHtml, renderAvatar, calculateTitle, CATEGORY_TITLES, navigateWithFade, showToast } from './utils.js';
+import { $, $$, escapeHtml, renderAvatar, navigateWithFade, showToast } from './utils.js';
 import { MIN_QUESTIONS_FOR_ACCURACY, MIN_QUESTIONS_FOR_CATEGORY, MASTERY_TREE_BASE_INDENT, MASTERY_TREE_DEPTH_INDENT, MIN_HOST_RATINGS, BOT_ACCURACY } from './constants.js';
 import { botSkillFor } from './game/bot-logic.js';
 import { clapTotals, CLAP_RATE_FLOOR } from './game/clap-logic.js';
@@ -40,7 +40,8 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, tierProgress, describeRequirement } from './titles.js';
+import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, subjectRanks, rankIndexBySubject, describeRequirement } from './titles.js';
+import { RANK_WORDS, RANK_TIERS, rankCapFor } from './title-tiers.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories, labelForKey } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
 import { hexLayout, hexPoints, hexFill, hexFillRect } from './honeycomb.js';
@@ -293,8 +294,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     // so that is what everything below branches on.
     if (profile) {
       nameTag = `${escapeHtml(profile.display_name)}<span class="profile-card__tag">#${escapeHtml(profile.discriminator)}</span>`;
-      const titleInfo = calculateTitle(stats);
-      profileTitle = titleInfo.title;
+      profileTitle = buildDisplayTitle(profile) || profileTitle;
     }
 
     // Compute aggregate stats
@@ -1067,7 +1067,7 @@ export async function initProfilePage() {
   // The first reader of the owner's words on this page; see wordsLoaded above.
   await wordsLoaded;
   const customTitle = buildDisplayTitle(profile);
-  headerTitle.textContent = customTitle || calculateTitle(stats).title;
+  headerTitle.textContent = customTitle || 'Novice';
 
   // Title Builder
   const builderSection = $('#title-builder-section');
@@ -1081,25 +1081,18 @@ export async function initProfilePage() {
       $('#title-builder-locked').style.display = '';
       $('#title-builder-wheel').style.display = 'none';
 
-      // Say WHICH category is closest and by how much. "Reach Apprentice" is
-      // true and useless: it names a rank the player has no way to locate and
-      // no way to price. tierProgress already knows both.
+      // Say WHICH subject is closest and by how much. The builder opens at the
+      // first rank, Caveman: 10 right in any one subject.
       const peek = $('#title-builder-locked__peek');
       if (peek) {
         let best = null;
-        for (const row of mergedCategoryRows(stats)) {
-          const prog = tierProgress(row);
-          if (!prog || prog.tier) continue;
-          const cost = prog.met < prog.required
-            ? (prog.required - prog.met)
-            : (prog.needed ?? Infinity);
-          if (!best || cost < best.cost) best = { cost, category: row.category, prog };
+        for (const [cat, r] of Object.entries(subjectRanks(stats))) {
+          if (r.index >= 0 || !r.next) continue;
+          if (!best || r.next.needed < best.needed) best = { cat, needed: r.next.needed };
         }
-        if (best && Number.isFinite(best.cost)) {
-          const label = CATEGORY_META[best.category]?.label || best.category;
-          peek.textContent = best.prog.met < best.prog.required
-            ? `Closest: ${label}, ${best.cost} more questions · See what there is to earn ›`
-            : `Closest: ${label}, ${best.cost} more correct · See what there is to earn ›`;
+        if (best) {
+          const label = CATEGORY_META[best.cat]?.label || best.cat;
+          peek.textContent = `Closest: ${label}, ${best.needed} more right · See what there is to earn \u203a`;
         }
       }
     }
@@ -1274,6 +1267,7 @@ export async function initProfilePage() {
       return (pb?.accuracy ?? -1) - (pa?.accuracy ?? -1) || (pb?.met ?? 0) - (pa?.met ?? 0);
     });
     const subStats = stats.filter(s => s.subcategory);
+    const ranks = subjectRanks(stats);
 
     if (catStats.length > 0) {
       categoriesEl.innerHTML = catStats.map(s => {
@@ -1318,29 +1312,18 @@ export async function initProfilePage() {
         }
 
         // Where they stand and what would move them, UNDER the name rather
-        // than beside it. A rank is accuracy x log2(questions), which nobody
-        // can guess — the owner asked where their ranks were and how to
-        // improve them and the app answered neither. A second line is also the
-        // shape that survived the lobby row overflow: anything added alongside
-        // the name competes for width that is not there at 375px.
-        const prog = tierProgress(s);
+        // than beside it — anything added alongside the name competes for width
+        // that is not there at 375px. The rank is the subject's highest step
+        // (Caveman → Oracle, the same ladder the Title Builder uses), and the
+        // next step says how many more right it needs on the cheapest road.
+        const r = ranks[s.category];
         let rankLine = '';
-        if (prog) {
+        if (r) {
           const parts = [];
-          if (prog.tier) parts.push(prog.tier);
-          if (prog.met < prog.required) {
-            // Volume gate first. Below it there is no rank at any accuracy, so
-            // saying anything about accuracy here would be a promise the
-            // player cannot cash in.
-            parts.push(`${prog.required - prog.met} more questions for a rank`);
-          } else if (prog.next && prog.needed != null) {
-            parts.push(`${prog.needed} more correct \u2192 ${prog.next}`);
-          } else if (prog.next) {
-            parts.push(`working towards ${prog.next}`);
-          } else {
-            parts.push('highest rank');
-          }
-          rankLine = `<div class="profile-category-row__rank">${escapeHtml(parts.join(' \u00b7 '))}</div>`;
+          if (r.tier) parts.push(RANK_WORDS[r.tier]);
+          if (r.next) parts.push(`${r.next.needed} more right \u2192 ${RANK_WORDS[r.next.tier]}`);
+          else if (r.tier) parts.push('highest rank');
+          if (parts.length) rankLine = `<div class="profile-category-row__rank">${escapeHtml(parts.join(' \u00b7 '))}</div>`;
         }
 
         return `<div class="profile-category-group" data-category="${s.category}">
@@ -1897,7 +1880,6 @@ async function _runFriendSearch(query, userId, resultsEl) {
   const html = (await Promise.all(results.map(async (p) => {
     const avatar = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
     const tag = p.discriminator ? `<span class="search-result-row__tag">#${escapeHtml(p.discriminator)}</span>` : '';
-    const titleInfo = calculateTitle([]); // We don't have stats here, show default
     const already = await isFriend(userId, p.user_id);
     const pending = sentSet.has(p.user_id);
 
@@ -2265,13 +2247,12 @@ const SLOT_NAMES = {
 // SLOT 3 IS TWO PILES, NOT ONE. Four of its words are the profile's rank ladder
 // showing through and four are unrelated feats; mixed together they read as one
 // jumbled set, which is the other half of why this column felt vague.
-// "How far you have come" meant nothing to the owner, and it was not their
-// fault: it describes a feeling rather than a measure. These four words ARE the
-// Apprentice → Oracle ladder from the profile, awarded on your BEST subject —
-// so the heading now says exactly that, and the rows underneath already print
-// "Reach Scholar in any subject". The other pile is one-off feats.
+// The first pile is the rank ladder (owner, 2026-10-30): Caveman to Oracle,
+// one word per step, earned in any subject — and in the builder each may only
+// sit beside a reel-2 word whose subject you have reached that step in. The
+// other pile is one-off feats.
 const STANDING_GROUPS = [
-  { name: 'Rank in your best subject', ids: ['apprentice', 'scholar', 'master', 'oracle'] },
+  { name: 'Rank', ids: ['caveman', 'hermit', 'hippie', 'pilgrim', 'guru', 'oracle'] },
   { name: 'One-off feats', ids: null },
 ];
 
@@ -2498,10 +2479,32 @@ async function renderTitleWheel(userId, profile, stats) {
     3: profile.title_slot3 || null
   };
 
-  // Render each slot column
-  for (const slotNum of [1, 2, 3]) {
+  // THE PAIRING RULE (owner, 2026-10-30): a rank may only sit beside a reel-2
+  // word whose SUBJECT you have reached that step in, so "Organelle Oracle"
+  // means you really did conquer Science. A rank you hold elsewhere stays in the
+  // column, dimmed, and says what would let you pair it.
+  const rankIdx = rankIndexBySubject(stats);
+  const subjectOf = (id) => TITLE_WORDS[id]?.unlock?.condition?.category || null;
+  const capNow = () => rankCapFor(rankIdx, subjectOf(selectedWords[2]));
+  const rankStep = (w) => (w?.unlock?.type === 'rank' && !(w.unlock.condition?.subjects > 1))
+    ? RANK_TIERS.indexOf(w.unlock.condition.tier) : -1;
+  const pairedOut = (w) => rankStep(w) > capNow();
+
+  // A rank already chosen that the new reel-2 word does not allow steps DOWN
+  // to the highest one it does, rather than vanishing from the title.
+  const enforceCap = () => {
+    const cur = TITLE_WORDS[selectedWords[3]];
+    if (!cur || !pairedOut(cur)) return;
+    const allowed = Object.entries(TITLE_WORDS)
+      .filter(([id, w]) => w.slot === 3 && rankStep(w) >= 0 && !pairedOut(w) && unlockMap[id] > 0)
+      .sort((a, b) => rankStep(b[1]) - rankStep(a[1]));
+    selectedWords[3] = allowed.length ? allowed[0][0] : null;
+  };
+  enforceCap();
+
+  const drawColumn = (slotNum) => {
     const column = $(`#wheel-slot${slotNum}`);
-    if (!column) continue;
+    if (!column) return;
 
     // Get words for this slot
     const words = Object.entries(TITLE_WORDS)
@@ -2523,6 +2526,13 @@ async function renderTitleWheel(userId, profile, stats) {
       if (w.level === 0) {
         // Locked
         return `<div class="title-wheel-item title-wheel-item--locked" data-hint="${escapeHtml(w.hint || '')}">\u2753</div>`;
+      }
+      if (slotNum === 3 && pairedOut(w)) {
+        const subj = subjectOf(selectedWords[2]);
+        const label = CATEGORY_META[subj]?.label || subj || 'a subject';
+        const partner = TITLE_WORDS[selectedWords[2]]?.word || '';
+        const hint = `Reach ${w.word} in ${label} to wear it with ${partner}`;
+        return `<div class="title-wheel-item title-wheel-item--locked title-wheel-item--capped" data-rarity="${w.rarity || 'common'}" data-hint="${escapeHtml(hint)}">${escapeHtml(w.word)}</div>`;
       }
       const isSelected = selectedWords[slotNum] === w.id;
       const levelClass = w.level >= 3 ? 'title-wheel-item--level3' : w.level >= 2 ? 'title-wheel-item--level2' : '';
@@ -2559,6 +2569,9 @@ async function renderTitleWheel(userId, profile, stats) {
       column.querySelectorAll('.title-wheel-item').forEach(el => el.classList.remove('title-wheel-item--selected'));
       item.classList.add('title-wheel-item--selected');
 
+      // A new reel-2 word can change which ranks may sit beside it.
+      if (slot === 2) { enforceCap(); drawColumn(3); }
+
       // Update preview
       updateTitlePreview(selectedWords);
       // Update uniqueness
@@ -2570,7 +2583,8 @@ async function renderTitleWheel(userId, profile, stats) {
     if (selectedEl) {
       setTimeout(() => selectedEl.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100);
     }
-  }
+  };
+  for (const slotNum of [1, 2, 3]) drawColumn(slotNum);
 
   // Initial preview
   updateTitlePreview(selectedWords);
