@@ -123,9 +123,14 @@
 > the tier badges broke.
 >
 > **Parked, owner's call later:** more reel-3 feats (Polymath, High Roller,
-> Comeback Kid, Crowd Favourite, Hype Man, Heckler, Ringleader). Human Body's
-> reel-2 words: the owner proposed **Organelle** (Uncommon) and
-> **Single-Celled** (Rare); Epic and Legendary are open.
+> Comeback Kid, Crowd Favourite, Hype Man, Heckler, Ringleader).
+>
+> **Human Body's reel-2 words, LOCKED by the owner:** Uncommon **Organelle**,
+> Rare **Single-Celled**, Epic **Multicellular**, Legendary **Hominid** — a zoom
+> from part of a cell to the whole human. Real biology words that are funny to
+> wear. Evolution words (Fishy, Vertebrate, Monkey) were rejected because they
+> drift into Animals; a pun (Gutsy) was rejected for breaking the
+> real-science-word pattern. Not yet entered on the admin page.
 >
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
