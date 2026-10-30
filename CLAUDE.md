@@ -96,6 +96,20 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-30 — the play counts were blank for a signed-in player, and never lost
+>
+> **Owner: "blank on every card", signed in.** `game_plays` still holds every
+> play (78, measured 10-29). The counts were applied only after sign-in, the
+> bank AND the signed-in player's mastery had ALL answered, so one slow read —
+> and a signed-in player has one more — left every card blank, and a failed
+> read was never retried. Now `loadPlayCounts` paints them the moment they
+> land, retries (2/5/10/20s), and remembers the last numbers on the phone
+> (`op_play_counts`) so the next visit shows them at once. Unknown reads
+> "… plays", never blank; every topic row shows its count, **0 included**
+> (owner's call: an unplayed topic is an invitation). `scenario-join` hangs
+> mastery and fails the first count read; the old code reports `" "` and
+> `5 of 5 topic rows showed no play count`.
+
 > ## 2026-10-29 (later) — the podium in a real game stood at 60px: measured while hidden
 >
 > **The owner saw short steps and could not screenshot them; every mock showed

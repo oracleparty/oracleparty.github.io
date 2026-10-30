@@ -39,6 +39,63 @@ const hostError = $('#host-error');
 
 // --- Category cache (localStorage) ---
 const CACHE_KEY = 'op_categories';
+// The last play counts this phone saw. Shown at once on the next visit and
+// replaced when the server answers, so the line is never blank once a phone
+// has loaded it even once (owner, 2026-10-30: "it should never show blank").
+const PLAYS_CACHE_KEY = 'op_play_counts';
+// Retries for a failed play-count read. The live database has been measured
+// slow during real games (2026-10-29); one failed read used to leave the line
+// empty for the whole visit.
+const PLAYS_RETRY_MS = [2000, 5000, 10000, 20000];
+const PLAYS_PENDING = '\u2026 plays'; // a read in flight, never a number
+
+function getCachedPlayCounts() {
+  try {
+    const raw = localStorage.getItem(PLAYS_CACHE_KEY);
+    const data = raw ? JSON.parse(raw)?.data : null;
+    return data && typeof data === 'object' ? data : null;
+  } catch { return null; }
+}
+
+function setCachedPlayCounts(data) {
+  try { localStorage.setItem(PLAYS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); }
+  catch { /* quota exceeded — ignore */ }
+}
+
+function playsLabel(n) {
+  return _playCountsKnown ? `${(n || 0).toLocaleString()} ${n === 1 ? 'play' : 'plays'}` : PLAYS_PENDING;
+}
+
+/**
+ * Ask for the play counts until they arrive, and paint them the moment they
+ * do. They used to be applied only after sign-in, the bank AND the signed-in
+ * player's mastery had all answered, so one slow read anywhere — and for a
+ * signed-in player there is one more of them — left every card blank.
+ */
+function loadPlayCounts(attempt = 0) {
+  return fetchCategoryPlayCounts()
+    .catch(e => { logger.warn('Host', 'Could not load play counts', e); return null; })
+    .then(counts => {
+      if (counts && typeof counts === 'object') {
+        applyPlayCounts(counts);
+        setCachedPlayCounts(counts);
+        return;
+      }
+      if (attempt < PLAYS_RETRY_MS.length) {
+        setTimeout(() => loadPlayCounts(attempt + 1), PLAYS_RETRY_MS[attempt]);
+      }
+    });
+}
+
+function applyPlayCounts(counts) {
+  categoryPlayCounts = counts;
+  _playCountsKnown = true;
+  for (const el of $$('.category-card__plays', categoryGrid)) {
+    const cat = el.closest('.category-card')?.dataset.category;
+    if (cat) el.textContent = playsLabel(counts[cat]);
+  }
+  for (const el of $$('[data-plays-key]')) el.textContent = playsLabel(counts[el.dataset.playsKey]);
+}
 
 function getCachedCategories() {
   try {
@@ -69,6 +126,8 @@ async function init() {
   document.body.style.opacity = '1';
 
   // 1) Instant render from cache OR show skeletons
+  const cachedPlays = getCachedPlayCounts();
+  if (cachedPlays) { categoryPlayCounts = cachedPlays; _playCountsKnown = true; }
   const cached = getCachedCategories();
   const hadCache = cached && cached.length > 0;
   if (hadCache) {
@@ -115,8 +174,7 @@ async function init() {
     }
     return fresh;
   });
-  const playCountsLoaded = fetchCategoryPlayCounts()
-    .catch(e => { logger.warn('Host', 'Could not load play counts', e); return null; });
+  loadPlayCounts();
 
   // 3) Auth (required before fetching user-specific data)
   try {
@@ -129,21 +187,17 @@ async function init() {
   const authUser = getCurrentUser();
   if (authUser?.user?.id) _isLoggedIn = true;
 
-  const [freshCategories, playCounts, masteryData] = await Promise.all([
+  const [freshCategories, masteryData] = await Promise.all([
     categoriesLoaded,
-    playCountsLoaded,
     _isLoggedIn
       ? fetchMasteryCounts(authUser.user.id).catch(e => { logger.warn('Host', 'Could not load mastery', e); return []; })
       : Promise.resolve([])
   ]);
 
   // 5) Apply results
-  // A failed read stays UNKNOWN — a blank line, never "0 plays" on every card.
-  if (playCounts && typeof playCounts === 'object') categoryPlayCounts = playCounts;
   if (masteryData && masteryData.length) {
     for (const m of masteryData) _masteryCounts[m.category] = (_masteryCounts[m.category] || 0) + m.mastered;
   }
-  _playCountsKnown = !!(playCounts && typeof playCounts === 'object');
 
   // 6) Patch the cards already on screen. A rebuild would close a subject the
   // player has already opened, now that the cards are tappable from the start.
@@ -184,10 +238,10 @@ function renderCategories(cats, playCounts = {}) {
     const ringHtml = _isLoggedIn ? `<div class="category-card__ring" style="--mastery-pct: ${pct}"></div>` : '';
     // Wild-card card shows a placeholder count — replaced with total DB count async
     const countId = cat.name === 'wild-card' ? 'id="wc-card-count"' : '';
-    // Unknown is a blank line, never "null questions" or "0 plays": these are
-    // drawn before the bank or the play counts have answered.
+    // Unknown is never "null questions" or "0 plays": these are drawn before
+    // the bank or the play counts have answered. Plays read "… plays" until then.
     const countText = cat.count == null ? '\u00a0' : `${cat.count} questions`;
-    const playsText = _playCountsKnown ? `${plays.toLocaleString()} plays` : '\u00a0';
+    const playsText = playsLabel(plays);
     return `
       <div class="category-card" data-category="${cat.name}" data-hiero="${meta.icon}"${tierAttr}>
         <div class="category-card__icon-wrap">
@@ -239,7 +293,7 @@ function patchCategoryCards(playCounts = {}) {
     const countEl = card.querySelector('.category-card__count');
     if (countEl && catName !== 'wild-card' && cat?.count != null) countEl.textContent = `${cat.count} questions`;
     const playsEl = card.querySelector('.category-card__plays');
-    if (playsEl && _playCountsKnown) playsEl.textContent = `${(playCounts[catName] || 0).toLocaleString()} plays`;
+    if (playsEl) playsEl.textContent = playsLabel(playCounts[catName]);
     // Update mastery ring
     if (_isLoggedIn) {
       const total = cat?.count || 1;
@@ -280,10 +334,10 @@ function renderSubcategoryLevel(catName, items, title, parentKey, icon) {
 
   // "All X" row — selects parentKey (null at top level = all in category)
   const allSubcategory = parentKey || '';
-  const allPlays = parentKey
-    ? (categoryPlayCounts[`${catName}/${parentKey}`] || 0)
-    : (categoryPlayCounts[catName] || 0);
-  const allPlaysHtml = allPlays > 0 ? `<span class="subcategory-row__plays">${allPlays.toLocaleString()} plays</span>` : '';
+  // Every row carries its count, zero included (owner, 2026-10-30): an
+  // untouched topic reading "0 plays" is an invitation, not a gap.
+  const allKey = parentKey ? `${catName}/${parentKey}` : catName;
+  const allPlaysHtml = `<span class="subcategory-row__plays" data-plays-key="${allKey}">${playsLabel(categoryPlayCounts[allKey])}</span>`;
   options.innerHTML = `
     <div class="subcategory-row subcategory-row--all" data-category="${catName}" data-subcategory="${allSubcategory}">
       <span class="subcategory-row__icon">${icon || ''}</span>
@@ -292,8 +346,8 @@ function renderSubcategoryLevel(catName, items, title, parentKey, icon) {
       ${allPlaysHtml}
     </div>
     ${items.map(s => {
-      const subPlays = categoryPlayCounts[`${catName}/${s.key}`] || 0;
-      const playsHtml = subPlays > 0 ? `<span class="subcategory-row__plays">${subPlays.toLocaleString()} plays</span>` : '';
+      const subKey = `${catName}/${s.key}`;
+      const playsHtml = `<span class="subcategory-row__plays" data-plays-key="${subKey}">${playsLabel(categoryPlayCounts[subKey])}</span>`;
       return `
       <div class="subcategory-row" data-category="${catName}" data-subcategory="${s.key}" ${s.children ? 'data-has-children="1"' : ''}>
         <span class="subcategory-row__icon">${s.emoji || s.icon}</span>

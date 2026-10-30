@@ -511,6 +511,45 @@ try {
     browser.slowConnection(0);
   }
 
+  heading('play counts reach a signed-in player even when other reads are slow');
+  {
+    // Reported 2026-10-30: "blank on every card", from a signed-in owner. The
+    // counts were applied only after sign-in, the bank AND that player's
+    // mastery had all answered, and a failed read left them blank all visit.
+    // Seed a play, hang mastery for far longer than the check, fail the first
+    // count read: the real number must still arrive, and a topic nobody has
+    // played must read "0 plays" rather than nothing.
+    table.store.seed('game_plays', [{ room_id: 'r-x', player_id: 'p-x', category: CATEGORY, subcategory: 'ancient', games_played: 3, completed: true }]);
+    table.store.slowFunction('get_mastery_counts', 60000);
+    table.store.failFunction('get_category_play_counts');
+    setTimeout(() => table.store.unfailFunction('get_category_play_counts'), 1000);
+    const counter = await table.seatSignedIn('Counter');
+    await counter.goto('host.html').catch(() => {});
+    const t0 = Date.now();
+    let shown = null;
+    // Earlier sections played games here too, so the seeded 3 is a floor.
+    const playsAtLeast3 = t => Number((t || '').replace(/,/g, '').match(/(\d+) plays?/)?.[1] ?? -1) >= 3;
+    while (Date.now() - t0 < 15000) {
+      shown = await counter.page.evaluate(c =>
+        document.querySelector(`.category-card[data-category="${c}"] .category-card__plays`)?.textContent, CATEGORY).catch(() => null);
+      if (playsAtLeast3(shown)) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    note(`subject card reads "${shown}" after ${Date.now() - t0}ms (mastery hung, first count read failed)`);
+    if (shown == null) note(`page: ${await counter.page.evaluate(() => location.href + ' cards=' + document.querySelectorAll('.category-card').length).catch(e => e.message)}; errors: ${counter.consoleErrors.slice(0, 3).join(' | ')}`);
+    if (!playsAtLeast3(shown)) problems.push(`a signed-in player with a slow mastery read and one failed count read saw "${shown}" instead of the seeded plays — the counter waits on other reads, or never retries`);
+    await counter.page.evaluate(c => document.querySelector(`.category-card[data-category="${c}"]`)?.click(), CATEGORY);
+    await new Promise(r => setTimeout(r, 300));
+    const rows = await counter.page.evaluate(() => [...document.querySelectorAll('#subcategory-view .subcategory-row')]
+      .map(r => r.querySelector('.subcategory-row__plays')?.textContent || ''));
+    const blank = rows.filter(t => !/\d+ plays?/.test(t)).length;
+    note(`topics: ${rows.length} rows, ${blank} without a count`);
+    if (!rows.length || blank) problems.push(`${blank} of ${rows.length} topic rows showed no play count — an unplayed topic must read 0 plays`);
+    const cached = await counter.page.evaluate(() => localStorage.getItem('op_play_counts'));
+    if (!cached) problems.push('the play counts were not remembered on the phone, so the next visit starts without them');
+    table.store.normalFunction('get_mastery_counts');
+  }
+
   for (const r of [publicHost, privateHost, stranger, latecomer, lost, nameless]) {
     const real = r.consoleErrors.filter(e =>
       !/favicon|net::ERR_|manifest|icon-\d+\.png|\.mp3/i.test(e)
