@@ -2478,6 +2478,9 @@ async function renderTitleWheel(userId, profile, stats) {
     2: profile.title_slot2 || null,
     3: profile.title_slot3 || null
   };
+  // A saved word this build no longer has (the retired Apprentice, a deleted
+  // written word) is dropped, never shown — the preview printed it as a raw id.
+  for (const k of [1, 2, 3]) if (selectedWords[k] && !TITLE_WORDS[selectedWords[k]]) selectedWords[k] = null;
 
   // THE PAIRING RULE (owner, 2026-10-30): a rank may only sit beside a reel-2
   // word whose SUBJECT you have reached that step in, so "Organelle Oracle"
