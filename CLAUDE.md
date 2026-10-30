@@ -96,6 +96,43 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-30 (latest) — the three reels and the rank ladder: DECIDED, NOT BUILT
+>
+> **Settled with the owner by interview. Nothing below is in the code yet.**
+>
+> | reel | grammar | means | fed by |
+> |---|---|---|---|
+> | 1 | describing word | how you play | wins, streaks, hosting, secrets |
+> | 2 | describing word | what you know | the topic ladder below |
+> | 3 | noun | who you are | the RANK ladder, plus feats |
+>
+> **The rank ladder replaces Apprentice/Scholar/Master/Oracle AND the
+> accuracy x log2 formula:** Common **Caveman**, Uncommon **Hermit**, Rare
+> **Hippie**, Epic **Pilgrim**, Legendary **Guru**, Mythic **Oracle** — stuck in
+> the cave, thinking in the cave, out seeking, the sacred journey, the one people
+> travel to, the source. **A rank is capped by your highest step in the subject
+> of the reel-2 word you picked**: "Organelle Oracle" is only possible for
+> somebody Mythic in Science; ranks above that show locked when you spin to it.
+> Feats (Champion, Guardian) are not capped. Eternal and Untouchable are
+> describing words and belong in reel 1.
+>
+> **Colour:** every word keeps its own rarity colour (Organelle stays green
+> beside Oracle). Where one colour is needed, the title takes its RAREST word.
+>
+> **Parked, owner's call later:** more reel-3 feats (Polymath, High Roller,
+> Comeback Kid, Crowd Favourite, Hype Man, Heckler, Ringleader). Human Body's
+> reel-2 words: the owner proposed **Organelle** (Uncommon) and
+> **Single-Celled** (Rare); Epic and Legendary are open.
+>
+> **How words get chosen with the owner — learned the hard way, over ~30
+> rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
+> above the last (Caveman → Toddler was too little, Caveman → Hipster too much);
+> words are characters you can PICTURE, never descriptions (Overthinker),
+> obscure words (Sophist) or slang (Galaxy Brain); one word; funny at the bottom,
+> earned at the top; reel-2 words must read as describing words in a full title
+> ("Brave ___ Scholar"), so job titles fail. Agree the STAGES of a ladder before
+> proposing words, and show whole ladders in a table — never spam single slots.
+
 > ## 2026-10-30 (later) — the title ladder, settled with the owner
 >
 > **The owner's rules, by interview; the words are still theirs to write.**
