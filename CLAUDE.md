@@ -116,8 +116,11 @@
 > Feats (Champion, Guardian) are not capped. Eternal and Untouchable are
 > describing words and belong in reel 1.
 >
-> **Colour:** every word keeps its own rarity colour (Organelle stays green
-> beside Oracle). Where one colour is needed, the title takes its RAREST word.
+> **Colour (owner, 2026-10-30): every word ALWAYS shows in its own rarity
+> colour, everywhere a title appears** (Organelle stays green beside Oracle). No
+> single-colour title and no setting for it — one rule beats a rule plus a
+> toggle. When built, measure each colour against all three themes; that is how
+> the tier badges broke.
 >
 > **Parked, owner's call later:** more reel-3 feats (Polymath, High Roller,
 > Comeback Kid, Crowd Favourite, Hype Man, Heckler, Ringleader). Human Body's
