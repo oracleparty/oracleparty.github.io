@@ -4,7 +4,7 @@
 // Supabase API calls are always network-only.
 // ============================================
 
-const CACHE_VERSION = 'op-v20261030';
+const CACHE_VERSION = 'op-v20261030b';
 const APP_SHELL = [
   './',
   './index.html',
@@ -95,9 +95,19 @@ self.addEventListener('fetch', (event) => {
     return; // let the browser handle it normally
   }
 
-  // Network-first: always try fresh, fall back to cache if offline
+  // Network-first: always try fresh, fall back to cache if offline.
+  //
+  // `no-cache` makes the browser ASK the server every time (a cheap 304 when
+  // nothing changed) instead of trusting its own HTTP cache. Module imports
+  // carry no ?v=, so without it a phone could pair a new page with an old
+  // copy of a module it imports — a missing export, a module that never runs,
+  // and "Connection issue" on every page (the owner's phone, 2026-10-30).
+  // Navigations are left alone: a Request built for one cannot take options.
+  const fresh = event.request.mode === 'navigate'
+    ? fetch(event.request)
+    : fetch(event.request, { cache: 'no-cache' });
   event.respondWith(
-    fetch(event.request)
+    fresh
       .then(response => {
         // Update cache with fresh response
         if (response.ok) {

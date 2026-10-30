@@ -20,6 +20,20 @@
     // top of each page's init().
     window.__appBootGuard = setTimeout(function () {
       if (window.__appReady) return;
+      // SELF-REPAIR, ONCE. Right after an update a phone can hold a broken mix
+      // of old and new saved files (2026-10-30: the owner's phone, fine in a
+      // private tab). Throw away the offline copies and the service worker and
+      // reload once before blaming the connection.
+      try {
+        if (!sessionStorage.getItem('op_boot_repair')) {
+          sessionStorage.setItem('op_boot_repair', '1');
+          var jobs = [];
+          if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+          if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+          Promise.all(jobs).catch(function () {}).then(function () { location.reload(); });
+          return;
+        }
+      } catch (e) { /* storage blocked: fall through to the message */ }
       document.body.style.opacity = '1';
       document.body.innerHTML =
         '<div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;font-family:system-ui,-apple-system,sans-serif;color:#3a3530;background:#F8F7F4;">' +
@@ -33,7 +47,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=20261030">
+  <link rel="stylesheet" href="css/style.css?v=20261030b">
   <style>html, body { overscroll-behavior-y: contain; }</style>
 </head>
 <body style="opacity:0">
@@ -490,7 +504,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/game/init.js?v=20261030"></script>
+  <script type="module" src="js/game/init.js?v=20261030b"></script>
 
 </body>
 </html>

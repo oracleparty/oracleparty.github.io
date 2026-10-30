@@ -96,6 +96,22 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-10-30 (night) — a deploy left the owner's phone on "Connection issue"
+>
+> **Every page, front page included, after the rank-ladder deploy; fine in a
+> private tab** — so the phone held a broken mix of old and new saved files,
+> not a code fault (robots and the probe were green on that commit). Module
+> imports carry no `?v=`, so a new page could pair with an old copy of a
+> module missing a new export, and the module never runs. Two fixes:
+> `sw.js` now fetches same-origin files with `cache: 'no-cache'` (the server
+> is asked every time; a 304 when unchanged; navigations untouched, since a
+> navigate Request cannot take options), and the boot guard on every page
+> REPAIRS ONCE before blaming the connection — clears Cache Storage,
+> unregisters the service worker and reloads (`op_boot_repair` in
+> sessionStorage stops a loop). Verified in Chromium with esm.sh blocked: two
+> loads, then the message. **The exact stale layer on the phone is not
+> established** (HTTP cache vs the worker's cache); the fix covers both.
+
 > ## 2026-10-30 (latest) — the three reels and the rank ladder: BUILT
 >
 > **Settled with the owner by interview; the rank ladder and the pairing rule
