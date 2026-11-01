@@ -212,6 +212,26 @@ async function init() {
     window.location.replace('game.html');
     return;
   }
+  // Back from a game the room has not yet closed: see _awaitingRoomReset.
+  _awaitingRoomReset = isReturningFromGame && currentRoom.status === 'playing';
+  // THE HOST CAME BACK BEFORE THE ROOM DID — which is now always. Back to
+  // Lobby leaves the game page on the tap (handlePlayAgain), so the room is
+  // reset HERE: answers, question list, clocks, status, then the phase that
+  // sends every other phone home from the results. Each step is idempotent, so
+  // a reset that already landed (the gear's Return to Lobby) changes nothing.
+  if (isReturningFromGame && room.isHost
+      && (currentRoom.status === 'playing' || currentRoom.game_phase !== 'lobby')) {
+    (async () => {
+      await Promise.all([
+        deleteAnswersByRoom(room.id, room.playerId),
+        updateGameState(room.id, { question_ids: [], question_started_at: null, countdown_started_at: null }),
+        updateRoomStatus(room.id, 'lobby'),
+      ]);
+      if (!await setPhaseOnServer(room.id, room.playerId, null, 'lobby', 0)) {
+        await updateGameState(room.id, { game_phase: 'lobby' });
+      }
+    })().catch(e => logger.warn('Lobby', 'could not finish resetting the room after a game', e));
+  }
 
   // Subscribe to Realtime (with status monitoring)
   const playerChannel = subscribeToPlayers(room.id, handlePlayerChange);
@@ -330,6 +350,17 @@ async function init() {
   }
   initThemeToggle();
 }
+
+/**
+ * BACK FROM A GAME THE ROOM HAS NOT CLOSED YET. Anybody may tap Back to Lobby
+ * on the results before the host does, and the host's own tap can arrive
+ * before its reset lands — so this page can open with the room still marked
+ * `playing`. Every room UPDATE in that window (the host's tally, a setting)
+ * carried status 'playing', which this page reads as "a game has started" and
+ * followed straight back to game.html: Back to Lobby that bounced. Until the
+ * room is seen in the lobby, 'playing' is the old game, not a new one.
+ */
+let _awaitingRoomReset = false;
 
 // --- Event Listeners ---
 function attachListeners() {
@@ -2216,10 +2247,13 @@ function handleRoomChange(payload) {
   const newRoom = payload.new;
   if (!newRoom) return;
 
+  if (newRoom.status === 'lobby') _awaitingRoomReset = false;
   // Game start — navigate all players. The host has usually gone already, on
   // its own write succeeding (handleStartGame); its echo is then a no-op.
   if (newRoom.status === 'playing') {
     if (isLeaving) return;
+    // The game this phone just LEFT, not a new one — see _awaitingRoomReset.
+    if (_awaitingRoomReset) return;
     isLeaving = true;
     try { cleanup(); } catch (_) {}
     navigateWithFadeReplace('game.html');
@@ -2583,7 +2617,9 @@ async function handleVisibilityChange() {
       cleanup();
       sessionStorage.removeItem('oracle_party_room');
       window.location.href = 'index.html';
-    } else if (r.status === 'playing' && !isLeaving) {
+    } else if (r.status === 'lobby') {
+      _awaitingRoomReset = false;
+    } else if (r.status === 'playing' && !isLeaving && !_awaitingRoomReset) {
       isLeaving = true;
       cleanup();
       navigateWithFadeReplace('game.html');

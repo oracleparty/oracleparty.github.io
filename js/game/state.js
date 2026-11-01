@@ -416,3 +416,54 @@ export function isPlayerAway(id) {
 export function currentGameAnswers(rows) {
   return answersForCurrentGame(rows, state.questions);
 }
+
+// ============================================
+// A HOST'S VERDICT, WHILE IT IS ON ITS WAY
+//
+// Reported 2026-11-01: "I tapped once to change it to correct, but visually it
+// flipped two more times." Every phone calls record_round_history at the
+// reveal, and that function UPDATEs every answer row in the room — so Realtime
+// sends each row out again. On a slow database that save can still be in
+// flight when the host taps: its echo carries the verdict from BEFORE the tap
+// and lands after it, painting "incorrect" back over the host's "correct",
+// and then the host's own write echoes and paints "correct" again. Two flips
+// from one tap. (A second tap while the first was saving was worse: it read
+// the already-flipped verdict and flipped it back for real.)
+//
+// So a toggle is LOCKED while its write is out (judgementBusy), and an echo
+// that disagrees with what the host last chose is the past arriving late and
+// is not drawn (staleJudgementEcho) — until an echo that AGREES arrives, which
+// is the host's own write coming back; after that every echo is news again
+// (a co-host's change, say). JUDGEMENT_ECHO_WINDOW_MS bounds it if the
+// agreeing echo is never seen. Display only: the database holds the score.
+// ============================================
+const _judgementIntent = new Map();   // answer id -> { correct, busy, until }
+export const JUDGEMENT_ECHO_WINDOW_MS = 15000;
+
+export function judgementBusy(answerId) {
+  return !!_judgementIntent.get(String(answerId))?.busy;
+}
+export function beginJudgement(answerId, correct) {
+  _judgementIntent.set(String(answerId), { correct: !!correct, busy: true, until: Infinity });
+}
+/** The write answered. `correct` is what now stands (the old value on a refusal). */
+export function endJudgement(answerId, correct, now = Date.now()) {
+  const key = String(answerId);
+  const prev = _judgementIntent.get(key);
+  // Its echo already came back while the write was out: nothing left to guard.
+  if (prev?.echoed && prev.correct === !!correct) { _judgementIntent.delete(key); return; }
+  _judgementIntent.set(key, { correct: !!correct, busy: false, until: now + JUDGEMENT_ECHO_WINDOW_MS });
+}
+export function staleJudgementEcho(row, now = Date.now()) {
+  if (!row || row.id == null || row.is_correct === undefined) return false;
+  const key = String(row.id);
+  const i = _judgementIntent.get(key);
+  if (!i) return false;
+  if (now > i.until) { _judgementIntent.delete(key); return false; }
+  if (!!row.is_correct === i.correct) {
+    // The host's own write has come back. Nothing after it is stale.
+    if (i.busy) i.echoed = true; else _judgementIntent.delete(key);
+    return false;
+  }
+  return true;
+}

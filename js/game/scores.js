@@ -59,6 +59,7 @@ import {
   showScreen,
   _qbFeedback,
   beginRoundClock,
+  judgementBusy, beginJudgement, endJudgement,
 } from './state.js';
 import { repositionChatBar, showChatBar, hideChatBar, closeChatDrawer } from './chat.js';
 import { showHostSettingsGear } from './host.js';
@@ -1275,15 +1276,21 @@ export function showScoreEditSheet() {
   sheet.classList.add('active');
 }
 
-async function openScoreEditQuestion(questionNumber) {
+async function openScoreEditQuestion(questionNumber, { refresh = false } = {}) {
   const listEl = $('#score-edit-question-list');
   const answersEl = $('#score-edit-answers');
 
   listEl.style.display = 'none';
   answersEl.style.display = '';
-  answersEl.innerHTML = '<p style="text-align:center; color: var(--color-text-muted);">Loading...</p>';
+  // A REFRESH after a change keeps the rows on screen while it re-reads. It
+  // used to blank them to "Loading..." — seconds of a sheet with nothing on it,
+  // right after the host had tapped, on a slow link.
+  if (!refresh) answersEl.innerHTML = '<p style="text-align:center; color: var(--color-text-muted);">Loading...</p>';
 
   const answers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, questionNumber));
+  // The host may have opened another question while this one was loading.
+  if (refresh && answersEl.dataset.questionNumber !== String(questionNumber)) return;
+  answersEl.dataset.questionNumber = String(questionNumber);
   const q = state.questions[questionNumber];
 
   answersEl.innerHTML = `
@@ -1341,6 +1348,13 @@ async function openScoreEditQuestion(questionNumber) {
     const answer = answers.find(a => String(a.id) === String(answerId));
     if (!answer) return;
     if (state.disqualifiedQuestions?.has(qNum)) return;
+    // ONE WRITE AT A TIME PER ANSWER — the reported flip-flop (2026-11-01).
+    // This toggle did not move until the write AND two whole re-reads had come
+    // back, so on a slow link the host tapped again; the second tap read the
+    // verdict the first had already flipped, flipped it back, and announced
+    // that too. The toggle now moves on the tap and ignores taps until the
+    // write has answered.
+    if (judgementBusy(answerId)) return;
 
     const newCorrect = !answer.is_correct;
     const isFinal = qNum >= state.totalQuestions;
@@ -1353,17 +1367,25 @@ async function openScoreEditQuestion(questionNumber) {
     const prevScore = answer.score_earned;
     answer.is_correct = newCorrect;
     answer.score_earned = newScore;
+    paintEditRow(toggle, newCorrect);
 
-    const served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
-    // ONLY WHEN THE FUNCTION IS ABSENT. Migration 049 revoked UPDATE on
-    // `answers`, so a direct write after a REAL failure matches zero rows and
-    // reports success — the host sees the flip and no other score moves.
-    if (!served.ok && served.unavailable) {
-      await updateAnswerJudgment(answerId, newCorrect, newScore);
-    } else if (!served.ok) {
+    beginJudgement(answerId, newCorrect);
+    let served;
+    try {
+      served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
+      // ONLY WHEN THE FUNCTION IS ABSENT. Migration 049 revoked UPDATE on
+      // `answers`, so a direct write after a REAL failure matches zero rows and
+      // reports success — the host sees the flip and no other score moves.
+      if (!served.ok && served.unavailable) {
+        await updateAnswerJudgment(answerId, newCorrect, newScore);
+      }
+    } finally {
+      endJudgement(answerId, served && (served.ok || served.unavailable) ? newCorrect : prevCorrect);
+    }
+    if (!served.ok && !served.unavailable) {
       answer.is_correct = prevCorrect;
       answer.score_earned = prevScore;
-      openScoreEditQuestion(qNum);
+      paintEditRow(toggle, !!prevCorrect);
       showToast("Couldn't change that judgement — try again", 'error');
       // RETURN. Everything below writes the change onward — amendQuestionHistory
       // rewrites the player's PERMANENT record, and the chat line announces it
@@ -1377,16 +1399,43 @@ async function openScoreEditQuestion(questionNumber) {
       amendQuestionHistory(player.user_id, answer.question_id, newCorrect, state.room.id);
     }
 
+    // THE CHANGE, NOT THE NEW SCORE (owner's call, 2026-11-01). It printed the
+    // round's new score, so marking somebody wrong on a 5 read "(+0 points)"
+    // when they had just lost 5 — and a final-round flip from +20 to -20 read
+    // "-20" for a swing of 40.
+    sendMessage(state.room.id, 'System',
+      `Host changed Q${qNum + 1}: ${playerName} marked ${newCorrect ? 'correct' : 'incorrect'} (${judgementDeltaText(newScore - (prevScore || 0))})`
+    ).catch(err => logger.warn('Game', 'could not announce a verdict change', err));
+
     await updateScores();
-    openScoreEditQuestion(qNum);
     setLastScoresRendered(-1);
     showScoresScreen();
-
-    const sign = newScore >= 0 ? '+' : '';
-    await sendMessage(state.room.id, 'System',
-      `Host changed Q${qNum + 1}: ${playerName} marked ${newCorrect ? 'correct' : 'incorrect'} (${sign}${newScore} points)`
-    );
+    openScoreEditQuestion(qNum, { refresh: true });
   };
+}
+
+/** Paint one Edit Scores row as right or wrong, the moment the host taps it. */
+function paintEditRow(toggle, correct) {
+  toggle.classList.toggle('answer-toggle--correct', correct);
+  toggle.classList.toggle('answer-toggle--incorrect', !correct);
+  const row = toggle.closest('.answer-row');
+  const wager = row?.querySelector('.answer-row__wager');
+  if (wager) {
+    wager.classList.toggle('answer-row__wager--correct', correct);
+    wager.classList.toggle('answer-row__wager--incorrect', !correct);
+  }
+  const text = row?.querySelector('.answer-row__answer');
+  if (text) {
+    text.classList.toggle('answer-row__answer--correct', correct);
+    text.classList.toggle('answer-row__answer--incorrect', !correct);
+  }
+}
+
+/** "+5 points", "−5 points", "no change" — a real minus sign, not a hyphen. */
+export function judgementDeltaText(delta) {
+  if (!delta) return 'no change in points';
+  const n = Math.abs(delta);
+  return `${delta > 0 ? '+' : '\u2212'}${n} point${n === 1 ? '' : 's'}`;
 }
 
 // ============================================
@@ -1630,6 +1679,12 @@ export async function showResultsScreen() {
     state.timerId = null;
   }
   state.onRevealScreen = false;
+  // WIRED BEFORE THE READ BELOW, so nothing that read or the rendering after
+  // it does can leave them unwired. Insurance found while chasing "Back to
+  // Lobby does nothing" (2026-11-01) — not shown to be that report's cause.
+  $('#btn-play-again').onclick = handlePlayAgain;
+  $('#btn-quit-game').onclick = handleQuitGame;
+  $('#btn-review-questions').onclick = handleReviewQuestions;
 
   // The host review comes WITH us to results. It lived only on the final
   // round's reveal, which lasts as long as it takes the host to tap on —
@@ -1881,38 +1936,32 @@ export async function showResultsScreen() {
   }
 }
 
+let _returningToLobby = false;
+
+/**
+ * BACK TO LOBBY GOES AT ONCE (owner, 2026-11-01: "It takes 8 seconds to return
+ * to lobby??!" — and the report before it, "after the game I couldn't get back
+ * in for another round", from the host: the tap did nothing at all).
+ *
+ * The host's tap used to reset the room — clear the answers, the question
+ * list, the clocks, the status, then the phase — AWAITING all of it in silence
+ * before the page moved, with no deadline. On the slow database the last two
+ * playtests measured, that is seconds of a dead button, and a request that
+ * never answers was a button that never worked.
+ *
+ * The phone now leaves on the tap, for everybody, and the HOST's lobby does
+ * the reset on arrival (lobby.js, "the host came back before the room did").
+ * The lobby is a page that stays open, so nothing is lost by moving the work
+ * there; the game page was about to be unloaded, which cancels requests in
+ * flight anyway.
+ */
 export async function handlePlayAgain() {
+  if (_returningToLobby) return;
+  _returningToLobby = true;
+  const btn = $('#btn-play-again');
+  if (btn) { btn.disabled = true; btn.textContent = 'Returning\u2026'; }
   setIsLeaving(true); // Player stays in room — prevent handleUnload from removing
   try { if (_cleanup) _cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
-
-  // Only the host resets the room status to 'lobby'.
-  // Non-host players just navigate directly — they don't broadcast a status change
-  // that would force ALL players out of the results screen.
-  if (state.room?.isHost) {
-    try {
-      await Promise.all([
-        deleteAnswersByRoom(state.room.id, state.room.playerId),
-        // current_question is carried by the op_set_phase call below, and
-        // since 061 it is not a column a client may write.
-        updateGameState(state.room.id, {
-          question_ids: [],
-          question_started_at: null,
-          countdown_started_at: null
-        }),
-        updateRoomStatus(state.room.id, 'lobby')
-      ]);
-      // The phase LAST, and through the server. Everything above is the room
-      // being cleared out; this is the signal that sends every phone back to
-      // the lobby, so it must not arrive before the clear-out it announces.
-      if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'lobby', 0)) {
-        await updateGameState(state.room.id, { game_phase: 'lobby' });
-      }
-    } catch (err) {
-      logger.error('Game', 'handlePlayAgain host cleanup failed', err);
-      showToast('Error resetting room — retrying...', 'error');
-    }
-  }
-
   sessionStorage.setItem('oracle_party_returning_from_game', '1');
   navigateWithFadeReplace('lobby.html');
 }

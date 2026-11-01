@@ -60,6 +60,7 @@ const _sendPool = [];      // the sender's own honks, played inside the tap
 let _sendNext = 0;
 const _pool = [];          // unlocked <audio> elements, round-robin
 let _poolNext = 0;
+let _poolPending = 0;   // unlocks started and not yet answered
 let _ctx = null;
 let _honkBuffer = null;
 let _honkBufferLoading = null;
@@ -82,24 +83,43 @@ function _loadHonkBuffer() {
     .catch(() => { _honkBufferLoading = null; });
 }
 
+// A twentieth of a second of SILENCE, as a WAV in the page. See below.
+const SILENT_CLIP = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+
+// THE UNLOCK PLAYS SILENCE, NEVER THE HONK (reported 2026-11-01: "honks as
+// soon as I create a lobby", with no honk sent by anybody). It used to unlock
+// each element by playing honk.mp3 itself with `muted` set, then pausing and
+// unmuting it — which makes the honk recording audible the moment iOS treats
+// `muted` or `pause()` differently from Chromium, and nothing here can measure
+// iOS. A muted honk is still a honk in the pipe. So the element is unlocked on
+// a clip that has no sound in it, and only THEN pointed at honk.mp3: iOS keeps
+// the unlock with the element when its source changes. Now the only way the
+// honk file can play is a honk.
 function _unlockPoolElement() {
-  const el = honkAudio.cloneNode();
-  // `volume` is ignored on iOS (always 1), so silence the unlock with `muted`.
-  el.muted = true;
+  const el = new Audio(SILENT_CLIP);
+  el.muted = true;   // belt and braces: there is nothing to hear anyway
+  _poolPending++;
   const p = el.play();
+  let finished = false;
   const done = () => {
-    try { el.pause(); el.currentTime = 0; } catch { /* nothing to reset */ }
+    if (finished) return;
+    finished = true;
+    _poolPending--;
+    try { el.pause(); } catch { /* nothing to stop */ }
+    el.src = honkAudio.src;
+    el.preload = 'auto';
+    try { el.load(); } catch { /* loads on first play instead */ }
     el.muted = false;
     _pool.push(el);
   };
-  if (p && typeof p.then === 'function') p.then(done).catch(() => { /* still locked; a later tap tries again */ });
+  if (p && typeof p.then === 'function') p.then(done).catch(() => { _poolPending--; /* still locked; a later tap tries again */ });
   else done();
 }
 
 function _unlockAudio() {
-  if (_pool.length < POOL_SIZE) {
-    for (let i = _pool.length; i < POOL_SIZE; i++) _unlockPoolElement();
-  }
+  // Counting the ones still unlocking too: a tap is a touchstart AND a click,
+  // and both used to start a full set while the first set's play() was pending.
+  for (let i = _pool.length + _poolPending; i < POOL_SIZE; i++) _unlockPoolElement();
   const ctx = _audioContext();
   if (!ctx) return;
   if (ctx.state !== 'running') {

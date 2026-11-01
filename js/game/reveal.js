@@ -7,7 +7,8 @@ import { state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getC
          showScreen,
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
-         _qbFeedback, setQbFeedback } from './state.js';
+         _qbFeedback, setQbFeedback,
+         judgementBusy, beginJudgement, endJudgement } from './state.js';
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast } from '../utils.js';
 import { logger } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS, CLOCK_STAMP_TIMEOUT_MS, CLAP_POLL_MS } from '../constants.js';
@@ -1111,6 +1112,10 @@ export async function handleJudgmentOverride(e) {
 
   const answerId = toggle.dataset.answerId;
   if (!answerId) return;
+  // ONE WRITE AT A TIME PER ANSWER. A second tap while the first is out reads
+  // the verdict the first already flipped and flips it back — see
+  // beginJudgement in state.js.
+  if (judgementBusy(answerId)) return;
 
   // Use cached answers — no DB fetch
   const answer = state.currentAnswers.find(a => String(a.id) === String(answerId));
@@ -1133,14 +1138,21 @@ export async function handleJudgmentOverride(e) {
   // Persist to DB — Realtime event will update other clients
   // The DATABASE recomputes the points from the answer's own wager (049), so
   // no score is sent. Falls back to the direct write when it is not installed.
-  const served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
+  beginJudgement(answerId, newCorrect);
+  let served;
+  try {
+    served = await setJudgementOnServer(answerId, newCorrect, state.room?.playerId);
+    if (!served.ok && served.unavailable) {
+      await updateAnswerJudgment(answerId, newCorrect, newScore);
+    }
+  } finally {
+    endJudgement(answerId, served && (served.ok || served.unavailable) ? newCorrect : prevCorrect);
+  }
   // ONLY WHEN THE FUNCTION IS ABSENT. A real failure must not be retried
   // directly: migration 049 revoked UPDATE on `answers`, so the direct write
   // matches zero rows and reports SUCCESS — the host sees the toggle flipped and
   // nobody else's score moves.
-  if (!served.ok && served.unavailable) {
-    await updateAnswerJudgment(answerId, newCorrect, newScore);
-  } else if (!served.ok) {
+  if (!served.ok && !served.unavailable) {
     // PUT THE TOGGLE BACK. Leaving it flipped is the screen asserting a score
     // that does not exist — the fault CLAUDE.md #5 is about, on the one control
     // whose entire job is correcting a score.

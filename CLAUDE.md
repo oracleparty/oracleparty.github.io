@@ -96,7 +96,7 @@
 >
 > Last verified against the code: 2026-08-30.
 
-> ## 2026-11-01 — the Map wears your rank: colour and a hard-earned glow (NOT DEPLOYED)
+> ## 2026-11-01 — the Map wears your rank: colour and a hard-earned glow (DEPLOYED 20261101b)
 >
 > **Designed with the owner over mock-ups; built on the dev branch, shown to
 > them as real-page screenshots, not yet on the live branch.** Fill HEIGHT is
@@ -112,6 +112,57 @@
 > colours (`--hex-*`) because `--rarity-*` are text colours — paled on dark,
 > browned on light. Owner's pick: soft set on light, gem set on dark and OLED.
 > Open: words to take the same hues, adjusted to stay readable (owner chose it).
+
+> ## 2026-11-01 — a playtest list: a flip-flopping verdict, Back to Lobby, the keyboard, the profile
+>
+> **"I tapped once to change it to correct, but visually it flipped two more
+> times" — a lead from reading, NOT reproduced.** Every phone calls
+> `record_round_history` at the reveal, and it UPDATEs every answer row, so
+> Realtime sends each row out again. A save still in flight when the host taps
+> echoes the verdict from BEFORE the tap, after it (flip back), and then the
+> host's own write echoes (flip forward). **The fake store does not broadcast
+> that UPDATE, which is why no robot ever saw it.** `staleJudgementEcho` in
+> `state.js` drops an echo that disagrees with the host's latest choice until
+> the agreeing echo (their own write) arrives, bounded by 15s; unit-tested in
+> `tests/state.test.js`, break-tested. Also: each answer's toggle is LOCKED
+> while its write is out (`judgementBusy`), and the Edit Scores toggle now moves
+> on the tap — it waited for the write and two re-reads, which invites a
+> second tap that flips it back for real. `scenario-social` double-taps on a
+> 2s `op_set_judgement`; the old code reports two announcements. **Not
+> explained:** the photo's chat line "marked incorrect" needs the handler to
+> have run twice, and a simulated single tap on the old code ran it once.
+>
+> **The chat line states the CHANGE in points (owner's choice):** "(−5 points)",
+> not the round's new score, which read "+0" for somebody who had just lost 5.
+>
+> **Back to Lobby — the host's tap did nothing; NOT reproduced, the slow
+> database is the lead.** It awaited the whole room reset (answers, list,
+> clocks, status, phase) in silence before moving. **It now leaves on the tap**
+> ("Returning…"), and the HOST's lobby performs the reset on arrival
+> (`isReturningFromGame && room.isHost`). `scenario-playagain` on a 1500ms
+> link: **old 4.4s with nothing on screen, new ~1.3s**; it fails over 2.6s.
+> Found on the way, and real: a phone that reached the lobby while the room
+> was still `playing` was bounced back to game.html by the next room UPDATE;
+> `_awaitingRoomReset` in `lobby.js` ignores 'playing' until the room is seen
+> in the lobby.
+>
+> **The keyboard photo (question gone, wagers under the answer box) was the
+> question card set to SHRINK** (`flex: 0 1 auto; min-height: 0` under
+> `.kb-open`): measured 3px tall around 47px of text, 20 wagers, 320 wide. It
+> no longer shrinks (capped at 40%, own scroll); the wagers scroll under the
+> pinned answer box. Measured by setting `kb-open` by hand — still not seen on
+> an iPhone.
+>
+> **The lobby honk "as soon as I host", no tap: cause NOT found.** No code
+> path plays the honk file without a tap or a received honk. The one thing
+> that played the honk RECORDING without a honk was the iOS unlock (muted
+> honk.mp3, pause, unmute); it now unlocks on a silent clip and only then
+> points the element at honk.mp3. Asked the owner whether a 🦆 appears with it
+> (a duck means a received honk broadcast; no duck means the audio stack).
+>
+> **Profile: Stats, title, bio and favourite category no longer wait** for the
+> whole question bank download and the per-subcategory counts — the Map and
+> mastery list draw in the background (`drawMapAndMastery`). Not timed.
 
 > ## 2026-10-30 (night) — a deploy left the owner's phone on "Connection issue"
 >

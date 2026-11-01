@@ -259,3 +259,50 @@ describe('showScreen mid-fade', () => {
     expect(document.getElementById('b').style.display).toBe('none');
   });
 });
+
+// ============================================
+// A late echo must not repaint a host's verdict (2026-11-01: "I tapped once to
+// change it to correct, but visually it flipped two more times").
+// ============================================
+import { beginJudgement, endJudgement, judgementBusy, staleJudgementEcho, JUDGEMENT_ECHO_WINDOW_MS } from '../js/game/state.js';
+
+describe('a host verdict and its echoes', () => {
+  it('locks the toggle while the write is out, and frees it when it answers', () => {
+    beginJudgement('a1', true);
+    expect(judgementBusy('a1')).toBe(true);
+    endJudgement('a1', true);
+    expect(judgementBusy('a1')).toBe(false);
+  });
+
+  it('drops the round-history echo carrying the verdict from BEFORE the tap', () => {
+    beginJudgement('a2', true);
+    // record_round_history committed first: its echo says incorrect.
+    expect(staleJudgementEcho({ id: 'a2', is_correct: false })).toBe(true);
+    // the host's own write echoes: correct — drawn.
+    expect(staleJudgementEcho({ id: 'a2', is_correct: true })).toBe(false);
+    endJudgement('a2', true);
+  });
+
+  it('still drops a stale echo that lands after the write answered', () => {
+    beginJudgement('a3', true);
+    endJudgement('a3', true, 1000);
+    expect(staleJudgementEcho({ id: 'a3', is_correct: false }, 2000)).toBe(true);
+  });
+
+  it('treats everything after the own echo as news (a co-host can still change it)', () => {
+    beginJudgement('a4', true);
+    endJudgement('a4', true, 1000);
+    expect(staleJudgementEcho({ id: 'a4', is_correct: true }, 1100)).toBe(false);
+    expect(staleJudgementEcho({ id: 'a4', is_correct: false }, 1200)).toBe(false);
+  });
+
+  it('gives up guarding once the window has passed', () => {
+    beginJudgement('a5', true);
+    endJudgement('a5', true, 0);
+    expect(staleJudgementEcho({ id: 'a5', is_correct: false }, JUDGEMENT_ECHO_WINDOW_MS + 1)).toBe(false);
+  });
+
+  it('leaves answers nobody judged alone', () => {
+    expect(staleJudgementEcho({ id: 'never', is_correct: false })).toBe(false);
+  });
+});
