@@ -255,7 +255,8 @@
 > **Do not insert it early** — `applyLiveTargets` falls back to the saved
 > target when a topic is too small, so a row written now would be earnable.
 > The other 11 Science words were handed to the owner as one SQL paste
-> (2026-10-30), tested on a scratch Postgres; ask for its verdict rows.
+> (2026-10-30). **MEASURED LIVE 2026-11-01 by the probe's new title-words
+> section: all 11 are written, none a placeholder, Supermassive correctly absent.**
 >
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
