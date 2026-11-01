@@ -176,3 +176,15 @@ describe('colour and glow (owner, 2026-11-01)', () => {
     expect(HEX_RANK_TIERS[topicStepIndex(1)]).toBe('legendary');
   });
 });
+
+describe('the wavy fill', () => {
+  it('draws nothing for an empty cell and stays inside its rectangle', async () => {
+    const { hexFillWavePath } = await import('../js/honeycomb.js');
+    expect(hexFillWavePath({ x: 0, y: 10, width: 60, height: 0 })).toBe('');
+    const d = hexFillWavePath({ x: 0, y: 40, width: 60, height: 30 });
+    expect(d.startsWith('M0,40')).toBe(true);
+    expect(d).toContain('Q');
+    const ys = [...d.matchAll(/[ ,](-?\d+(?:\.\d+)?)(?=[ QVHZ]|$)/g)].map(m => +m[1]);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(70);
+  });
+});

@@ -44,7 +44,7 @@ import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowPr
 import { RANK_WORDS, RANK_TIERS, rankCapFor } from './title-tiers.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories, labelForKey } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
-import { hexLayout, hexPoints, hexFill, hexFillRect, hexGlow, topicStepIndex, HEX_RANK_TIERS } from './honeycomb.js';
+import { hexLayout, hexPoints, hexFill, hexFillRect, hexGlow, topicStepIndex, HEX_RANK_TIERS, hexFillWavePath } from './honeycomb.js';
 import { loadTitleWords } from './title-content.js';
 
 // ============================================
@@ -2134,7 +2134,7 @@ function hexmapSvg(items, cols, ariaLabel) {
     // stays crisp at every level and an almost-full cell does not lose its
     // border to its own fill.
     const fillRect = r.height > 0
-      ? `<rect class="hexcell__fill" clip-path="url(#hexclip-${i})" x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/>`
+      ? `<path class="hexcell__fill" clip-path="url(#hexclip-${i})" d="${hexFillWavePath(r)}"/>`
       : '';
 
     // Only a non-zero count is printed. A grid of zeroes is noise, and the
@@ -2152,10 +2152,11 @@ function hexmapSvg(items, cols, ariaLabel) {
     // of the Map could never glow at all. Inside its own edge nothing can be
     // covered and nothing spills onto a neighbour.
     const glow = glowLevel
-      ? `<g clip-path="url(#hexclip-${i})"><polygon class="hexcell__glow" points="${pts}" filter="url(#hexglow-${glowLevel})" style="stroke-width:${(6 + glowLevel * 4)};opacity:${Math.min(1, 0.55 + it.glow * 0.45).toFixed(2)}"/></g>`
+      ? `<g clip-path="url(#hexclip-${i})"><polygon class="hexcell__glow" points="${pts}" filter="url(#hexglow-${glowLevel})" style="stroke-width:${(4 + glowLevel * 2.5)};opacity:${Math.min(1, 0.45 + it.glow * 0.5).toFixed(2)}"/></g>`
       : '';
 
-    return `<g class="hexcell${fill > 0 ? '' : ' hexcell--empty'}${it.drillable ? ' hexcell--open' : ''}" data-key="${escapeHtml(it.key)}"${tier ? ` data-rank="${tier}"` : ''}>
+    // The count sits low in the cell; once the fill covers it, it turns white.
+    return `<g class="hexcell${fill > 0 ? '' : ' hexcell--empty'}${fill >= 0.36 ? ' hexcell--deep' : ''}${it.drillable ? ' hexcell--open' : ''}" data-key="${escapeHtml(it.key)}"${tier ? ` data-rank="${tier}"` : ''}>
       <polygon class="hexcell__bg" points="${pts}"/>
       ${fillRect}
       ${glow}

@@ -8297,12 +8297,22 @@ body[style*="opacity: 0"] {
 /* The fill takes the colour of the rank held there (owner, 2026-11-01): height
    is how much is mastered, colour is the rank, and the glow behind the cell is
    hard-earned — nothing below half of a topic. */
-.hexcell[data-rank="common"]    { --hex-rank: var(--rarity-common); }
-.hexcell[data-rank="uncommon"]  { --hex-rank: var(--rarity-uncommon); }
-.hexcell[data-rank="rare"]      { --hex-rank: var(--rarity-rare); }
-.hexcell[data-rank="epic"]      { --hex-rank: var(--rarity-epic); }
-.hexcell[data-rank="legendary"] { --hex-rank: var(--rarity-legendary); }
-.hexcell[data-rank="mythic"]    { --hex-rank: var(--rarity-mythic); }
+/* ONE set of colours in every theme. The --rarity-* values are made for TEXT,
+   so dark mode lightens them (to read on a dark page) and light mode darkens
+   them (gold turns brown) — right for a word, wrong for a fill, which is a
+   block of colour carrying white numbers. */
+.hexcell[data-rank="common"]    { --hex-rank: #8E8E8E; }
+.hexcell[data-rank="uncommon"]  { --hex-rank: #3E9E4B; }
+.hexcell[data-rank="rare"]      { --hex-rank: #3366D6; }
+.hexcell[data-rank="epic"]      { --hex-rank: #8447E0; }
+.hexcell[data-rank="legendary"] { --hex-rank: #D9A21B; }
+.hexcell[data-rank="mythic"]    { --hex-rank: #D94545; }
+.hexcell--deep[data-rank] .hexcell__count {
+  fill: #fff;
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 2.5px;
+  paint-order: stroke;
+}
 .hexcell[data-rank] .hexcell__fill { fill: var(--hex-rank); }
 .hexcell__glow { fill: none; stroke: var(--hex-rank, var(--color-primary)); }
 /* Mythic — a whole subject — is the only one that breathes. */

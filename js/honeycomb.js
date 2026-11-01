@@ -162,3 +162,30 @@ export function topicStepIndex(fraction) {
   if (f >= 0.25) return 1;
   return 0;
 }
+
+/**
+ * The fill as a path with a WAVY top edge, so it reads as liquid rather than a
+ * ruled line (owner, 2026-11-01). A full cell has no surface to wave, and an
+ * almost-empty one gets a shallower wave so it never dips below the bottom.
+ *
+ * @param rect   from hexFillRect
+ * @param waves  how many crests across the cell
+ * → an SVG path `d` string, or '' when there is nothing to draw
+ */
+export function hexFillWavePath(rect, waves = 2) {
+  const { x, y, width: w, height: h } = rect || {};
+  if (!(h > 0) || !(w > 0)) return '';
+  const bottom = round(y + h);
+  const amp = round(Math.min(3, h / 3));
+  if (h >= w * 1.2 || amp <= 0) {
+    return `M${x},${y}H${round(x + w)}V${bottom}H${x}Z`;
+  }
+  const seg = w / (waves * 2);
+  let d = `M${x},${y}`;
+  for (let k = 0; k < waves * 2; k++) {
+    const cx = round(x + seg * k + seg / 2);
+    const cy = round(y + (k % 2 === 0 ? -amp : amp));
+    d += `Q${cx},${cy} ${round(x + seg * (k + 1))},${y}`;
+  }
+  return `${d}V${bottom}H${x}Z`;
+}
