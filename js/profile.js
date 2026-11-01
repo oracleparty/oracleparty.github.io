@@ -2147,14 +2147,18 @@ function hexmapSvg(items, cols, ariaLabel) {
     // only five blur filters, which a phone draws cheaply.
     const tier = HEX_RANK_TIERS[it.rank] || '';
     const glowLevel = it.glow > 0 ? Math.max(1, Math.round(it.glow * 5)) : 0;
+    // INWARD, clipped to the cell: the comb's hexes touch, so a halo drawn
+    // outside a cell is covered by its neighbours, and a subject in the middle
+    // of the Map could never glow at all. Inside its own edge nothing can be
+    // covered and nothing spills onto a neighbour.
     const glow = glowLevel
-      ? `<polygon class="hexcell__glow" points="${pts}" filter="url(#hexglow-${glowLevel})" style="opacity:${Math.min(1, 0.5 + it.glow * 0.5).toFixed(2)}"/>`
+      ? `<g clip-path="url(#hexclip-${i})"><polygon class="hexcell__glow" points="${pts}" filter="url(#hexglow-${glowLevel})" style="stroke-width:${(6 + glowLevel * 4)};opacity:${Math.min(1, 0.55 + it.glow * 0.45).toFixed(2)}"/></g>`
       : '';
 
     return `<g class="hexcell${fill > 0 ? '' : ' hexcell--empty'}${it.drillable ? ' hexcell--open' : ''}" data-key="${escapeHtml(it.key)}"${tier ? ` data-rank="${tier}"` : ''}>
-      ${glow}
       <polygon class="hexcell__bg" points="${pts}"/>
       ${fillRect}
+      ${glow}
       <polygon class="hexcell__edge" points="${pts}"/>
       <text class="hexcell__emoji" x="${c.cx}" y="${c.cy - size * 0.16}" text-anchor="middle" dominant-baseline="central">${escapeHtml(it.emoji || '')}</text>
       ${count}
@@ -2164,7 +2168,7 @@ function hexmapSvg(items, cols, ariaLabel) {
 
   return `<svg viewBox="0 0 ${width.toFixed(2)} ${height.toFixed(2)}" role="img" style="overflow:visible" aria-label="${escapeHtml(ariaLabel)}">
     <defs>${clips}${[1, 2, 3, 4, 5].map(n =>
-      `<filter id="hexglow-${n}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${3 + n * 2.6}"/></filter>`
+      `<filter id="hexglow-${n}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${2 + n * 1.2}"/></filter>`
     ).join('')}</defs>${groups}
   </svg>`;
 }

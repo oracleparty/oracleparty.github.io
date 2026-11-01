@@ -8304,7 +8304,7 @@ body[style*="opacity: 0"] {
 .hexcell[data-rank="legendary"] { --hex-rank: var(--rarity-legendary); }
 .hexcell[data-rank="mythic"]    { --hex-rank: var(--rarity-mythic); }
 .hexcell[data-rank] .hexcell__fill { fill: var(--hex-rank); }
-.hexcell__glow { fill: var(--hex-rank, var(--color-primary)); }
+.hexcell__glow { fill: none; stroke: var(--hex-rank, var(--color-primary)); }
 /* Mythic — a whole subject — is the only one that breathes. */
 .hexcell[data-rank="mythic"] .hexcell__glow { animation: hexMythicPulse 2.6s ease-in-out infinite; }
 @keyframes hexMythicPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }

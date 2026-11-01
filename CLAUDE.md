@@ -102,7 +102,7 @@
 > them as real-page screenshots, not yet on the live branch.** Fill HEIGHT is
 > still mastery. The fill's COLOUR is the rank held there (`data-rank` on each
 > `.hexcell`, coloured by `--rarity-*`). The GLOW is the owner's "hard earned"
-> rule: nothing below half of a topic, full at the whole topic (`hexGlow`,
+> rule: nothing below half of a topic, full at the whole topic, shining INWARD from the cell edge because the hexes touch and an outer halo was hidden for the middle subjects (`hexGlow`,
 > `GLOW_START` in `honeycomb.js`). A SUBJECT glows like its best topic — the
 > same rule ranks use, because a whole subject's share stays tiny for months.
 > Mythic alone pulses. Rejected on the way: a counts strip ("3 at Caveman"),
