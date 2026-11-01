@@ -2148,7 +2148,7 @@ function hexmapSvg(items, cols, ariaLabel) {
     const tier = HEX_RANK_TIERS[it.rank] || '';
     const glowLevel = it.glow > 0 ? Math.max(1, Math.round(it.glow * 5)) : 0;
     const glow = glowLevel
-      ? `<polygon class="hexcell__glow" points="${pts}" filter="url(#hexglow-${glowLevel})" style="opacity:${(0.3 + it.glow * 0.6).toFixed(2)}"/>`
+      ? `<polygon class="hexcell__glow" points="${pts}" filter="url(#hexglow-${glowLevel})" style="opacity:${Math.min(1, 0.5 + it.glow * 0.5).toFixed(2)}"/>`
       : '';
 
     return `<g class="hexcell${fill > 0 ? '' : ' hexcell--empty'}${it.drillable ? ' hexcell--open' : ''}" data-key="${escapeHtml(it.key)}"${tier ? ` data-rank="${tier}"` : ''}>
@@ -2164,7 +2164,7 @@ function hexmapSvg(items, cols, ariaLabel) {
 
   return `<svg viewBox="0 0 ${width.toFixed(2)} ${height.toFixed(2)}" role="img" style="overflow:visible" aria-label="${escapeHtml(ariaLabel)}">
     <defs>${clips}${[1, 2, 3, 4, 5].map(n =>
-      `<filter id="hexglow-${n}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${2 + n * 2}"/></filter>`
+      `<filter id="hexglow-${n}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${3 + n * 2.6}"/></filter>`
     ).join('')}</defs>${groups}
   </svg>`;
 }
