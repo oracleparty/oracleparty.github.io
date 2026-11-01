@@ -8297,16 +8297,24 @@ body[style*="opacity: 0"] {
 /* The fill takes the colour of the rank held there (owner, 2026-11-01): height
    is how much is mastered, colour is the rank, and the glow behind the cell is
    hard-earned — nothing below half of a topic. */
-/* ONE set of colours in every theme. The --rarity-* values are made for TEXT,
-   so dark mode lightens them (to read on a dark page) and light mode darkens
-   them (gold turns brown) — right for a word, wrong for a fill, which is a
-   block of colour carrying white numbers. */
-.hexcell[data-rank="common"]    { --hex-rank: #8E8E8E; }
-.hexcell[data-rank="uncommon"]  { --hex-rank: #3E9E4B; }
-.hexcell[data-rank="rare"]      { --hex-rank: #3366D6; }
-.hexcell[data-rank="epic"]      { --hex-rank: #8447E0; }
-.hexcell[data-rank="legendary"] { --hex-rank: #D9A21B; }
-.hexcell[data-rank="mythic"]    { --hex-rank: #D94545; }
+/* The Map has its own fill colours (owner, 2026-11-01): soft on the light
+   theme, deep gem tones on dark and OLED. The --rarity-* values are made for
+   TEXT — dark mode lightens them and light mode darkens them (gold turns
+   brown) — which is right for a word and wrong for a block of colour. */
+:root {
+  --hex-common: #A3A7AE; --hex-uncommon: #5DBE7B; --hex-rare: #5B8DEF;
+  --hex-epic: #A07BE8;   --hex-legendary: #E9C04E; --hex-mythic: #E86A6A;
+}
+[data-theme="dark"], [data-theme="oled"] {
+  --hex-common: #6B7280; --hex-uncommon: #15935A; --hex-rare: #1D4ED8;
+  --hex-epic: #7C3AED;   --hex-legendary: #E8A317; --hex-mythic: #C81E1E;
+}
+.hexcell[data-rank="common"]    { --hex-rank: var(--hex-common); }
+.hexcell[data-rank="uncommon"]  { --hex-rank: var(--hex-uncommon); }
+.hexcell[data-rank="rare"]      { --hex-rank: var(--hex-rare); }
+.hexcell[data-rank="epic"]      { --hex-rank: var(--hex-epic); }
+.hexcell[data-rank="legendary"] { --hex-rank: var(--hex-legendary); }
+.hexcell[data-rank="mythic"]    { --hex-rank: var(--hex-mythic); }
 .hexcell--deep[data-rank] .hexcell__count {
   fill: #fff;
   stroke: rgba(0, 0, 0, 0.45);

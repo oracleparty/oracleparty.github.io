@@ -107,8 +107,11 @@
 > same rule ranks use, because a whole subject's share stays tiny for months.
 > Mythic alone pulses. Rejected on the way: a counts strip ("3 at Caveman"),
 > glow by flat rank, glow by progress to the next rank, a colour per subject.
-> Open: the owner may want the glow stronger — it measured quieter on the real
-> page than in the mock-up.
+> Then, by the owner's notes: the fill's top is a WAVE (a ruled line looked
+> odd), the description line is gone ("fluff"), and the Map has its OWN fill
+> colours (`--hex-*`) because `--rarity-*` are text colours — paled on dark,
+> browned on light. Owner's pick: soft set on light, gem set on dark and OLED.
+> Open: words to take the same hues, adjusted to stay readable (owner chose it).
 
 > ## 2026-10-30 (night) — a deploy left the owner's phone on "Connection issue"
 >
