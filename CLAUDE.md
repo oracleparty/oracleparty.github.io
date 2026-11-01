@@ -142,7 +142,13 @@
 > travel to, the source. **A rank is capped by your highest step in the subject
 > of the reel-2 word you picked**: "Organelle Oracle" is only possible for
 > somebody Mythic in Science; ranks above that show locked when you spin to it.
-> Feats (Champion, Guardian) are not capped. Eternal and Untouchable are
+> Feats (Champion, Guardian) are not capped. **Capping by the SUBJECT, not
+> the topic, is the owner's decision (2026-11-01), weighed against capping by
+> the word's own topic:** "Spacey Guru" may be worn by somebody who reached
+> Guru in Human Body rather than in Space. The owner chose fun combos and one
+> rank per subject over titles that prove the exact topic — reaching Legendary
+> anywhere is already a huge achievement. Do not reopen it on the
+> "titles over-claim" argument; it was put to them. Eternal and Untouchable are
 > describing words and belong in reel 1.
 >
 > **Colour (owner, 2026-10-30): every word ALWAYS shows in its own rarity
