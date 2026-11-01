@@ -124,3 +124,41 @@ export function hexFillRect(cell, fill, size) {
     height: round(h),
   };
 }
+
+// ============================================
+// Colour and glow (owner, 2026-11-01)
+//
+// Fill HEIGHT is still how much is mastered. The fill's COLOUR is the rank held
+// there, and the GLOW is hard-earned: nothing below half of a topic, then it
+// brightens to full at the whole topic. A subject glows like its best topic,
+// the same rule ranks use, because a whole subject's share stays tiny for a
+// long time and would leave everybody dark.
+// ============================================
+
+/** The tier names in ladder order, so a cell can carry a CSS-readable rank. */
+export const HEX_RANK_TIERS = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+
+/** Below this share of a topic there is no glow at all. */
+export const GLOW_START = 0.5;
+
+/** 0..1 — how strongly a cell glows for a share of its topic mastered. */
+export function hexGlow(fraction) {
+  const f = Number(fraction);
+  if (!Number.isFinite(f) || f < GLOW_START) return 0;
+  return Math.min(1, (f - GLOW_START) / (1 - GLOW_START));
+}
+
+/**
+ * The step a share of ONE topic stands at, as an index into HEX_RANK_TIERS:
+ * -1 untouched, 0 started, then a quarter / half / three quarters / all.
+ * The same shares the topic words are earned at.
+ */
+export function topicStepIndex(fraction) {
+  const f = Number(fraction) || 0;
+  if (f <= 0) return -1;
+  if (f >= 1) return 4;
+  if (f >= 0.75) return 3;
+  if (f >= 0.5) return 2;
+  if (f >= 0.25) return 1;
+  return 0;
+}

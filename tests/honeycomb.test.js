@@ -155,3 +155,24 @@ describe('hexFillRect', () => {
     expect(hexFillRect(cell, -2, 40).height).toBe(0);
   });
 });
+
+describe('colour and glow (owner, 2026-11-01)', () => {
+  it('nothing glows below half a topic — glow is hard-earned', async () => {
+    const { hexGlow } = await import('../js/honeycomb.js');
+    expect(hexGlow(0)).toBe(0);
+    expect(hexGlow(0.49)).toBe(0);
+    expect(hexGlow(0.5)).toBe(0);
+    expect(hexGlow(0.75)).toBeCloseTo(0.5);
+    expect(hexGlow(1)).toBe(1);
+    expect(hexGlow(1.4)).toBe(1);
+  });
+  it('a topic share maps onto the same steps the topic words use', async () => {
+    const { topicStepIndex, HEX_RANK_TIERS } = await import('../js/honeycomb.js');
+    expect(topicStepIndex(0)).toBe(-1);
+    expect(HEX_RANK_TIERS[topicStepIndex(0.1)]).toBe('common');
+    expect(HEX_RANK_TIERS[topicStepIndex(0.25)]).toBe('uncommon');
+    expect(HEX_RANK_TIERS[topicStepIndex(0.5)]).toBe('rare');
+    expect(HEX_RANK_TIERS[topicStepIndex(0.8)]).toBe('epic');
+    expect(HEX_RANK_TIERS[topicStepIndex(1)]).toBe('legendary');
+  });
+});

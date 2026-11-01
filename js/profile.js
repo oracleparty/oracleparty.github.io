@@ -40,11 +40,11 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, subjectRanks, rankIndexBySubject, describeRequirement } from './titles.js';
+import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, subjectRanks, rankIndexBySubject, describeRequirement, currentTopicSizes } from './titles.js';
 import { RANK_WORDS, RANK_TIERS, rankCapFor } from './title-tiers.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories, labelForKey } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
-import { hexLayout, hexPoints, hexFill, hexFillRect } from './honeycomb.js';
+import { hexLayout, hexPoints, hexFill, hexFillRect, hexGlow, topicStepIndex, HEX_RANK_TIERS } from './honeycomb.js';
 import { loadTitleWords } from './title-content.js';
 
 // ============================================
@@ -944,9 +944,12 @@ export async function initProfilePage() {
   for (const c of allCats) catTotals[c.name] = c.count;
   const totalQuestions = allCats.reduce((s, c) => s + c.count, 0);
 
-  _mapData = { mastery: _mastery, catTotals, totalQuestions };
+  _mapData = { mastery: _mastery, catTotals, totalQuestions, stats };
   _mapCat = null;
   renderMasteryMap();
+  // Topic sizes arrive with the title words; the colours and glows need them,
+  // so draw again once they are in. Nothing waits on this.
+  wordsLoaded.then(() => { if (_mapData) renderMasteryMap(); }).catch(() => {});
 
   // Render mastery section
   if (masteryEl) {
@@ -2050,14 +2053,38 @@ function masteredInBranch(mastery, cat, node) {
   return total;
 }
 
+/** The size of one topic, from the live sizes or a count taken on drill-down. */
+function topicSize(cat, key) {
+  const live = currentTopicSizes()?.[cat]?.sizes?.[key];
+  if (Number.isFinite(live) && live > 0) return live;
+  return _subTotalCache[`${cat}|${key}`] || 0;
+}
+
+/** A subject glows like its best topic — the same rule ranks use. */
+function bestTopicShare(cat) {
+  const { mastery } = _mapData;
+  let best = 0;
+  for (const node of CATEGORY_META[cat]?.subcategories || []) {
+    if (/(^|-)misc$/.test(node.key)) continue;   // misc carries no steps
+    const size = topicSize(cat, node.key);
+    if (size > 0) best = Math.max(best, masteredInBranch(mastery, cat, node) / size);
+  }
+  return best;
+}
+
 function categoryCells() {
-  const { mastery, catTotals } = _mapData;
+  const { mastery, catTotals, stats } = _mapData;
+  const ranks = rankIndexBySubject(stats || []);
   return Object.entries(CATEGORY_META).map(([key, meta]) => ({
     key,
     label: meta.label,
     emoji: meta.emoji || meta.icon,
     mastered: mastery[key] || 0,
     total: catTotals[key] || 0,
+    // Colour is the subject's rank; somebody who has mastered anything at all
+    // is at least started, whatever the rank rule says yet.
+    rank: (mastery[key] || 0) > 0 ? Math.max(0, ranks[key] ?? 0) : -1,
+    glow: hexGlow(bestTopicShare(key)),
     // Wild Card has no subcategories, so it has nothing to open into. A cell
     // that looks tappable and does nothing is worse than one that does not.
     drillable: (meta.subcategories || []).length > 0,
@@ -2072,9 +2099,12 @@ function subcategoryCells(cat) {
     label: node.label,
     emoji: resolveSubcategoryIcon(cat, node.key),
     mastered: masteredInBranch(mastery, cat, node),
-    total: _subTotalCache[`${cat}|${node.key}`] ?? 0,
+    total: topicSize(cat, node.key),
     drillable: false,
-  }));
+  })).map(it => {
+    const share = it.total ? it.mastered / it.total : 0;
+    return { ...it, rank: it.mastered > 0 ? Math.max(0, topicStepIndex(share)) : -1, glow: hexGlow(share) };
+  });
 }
 
 /**
@@ -2113,7 +2143,16 @@ function hexmapSvg(items, cols, ariaLabel) {
       ? `<text class="hexcell__count" x="${c.cx}" y="${c.cy + size * 0.42}" text-anchor="middle" dominant-baseline="central">${it.mastered}</text>`
       : '';
 
-    return `<g class="hexcell${fill > 0 ? '' : ' hexcell--empty'}${it.drillable ? ' hexcell--open' : ''}" data-key="${escapeHtml(it.key)}">
+    // The glow sits BEHIND the cell. Quantised to five strengths so there are
+    // only five blur filters, which a phone draws cheaply.
+    const tier = HEX_RANK_TIERS[it.rank] || '';
+    const glowLevel = it.glow > 0 ? Math.max(1, Math.round(it.glow * 5)) : 0;
+    const glow = glowLevel
+      ? `<polygon class="hexcell__glow" points="${pts}" filter="url(#hexglow-${glowLevel})" style="opacity:${(0.3 + it.glow * 0.6).toFixed(2)}"/>`
+      : '';
+
+    return `<g class="hexcell${fill > 0 ? '' : ' hexcell--empty'}${it.drillable ? ' hexcell--open' : ''}" data-key="${escapeHtml(it.key)}"${tier ? ` data-rank="${tier}"` : ''}>
+      ${glow}
       <polygon class="hexcell__bg" points="${pts}"/>
       ${fillRect}
       <polygon class="hexcell__edge" points="${pts}"/>
@@ -2123,8 +2162,10 @@ function hexmapSvg(items, cols, ariaLabel) {
     </g>`;
   }).join('');
 
-  return `<svg viewBox="0 0 ${width.toFixed(2)} ${height.toFixed(2)}" role="img" aria-label="${escapeHtml(ariaLabel)}">
-    <defs>${clips}</defs>${groups}
+  return `<svg viewBox="0 0 ${width.toFixed(2)} ${height.toFixed(2)}" role="img" style="overflow:visible" aria-label="${escapeHtml(ariaLabel)}">
+    <defs>${clips}${[1, 2, 3, 4, 5].map(n =>
+      `<filter id="hexglow-${n}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${2 + n * 2}"/></filter>`
+    ).join('')}</defs>${groups}
   </svg>`;
 }
 

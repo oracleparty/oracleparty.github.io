@@ -8294,6 +8294,23 @@ body[style*="opacity: 0"] {
    would put dark text on the primary gold, which is roughly how the tier
    badges broke. At 0.75 a full cell still reads as full. */
 .hexcell__fill { fill: var(--color-primary); fill-opacity: 0.75; }
+/* The fill takes the colour of the rank held there (owner, 2026-11-01): height
+   is how much is mastered, colour is the rank, and the glow behind the cell is
+   hard-earned — nothing below half of a topic. */
+.hexcell[data-rank="common"]    { --hex-rank: var(--rarity-common); }
+.hexcell[data-rank="uncommon"]  { --hex-rank: var(--rarity-uncommon); }
+.hexcell[data-rank="rare"]      { --hex-rank: var(--rarity-rare); }
+.hexcell[data-rank="epic"]      { --hex-rank: var(--rarity-epic); }
+.hexcell[data-rank="legendary"] { --hex-rank: var(--rarity-legendary); }
+.hexcell[data-rank="mythic"]    { --hex-rank: var(--rarity-mythic); }
+.hexcell[data-rank] .hexcell__fill { fill: var(--hex-rank); }
+.hexcell__glow { fill: var(--hex-rank, var(--color-primary)); }
+/* Mythic — a whole subject — is the only one that breathes. */
+.hexcell[data-rank="mythic"] .hexcell__glow { animation: hexMythicPulse 2.6s ease-in-out infinite; }
+@keyframes hexMythicPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .hexcell[data-rank="mythic"] .hexcell__glow { animation: none; }
+}
 /* The outline was originally the same colour as the cell it outlines, so there
    was no comb — just soft blobs, and the fill at the bottom of a cell read as
    a stray arrow floating under it rather than as that cell filling up. The

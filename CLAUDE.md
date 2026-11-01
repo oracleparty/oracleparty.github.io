@@ -96,6 +96,20 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-01 — the Map wears your rank: colour and a hard-earned glow (NOT DEPLOYED)
+>
+> **Designed with the owner over mock-ups; built on the dev branch, shown to
+> them as real-page screenshots, not yet on the live branch.** Fill HEIGHT is
+> still mastery. The fill's COLOUR is the rank held there (`data-rank` on each
+> `.hexcell`, coloured by `--rarity-*`). The GLOW is the owner's "hard earned"
+> rule: nothing below half of a topic, full at the whole topic (`hexGlow`,
+> `GLOW_START` in `honeycomb.js`). A SUBJECT glows like its best topic — the
+> same rule ranks use, because a whole subject's share stays tiny for months.
+> Mythic alone pulses. Rejected on the way: a counts strip ("3 at Caveman"),
+> glow by flat rank, glow by progress to the next rank, a colour per subject.
+> Open: the owner may want the glow stronger — it measured quieter on the real
+> page than in the mock-up.
+
 > ## 2026-10-30 (night) — a deploy left the owner's phone on "Connection issue"
 >
 > **Every page, front page included, after the rank-ladder deploy; fine in a
