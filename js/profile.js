@@ -917,14 +917,25 @@ export async function initProfilePage() {
     }
   };
 
-  // Fetch stats + games
-  const [stats, games, masteryData, clapRows] = await Promise.all([
+  // Fetch stats + games. Mastery is asked for at the same moment but read
+  // only by the Map and the mastery list, which draw in the background below —
+  // so a slow mastery count no longer holds the stats up either.
+  const masteryLoaded = fetchMasteryCounts(userId).catch(() => []);
+  const [stats, games, clapRows] = await Promise.all([
     fetchPlayerStats(userId).catch(() => []),
     fetchGameHistory(userId, 5).catch(() => []),
-    fetchMasteryCounts(userId).catch(() => []),
     fetchClapHistory([userId]).catch(() => [])
   ]);
 
+  // THE MAP AND THE MASTERY LIST DRAW IN THE BACKGROUND, and nothing below
+  // waits for them (reported 2026-11-01, with a photo: Favourite Category,
+  // Stats and the Map all blank while the page "takes a bit to load"). They
+  // need the size of the bank — a read of every open question, several pages —
+  // plus a count per subcategory after THAT, and every section below this
+  // line used to sit behind both, though none of them reads a bank total.
+  // Stats, title, bio and the rest draw from `stats`, which is already here.
+  const drawMapAndMastery = async () => {
+  const masteryData = await masteryLoaded;
   // Build mastery lookup: { "history": N, "history|ancient": N, ... }
   const _mastery = {};
   for (const m of masteryData) {
@@ -1062,6 +1073,8 @@ export async function initProfilePage() {
       masteryEl.innerHTML = '<p class="profile-empty">Play games to start mastering questions</p>';
     }
   }
+  };
+  drawMapAndMastery().catch(e => logger.warn('Profile', 'could not draw the Map / mastery', e));
 
   // Title — use custom title if builder is unlocked, otherwise auto-title.
   // The first reader of the owner's words on this page; see wordsLoaded above.

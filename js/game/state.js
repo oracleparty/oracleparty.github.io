@@ -416,3 +416,39 @@ export function isPlayerAway(id) {
 export function currentGameAnswers(rows) {
   return answersForCurrentGame(rows, state.questions);
 }
+
+// ============================================
+// A HOST'S VERDICT, WHILE IT IS ON ITS WAY
+//
+// Reported 2026-11-01: "I changed my answer to correct then it flipped back
+// and forth." A judgement is a tap, a write, and then an echo over Realtime —
+// and on a slow database the echo of an EARLIER tap can land after a later
+// one, painting the old verdict back over the new for a moment. A second tap
+// while the first is still in flight is worse: it reads the value the first
+// already flipped and flips it back, for real.
+//
+// So a toggle is LOCKED while its write is out (judgementBusy), and for a few
+// seconds after, an echo that disagrees with what the host last chose is the
+// past arriving late and is not drawn (staleJudgementEcho). Display only: the
+// database decides the score, and the next read is the truth either way.
+// ============================================
+const _judgementIntent = new Map();   // answer id -> { correct, busy, until }
+const JUDGEMENT_ECHO_WINDOW_MS = 5000;
+
+export function judgementBusy(answerId) {
+  return !!_judgementIntent.get(String(answerId))?.busy;
+}
+export function beginJudgement(answerId, correct) {
+  _judgementIntent.set(String(answerId), { correct: !!correct, busy: true, until: Infinity });
+}
+/** The write answered. `correct` is what now stands (the old value on a refusal). */
+export function endJudgement(answerId, correct) {
+  _judgementIntent.set(String(answerId), { correct: !!correct, busy: false, until: Date.now() + JUDGEMENT_ECHO_WINDOW_MS });
+}
+export function staleJudgementEcho(row) {
+  if (!row || row.id == null || row.is_correct === undefined) return false;
+  const i = _judgementIntent.get(String(row.id));
+  if (!i) return false;
+  if (Date.now() > i.until) { _judgementIntent.delete(String(row.id)); return false; }
+  return !!row.is_correct !== i.correct;
+}

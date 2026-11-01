@@ -8612,8 +8612,15 @@ body.kb-open #question-screen {
    question is still reachable while the answer box stays put, rather than one
    of them being pushed off the end. */
 body.kb-open #question-screen .question-card {
-  flex: 0 1 auto;
-  min-height: 0;
+  /* NEVER SHRINKS. It was `flex: 0 1 auto; min-height: 0`, so in a screen too
+     short for everything the QUESTION was what gave way — measured 3px tall
+     around 47px of text in a 20-wager game with a keyboard up, at 320 wide,
+     which is the owner's photo (2026-11-01): the question gone, and the wager
+     grid sliding under the pinned answer box. The question is the one thing a
+     person typing an answer must be able to read. It keeps its height, a long
+     one scrolls inside a cap, and the wagers scroll under the answer box. */
+  flex: 0 0 auto;
+  max-height: 40%;
   overflow-y: auto;
   padding-top: 0;
   margin-bottom: var(--space-sm);

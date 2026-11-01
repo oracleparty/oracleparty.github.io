@@ -37,6 +37,7 @@ import {
   _deferredPhase, setDeferredPhase,
   _staleCheckCount, setStaleCheckCount,
   beginRoundClock,
+  staleJudgementEcho,
 } from './state.js';
 import { showChatBar, hideChatBar } from './chat.js';
 import { initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear, syncChaosDisplay } from './host.js';
@@ -1019,6 +1020,9 @@ export function handleAnswerChange(payload) {
   const event = payload.eventType;
 
   if (event === 'UPDATE' && payload.new) {
+    // An echo of a verdict the host has since changed again: the past arriving
+    // late. Drawing it flipped the toggle back and forth — see beginJudgement.
+    if (staleJudgementEcho(payload.new)) return;
     // Update cached answer object
     const idx = state.currentAnswers.findIndex(a => String(a.id) === String(payload.new.id));
     if (idx !== -1) {

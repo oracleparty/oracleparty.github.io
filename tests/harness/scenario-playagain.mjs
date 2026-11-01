@@ -180,7 +180,23 @@ try {
   if (!playAgainVisible) {
     problems.push(`Play Again button is not visible on ${await activeScreen(host)}`);
   } else {
+    // ON A SLOW LINK THE TAP MUST SAY SO AT ONCE (2026-11-01, the host:
+    // "Back to lobby button is not working at all"). The room reset is several
+    // writes awaited before the page moves; with nothing on screen meanwhile,
+    // a slow server is a dead button.
+    host.slowConnection(1500);
     await host.page.click('#btn-play-again').catch(() => {});
+    await host.page.waitForTimeout(250);
+    const fb = await host.page.evaluate(() => {
+      const b = document.querySelector('#btn-play-again');
+      return b ? { label: b.textContent.trim(), disabled: b.disabled } : null;
+    }).catch(() => null);
+    note(`250ms after the tap on a 1500ms link, the button reads ${JSON.stringify(fb)}`);
+    if (!fb || !fb.disabled || !/Returning/.test(fb.label)) {
+      problems.push(`the host tapped Back to Lobby on a slow link and nothing changed on screen: ${JSON.stringify(fb)}`);
+    }
+    // A second tap must not start the reset again.
+    await host.page.click('#btn-play-again', { force: true, timeout: 1000 }).catch(() => {});
   }
   // Non-host is offered a notice rather than being yanked out.
   await bob.page.waitForTimeout(2000);
@@ -191,6 +207,7 @@ try {
     await r.page.waitForURL('**/lobby.html*', { timeout: 25000 })
       .catch(() => problems.push(`${r.name} did not get back to the lobby after Play Again`));
   }
+  host.slowConnection(0);
   await host.page.waitForTimeout(2500);
   note(`back in lobby: ${table.store.table('players').map(p => p.display_name).join(', ')}`);
 

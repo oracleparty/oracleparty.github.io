@@ -359,6 +359,49 @@ try {
         }
 
         // ========================================================
+        // A SECOND TAP WHILE THE FIRST IS STILL BEING SAVED (2026-11-01)
+        //
+        // "I changed my answer to correct then it flipped back and forth." The
+        // toggle did not move until the write and two re-reads had answered,
+        // so on a slow link the host tapped again — and the second tap read the
+        // already-flipped verdict and flipped it BACK, announcing both. So: a
+        // slow server, two taps 300ms apart. The toggle must move on the first
+        // tap, the stored answer must end up flipped ONCE, and the room must be
+        // told once, in points CHANGED, not the round's new score.
+        // ========================================================
+        {
+          const chatBefore = table.store.table('chat_messages').length;
+          const startCorrect = !!table.store.table('answers').find(a => String(a.id) === String(answerId))?.is_correct;
+          table.store.slowFunction('op_set_judgement', 2000);
+          const t = host.page.locator(`#score-edit-sheet .answer-toggle--host[data-answer-id="${answerId}"]`);
+          await t.click().catch(() => {});
+          await host.page.waitForTimeout(150);
+          const movedOnTap = await host.page.evaluate(id => {
+            const el = document.querySelector(`#score-edit-sheet .answer-toggle--host[data-answer-id="${id}"]`);
+            return el ? el.classList.contains('answer-toggle--correct') : null;
+          }, answerId).catch(() => null);
+          await host.page.waitForTimeout(150);
+          await t.click().catch(() => {});
+          await host.page.waitForTimeout(4500);
+          table.store.normalFunction('op_set_judgement');
+          const end = !!table.store.table('answers').find(a => String(a.id) === String(answerId))?.is_correct;
+          const lines = table.store.table('chat_messages').slice(chatBefore)
+            .map(m => m.message || m.content || '').filter(t => /Host changed/.test(t));
+          note(`double tap on a slow server: shown on tap ${movedOnTap}, stored ${startCorrect} -> ${end}, announced ${JSON.stringify(lines)}`);
+          if (movedOnTap !== !startCorrect) {
+            problems.push('the Edit Scores toggle did not move when tapped — it waited for the server, which is what invites the second tap');
+          }
+          if (end === startCorrect) {
+            problems.push('a second tap while the first was still saving flipped the verdict back — the reported flip-flop');
+          }
+          if (lines.length !== 1) {
+            problems.push(`one verdict change was announced ${lines.length} times`);
+          } else if (/\(\+0 points\)/.test(lines[0]) || !/(points?\)|no change in points\))$/.test(lines[0])) {
+            problems.push(`the announcement does not state the change in points: ${lines[0]}`);
+          }
+        }
+
+        // ========================================================
         // WHEN op_set_judgement IS REACHED AND FAILS
         //
         // "Not installed" and "failed" are different answers, and the client

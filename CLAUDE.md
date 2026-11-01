@@ -96,6 +96,52 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-01 — a playtest list: a flip-flopping verdict, Back to Lobby, the keyboard, the profile
+>
+> **"I changed my answer to correct then it flipped back and forth" —
+> mechanism found by reading, robot-checked.** The Edit Scores toggle did not
+> move until the write AND two whole re-reads had answered; on a slow link the
+> host tapped again, and the second tap read the verdict the first had already
+> flipped and flipped it BACK — announcing both (the photo shows the second
+> line). The toggle now moves on the tap, and `judgementBusy` /
+> `beginJudgement` / `endJudgement` in `state.js` lock each answer while its
+> write is out (sheet AND reveal). `staleJudgementEcho` drops a Realtime echo
+> that disagrees with the host's latest choice for 5s, so an earlier write's
+> echo cannot paint the old verdict back. `scenario-social` double-taps on a
+> 2s `op_set_judgement` and requires one flip and one announcement.
+>
+> **The chat line states the CHANGE in points (owner's choice):** "(−5 points)",
+> not the round's new score, which read "+0" for somebody who had just lost 5.
+>
+> **Back to Lobby "not working at all", from the host — NOT reproduced; the
+> leading lead is the slow database.** The host's reset was four writes awaited
+> IN SILENCE with no deadline before the page moved. It now reads "Returning…"
+> on the tap, ignores a second tap, and stops waiting after
+> `RETURN_TO_LOBBY_TIMEOUT_MS` (8s, logged as `[ReturnToLobbySlow]`); a host
+> who arrives with the room still `playing` finishes the reset from the lobby.
+> Found on the way, and real: a phone that reached the lobby while the room
+> was still `playing` was bounced back to game.html by the next room UPDATE.
+> `_awaitingRoomReset` in `lobby.js` ignores 'playing' until the room is seen
+> in the lobby. `scenario-playagain` taps on a 1500ms link and requires the
+> label at 250ms.
+>
+> **The keyboard photo (question gone, wagers under the answer box) was the
+> question card set to SHRINK** (`flex: 0 1 auto; min-height: 0` under
+> `.kb-open`): measured 3px tall around 47px of text, 20 wagers, 320 wide. It
+> no longer shrinks (capped at 40%, own scroll); the wagers scroll under the
+> pinned answer box. Measured by setting `kb-open` by hand — still not seen on
+> an iPhone.
+>
+> **The lobby honk with no tap: cause NOT found.** No code path plays the honk
+> file without a tap or a received honk. The one thing that played the honk
+> RECORDING without a honk was the iOS unlock (muted honk.mp3, pause, unmute);
+> it now unlocks on a silent clip and only then points the element at
+> honk.mp3. If it recurs, this is ruled out.
+>
+> **Profile: Stats, title, bio and favourite category no longer wait** for the
+> whole question bank download and the per-subcategory counts — the Map and
+> mastery list draw in the background (`drawMapAndMastery`). Not timed.
+
 > ## 2026-10-30 (night) — a deploy left the owner's phone on "Connection issue"
 >
 > **Every page, front page included, after the rank-ladder deploy; fine in a
