@@ -1545,3 +1545,27 @@ try {
 } catch (err) {
   console.log(`  (could not check answers: ${err.message})`);
 }
+
+// ============================================
+// WHICH TITLE WORDS ARE WRITTEN LIVE?
+//
+// Asked 2026-11-01: the owner could not remember whether the Science words
+// SQL had been run. title_words is readable by visitors, so this answers it
+// from the live table rather than from anybody's memory. Read-only.
+// ============================================
+console.log('\n--- TITLE WORDS WRITTEN ON THE LIVE DATABASE ---');
+try {
+  const r = await req('title_words?select=category,subcategory,tier,word,is_placeholder&order=category,subcategory,tier');
+  if (r.status !== 200) {
+    console.log(`  (could not read title_words: HTTP ${r.status})`);
+  } else {
+    const rows = JSON.parse(r.body || '[]');
+    const real = rows.filter(w => !w.is_placeholder);
+    console.log(`  ${rows.length} rows: ${real.length} written, ${rows.length - real.length} placeholder`);
+    const sci = rows.filter(w => w.category === 'science');
+    console.log(`  Science (${sci.length}):`);
+    for (const w of sci) console.log(`     ${String(w.subcategory || '(subject)').padEnd(12)} ${String(w.tier).padEnd(10)} ${w.word}${w.is_placeholder ? '  [placeholder]' : ''}`);
+  }
+} catch (err) {
+  console.log(`  (could not check title words: ${err.message})`);
+}
