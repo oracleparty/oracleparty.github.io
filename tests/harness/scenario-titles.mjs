@@ -46,7 +46,7 @@ try {
     row('science', null, 25), row('science', 'space', 22),
     row('history', null, 15), row('history', 'ancient', 15),
   ]);
-  table.store.seed('title_unlocks', ['science', 'chronicles', 'caveman', 'hermit'].map((w, i) => ({
+  table.store.seed('title_unlocks', ['science', 'chronicles', 'caveman', 'hermit', 'oracle'].map((w, i) => ({
     id: i + 1, user_id: dana.userId, word_id: w, level: 1, unlocked_at: new Date().toISOString(),
   })));
   const profile = table.store.table('profiles').find(p => p.user_id === dana.userId);
@@ -60,6 +60,7 @@ try {
     hermitCapped: !!document.querySelector('#wheel-slot3 .title-wheel-item--capped'),
     cappedHint: document.querySelector('#wheel-slot3 .title-wheel-item--capped')?.dataset.hint || null,
     hermitPickable: !!document.querySelector('#wheel-slot3 [data-word-id="hermit"]'),
+    oraclePickable: !!document.querySelector('#wheel-slot3 [data-word-id="oracle"]'),
   }));
 
   const before = await read();
@@ -69,6 +70,10 @@ try {
   }
   if (!before.hermitCapped || before.hermitPickable) {
     problems.push('Hermit can be worn beside a History word although Dana is only a Caveman in History');
+  }
+  // Oracle is the exception: once held, it pairs with any word.
+  if (!before.oraclePickable) {
+    problems.push('Oracle was locked beside a History word, though Oracle pairs with any word once earned');
   }
   if (before.cappedHint && !/History/.test(before.cappedHint)) {
     problems.push(`the padlocked rank does not say which subject it needs: "${before.cappedHint}"`);

@@ -2491,7 +2491,9 @@ async function renderTitleWheel(userId, profile, stats) {
   const capNow = () => rankCapFor(rankIdx, subjectOf(selectedWords[2]));
   const rankStep = (w) => (w?.unlock?.type === 'rank' && !(w.unlock.condition?.subjects > 1))
     ? RANK_TIERS.indexOf(w.unlock.condition.tier) : -1;
-  const pairedOut = (w) => rankStep(w) > capNow();
+  // ORACLE GOES ANYWHERE (owner, 2026-11-01): it is so hard to reach — every
+  // question in a whole subject — that once held it pairs with any word.
+  const pairedOut = (w) => w?.unlock?.condition?.tier !== 'mythic' && rankStep(w) > capNow();
 
   // A rank already chosen that the new reel-2 word does not allow steps DOWN
   // to the highest one it does, rather than vanishing from the title.
@@ -2499,7 +2501,8 @@ async function renderTitleWheel(userId, profile, stats) {
     const cur = TITLE_WORDS[selectedWords[3]];
     if (!cur || !pairedOut(cur)) return;
     const allowed = Object.entries(TITLE_WORDS)
-      .filter(([id, w]) => w.slot === 3 && rankStep(w) >= 0 && !pairedOut(w) && unlockMap[id] > 0)
+      .filter(([id, w]) => w.slot === 3 && rankStep(w) >= 0 && rankStep(w) < rankStep(cur)
+                           && !pairedOut(w) && unlockMap[id] > 0)
       .sort((a, b) => rankStep(b[1]) - rankStep(a[1]));
     selectedWords[3] = allowed.length ? allowed[0][0] : null;
   };
