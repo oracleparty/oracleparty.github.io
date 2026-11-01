@@ -148,7 +148,10 @@
 > Guru in Human Body rather than in Space. The owner chose fun combos and one
 > rank per subject over titles that prove the exact topic — reaching Legendary
 > anywhere is already a huge achievement. Do not reopen it on the
-> "titles over-claim" argument; it was put to them. Eternal and Untouchable are
+> "titles over-claim" argument; it was put to them. **Oracle is the one
+> exception (owner, 2026-11-01): once earned anywhere it pairs with ANY word**,
+> because it is so hard to reach; a capped saved rank steps DOWN to the highest
+> allowed rank below it, never up to Oracle. Eternal and Untouchable are
 > describing words and belong in reel 1.
 >
 > **Colour (owner, 2026-10-30): every word ALWAYS shows in its own rarity
