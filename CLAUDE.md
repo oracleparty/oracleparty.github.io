@@ -196,6 +196,9 @@
 > "Chronicles Hermit", want "Chronicles Caveman""*. **The owner must run
 > `retire-old-ranks` SQL AFTER deploying** (it was handed over in chat), or the
 > old build re-awards Apprentice on the next sign-in.
+> **DONE 2026-11-01:** a read-only check found 1 old-rank unlock left and no
+> title wearing one; the owner then deleted apprentice/scholar/master/oracle/
+> eternal unlocks (nobody can have earned the new Oracle or Eternal yet).
 >
 > | reel | grammar | means | fed by |
 > |---|---|---|---|
