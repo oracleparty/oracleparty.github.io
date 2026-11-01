@@ -186,17 +186,24 @@ try {
     // a slow server is a dead button.
     host.slowConnection(1500);
     await host.page.click('#btn-play-again').catch(() => {});
-    await host.page.waitForTimeout(250);
+    await host.page.waitForTimeout(100);
     const fb = await host.page.evaluate(() => {
       const b = document.querySelector('#btn-play-again');
       return b ? { label: b.textContent.trim(), disabled: b.disabled } : null;
     }).catch(() => null);
-    note(`250ms after the tap on a 1500ms link, the button reads ${JSON.stringify(fb)}`);
+    note(`100ms after the tap on a 1500ms link, the button reads ${JSON.stringify(fb)}`);
     if (!fb || !fb.disabled || !/Returning/.test(fb.label)) {
       problems.push(`the host tapped Back to Lobby on a slow link and nothing changed on screen: ${JSON.stringify(fb)}`);
     }
-    // A second tap must not start the reset again.
-    await host.page.click('#btn-play-again', { force: true, timeout: 1000 }).catch(() => {});
+    // AND IT MUST NOT WAIT FOR THE SERVER (owner: "It takes 8 seconds to
+    // return to lobby??!"). The room reset belongs to the lobby page now; the
+    // tap only leaves. On a 1500ms link the old code took several round trips.
+    const tLeft = Date.now();
+    const leftInTime = await host.page.waitForURL('**/lobby.html*', { timeout: 2500, waitUntil: 'commit' }).then(() => true).catch(() => false);
+    note(`host reached the lobby page ${leftInTime ? `${Date.now() - tLeft + 100}ms` : 'NOT within 2.6s'} after tapping Back to Lobby on a 1500ms link`);
+    if (!leftInTime) {
+      problems.push('Back to Lobby waited on the network: the host was still on the results 2.6s after tapping, on a 1500ms link (the old code took 4.4s)');
+    }
   }
   // Non-host is offered a notice rather than being yanked out.
   await bob.page.waitForTimeout(2000);

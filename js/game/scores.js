@@ -1936,67 +1936,32 @@ export async function showResultsScreen() {
   }
 }
 
-/**
- * How long the host's room reset may hold Back to Lobby before the phone goes
- * anyway. Reported 2026-11-01, from the host: "Back to lobby button is not
- * working at all" — no fade, nothing. The reset is three writes and a phase
- * change, AWAITED IN SILENCE before the page moved, with no deadline: on the
- * slow database measured in the last two playtests that is many seconds of a
- * button that does nothing visible, and a request that never answers was a
- * button that never worked. The writes are still sent; past this, the host
- * stops waiting for the answers.
- */
-const RETURN_TO_LOBBY_TIMEOUT_MS = 8000;
 let _returningToLobby = false;
 
+/**
+ * BACK TO LOBBY GOES AT ONCE (owner, 2026-11-01: "It takes 8 seconds to return
+ * to lobby??!" — and the report before it, "after the game I couldn't get back
+ * in for another round", from the host: the tap did nothing at all).
+ *
+ * The host's tap used to reset the room — clear the answers, the question
+ * list, the clocks, the status, then the phase — AWAITING all of it in silence
+ * before the page moved, with no deadline. On the slow database the last two
+ * playtests measured, that is seconds of a dead button, and a request that
+ * never answers was a button that never worked.
+ *
+ * The phone now leaves on the tap, for everybody, and the HOST's lobby does
+ * the reset on arrival (lobby.js, "the host came back before the room did").
+ * The lobby is a page that stays open, so nothing is lost by moving the work
+ * there; the game page was about to be unloaded, which cancels requests in
+ * flight anyway.
+ */
 export async function handlePlayAgain() {
-  // ONCE. A second tap while the first is still resetting the room used to
-  // start the whole reset again.
   if (_returningToLobby) return;
   _returningToLobby = true;
-  // SAY SO ON THE TAP. Everything below can take a round trip or several.
   const btn = $('#btn-play-again');
   if (btn) { btn.disabled = true; btn.textContent = 'Returning\u2026'; }
-
   setIsLeaving(true); // Player stays in room — prevent handleUnload from removing
   try { if (_cleanup) _cleanup(); } catch (_) { /* Don't let cleanup errors block navigation */ }
-
-  // Only the host resets the room status to 'lobby'.
-  // Non-host players just navigate directly — they don't broadcast a status change
-  // that would force ALL players out of the results screen.
-  if (state.room?.isHost) {
-    const reset = (async () => {
-      await Promise.all([
-        deleteAnswersByRoom(state.room.id, state.room.playerId),
-        // current_question is carried by the op_set_phase call below, and
-        // since 061 it is not a column a client may write.
-        updateGameState(state.room.id, {
-          question_ids: [],
-          question_started_at: null,
-          countdown_started_at: null
-        }),
-        updateRoomStatus(state.room.id, 'lobby')
-      ]);
-      // The phase LAST, and through the server. Everything above is the room
-      // being cleared out; this is the signal that sends every phone back to
-      // the lobby, so it must not arrive before the clear-out it announces.
-      if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'lobby', 0)) {
-        await updateGameState(state.room.id, { game_phase: 'lobby' });
-      }
-    })();
-    let timer;
-    const deadline = new Promise(resolve => { timer = setTimeout(() => resolve('timeout'), RETURN_TO_LOBBY_TIMEOUT_MS); });
-    try {
-      if (await Promise.race([reset, deadline]) === 'timeout') {
-        recordFault('ReturnToLobbySlow', `the room reset had not answered after ${RETURN_TO_LOBBY_TIMEOUT_MS}ms; going to the lobby anyway`, null, 'warn');
-      }
-    } catch (err) {
-      logger.error('Game', 'handlePlayAgain host cleanup failed', err);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   sessionStorage.setItem('oracle_party_returning_from_game', '1');
   navigateWithFadeReplace('lobby.html');
 }

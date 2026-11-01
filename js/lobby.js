@@ -214,13 +214,13 @@ async function init() {
   }
   // Back from a game the room has not yet closed: see _awaitingRoomReset.
   _awaitingRoomReset = isReturningFromGame && currentRoom.status === 'playing';
-  // THE HOST CAME BACK BEFORE THE ROOM DID. Back to Lobby stops waiting for
-  // its reset after a deadline (handlePlayAgain), so on a very slow link the
-  // host can arrive here with the room still marked as playing — and every
-  // other phone still on the results, waiting for the phase that sends them
-  // home. Finish the reset from here. Each step is the same write Back to
-  // Lobby makes, so repeating one that did land changes nothing.
-  if (currentRoom.status === 'playing' && isReturningFromGame && room.isHost) {
+  // THE HOST CAME BACK BEFORE THE ROOM DID — which is now always. Back to
+  // Lobby leaves the game page on the tap (handlePlayAgain), so the room is
+  // reset HERE: answers, question list, clocks, status, then the phase that
+  // sends every other phone home from the results. Each step is idempotent, so
+  // a reset that already landed (the gear's Return to Lobby) changes nothing.
+  if (isReturningFromGame && room.isHost
+      && (currentRoom.status === 'playing' || currentRoom.game_phase !== 'lobby')) {
     (async () => {
       await Promise.all([
         deleteAnswersByRoom(room.id, room.playerId),

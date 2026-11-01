@@ -420,20 +420,25 @@ export function currentGameAnswers(rows) {
 // ============================================
 // A HOST'S VERDICT, WHILE IT IS ON ITS WAY
 //
-// Reported 2026-11-01: "I changed my answer to correct then it flipped back
-// and forth." A judgement is a tap, a write, and then an echo over Realtime —
-// and on a slow database the echo of an EARLIER tap can land after a later
-// one, painting the old verdict back over the new for a moment. A second tap
-// while the first is still in flight is worse: it reads the value the first
-// already flipped and flips it back, for real.
+// Reported 2026-11-01: "I tapped once to change it to correct, but visually it
+// flipped two more times." Every phone calls record_round_history at the
+// reveal, and that function UPDATEs every answer row in the room — so Realtime
+// sends each row out again. On a slow database that save can still be in
+// flight when the host taps: its echo carries the verdict from BEFORE the tap
+// and lands after it, painting "incorrect" back over the host's "correct",
+// and then the host's own write echoes and paints "correct" again. Two flips
+// from one tap. (A second tap while the first was saving was worse: it read
+// the already-flipped verdict and flipped it back for real.)
 //
-// So a toggle is LOCKED while its write is out (judgementBusy), and for a few
-// seconds after, an echo that disagrees with what the host last chose is the
-// past arriving late and is not drawn (staleJudgementEcho). Display only: the
-// database decides the score, and the next read is the truth either way.
+// So a toggle is LOCKED while its write is out (judgementBusy), and an echo
+// that disagrees with what the host last chose is the past arriving late and
+// is not drawn (staleJudgementEcho) — until an echo that AGREES arrives, which
+// is the host's own write coming back; after that every echo is news again
+// (a co-host's change, say). JUDGEMENT_ECHO_WINDOW_MS bounds it if the
+// agreeing echo is never seen. Display only: the database holds the score.
 // ============================================
 const _judgementIntent = new Map();   // answer id -> { correct, busy, until }
-const JUDGEMENT_ECHO_WINDOW_MS = 5000;
+export const JUDGEMENT_ECHO_WINDOW_MS = 15000;
 
 export function judgementBusy(answerId) {
   return !!_judgementIntent.get(String(answerId))?.busy;
@@ -442,13 +447,23 @@ export function beginJudgement(answerId, correct) {
   _judgementIntent.set(String(answerId), { correct: !!correct, busy: true, until: Infinity });
 }
 /** The write answered. `correct` is what now stands (the old value on a refusal). */
-export function endJudgement(answerId, correct) {
-  _judgementIntent.set(String(answerId), { correct: !!correct, busy: false, until: Date.now() + JUDGEMENT_ECHO_WINDOW_MS });
+export function endJudgement(answerId, correct, now = Date.now()) {
+  const key = String(answerId);
+  const prev = _judgementIntent.get(key);
+  // Its echo already came back while the write was out: nothing left to guard.
+  if (prev?.echoed && prev.correct === !!correct) { _judgementIntent.delete(key); return; }
+  _judgementIntent.set(key, { correct: !!correct, busy: false, until: now + JUDGEMENT_ECHO_WINDOW_MS });
 }
-export function staleJudgementEcho(row) {
+export function staleJudgementEcho(row, now = Date.now()) {
   if (!row || row.id == null || row.is_correct === undefined) return false;
-  const i = _judgementIntent.get(String(row.id));
+  const key = String(row.id);
+  const i = _judgementIntent.get(key);
   if (!i) return false;
-  if (Date.now() > i.until) { _judgementIntent.delete(String(row.id)); return false; }
-  return !!row.is_correct !== i.correct;
+  if (now > i.until) { _judgementIntent.delete(key); return false; }
+  if (!!row.is_correct === i.correct) {
+    // The host's own write has come back. Nothing after it is stale.
+    if (i.busy) i.echoed = true; else _judgementIntent.delete(key);
+    return false;
+  }
+  return true;
 }
