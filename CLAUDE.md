@@ -96,6 +96,51 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-02 — a playtest list: a lost bet, claps never read back, +15s (079, 080)
+>
+> **"My friend bet 20, it showed he bet zero" — not a wager bug.** He typed,
+> left the page during the final question, came back to a closed round. A page
+> that is not running cannot auto-submit, so the server filled a blank, and a
+> blank final answer scored 0 by design. Owner's two calls: **what is typed is
+> sent as the phone leaves** (`sendDraftAnswer` in `question.js`, on
+> visibility-hidden and pagehide; a draft, so a returning player can still edit
+> and Submit), and **a blank under a locked bet LOSES it** (migration 079;
+> a player who never locked still stakes 0). `scenario-timesup` empties the box
+> after the hide so only the draft can carry the text; break-tested.
+>
+> **+15s on every final question (owner).** `op_round_seconds` (080) is the
+> one server rule, read by `op_submit_answer` and `op_advance_deadline`;
+> `roundTimerSeconds()` in `state.js` + `FINAL_QUESTION_EXTRA_SECONDS` mirror
+> it. **080 MUST BE RUN BEFORE THIS JS IS LIVE**: otherwise the screen gives
+> 45s and the server refuses answers after 33s. Rules pin both directions.
+>
+> **CLAPS WERE NEVER READ BACK LIVE — measured, and the harness hid it.**
+> `op_clap_answer` files a clap under `countdown_started_at::text`
+> (`2026-11-02 02:01:01.76+00`); the phone filtered by its ISO copy
+> (`...T02:01:01.76+00:00`). Measured on Postgres 16: `now()::text` and
+> `to_json(now())` differ exactly so. Every claps read came back empty, and the
+> 3-second poll wiped each clap Realtime had drawn — "vanishes randomly", and
+> Favourite Answers mostly empty. `clapGameKey` in `clap-logic.js`; `fetchClaps`
+> asks both spellings. **The fake store filed the key in the client's spelling**,
+> so every robot agreed; it uses the Postgres spelling now and
+> `scenario-fullgame` failed on the old client.
+>
+> **The scoreboard animation played twice:** on `scores_reveal` ANY answer
+> UPDATE re-animated it, and `record_round_history` stamps every row. It now
+> re-runs only when a scoring field changed (`answerScoreSig`).
+> `scenario-latescreen` sends a history-only UPDATE; break-tested.
+>
+> **Also:** honk counts persist per room in sessionStorage (they reset at Start);
+> the achievement pop-up waits for the podium (`state._podiumDone`); every worn
+> title now colours its words by rarity on every row (`titleWordsHtml`, matched
+> reel by reel from the text on the seat — the owner's 10-30 rule had only ever
+> reached the Title Builder); a player typing in chat gets a NEUTRAL ring and
+> dots badge on their avatar (owner's pick; any hue would read as a rarity).
+>
+> **Word-3 nouns (open):** a topic's Legendary also gives a noun, a kind of
+> person, wearable with any word — and it must be GRAND or FUNNY. Surgeon,
+> Alchemist, Astronaut were rejected as neither.
+
 > ## 2026-11-01 — the Map wears your rank: colour and a hard-earned glow (DEPLOYED 20261101b)
 >
 > **Designed with the owner over mock-ups; built on the dev branch, shown to
