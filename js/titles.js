@@ -300,6 +300,12 @@ export const TITLE_WORDS = {
     followsWord: 'w:history:medieval:rare',
     unlock: { type: 'count', condition: { category: 'history', subcategory: 'medieval', right: 0 } },
     levelMultiplier: 1
+  },
+  nounPharaoh: {
+    slot: 3, word: 'Pharaoh', rarity: 'rare', hint: '',
+    followsWord: 'w:history:ancient:rare',
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 0 } },
+    levelMultiplier: 1
   }
 };
 

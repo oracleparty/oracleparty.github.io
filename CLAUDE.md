@@ -367,7 +367,8 @@
 > to a table — they had agreed to Civilized only.** A reply to a table is not
 > agreement to every cell: confirm each word by name before writing SQL, and
 > hand over ONE paste once all four are settled (owner: "I'm not running SQL
-> every time"). Old code words Chronicles and Antiquity DELETED; the four go in by SQL;
+> every time"). Ancient's reel-3 noun: **Pharaoh** (`nounPharaoh`); Mummy was
+> dropped because Mummified is the Rare word beside it. Old code words Chronicles and Antiquity DELETED; the four go in by SQL;
 > Ancient (58) is under every floor, so all four stay locked until it grows.
 > **WHAT FINALLY WORKED, after ~15 rejected batches:** the locked words are
 > PLAIN TEXTBOOK VOCABULARY of the topic that turns into a roast or a deadpan
