@@ -17,6 +17,7 @@
 import { $, escapeHtml, renderAvatar } from '../utils.js';
 import { logger } from '../logger.js';
 import { state, showScreen } from './state.js';
+import { titleWordsHtml } from '../titles.js';
 import {
   PODIUM_TIMING, cumulativeSeries, podiumSlots, rankPlayers, ordinal,
   replayValueAt, replayEnd, barSize,
@@ -93,7 +94,7 @@ function runPodium({ sorted, scores, allAnswers }, done) {
     <div class="podium__stage">
       ${slots.map(s => {
         const p = s.player;
-        const title = p.title ? `<div class="podium__ttl">${escapeHtml(p.title)}</div>` : '';
+        const title = p.title ? `<div class="podium__ttl" data-title="${escapeHtml(p.title)}">${titleWordsHtml(p.title)}</div>` : '';
         return `<div class="podium__col podium__col--${s.medal}" data-player-id="${p.id}">
           <div class="podium__face">
             ${renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji })}

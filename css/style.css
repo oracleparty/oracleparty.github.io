@@ -9311,3 +9311,45 @@ body.kb-open #question-screen .question-card {
 .podium__you b { color: var(--color-primary); }
 .podium__foot--float .podium__you { margin-bottom: 4px; font-size: .7rem; }
 .podium__next { font-size: .7rem; color: var(--color-text-dim); }
+
+/* Each word of a worn title in its rarity colour, everywhere a title appears
+   (owner, 2026-10-30). The italic and size come from the surrounding title
+   element; only the colour is the word's own. */
+.title-word[data-rarity="common"]    { color: var(--rarity-common); }
+.title-word[data-rarity="uncommon"]  { color: var(--rarity-uncommon); }
+.title-word[data-rarity="rare"]      { color: var(--rarity-rare); }
+.title-word[data-rarity="epic"]      { color: var(--rarity-epic); }
+.title-word[data-rarity="legendary"] { color: var(--rarity-legendary); }
+.title-word[data-rarity="mythic"]    { color: var(--rarity-mythic); }
+
+/* Somebody is typing in chat: a neutral ring and a dots badge on their avatar
+   (owner's pick, 2026-11-02). Neutral because title words are coloured by
+   rarity; any hue here would read as a rank. Applied by typing.js. */
+.avatar.is-typing {
+  position: relative;
+  box-shadow: 0 0 0 2px var(--color-text), 0 0 8px 1px color-mix(in srgb, var(--color-text) 45%, transparent);
+  animation: typing-ring 1.6s ease-in-out infinite;
+}
+.avatar.is-typing::after {
+  content: '•••';
+  position: absolute;
+  right: -6px;
+  bottom: -5px;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 2px;
+  border-radius: 8px;
+  background: var(--color-text);
+  color: var(--color-bg);
+  font: 700 8px/14px system-ui, sans-serif;
+  letter-spacing: -1px;
+  text-align: center;
+  pointer-events: none;
+}
+@keyframes typing-ring {
+  0%, 100% { box-shadow: 0 0 0 2px var(--color-text), 0 0 4px 0 color-mix(in srgb, var(--color-text) 30%, transparent); }
+  50%      { box-shadow: 0 0 0 2px var(--color-text), 0 0 10px 2px color-mix(in srgb, var(--color-text) 50%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .avatar.is-typing { animation: none; } }
+/* A honk still shakes a typer: the jiggle outranks the ring's pulse. */
+.avatar.is-typing.honk-jiggle { animation: honk-jiggle 0.55s ease-in-out; }

@@ -57,6 +57,8 @@ import { attachProfileCardHandler } from './profile.js';
 import { updatePresence } from './presence.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
+import { titleWordsHtml, repaintTitleColours } from './titles.js';
+import { loadTitleWords } from './title-content.js';
 
 // --- State ---
 let room = null;
@@ -274,6 +276,9 @@ async function init() {
   // Repaint the counts only. A whole-list redraw per honk rebuilt the rows
   // under people's fingers mid-spam — see updateHonkBadges.
   initHonkSystem(room.id, room.playerId, () => updateHonkBadges());
+  // Owner-written title words arrive by fetch, so rows drawn before they land
+  // show those words plain; colour them in once they are here.
+  loadTitleWords().then(() => repaintTitleColours()).catch(() => {});
   attachHonkSoundToggle($('#btn-honk-sound'));
   chaosAvailable().then(ok => {
     if (ok) settingsModal?.querySelectorAll('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
@@ -812,7 +817,7 @@ function _renderPlayerItem(p, { showRoleBadge = false } = {}) {
   // since it was written; this row was the one place staying quiet.
   const titleText = p.is_bot
     ? ''
-    : `<span class="player-title">${escapeHtml(p.title || 'Guest')}</span>`;
+    : `<span class="player-title" data-title="${escapeHtml(p.title || 'Guest')}">${titleWordsHtml(p.title || 'Guest')}</span>`;
   // LINE 2 IS THE TITLE AND NOTHING ELSE, for everybody. The co-host badge sat
   // here for one afternoon and the owner's reading of it was right: beside an
   // italic title it does not look like a role, it looks like the title has been

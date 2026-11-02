@@ -451,7 +451,7 @@ export const STATES = {
         // Line 2 is the title and nothing else. NOBODY IS BLANK — a guest has
         // no profile and therefore no title, and reads "Guest".
         const sub = p.isBot ? '' :
-          '<span class="player-title">' + (p.title || 'Guest') + '</span>';
+          '<span class="player-title">' + (p.titleHtml || p.title || 'Guest') + '</span>';
         // The host sees action buttons on everyone but themselves — and on a
         // bot, only the remove button. Host and co-host are for humans.
         // ONE CO-HOST: the OFFER (☆) is hidden while the room has one, and only
@@ -487,7 +487,9 @@ export const STATES = {
       // cannot produce: a signed-in player who has built a title, a signed-in
       // player who has not (and therefore reads "Novice"), and a guest (who has
       // no profile at all, and reads "Guest"). All three widths in one list.
-      const host = { ...P[0], isHost: true, title: 'Keeper of Secrets' };
+      const host = { ...P[0], isHost: true, title: 'Keeper of Secrets',
+        // Coloured words, as titleWordsHtml draws them, so the sweep measures them.
+        titleHtml: '<span class="title-word" data-rarity="rare">Mighty</span> <span class="title-word" data-rarity="epic">Multicellular</span> <span class="title-word" data-rarity="legendary">Guru</span>' };
       const cohost = { ...P[1], isCohost: true, title: 'Novice' };
       document.getElementById('host-list').innerHTML =
         row(host, { roleBadge: true, roomHasCohost: true })
@@ -1314,7 +1316,16 @@ export const STATES = {
       // score, and the locked wager or "Waiting...". This mock had drifted to a
       // name with no title, which is why nothing saw a long title cut off
       // (reported 2026-10-27: "Phantom World Apprenti…").
-      const TITLES = ['Phantom World Caveman', 'Legendary Chrono Hermit', 'Novice', 'Guest', 'Epic Science Oracle', 'Guest'];
+      // Every rarity appears, so the sweep measures each colour on all three
+      // themes — the same markup titleWordsHtml builds (owner, 2026-10-30:
+      // every word in its own rarity colour, everywhere a title appears).
+      const tw = (...ws) => ws.map(([w, r]) => '<span class="title-word" data-rarity="' + r + '">' + w + '</span>').join(' ');
+      const TITLES = [
+        tw(['Phantom', 'legendary'], ['World', 'common'], ['Caveman', 'common']),
+        tw(['Relentless', 'rare'], ['Organelle', 'uncommon'], ['Hermit', 'uncommon']),
+        'Novice', 'Guest',
+        tw(['Lucky', 'legendary'], ['Periodic', 'epic'], ['Oracle', 'mythic']),
+        'Guest'];
       const WAGERS = [20, 10, 0];
       document.getElementById('fw-player-list').innerHTML = P.map((p, i) => {
         const locked = i < 3;

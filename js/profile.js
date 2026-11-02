@@ -40,7 +40,7 @@ import { getCurrentUser, getDisplayName, setDisplayName, showSignUpModal, showSi
 import { getPresenceForUser, initGlobalPresence, destroyGlobalPresence } from './presence.js';
 import { applyTheme } from './theme.js';
 import { logger, reportWriteFailure } from './logger.js';
-import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, subjectRanks, rankIndexBySubject, describeRequirement, currentTopicSizes } from './titles.js';
+import { TITLE_WORDS, RARITY_ORDER, buildDisplayTitle, categoryRollupRows, rowProficiency, mergedCategoryRows, subjectRanks, rankIndexBySubject, describeRequirement, currentTopicSizes, titleWordsHtml } from './titles.js';
 import { RANK_WORDS, RANK_TIERS, rankCapFor } from './title-tiers.js';
 import { CATEGORY_META, resolveCategoryLabel, findSubcategoryNode, resolveSubcategoryIcon, flattenSubcategories, labelForKey } from './categories.js';
 import { RADAR_VIEWBOX, radarPoints, polygonPoints, buildRadarAxes, radarExtremes } from './radar.js';
@@ -264,7 +264,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     <div class="profile-card__header">
       <div class="profile-card__avatar">${avatarHtml}</div>
       <div class="profile-card__name">${nameTag}</div>
-      ${profileTitle ? `<div class="profile-card__title">${escapeHtml(profileTitle)}</div>` : ''}
+      ${profileTitle ? `<div class="profile-card__title" data-title="${escapeHtml(profileTitle)}">${titleWordsHtml(profileTitle)}</div>` : ''}
     </div>
   `;
   sheet.classList.add('active');
@@ -555,7 +555,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     <div class="profile-card__header">
       <div class="profile-card__avatar">${avatarHtml}</div>
       <div class="profile-card__name">${nameTag}</div>
-      ${profileTitle ? `<div class="profile-card__title">${escapeHtml(profileTitle)}</div>` : ''}
+      ${profileTitle ? `<div class="profile-card__title" data-title="${escapeHtml(profileTitle)}">${titleWordsHtml(profileTitle)}</div>` : ''}
     </div>
     ${statsHtml}
     ${roleHtml}

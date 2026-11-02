@@ -41,7 +41,7 @@ import {
 } from '../supabase.js';
 import { favouriteAnswers } from './clap-logic.js';
 import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../auth.js';
-import { evaluateUnlocks, hasEarnedARank, planCelebration } from '../titles.js';
+import { evaluateUnlocks, hasEarnedARank, planCelebration, titleWordsHtml } from '../titles.js';
 import { loadTitleWords } from '../title-content.js';
 import { showCelebration } from '../celebration.js';
 import { CATEGORY_META } from '../categories.js';
@@ -200,7 +200,7 @@ export async function showScoresScreen() {
                        delta < 0 ? 'score-anim-row__delta--negative' :
                        'score-anim-row__delta--zero';
     const avatarHtml = renderAvatar({ displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji });
-    const titleHtml = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
+    const titleHtml = p.title ? `<span class="player-title" data-title="${escapeHtml(p.title)}">${titleWordsHtml(p.title)}</span>` : '';
 
     const isMe = String(p.id) === String(state.room.playerId);
     const honks = getHonkCount(p.id);
@@ -869,7 +869,7 @@ function renderFinalWagerPlayers(lockedWagers) {
     // ALWAYS a second line, as in the lobby: "Guest" for a player with no
     // title, and a blank that still holds the height for a bot. A row without
     // one stood 10px shorter than the rest (the layout sweep, 2026-10-27).
-    const titleHtml = `<span class="player-title">${p.is_bot ? '&nbsp;' : escapeHtml(p.title || 'Guest')}</span>`;
+    const titleHtml = (p.is_bot ? '<span class="player-title">&nbsp;</span>' : `<span class="player-title" data-title="${escapeHtml(p.title || 'Guest')}">${titleWordsHtml(p.title || 'Guest')}</span>`);
     const score = state.scores[p.id] || 0;
     const wagerVal = wagers[String(p.id)];
     const wagerDisplay = wagerVal !== undefined

@@ -83,10 +83,52 @@ export function destroyTypingIndicator() {
     clearTimeout(timeoutId);
   }
   activeTypers.clear();
+  paintTypingAvatars();
   onUpdate = null;
 }
 
 function emitUpdate() {
+  paintTypingAvatars();
   if (!onUpdate) return;
   onUpdate(Array.from(activeTypers.values()).map(t => t.name));
+}
+
+// ============================================
+// THE TYPER'S FACE (owner, 2026-11-02: "a notification when someone is typing
+// in chat so the host knows"). A neutral ring and a small dots badge on that
+// player's avatar, on every screen that lists players — found the way the
+// honk shake finds them, by data-player-id / data-profile-player-id, so no
+// screen needs to know typing exists. Neutral on purpose: titles are coloured
+// by rarity, and a blue ring would read as "Rare". The chat pane's own
+// "X is typing…" line is unchanged.
+//
+// Rows are redrawn by Realtime at any moment, so while anybody is typing the
+// marks are re-applied twice a second; with nobody typing, nothing runs.
+// ============================================
+let _paintTimer = null;
+
+function avatarsFor(id) {
+  const sel = `[data-player-id="${CSS.escape(id)}"], [data-profile-player-id="${CSS.escape(id)}"]`;
+  const out = new Set();
+  for (const el of document.querySelectorAll(sel)) {
+    const av = el.classList.contains('avatar') ? el : el.querySelector('.avatar');
+    if (av) out.add(av);
+  }
+  return out;
+}
+
+export function paintTypingAvatars() {
+  if (typeof document === 'undefined') return;
+  const typing = new Set();
+  for (const id of activeTypers.keys()) for (const av of avatarsFor(id)) typing.add(av);
+  for (const av of document.querySelectorAll('.avatar.is-typing')) {
+    if (!typing.has(av)) av.classList.remove('is-typing');
+  }
+  for (const av of typing) av.classList.add('is-typing');
+  if (activeTypers.size && !_paintTimer) {
+    _paintTimer = setInterval(paintTypingAvatars, 500);
+  } else if (!activeTypers.size && _paintTimer) {
+    clearInterval(_paintTimer);
+    _paintTimer = null;
+  }
 }

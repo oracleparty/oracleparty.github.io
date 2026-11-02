@@ -44,6 +44,8 @@ import {
 } from '../supabase.js';
 import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
+import { loadTitleWords } from '../title-content.js';
+import { repaintTitleColours } from '../titles.js';
 import { initHonkSystem, sendHonk, destroyHonkSystem, attachHonkSoundToggle } from '../honk.js';
 import { initTypingIndicator, destroyTypingIndicator } from '../typing.js';
 import { initKeyboardInset } from '../keyboard-inset.js';
@@ -384,6 +386,9 @@ async function init() {
   initTypingIndicator(state.room.id, state.room.playerId, getDisplayName(), updateTypingUI);
 
   // Honk system
+  // Every worn title on this page colours its words by rarity; owner-written
+  // words arrive by fetch, so repaint once they land.
+  loadTitleWords().then(() => repaintTitleColours()).catch(() => {});
   initHonkSystem(state.room.id, state.room.playerId, () => {
     // Re-render visible player rows to update honk badges
     updateHonkBadges();

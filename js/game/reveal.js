@@ -32,6 +32,7 @@ import { attachProfileCardHandler } from '../profile.js';
 import { screenStillFits } from './phase-order.js';
 import { showChatBar } from './chat.js';
 import { showHostSettingsGear } from './host.js';
+import { titleWordsHtml } from '../titles.js';
 
 // Forward references — set by init.js to avoid circular imports
 let _handleShowScores = null;
@@ -596,7 +597,7 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
     row.dataset.profilePlayerId = player.id;
     if (player.user_id) row.dataset.profileUserId = player.user_id;
 
-    const titleHtml = player.title ? `<span class="player-title">${escapeHtml(player.title)}</span>` : '';
+    const titleHtml = player.title ? `<span class="player-title" data-title="${escapeHtml(player.title)}">${titleWordsHtml(player.title)}</span>` : '';
 
     // On the FINAL question every player already has a row the moment they lock
     // a wager: lockInFinalWager writes __WAGER_LOCKED__ as a placeholder so

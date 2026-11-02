@@ -923,3 +923,61 @@ export function buildDisplayTitle(profile) {
   if (words.length === 0) return 'Novice';
   return words.join(' ');
 }
+
+/**
+ * A worn title as HTML, each word in its rarity colour (owner, 2026-10-30:
+ * "every word ALWAYS shows in its own rarity colour, everywhere a title
+ * appears"; found plain on the lobby and every in-game row, 2026-11-02).
+ *
+ * A seat carries its title as TEXT only, so the words are matched back to
+ * TITLE_WORDS reel by reel — the first word(s) against reel 1, then reel 2,
+ * then reel 3 — longest word first, because one word can sit in two reels
+ * with different rarities and reading them in order is what tells them
+ * apart. A word that matches nothing (an owner word not loaded yet, a
+ * "Guest") is printed plain, never guessed at. Escaped here: the result is
+ * set as innerHTML.
+ */
+export function titleWordsHtml(title) {
+  const esc = s => String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const text = String(title ?? '').trim();
+  if (!text) return '';
+  const bySlot = { 1: [], 2: [], 3: [] };
+  for (const w of Object.values(TITLE_WORDS)) {
+    if (w && w.word && bySlot[w.slot]) bySlot[w.slot].push(w);
+  }
+  for (const s of [1, 2, 3]) bySlot[s].sort((a, b) => b.word.length - a.word.length);
+
+  const out = [];
+  let rest = text;
+  let slot = 1;
+  while (rest) {
+    let hit = null;
+    for (let s = slot; s <= 3 && !hit; s++) {
+      const w = bySlot[s].find(w => rest === w.word || rest.startsWith(w.word + ' '));
+      if (w) { hit = w; slot = s + 1; }
+    }
+    if (!hit) {
+      // Nothing known starts here: print this token plain and carry on.
+      const sp = rest.indexOf(' ');
+      const tok = sp === -1 ? rest : rest.slice(0, sp);
+      out.push(esc(tok));
+      rest = sp === -1 ? '' : rest.slice(sp + 1);
+      continue;
+    }
+    out.push(`<span class="title-word" data-rarity="${esc(hit.rarity || 'common')}">${esc(hit.word)}</span>`);
+    rest = rest.slice(hit.word.length).trimStart();
+  }
+  return out.join(' ');
+}
+
+/**
+ * Re-colour every title already on screen. Rows are drawn before the
+ * owner-written words have been fetched, so their words start plain; this runs
+ * once the words land. A title is marked with data-title to be found again.
+ */
+export function repaintTitleColours(root = document) {
+  root.querySelectorAll('[data-title]').forEach(el => {
+    el.innerHTML = titleWordsHtml(el.dataset.title);
+  });
+}

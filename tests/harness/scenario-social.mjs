@@ -261,6 +261,32 @@ try {
   }
 
   // ============================================================
+  // 3b. SOMEBODY TYPING IN CHAT SHOWS ON THEIR FACE (owner, 2026-11-02)
+  // ============================================================
+  // A neutral ring on the typer's avatar, wherever their row is. Checked both
+  // ways: it appears on another phone while Bob types, and it goes once he
+  // stops — a mark that never clears is a player who looks typing for ever.
+  heading('typing in chat');
+  {
+    const bobSeat = await bob.page.evaluate(() => window.__state?.room?.playerId);
+    await bob.page.evaluate(async () => {
+      (await import(new URL('js/typing.js', location.href).href)).notifyTyping();
+    });
+    let seen = false;
+    for (let i = 0; i < 10 && !seen; i++) {
+      await host.page.waitForTimeout(200);
+      seen = await host.page.evaluate(id => !!document.querySelector(
+        `[data-player-id="${id}"] .avatar.is-typing, .avatar.is-typing[data-profile-player-id="${id}"]`), bobSeat);
+    }
+    note(`Alice sees Bob typing: ${seen}`);
+    if (!seen) problems.push("Bob typed in chat and nothing on Alice's screen showed it");
+    await host.page.waitForTimeout(4000);
+    const stale = await host.page.evaluate(() => document.querySelectorAll('.avatar.is-typing').length);
+    note(`4s after he stopped: ${stale} typing mark(s)`);
+    if (stale) problems.push(`Bob stopped typing and ${stale} avatar(s) still show the typing ring`);
+  }
+
+  // ============================================================
   // 4. HOST SCORE EDITING
   // ============================================================
   heading('host score editing');

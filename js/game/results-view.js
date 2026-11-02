@@ -14,6 +14,7 @@
  */
 import { escapeHtml, renderAvatar } from '../utils.js';
 import { rankPlayers, ordinal } from './podium-logic.js';
+import { titleWordsHtml } from '../titles.js';
 
 const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
@@ -36,7 +37,7 @@ export function resultsRowsHtml(sorted, { scoreOf, fwDeltaOf, meId, honkCountOf 
     const honks = honkCountOf(p.id);
     const honkBadge = `<span class="honk-badge" data-honk-player="${p.id}" style="${honks > 0 ? '' : 'display:none'}">${honks}</span>`;
     const honkBtn = (isMe || p.is_bot) ? '' : `<button class="honk-btn" data-honk-target="${p.id}" aria-label="Quack">&#x1F986;</button>`;
-    const title = p.title ? `<span class="player-title">${escapeHtml(p.title)}</span>` : '';
+    const title = p.title ? `<span class="player-title" data-title="${escapeHtml(p.title)}">${titleWordsHtml(p.title)}</span>` : '';
     return `
       <div class="results-row${isMe ? ' results-row--me' : ''}" data-player-id="${p.id}" data-profile-player-id="${p.id}" ${p.user_id ? `data-profile-user-id="${p.user_id}"` : ''}>
         ${place}
