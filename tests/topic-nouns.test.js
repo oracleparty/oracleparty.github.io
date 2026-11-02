@@ -28,7 +28,7 @@ describe('topic nouns', () => {
   });
 
   it('is a reel-3 word shown in Rare colour, and is not capped like a rank', () => {
-    for (const id of ['nounBigfoot', 'nounGoldDigger', 'nounAlien']) {
+    for (const id of ['nounBigfoot', 'nounGoldDigger', 'nounAlien', 'nounJester']) {
       expect(TITLE_WORDS[id].slot).toBe(3);
       expect(TITLE_WORDS[id].rarity).toBe('rare');
       expect(TITLE_WORDS[id].unlock.type).not.toBe('rank');

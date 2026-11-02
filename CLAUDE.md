@@ -359,7 +359,7 @@
 > Medieval has 60 questions". Unmeasured topics keep the saved goal. So a word
 > may now be written early — Supermassive included. `tests/topic-floor-lock`
 > break-tested. Old unlocks of retired words are cleared by SQL (owner: "no one
-> plays the game yet"). Medieval's reel-3 noun (unlocks at Rare) is NOT chosen yet.
+> plays the game yet"). Medieval's reel-3 noun: **Jester** (owner, 2026-11-02), `nounJester`.
 >
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch

@@ -306,6 +306,12 @@ export const TITLE_WORDS = {
     followsWord: 'w:science:space:rare',
     unlock: { type: 'count', condition: { category: 'science', subcategory: 'space', right: 0 } },
     levelMultiplier: 1
+  },
+  nounJester: {
+    slot: 3, word: 'Jester', rarity: 'rare', hint: '',
+    followsWord: 'w:history:medieval:rare',
+    unlock: { type: 'count', condition: { category: 'history', subcategory: 'medieval', right: 0 } },
+    levelMultiplier: 1
   }
 };
 
