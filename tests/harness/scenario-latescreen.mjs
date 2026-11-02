@@ -150,6 +150,35 @@ try {
     problems.push(`the host could not show the scores (room is on ${room()?.game_phase})`);
   }
 
+  // AN UPDATE THAT CHANGES NO SCORE MUST NOT REPLAY THE BOARD (owner,
+  // 2026-11-02: "the score animation adds points, then repeats and does it a
+  // second time"). Every phone calls record_round_history at the reveal, and
+  // it UPDATEs every answer row to stamp history_recorded; one landing after
+  // the scoreboard was up redrew and re-animated it. The fake store never
+  // broadcast that write, so it is sent by hand here, on the host's phone,
+  // which has a normal connection.
+  heading('a history stamp arrives while the scoreboard is up');
+  await host.page.waitForSelector('#scores-screen.active .score-anim-row', { timeout: 10000 }).catch(() => {});
+  await host.page.waitForTimeout(500);
+  const marked = await host.page.evaluate(() => {
+    const row = document.querySelector('#scores-screen .score-anim-row');
+    if (row) row.dataset.marker = 'first-draw';
+    return !!row;
+  });
+  const stamped = table.store.table('answers').find(a => a.question_number === 0);
+  if (marked && stamped) {
+    const before = { ...stamped };
+    stamped.history_recorded = true;
+    table.store._broadcast('UPDATE', 'answers', { ...stamped }, before);
+    await host.page.waitForTimeout(1200);
+    const kept = await host.page.evaluate(() =>
+      !!document.querySelector('#scores-screen .score-anim-row[data-marker="first-draw"]'));
+    note(`after a history-only UPDATE, the host's scoreboard was ${kept ? 'left alone' : 'REDRAWN'}`);
+    if (!kept) problems.push('an answer UPDATE that changed no score replayed the scoreboard animation — the reported "adds points, then does it a second time"');
+  } else {
+    problems.push(`could not set up the replay check (scoreboard row ${marked}, answer ${!!stamped})`);
+  }
+
   heading('the host moves on the moment it can');
   for (let i = 0; i < 40 && room()?.game_phase !== 'question'; i++) {
     await clickIfReady(host, '#btn-scores-action');
