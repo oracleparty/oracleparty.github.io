@@ -154,7 +154,11 @@
 > **THE GOAL IS FUNNY COMBOS BETWEEN REEL 2 AND REEL 3** (owner): "Mooning
 > Caveman", "Single-Celled Guru", "Gassy Hermit" — a silly describing word on
 > an oddly specific character you can picture. Judge a noun by those combos,
-> never on its own. **Alien (Space) is a maybe.** Wizard was "not good enough"
+> never on its own. **LOCKED by the owner 2026-11-02: Space → Alien,
+> Elements → Gold-Digger** (hyphenated, as Oxford/Collins spell it — one word
+> like Single-Celled). Elements nouns must carry a REAL ELEMENT NAME (the
+> owner rejected chemistry jobs as "not related to elements"). NOT BUILT: no
+> code yet awards a noun at a topic's Legendary. Wizard was "not good enough"
 > (generic); Moonshiner and Bartender rejected for Elements. The owner also
 > said reel-1 words need an overhaul — NOT the current task, raised in passing.
 > **Do not spray guesses** — the owner called that out twice; agree the
