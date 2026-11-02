@@ -157,8 +157,11 @@
 > never on its own. **LOCKED by the owner 2026-11-02: Space → Alien,
 > Elements → Gold-Digger, Human Body → Bigfoot** (hyphenated, as Oxford/Collins spell it — one word
 > like Single-Celled). Elements nouns must carry a REAL ELEMENT NAME (the
-> owner rejected chemistry jobs as "not related to elements"). NOT BUILT: no
-> code yet awards a noun at a topic's Legendary. Wizard was "not good enough"
+> owner rejected chemistry jobs as "not related to elements"). **UNLOCK AT RARE (owner, 2026-11-02)**: ½ of the
+> topic, shown in Rare's blue, wearable with ANY word. It shares reel 3 with the
+> ranks, so a player picks prestige (Guru) or a joke (Gold-Digger); the rank is
+> still on the profile. Rare's floor is 70 questions, so Alien (Space, 86) is
+> earnable now. NOT BUILT: no code awards a topic noun yet. Wizard was "not good enough"
 > (generic); Moonshiner and Bartender rejected for Elements. The owner also
 > said reel-1 words need an overhaul — NOT the current task, raised in passing.
 > **Do not spray guesses** — the owner called that out twice; agree the
