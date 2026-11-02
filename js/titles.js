@@ -174,18 +174,6 @@ export const TITLE_WORDS = {
     unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 58 } },
     levelMultiplier: 1
   },
-  crusade: {
-    slot: 2, word: 'Crusade', rarity: 'uncommon',
-    hint: 'Swords and shields in distant lands',
-    unlock: { type: 'count', condition: { category: 'history', subcategory: 'medieval', right: 13 } },
-    levelMultiplier: 1
-  },
-  dynasty: {
-    slot: 2, word: 'Dynasty', rarity: 'legendary',
-    hint: 'Crowns pass but the bloodline endures',
-    unlock: { type: 'count', condition: { category: 'history', subcategory: 'medieval', right: 52 } },
-    levelMultiplier: 1
-  },
   renaissance: {
     slot: 2, word: 'Renaissance', rarity: 'uncommon',
     hint: 'The world reborn through curious minds',
