@@ -111,8 +111,11 @@
 > **+15s on every final question (owner).** `op_round_seconds` (080) is the
 > one server rule, read by `op_submit_answer` and `op_advance_deadline`;
 > `roundTimerSeconds()` in `state.js` + `FINAL_QUESTION_EXTRA_SECONDS` mirror
-> it. **080 MUST BE RUN BEFORE THIS JS IS LIVE**: otherwise the screen gives
-> 45s and the server refuses answers after 33s. Rules pin both directions.
+> it. Rules pin both directions.
+>
+> **079 AND 080 ARE APPLIED (2026-11-02), before this JS went live:** the owner
+> ran one combined paste and then a four-column check reading `prosrc` for each
+> change; all four `true` (reported, not pasted verbatim). DEPLOYED 20261102.
 >
 > **CLAPS WERE NEVER READ BACK LIVE — measured, and the harness hid it.**
 > `op_clap_answer` files a clap under `countdown_started_at::text`
