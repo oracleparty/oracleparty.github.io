@@ -352,9 +352,14 @@
 > Barbaric (close second to Gothic). The old code words Crusade and Dynasty are
 > DELETED (owner: "we are replacing all the old ones" — every old History era
 > word goes as its era is redone). The four live in `title_words`, handed over as
-> SQL with targets 13/26/39/52 (¼, ½, ¾, all of the 52 questions); Medieval is
-> under every floor, so `applyLiveTargets` keeps those saved numbers until it
-> grows. Medieval's reel-3 noun (unlocks at Rare) is NOT chosen yet.
+> SQL. **A TOPIC UNDER A STEP'S FLOOR KEEPS THAT STEP LOCKED** (owner,
+> 2026-11-02, reversing the old saved-goal fallback): `applyLiveTargets` sets
+> `opensAtSize` and a zero goal when `get_topic_sizes` (078, installed — probe
+> 11-01) reports the topic too small, and the gallery reads "Opens when
+> Medieval has 60 questions". Unmeasured topics keep the saved goal. So a word
+> may now be written early — Supermassive included. `tests/topic-floor-lock`
+> break-tested. Old unlocks of retired words are cleared by SQL (owner: "no one
+> plays the game yet"). Medieval's reel-3 noun (unlocks at Rare) is NOT chosen yet.
 >
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch

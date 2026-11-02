@@ -899,10 +899,12 @@ describe('live goals', () => {
     expect(goal()).toBe(40);
   });
 
-  it('keeps a code word on its saved goal when its topic is under the floor', () => {
+  // REPLACED 2026-11-02 (owner): a topic under its step's floor keeps that
+  // step LOCKED, rather than falling back to the saved goal.
+  it('locks a word whose topic is under the floor', () => {
     const chronicles = Object.values(TITLE_WORDS).find(w => w.word === 'Chronicles');
-    const saved = chronicles.unlock.condition.right;
     applyLiveTargets({ history: { subjectSize: 700, sizes: { ancient: 58 } } });
-    expect(chronicles.unlock.condition.right).toBe(saved);
+    expect(chronicles.unlock.condition.right).toBe(0);
+    applyLiveTargets({});
   });
 });

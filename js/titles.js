@@ -5,7 +5,7 @@
 // ============================================
 
 import { LOYAL_DAYS, ANCIENT_DAYS, NIGHT_OWL_START_HOUR, NIGHT_OWL_END_HOUR } from './constants.js';
-import { liveTarget, subjectRank, RANK_TIERS, RANK_WORDS, SUBJECT_RULE, TOPIC_CAP } from './title-tiers.js';
+import { liveTarget, subjectRank, RANK_TIERS, RANK_WORDS, SUBJECT_RULE, TOPIC_CAP, TOPIC_FLOOR } from './title-tiers.js';
 
 // ============================================
 // MASTER WORD LIST
@@ -321,6 +321,7 @@ export function linkTopicNouns() {
     const src = TITLE_WORDS[def.followsWord]?.unlock?.condition;
     const right = Number(src?.right);
     def.unlock.condition.right = Number.isFinite(right) && right >= 1 ? right : 0;
+    def.opensAtSize = TITLE_WORDS[def.followsWord]?.opensAtSize ?? null;
     if (def.unlock.condition.right) linked++;
   }
   return linked;
@@ -797,7 +798,15 @@ export function applyLiveTargets(sizes) {
     if (!c?.category) continue;
     if (def.savedRight == null) def.savedRight = c.right;
     const live = sizes ? liveTarget(sizes, c.category, c.subcategory || null, def.rarity) : null;
-    const next = Number.isFinite(live) && live >= 1 ? live : def.savedRight;
+    // A topic too small for this step stays LOCKED (owner, 2026-11-02): a word
+    // may be written ahead of time, and opens only once its topic holds enough
+    // questions. Only when the size is KNOWN — an unmeasured topic keeps its
+    // saved number, the old behaviour, rather than locking every word.
+    const known = c.subcategory ? _topicSizes?.[c.category]?.sizes?.[c.subcategory] : null;
+    const floor = TOPIC_FLOOR[def.rarity];
+    def.opensAtSize = (Number.isFinite(known) && floor && known < floor) ? floor : null;
+    const next = def.opensAtSize ? 0
+      : Number.isFinite(live) && live >= 1 ? live : def.savedRight;
     if (next !== c.right) { c.right = next; moved++; }
   }
   linkTopicNouns();
@@ -835,7 +844,10 @@ export function describeRequirement(wordDef, labelFor = k => k) {
   switch (type) {
     case 'count':
       // A topic noun whose Rare word has not loaded: still say what earns it.
-      if (!condition.right) return wordDef.followsWord && where ? `Get half of ${where} right` : null;
+      if (!condition.right) {
+        if (wordDef.opensAtSize && where) return `Opens when ${where} has ${wordDef.opensAtSize} questions`;
+        return wordDef.followsWord && where ? `Get half of ${where} right` : null;
+      }
       return where
         ? `Get ${condition.right} questions right in ${where}`
         : `Get ${condition.right} questions right`;
