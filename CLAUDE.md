@@ -140,9 +140,19 @@
 > reached the Title Builder); a player typing in chat gets a NEUTRAL ring and
 > dots badge on their avatar (owner's pick; any hue would read as a rarity).
 >
-> **Word-3 nouns (open):** a topic's Legendary also gives a noun, a kind of
-> person, wearable with any word — and it must be GRAND or FUNNY. Surgeon,
-> Alchemist, Astronaut were rejected as neither.
+> **Word-3 nouns (open, owner's rules so far):** a topic's Legendary also gives
+> a noun, wearable with any word. It says *"I mastered THIS topic"*: a REAL
+> topic term with a second meaning about a person (the rule behind Basic,
+> Unstable, Gassy). At Legendary it must be a FLEX FIRST, cheeky second —
+> Supermassive is the model (biggest in space, and a big-butt joke). Rejected:
+> plain roles (Surgeon, Alchemist, Astronaut), mystic figures (Shaman, Wizard,
+> Quack, Warlock, Lunatic), styles (Dragon, Phoenix, Blacksmith, Gremlin),
+> compliments with no joke (Catalyst, Heartthrob, Superstar, Supernova),
+> pure roasts ("insulting, not worthy of a legendary": Bonehead, Gasbag,
+> Airhead), and Bombshell, Heavenly Body, Maximus, Heavyweight, Moonwalker.
+> **Six-Pack was "the only remotely funny one … a better direction".**
+> **Do not spray guesses** — the owner called that out twice; agree the
+> meaning first, then offer few words.
 
 > ## 2026-11-01 — the Map wears your rank: colour and a hard-earned glow (DEPLOYED 20261101b)
 >
