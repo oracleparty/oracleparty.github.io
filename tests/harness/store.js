@@ -36,6 +36,11 @@ const _noop = () => {};
 globalThis.window ??= { addEventListener: _noop, removeEventListener: _noop };
 globalThis.document ??= { body: { classList: { remove: _noop }, style: {} }, addEventListener: _noop };
 const { fuzzyMatch } = await import('../../js/utils.js');
+// The game key a clap is filed under is `countdown_started_at::text` — the
+// POSTGRES text form, which is not the ISO string the client holds. Modelled
+// rather than assumed equal: assuming it is exactly how a live fault (every
+// claps read empty) passed every robot run.
+const { clapGameKey } = await import('../../js/game/clap-logic.js');
 
 let nextId = 1;
 const uuid = () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`;
@@ -1250,7 +1255,7 @@ export class FakeStore {
       if (!p_room_id || !p_voter_player_id || !p_answer_id) return 'bad_request';
 
       const room = this.table('rooms').find(r => String(r.id) === String(p_room_id));
-      const gameKey = room?.countdown_started_at ? String(room.countdown_started_at) : null;
+      const gameKey = clapGameKey(room?.countdown_started_at);
       if (!gameKey) return 'no_game';
 
       const voter = this.table('players').find(p =>
@@ -1310,7 +1315,7 @@ export class FakeStore {
       const roomId = args?.p_room_id;
       if (!roomId) return 0;
       const room = this.table('rooms').find(r => String(r.id) === String(roomId));
-      const gameKey = room?.countdown_started_at ? String(room.countdown_started_at) : null;
+      const gameKey = clapGameKey(room?.countdown_started_at);
       if (!gameKey) return 0;
 
       // The denominator is counted PER ROUND — people who could have clapped

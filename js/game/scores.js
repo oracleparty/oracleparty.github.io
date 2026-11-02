@@ -46,7 +46,7 @@ import { loadTitleWords } from '../title-content.js';
 import { showCelebration } from '../celebration.js';
 import { CATEGORY_META } from '../categories.js';
 import { sendHonk, getHonkCount, setHonkMuted } from '../honk.js';
-import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame } from './scoring-helpers.js';
+import { computeScoresFromAnswers, tallyDifficultyVotes, modalDifficulty, pickWeightedDifficulty, allowedDifficulties, answersForCurrentGame, answerScoreSig } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { screenStillFits } from './phase-order.js';
 import { showPodium } from './podium.js';
@@ -1666,6 +1666,10 @@ async function recordFinishedGame(allAnswers) {
         // moment it was earned.
         if (newUnlocks.length > 0) {
           logger.debug('Titles', 'New unlocks', newUnlocks.map(u => u.word + ' L' + u.level));
+          // NOT OVER THE PODIUM (owner, 2026-11-02: "the achievement popped up
+          // during the trophy animation screen, blocking that"). The podium is
+          // the moment the game ends; the reward waits until it is tapped away.
+          await (state._podiumDone || Promise.resolve());
           showCelebration(planCelebration(newUnlocks));
         }
       }).catch(err => logger.warn('Titles', 'Evaluation failed', err));
@@ -1775,7 +1779,7 @@ export async function showResultsScreen() {
     state._podiumFor = podiumKey;
     state._podiumRunning = true;
     hideChatBar();
-    showPodium({ sorted, scores: state.scores, allAnswers }).then(() => {
+    state._podiumDone = showPodium({ sorted, scores: state.scores, allAnswers }).then(() => {
       state._podiumRunning = false;
       if (state.gamePhase === 'results') goToScoreboard();
     });
@@ -2189,4 +2193,7 @@ export async function updateScores(answersAlreadyRead = null) {
   const read = answersAlreadyRead || await fetchAllAnswers(state.room.id);
   const allAnswers = answersForCurrentGame(read, state.questions);
   state.scores = computeScoresFromAnswers(allAnswers, state.players);
+  // What each row looked like when these scores were drawn, so an UPDATE that
+  // changes nothing scoring can be told apart from a real correction.
+  state._scoreSigs = new Map(read.map(a => [String(a.id), answerScoreSig(a)]));
 }

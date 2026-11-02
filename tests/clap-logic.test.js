@@ -227,3 +227,21 @@ describe('an optimistic tap and its own echo', () => {
     expect(next).toHaveLength(2);
   });
 });
+
+import { clapGameKey } from '../js/game/clap-logic.js';
+
+describe('clapGameKey — the key as Postgres spells it (claps vanished live, 2026-11-02)', () => {
+  it('turns the JSON / Realtime spelling into countdown_started_at::text', () => {
+    // Measured: now()::text vs to_json(now()) on Postgres 16, UTC session.
+    expect(clapGameKey('2026-11-02T02:01:01.762971+00:00')).toBe('2026-11-02 02:01:01.762971+00');
+  });
+  it('reads JavaScript\'s own Z form and drops trailing zeros the way Postgres does', () => {
+    expect(clapGameKey('2026-11-02T02:01:01.760Z')).toBe('2026-11-02 02:01:01.76+00');
+    expect(clapGameKey('2026-11-02T02:01:01.000Z')).toBe('2026-11-02 02:01:01+00');
+  });
+  it('leaves the Postgres form alone and does not guess at what it cannot read', () => {
+    expect(clapGameKey('2026-11-02 02:01:01.76+00')).toBe('2026-11-02 02:01:01.76+00');
+    expect(clapGameKey('2026-11-02T02:01:01+05:30')).toBe('2026-11-02T02:01:01+05:30');
+    expect(clapGameKey(null)).toBe(null);
+  });
+});

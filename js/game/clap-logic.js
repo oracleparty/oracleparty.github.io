@@ -191,3 +191,31 @@ export function clapTotals(rows, { floor = CLAP_RATE_FLOOR } = {}) {
     rate: available >= floor ? received / available : null,
   };
 }
+
+/**
+ * THE GAME KEY AS POSTGRES WRITES IT.
+ *
+ * op_clap_answer (071) stores `countdown_started_at::text`, which Postgres
+ * renders `2026-11-02 02:01:01.762971+00`. The phone's copy of the same moment
+ * came through PostgREST JSON or Realtime as `2026-11-02T02:01:01.762971+00:00`
+ * — or, before a round trip, as JavaScript's `...01.762Z`. Filtering
+ * `game_key = <the phone's string>` therefore matched NOTHING on the live
+ * database, so every claps read came back empty and the 3-second re-read wiped
+ * each clap Realtime had just drawn (owner, 2026-11-02: claps "vanish
+ * randomly"). Measured against a real Postgres: `now()::text` and
+ * `to_json(now())` disagree in exactly those three characters.
+ *
+ * Postgres also drops trailing zeros from the fraction, so `.760` is `.76`.
+ * Only UTC is canonicalised — Supabase sessions run in UTC — and anything this
+ * cannot read is returned as it came, never guessed at.
+ */
+export function clapGameKey(raw) {
+  if (raw == null || raw === '') return null;
+  const m = String(raw).match(/^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(\.\d+)?(Z|[+-]\d\d(?::?\d\d)?)?$/);
+  if (!m) return String(raw);
+  let frac = (m[3] || '').replace(/0+$/, '');
+  if (frac === '.') frac = '';
+  const tz = m[4] || 'Z';
+  if (!/^(Z|[+-]00(:?00)?)$/.test(tz)) return String(raw);
+  return `${m[1]} ${m[2]}${frac}+00`;
+}

@@ -381,12 +381,28 @@ try {
                    count: (btn?.querySelector('.clap-btn__count')?.textContent || '').trim() };
         }, target).catch(() => null);
         // AND IT MUST STAY. Sampled through the late reply's arrival.
-        for (let t = 0; t < 25 && !clapProbe.flicker; t++) {
+        //
+        // AND ON EVERY OTHER PHONE (owner, 2026-11-02: claps "vanish randomly"
+        // on the reveal). Their own poll read, sent before the clap's Realtime
+        // event arrived and answered after it, used to replace the cache and
+        // take the clap back off — only the TAPPER's reads were guarded. A
+        // phone that has shown the clap must go on showing it.
+        const shownOn = new Map();
+        for (let t = 0; t < 25 && !clapProbe.flicker && !clapProbe.vanished; t++) {
           await r.page.waitForTimeout(200);
           const mine = await r.page.evaluate((id) => !!document
             .querySelector(`.clap-btn[data-clap-answer="${id}"]`)?.classList.contains('clap-btn--mine'), target)
             .catch(() => true);
           if (!mine) clapProbe.flicker = `gone ${(t + 1) * 200}ms after the tap`;
+          for (const w of everyone.filter(x => x !== r)) {
+            const count = await w.page.evaluate((id) => {
+              const btn = document.querySelector(`#reveal-answers .clap-btn[data-clap-answer="${id}"]`);
+              return btn ? (btn.querySelector('.clap-btn__count')?.textContent || '').trim() : null;
+            }, target).catch(() => null);
+            if (count === null) continue;            // no button here (own row, or screen moved)
+            if (count) shownOn.set(w.name, true);
+            else if (shownOn.get(w.name)) clapProbe.vanished = `on ${w.name}'s phone, ${(t + 1) * 200}ms after the tap`;
+          }
         }
         table.store.normalReadReplies('answer_claps');
 
@@ -909,6 +925,9 @@ try {
       // the fault this project has recorded more than any other.
       if (!clapProbe.onClapper?.mine) {
         problems.push('the clap did not show on the phone that tapped it');
+      }
+      if (clapProbe.vanished) {
+        problems.push(`another phone showed the clap and then lost it (${clapProbe.vanished}) — a claps read older than the Realtime event was believed`);
       }
       if (clapProbe.flicker) {
         problems.push(`the clap disappeared from the clapper's own screen (${clapProbe.flicker}) — a read sent before the tap answered after it and was believed`);

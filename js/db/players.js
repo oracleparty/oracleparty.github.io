@@ -2,6 +2,7 @@ import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions } from '
 import { logger, reportWriteFailure } from '../logger.js';
 import { STALE_TIMEOUT_MS } from '../constants.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
+import { clapGameKey } from '../game/clap-logic.js';
 
 // ============================================
 // Player Management
@@ -1327,7 +1328,12 @@ export async function fetchClaps(roomId, gameKey) {
     .from('answer_claps')
     .select('id,answer_id,question_number,voter_player_id,clapped_player_id')
     .eq('room_id', roomId)
-    .eq('game_key', gameKey);
+    // The server files a clap under `countdown_started_at::text` — Postgres's
+    // own spelling of the moment, never the ISO string this phone holds. An
+    // exact match on the phone's string found nothing, ever, on the live
+    // database; see clapGameKey. Both spellings are asked for, so a server
+    // that ever stores the other form is still found.
+    .in('game_key', [...new Set([clapGameKey(gameKey), String(gameKey)])]);
   if (error) {
     // NULL, NOT []. A missing table is this feature being UNAVAILABLE and an
     // empty one is nobody having clapped yet, and this project has a whole

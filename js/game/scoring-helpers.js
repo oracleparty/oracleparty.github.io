@@ -307,3 +307,16 @@ export function pickWeightedDifficulty(tally, randFn = Math.random) {
   }
   return order[order.length - 1];
 }
+
+/**
+ * What about an answer row can move a score. A Realtime UPDATE that leaves
+ * this unchanged — record_round_history stamping `history_recorded`, a clap,
+ * a re-sent identical answer — must not replay the scoreboard animation
+ * (owner, 2026-11-02: "the score animation adds points, then repeats and does
+ * it a second time").
+ */
+export function answerScoreSig(a) {
+  if (!a) return null;
+  return [a.player_id, a.question_number, !!a.is_correct, Number(a.score_earned) || 0,
+          Number(a.wager) || 0, !!a.disqualified, String(a.submitted_answer ?? '')].join('|');
+}

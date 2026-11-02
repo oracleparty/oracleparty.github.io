@@ -4,7 +4,7 @@
 // ============================================
 
 import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../utils.js';
-import { findNextAvailableWager, countAnswersFrom } from './scoring-helpers.js';
+import { findNextAvailableWager, countAnswersFrom, answerScoreSig } from './scoring-helpers.js';
 import { isStaleRoomEvent } from './phase-order.js';
 import { getCountdownElapsed, isStampForCurrentRound } from './timer-helpers.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
@@ -989,6 +989,12 @@ export function handleAnswerChange(payload) {
   // fixed below.
   if (state.gamePhase === 'scores_reveal') {
     if (payload.eventType === 'UPDATE' && payload.new) {
+      // ONLY A CHANGE THAT CAN MOVE A SCORE replays the board. Every phone
+      // calls record_round_history at the reveal and it UPDATEs every answer
+      // row; one landing after the scoreboard is up replayed the whole
+      // animation — "adds points, then repeats and does it a second time".
+      const known = state._scoreSigs?.get(String(payload.new.id));
+      if (known && known === answerScoreSig({ ...payload.new })) return;
       updateScores().then(() => {
         setLastScoresRendered(-1);
         showScoresScreen();
