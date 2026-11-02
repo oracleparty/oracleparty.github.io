@@ -292,8 +292,51 @@ export const TITLE_WORDS = {
     hint: null, // Hidden
     unlock: { type: 'hidden', condition: { stat: 'perfectStreak', value: 5 } },
     levelMultiplier: 1
+  },
+
+  // TOPIC NOUNS (owner, 2026-11-02). Earned with the topic's RARE step — half
+  // of the topic — and worn with ANY reel-2 word: they are uncapped, unlike
+  // the ranks, because their point is funny combos ("Mooning Alien"). Each
+  // FOLLOWS its topic's Rare word, so the goal is that word's live goal and is
+  // never written down twice; linkTopicNouns() copies it after the owner's
+  // words and the live topic sizes load. Until then `right` is 0, which can
+  // never be earned.
+  nounBigfoot: {
+    slot: 3, word: 'Bigfoot', rarity: 'rare', hint: '',
+    followsWord: 'w:science:human-body:rare',
+    unlock: { type: 'count', condition: { category: 'science', subcategory: 'human-body', right: 0 } },
+    levelMultiplier: 1
+  },
+  nounGoldDigger: {
+    slot: 3, word: 'Gold-Digger', rarity: 'rare', hint: '',
+    followsWord: 'w:science:elements:rare',
+    unlock: { type: 'count', condition: { category: 'science', subcategory: 'elements', right: 0 } },
+    levelMultiplier: 1
+  },
+  nounAlien: {
+    slot: 3, word: 'Alien', rarity: 'rare', hint: '',
+    followsWord: 'w:science:space:rare',
+    unlock: { type: 'count', condition: { category: 'science', subcategory: 'space', right: 0 } },
+    levelMultiplier: 1
   }
 };
+
+/**
+ * Point every topic noun at its topic's Rare goal. A noun whose Rare word is
+ * not written (or not loaded) keeps `right: 0`, which computeWordLevel reads as
+ * not earnable — never a free unlock.
+ */
+export function linkTopicNouns() {
+  let linked = 0;
+  for (const def of Object.values(TITLE_WORDS)) {
+    if (!def?.followsWord) continue;
+    const src = TITLE_WORDS[def.followsWord]?.unlock?.condition;
+    const right = Number(src?.right);
+    def.unlock.condition.right = Number.isFinite(right) && right >= 1 ? right : 0;
+    if (def.unlock.condition.right) linked++;
+  }
+  return linked;
+}
 
 /**
  * THE RARITY LADDER, in one place.
@@ -741,6 +784,7 @@ export function applyWordOverlay(rows) {
     };
     applied++;
   }
+  linkTopicNouns();
   return applied;
 }
 
@@ -768,6 +812,7 @@ export function applyLiveTargets(sizes) {
     const next = Number.isFinite(live) && live >= 1 ? live : def.savedRight;
     if (next !== c.right) { c.right = next; moved++; }
   }
+  linkTopicNouns();
   return moved;
 }
 
@@ -776,6 +821,7 @@ export function clearWordOverlay() {
   for (const id of Object.keys(TITLE_WORDS)) {
     if (TITLE_WORDS[id]?.fromOverlay) delete TITLE_WORDS[id];
   }
+  linkTopicNouns();
 }
 
 /**
@@ -800,6 +846,8 @@ export function describeRequirement(wordDef, labelFor = k => k) {
 
   switch (type) {
     case 'count':
+      // A topic noun whose Rare word has not loaded: still say what earns it.
+      if (!condition.right) return wordDef.followsWord && where ? `Get half of ${where} right` : null;
       return where
         ? `Get ${condition.right} questions right in ${where}`
         : `Get ${condition.right} questions right`;

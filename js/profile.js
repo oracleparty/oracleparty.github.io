@@ -2310,9 +2310,14 @@ const SLOT_NAMES = {
 // one word per step, earned in any subject — and in the builder each may only
 // sit beside a reel-2 word whose subject you have reached that step in. The
 // other pile is one-off feats.
+const RANK_IDS = ['caveman', 'hermit', 'hippie', 'pilgrim', 'guru', 'oracle'];
+// Topic nouns (owner, 2026-11-02) are their own group: earned at a topic's
+// Rare step, worn with any word. Recognised by `followsWord`, not by id, so a
+// new noun needs no edit here.
 const STANDING_GROUPS = [
-  { name: 'Rank', ids: ['caveman', 'hermit', 'hippie', 'pilgrim', 'guru', 'oracle'] },
-  { name: 'One-off feats', ids: null },
+  { name: 'Rank', match: w => RANK_IDS.includes(w.id) },
+  { name: 'Topic nouns', match: w => !!w.followsWord },
+  { name: 'One-off feats', match: w => !RANK_IDS.includes(w.id) && !w.followsWord },
 ];
 
 /**
@@ -2475,9 +2480,7 @@ async function renderTitleGallery(userId) {
         })()
       : slot === 3
       ? STANDING_GROUPS.map(g => {
-          const mine = g.ids
-            ? words.filter(w => g.ids.includes(w.id))
-            : words.filter(w => !STANDING_GROUPS[0].ids.includes(w.id));
+          const mine = words.filter(g.match);
           if (!mine.length) return '';
           return `<p class="title-gallery__group">${escapeHtml(g.name)}</p>
             <div class="title-rows">${mine.map(w => galleryRow(w, w.level)).join('')}</div>`;

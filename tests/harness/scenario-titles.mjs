@@ -46,7 +46,7 @@ try {
     row('science', null, 25), row('science', 'space', 22),
     row('history', null, 15), row('history', 'ancient', 15),
   ]);
-  table.store.seed('title_unlocks', ['science', 'chronicles', 'caveman', 'hermit', 'oracle'].map((w, i) => ({
+  table.store.seed('title_unlocks', ['science', 'chronicles', 'caveman', 'hermit', 'oracle', 'nounAlien'].map((w, i) => ({
     id: i + 1, user_id: dana.userId, word_id: w, level: 1, unlocked_at: new Date().toISOString(),
   })));
   const profile = table.store.table('profiles').find(p => p.user_id === dana.userId);
@@ -61,6 +61,7 @@ try {
     cappedHint: document.querySelector('#wheel-slot3 .title-wheel-item--capped')?.dataset.hint || null,
     hermitPickable: !!document.querySelector('#wheel-slot3 [data-word-id="hermit"]'),
     oraclePickable: !!document.querySelector('#wheel-slot3 [data-word-id="oracle"]'),
+    alienPickable: !!document.querySelector('#wheel-slot3 [data-word-id="nounAlien"]'),
   }));
 
   const before = await read();
@@ -74,6 +75,11 @@ try {
   // Oracle is the exception: once held, it pairs with any word.
   if (!before.oraclePickable) {
     problems.push('Oracle was locked beside a History word, though Oracle pairs with any word once earned');
+  }
+  // A TOPIC NOUN IS NOT A RANK (owner, 2026-11-02): earned in Space, worn with
+  // any word — "Chronicles Alien" — because the point is funny combos.
+  if (!before.alienPickable) {
+    problems.push('Alien (a Science topic noun) was locked beside a History word — topic nouns pair with any word');
   }
   if (before.cappedHint && !/History/.test(before.cappedHint)) {
     problems.push(`the padlocked rank does not say which subject it needs: "${before.cappedHint}"`);

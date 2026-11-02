@@ -2055,6 +2055,10 @@ export const STATES = {
           ['locked', '——', 'uncommon', 'Get a quarter of any topic right (at most 25)'],
         ], 'Rank'],
         [null, null, 0, 0, [
+          ['earned', 'Alien', 'rare', 'Get 43 questions right in Space'],
+          ['locked', '——', 'rare', 'Get half of Human Body right'],
+        ], 'Topic nouns'],
+        [null, null, 0, 0, [
           ['locked', '——', 'rare', 'Win 25 games'],
           ['locked', '——', 'rare', 'Report 10 bad questions'],
           ['secret', '❓', 'legendary', 'Find it yourself'],

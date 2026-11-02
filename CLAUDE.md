@@ -161,7 +161,12 @@
 > topic, shown in Rare's blue, wearable with ANY word. It shares reel 3 with the
 > ranks, so a player picks prestige (Guru) or a joke (Gold-Digger); the rank is
 > still on the profile. Rare's floor is 70 questions, so Alien (Space, 86) is
-> earnable now. NOT BUILT: no code awards a topic noun yet. Wizard was "not good enough"
+> earnable now. **BUILT 2026-11-02**: each noun is a slot-3 `count` word with
+> `followsWord` naming its topic's Rare word; `linkTopicNouns()` in `titles.js`
+> copies that word's live goal, so no Rare word written means no noun earnable.
+> Not rank-type, so the wheel never caps it. The gallery shows a "Topic nouns"
+> group. `tests/topic-nouns.test.js`; `scenario-titles` checks Alien beside a
+> History word. Wizard was "not good enough"
 > (generic); Moonshiner and Bartender rejected for Elements. The owner also
 > said reel-1 words need an overhaul — NOT the current task, raised in passing.
 > **Do not spray guesses** — the owner called that out twice; agree the
@@ -306,7 +311,8 @@
 > Comeback Kid, Crowd Favourite, Hype Man, Heckler, Ringleader).
 >
 > **Human Body's reel-2 words, LOCKED by the owner:** Uncommon **Organelle**,
-> Rare **Single-Celled**, Epic **Multicellular**, Legendary **Hominid** — a zoom
+> Rare **Single-Celled**, Epic **Multicellular**, Legendary **Bipedal** (renamed from Hominid by the owner, 2026-11-02 — Hominid
+> was a noun, not a describing word) — a zoom
 > from part of a cell to the whole human. Real biology words that are funny to
 > wear. Evolution words (Fishy, Vertebrate, Monkey) were rejected because they
 > drift into Animals; a pun (Gutsy) was rejected for breaking the
