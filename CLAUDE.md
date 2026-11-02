@@ -338,6 +338,21 @@
 > (2026-10-30). **MEASURED LIVE 2026-11-01 by the probe's new title-words
 > section: all 11 are written, none a placeholder, Supermassive correctly absent.**
 >
+> **Medieval, LOCKED by the owner 2026-11-02:** Uncommon **Peasant**, Rare
+> **Diseased**, Epic **Gothic**, Legendary **Inbred** — the GRIM side of
+> medieval, climbing two ways at once: grimmer AND grander (poor, sick,
+> barbarian/cathedral/goth, royal blood). Inbred is a roast at Legendary and the
+> owner chose it knowingly. Rules learned getting here: words must be
+> instantly MEDIEVAL to a normal person (Galloping, Divine, Berserk were "what do
+> these have to do with medieval"), FUNNY with an edge (polite flexes like
+> Noble, Crowned, Holy, Anointed were "not funny"), not obscure (Motley,
+> Jousting, Enthroned), and ONE WORD — hyphens only if amazingly comedic.
+> Rejected also: Cursed, Chivalrous, Royal, Clownish, Knighted, Majestic,
+> Bloodthirsty, Beheaded, Pillaging, Lousy, Toothless, Possessed, Bewitched,
+> Barbaric (close second to Gothic). NOT YET IN CODE: the old code words
+> Crusade (uncommon) and Dynasty (legendary) still serve Medieval, and the topic
+> holds 52 questions, under every floor.
+>
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
 > above the last (Caveman → Toddler was too little, Caveman → Hipster too much);
