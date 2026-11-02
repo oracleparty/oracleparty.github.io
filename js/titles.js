@@ -162,18 +162,6 @@ export const TITLE_WORDS = {
   },
 
   // --- History subcategory words (Slot 2, unlock at deeper tiers) ---
-  chronicles: {
-    slot: 2, word: 'Chronicles', rarity: 'uncommon',
-    hint: 'Temples and empires lost to sand',
-    unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 15 } },
-    levelMultiplier: 1
-  },
-  antiquity: {
-    slot: 2, word: 'Antiquity', rarity: 'legendary',
-    hint: 'Before written memory, there was you',
-    unlock: { type: 'count', condition: { category: 'history', subcategory: 'ancient', right: 58 } },
-    levelMultiplier: 1
-  },
   renaissance: {
     slot: 2, word: 'Renaissance', rarity: 'uncommon',
     hint: 'The world reborn through curious minds',

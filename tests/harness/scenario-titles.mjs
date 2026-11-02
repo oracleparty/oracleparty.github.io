@@ -6,7 +6,7 @@
 // on the real page rather than only as arithmetic.
 //
 // Dana is a Hermit in Science (a quarter of Space right) and only a Caveman in
-// History. Her saved title is "Chronicles Hermit", which the rule forbids, so:
+// History. Her saved title is "History Hermit", which the rule forbids, so:
 //
 //   1. on arrival the rank steps DOWN to Caveman rather than vanishing;
 //   2. Hermit stays in the column, padlocked, and says why;
@@ -46,11 +46,11 @@ try {
     row('science', null, 25), row('science', 'space', 22),
     row('history', null, 15), row('history', 'ancient', 15),
   ]);
-  table.store.seed('title_unlocks', ['science', 'chronicles', 'caveman', 'hermit', 'oracle', 'nounAlien'].map((w, i) => ({
+  table.store.seed('title_unlocks', ['science', 'history', 'caveman', 'hermit', 'oracle', 'nounAlien'].map((w, i) => ({
     id: i + 1, user_id: dana.userId, word_id: w, level: 1, unlocked_at: new Date().toISOString(),
   })));
   const profile = table.store.table('profiles').find(p => p.user_id === dana.userId);
-  Object.assign(profile, { title_builder_unlocked: true, title_slot2: 'chronicles', title_slot3: 'hermit' });
+  Object.assign(profile, { title_builder_unlocked: true, title_slot2: 'history', title_slot3: 'hermit' });
 
   await dana.goto('profile.html');
   await dana.page.waitForSelector('#wheel-slot3 .title-wheel-item', { timeout: 15000 });
@@ -65,9 +65,9 @@ try {
   }));
 
   const before = await read();
-  note(`with Chronicles: ${JSON.stringify(before)}`);
-  if (before.preview !== 'Chronicles Caveman') {
-    problems.push(`a History word kept a rank Dana only holds in Science — the title reads "${before.preview}", want "Chronicles Caveman"`);
+  note(`with History: ${JSON.stringify(before)}`);
+  if (before.preview !== 'History Caveman') {
+    problems.push(`a History word kept a rank Dana only holds in Science — the title reads "${before.preview}", want "History Caveman"`);
   }
   if (!before.hermitCapped || before.hermitPickable) {
     problems.push('Hermit can be worn beside a History word although Dana is only a Caveman in History');
@@ -77,7 +77,7 @@ try {
     problems.push('Oracle was locked beside a History word, though Oracle pairs with any word once earned');
   }
   // A TOPIC NOUN IS NOT A RANK (owner, 2026-11-02): earned in Space, worn with
-  // any word — "Chronicles Alien" — because the point is funny combos.
+  // any word — "History Alien" — because the point is funny combos.
   if (!before.alienPickable) {
     problems.push('Alien (a Science topic noun) was locked beside a History word — topic nouns pair with any word');
   }

@@ -361,6 +361,21 @@
 > break-tested. Old unlocks of retired words are cleared by SQL (owner: "no one
 > plays the game yet"). Medieval's reel-3 noun: **Jester** (owner, 2026-11-02), `nounJester`.
 >
+> **Ancient, LOCKED by the owner 2026-11-02:** Uncommon **Primitive**, Rare
+> **Barbaric**, Epic **Civilized**, Legendary **Imperial** — the textbook rise of
+> civilisation, wild to empire; the joke is deadpan ("Civilized Caveman"), like
+> Bipedal. Old code words Chronicles and Antiquity DELETED; the four go in by SQL;
+> Ancient (58) is under every floor, so all four stay locked until it grows.
+> **WHAT FINALLY WORKED, after ~15 rejected batches:** the locked words are
+> PLAIN TEXTBOOK VOCABULARY of the topic that turns into a roast or a deadpan
+> joke when said about a person. NOT clever references (Sacked, Fiddling,
+> Narcissistic, Platonic — "no one will understand the references"), NOT myths
+> ("this is history not religion"), NOT the topic's trivia, NOT "old" jokes.
+> Rejected also: Mummified, Cursed (liked, then dropped), Dramatic, Tragic,
+> Spartan, Olympic, Toga-Wearing, Golden, Shuffling, Divine, Hieroglyphic,
+> Colossal, Fertile, Sedentary, Domesticated, Nomadic. **Never tell the owner to
+> stop or move on** — they decide when a topic is done.
+>
 > **How words get chosen with the owner — learned the hard way, over ~30
 > rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
 > above the last (Caveman → Toddler was too little, Caveman → Hipster too much);

@@ -93,10 +93,13 @@ describe('evaluateUnlocks', () => {
     const stats = [
       { category: 'history', subcategory: 'ancient', questions_answered: 40, correct_answers: 34 },
     ];
-    const changes = evaluateUnlocks(stats, {}, []);
-    const chronicles = changes.find(c => c.wordId === 'chronicles');
-    expect(chronicles).toBeDefined();
-    expect(chronicles.word).toBe('Chronicles');
+    applyWordOverlay([{ slot: 2, category: 'history', subcategory: 'ancient', tier: 'uncommon', word: 'Primitive', target_right: 15 }]);
+    try {
+      const changes = evaluateUnlocks(stats, {}, []);
+      const word = changes.find(c => c.wordId === 'w:history:ancient:uncommon');
+      expect(word).toBeDefined();
+      expect(word.word).toBe('Primitive');
+    } finally { clearWordOverlay(); }
   });
 });
 
@@ -902,9 +905,10 @@ describe('live goals', () => {
   // REPLACED 2026-11-02 (owner): a topic under its step's floor keeps that
   // step LOCKED, rather than falling back to the saved goal.
   it('locks a word whose topic is under the floor', () => {
-    const chronicles = Object.values(TITLE_WORDS).find(w => w.word === 'Chronicles');
+    applyWordOverlay([{ slot: 2, category: 'history', subcategory: 'ancient', tier: 'uncommon', word: 'Primitive', target_right: 15 }]);
     applyLiveTargets({ history: { subjectSize: 700, sizes: { ancient: 58 } } });
-    expect(chronicles.unlock.condition.right).toBe(0);
+    expect(TITLE_WORDS['w:history:ancient:uncommon'].unlock.condition.right).toBe(0);
     applyLiveTargets({});
+    clearWordOverlay();
   });
 });
