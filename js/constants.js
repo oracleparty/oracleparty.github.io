@@ -110,6 +110,12 @@ export const WAGER_AUTO_SKIP_MS = 1000;
 // question and typing an answer, and a 60-second one would be absurd for
 // choosing between three buttons.
 export const FINAL_WAGER_TIMER_SECONDS = 20;
+
+// The final QUESTION runs this much longer than the room's question timer
+// (owner, 2026-11-02: "add 15 seconds to all final questions"). The server's
+// op_round_seconds (migration 080) says the same number; change both or the
+// screen and the database disagree about when the round is over.
+export const FINAL_QUESTION_EXTRA_SECONDS = 15;
 // A room whose players have ALL been silent this long has nobody in it. Far
 // longer than the in-game stale timeout on purpose: this deletes a whole room
 // rather than one seat, and the heartbeat runs every 15 seconds, so 20 minutes

@@ -6,7 +6,14 @@
 import { createHonkChannel, unsubscribe } from './supabase.js';
 
 // --- State ---
-const honkCounts = {}; // playerId → count (in-memory, resets per session)
+const honkCounts = {}; // playerId → count, kept for the life of the room (see initHonkSystem)
+const HONK_STORE_KEY = 'op_honk_counts';
+let _honkRoomId = null;
+function _saveHonkCounts() {
+  try {
+    sessionStorage.setItem(HONK_STORE_KEY, JSON.stringify({ roomId: _honkRoomId, counts: honkCounts }));
+  } catch { /* nothing to do: the tally still works for this page */ }
+}
 let honkChannel = null;
 let localPlayerId = null;
 
@@ -297,8 +304,18 @@ function jiggleHonker(fromId) {
  * @param {Function} onCountUpdate - callback(playerId, newCount) for UI updates
  */
 export function initHonkSystem(roomId, playerId, onCountUpdate) {
-  // Reset counts for new game/session
+  // THE COUNTS LIVE AS LONG AS THE ROOM, not the page (owner, 2026-11-02:
+  // "honks count resetting when i start the game"). The lobby and the game are
+  // two pages, so an in-memory tally died at Start Game. It is kept in this
+  // tab's sessionStorage under the room id: the same room carries it over,
+  // a different room starts from nothing. Each phone counts what it heard,
+  // exactly as before.
   for (const key in honkCounts) delete honkCounts[key];
+  _honkRoomId = String(roomId);
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(HONK_STORE_KEY) || 'null');
+    if (saved && saved.roomId === _honkRoomId && saved.counts) Object.assign(honkCounts, saved.counts);
+  } catch { /* storage unavailable: counts start at zero, as they always did */ }
   localPlayerId = String(playerId);
 
   honkChannel = createHonkChannel(roomId);
@@ -308,6 +325,7 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
 
       // Update count and UI immediately — no debounce, honk spam is fun
       honkCounts[targetId] = (honkCounts[targetId] || 0) + 1;
+      _saveHonkCounts();
       if (onCountUpdate) onCountUpdate(targetId, honkCounts[targetId]);
 
       // Everyone sees WHO honked, not just the person hit — the count badge

@@ -5,7 +5,7 @@
 
 import { CATEGORY_META, resolveCategoryLabel } from '../categories.js';
 import { answersForCurrentGame } from './scoring-helpers.js';
-import { AWAY_GRACE_MS } from '../constants.js';
+import { AWAY_GRACE_MS, FINAL_QUESTION_EXTRA_SECONDS } from '../constants.js';
 import { transitionScreens } from '../utils.js';
 
 // --- State ---
@@ -466,4 +466,15 @@ export function staleJudgementEcho(row, now = Date.now()) {
     return false;
   }
   return true;
+}
+
+/**
+ * How long a round's clock runs, in seconds. The room's question timer, plus
+ * FINAL_QUESTION_EXTRA_SECONDS on the final question. One rule for every reader
+ * of the clock — the bar, the expiry, and whether a room's stamp is still live
+ * — mirroring op_round_seconds on the server (migration 080).
+ */
+export function roundTimerSeconds(phase = state.gamePhase) {
+  const base = state.timerSeconds || 30;
+  return phase === 'final_question' ? base + FINAL_QUESTION_EXTRA_SECONDS : base;
 }

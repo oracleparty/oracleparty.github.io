@@ -95,6 +95,33 @@ try {
     problems.push('while the clock is still running Bob does not read "Waiting..." — an answer may still be on its way');
   }
 
+  // BOB TYPES, THEN PUTS HIS PHONE DOWN (owner, 2026-11-02: "my friend bet 20
+  // ... it showed he bet zero" — he typed, switched away, and came back to a
+  // closed round with a server-written blank). A page that is not running
+  // cannot auto-submit at the timer, so what is typed goes as the phone
+  // leaves. The box is then emptied, standing in for a page that is frozen:
+  // from here the draft is the ONLY road his words can take, so the check
+  // cannot pass on his own timer's auto-submit.
+  heading('Bob types an answer and switches apps without pressing Submit');
+  await bob.page.waitForSelector('#answer-input', { state: 'visible', timeout: 15000 });
+  await bob.page.fill('#answer-input', 'Bobs draft');
+  await bob.page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await bob.page.waitForTimeout(800);
+  await bob.page.evaluate(() => {
+    delete document.hidden; delete document.visibilityState;
+    document.querySelector('#answer-input').value = '';
+  });
+  const bobDraft = () => {
+    const bobId = table.store.table('players').find(p => p.display_name === 'Bob')?.id;
+    return table.store.table('answers')
+      .find(a => String(a.player_id) === String(bobId) && a.question_number === 0)?.submitted_answer;
+  };
+  note(`Bob's stored answer after he left the page: ${JSON.stringify(bobDraft())}`);
+
   // THE MESSAGE THAT ENDS THE ROUND NEVER REACHES BOB (owner's photo,
   // 2026-10-28: question 10 of 20, timer at 0, "Time's up — your last answer
   // stands", and the game stuck there). On a bad connection one Realtime event
@@ -124,6 +151,9 @@ try {
     problems.push(`time is up and Alice's screen still reads "Waiting..." on ${worst} row(s) — the round closed, it is waiting on the host`);
   }
   if (!bobRow) problems.push('Bob has no row on the reveal at all');
+  if (bobDraft() !== 'Bobs draft') {
+    problems.push(`Bob typed "Bobs draft" and put his phone down; the round closed holding ${JSON.stringify(bobDraft())} — what he typed was lost`);
+  }
 
   heading('Bob, who never heard the round close, catches up by himself');
   bob.deafTables = null;   // he hears again; only the closing event was lost

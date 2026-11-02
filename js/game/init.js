@@ -50,7 +50,7 @@ import { initKeyboardInset } from '../keyboard-inset.js';
 import { updatePresence } from '../presence.js';
 import { attachProfileCardHandler } from '../profile.js';
 import {
-  state, isPlayerAway,
+  state, isPlayerAway, roundTimerSeconds,
   resolveFieldMap,
   _flagMenuCloseHandler, setFlagMenuCloseHandler,
   _isLeaving, setIsLeaving,
@@ -69,6 +69,7 @@ import {
 import {
   showQuestionScreen,
   registerShowRevealScreen, registerRevealHelpers, registerResyncWithRoom,
+  sendDraftAnswer,
 } from './question.js';
 import {
   showRevealScreen, enableRevealButton,
@@ -754,6 +755,7 @@ function handleBackButton() {
 
 function handleUnload() {
   if (_isLeaving) return;
+  sendDraftAnswer();
   // Soft disconnect: mark player as disconnected but DON'T delete.
   // Refresh will resume via sessionStorage; tab close will be cleaned up
   // by stale check after DISCONNECTED_TIMEOUT_MS.
@@ -918,6 +920,9 @@ async function beatPresence() {
 }
 
 function handleVisibilityChange() {
+  // Whatever is typed goes to the server now: a phone that is put down may not
+  // be running when this round's timer auto-submits (owner, 2026-11-02).
+  if (document.hidden) sendDraftAnswer();
   if (!state.presenceChannel) return;
   // Coming back is exactly when the channel is most likely to be dead, so heal
   // here rather than waiting up to 15s for the next beat — that wait is the
@@ -925,6 +930,7 @@ function handleVisibilityChange() {
   beatPresence();
 
   if (document.hidden) {
+    // (The typed answer was already sent as a draft at the top.)
     // Track that we went hidden — syncToCurrentState needs to know
     state._wasHidden = true;
     return;
@@ -1046,7 +1052,7 @@ async function syncToCurrentState() {
         if (shouldSyncPhase(state.gamePhase, roomData.game_phase)) {
           // Sync timestamps before transitioning
           if (shouldAdoptRoomClock({ phase: roomData.game_phase, stampedAt: roomData.question_started_at,
-                                     serverTimeOffset: state.serverTimeOffset, timerSeconds: state.timerSeconds })) {
+                                     serverTimeOffset: state.serverTimeOffset, timerSeconds: roundTimerSeconds(roomData.game_phase) })) {
             state.questionStartedAt = roomData.question_started_at;
           }
           if (roomData.countdown_started_at) state.countdownStartedAt = roomData.countdown_started_at;
@@ -1070,7 +1076,7 @@ async function syncToCurrentState() {
     // host wrote `reveal` and the round was over before anybody typed.
     // See shouldAdoptRoomClock.
     if (shouldAdoptRoomClock({ phase: roomData.game_phase, stampedAt: roomData.question_started_at,
-                               serverTimeOffset: state.serverTimeOffset, timerSeconds: state.timerSeconds })) {
+                               serverTimeOffset: state.serverTimeOffset, timerSeconds: roundTimerSeconds(roomData.game_phase) })) {
       state.questionStartedAt = roomData.question_started_at;
     } else {
       state.questionStartedAt = null;

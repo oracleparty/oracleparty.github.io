@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  roundTimerSeconds,
   state,
   canControlGame,
   getCategoryLabel,
@@ -304,5 +305,14 @@ describe('a host verdict and its echoes', () => {
 
   it('leaves answers nobody judged alone', () => {
     expect(staleJudgementEcho({ id: 'never', is_correct: false })).toBe(false);
+  });
+});
+
+describe('roundTimerSeconds — the final question runs 15s longer (owner, 2026-11-02)', () => {
+  it('adds 15 seconds on the final question only', () => {
+    state.timerSeconds = 30;
+    expect(roundTimerSeconds('final_question')).toBe(45);
+    expect(roundTimerSeconds('question')).toBe(30);
+    expect(roundTimerSeconds('final_wager')).toBe(30);
   });
 });

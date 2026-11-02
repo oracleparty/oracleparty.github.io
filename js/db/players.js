@@ -912,7 +912,9 @@ export async function insertBlankAnswers(rows) {
     wager: r.wager,
     submittedAnswer: '',
     isCorrect: false,
-    scoreEarned: 0
+    // 0 everywhere but the final round, where a blank under a locked bet
+    // loses it (owner, 2026-11-02).
+    scoreEarned: r.scoreEarned ?? 0
   })), 'insertBlankAnswers');
 }
 

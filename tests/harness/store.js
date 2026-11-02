@@ -1957,7 +1957,7 @@ export class FakeStore {
 
       if (room.game_phase === 'question' || room.game_phase === 'final_question') {
         const deadline = new Date(room.question_started_at).getTime()
-          + ((room.question_timer ?? 30) * 1000) + 8000;
+          + (roundSeconds(room) * 1000) + 8000;
         if (Date.now() < deadline) return 'not due';
         // Close everybody out BEFORE the phase moves, exactly as the SQL does —
         // otherwise a client reaches the reveal and renders "No answer" for
@@ -2070,7 +2070,9 @@ export class FakeStore {
             if (existing.wager == null) existing.wager = isFinal ? 0 : nextWager(p.id);
             existing.is_correct = false;
             existing.auto_correct = false;
-            existing.score_earned = 0;
+            // A blank under a locked final bet LOSES it (migration 079, owner
+            // 2026-11-02). Every other blank costs nothing.
+            existing.score_earned = (isFinal && isPlaceholder) ? -(existing.wager || 0) : 0;
             this._broadcast('UPDATE', 'answers', { ...existing }, before);
           } else {
             const row = {
@@ -2102,7 +2104,7 @@ export class FakeStore {
       // rejection here still ends with the answer stored, as it does live.
       if (room.question_started_at) {
         const deadline = new Date(room.question_started_at).getTime()
-          + ((room.question_timer ?? 30) + 3) * 1000;
+          + (roundSeconds(room) + 3) * 1000;
         if (Date.now() > deadline) {
           return [{ is_correct: false, score_earned: 0, wager: null, question_id: null, rejected: 'time is up' }];
         }
@@ -2350,3 +2352,7 @@ export class FakeStore {
     return null;
   }
 }
+
+// op_round_seconds (migration 080): the final question runs 15s longer.
+const roundSeconds = room => (room.question_timer ?? 30)
+  + (room.game_phase === 'final_question' ? 15 : 0);

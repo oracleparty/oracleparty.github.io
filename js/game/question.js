@@ -3,7 +3,7 @@
 // Wager grid, timer, answer submission.
 // ============================================
 
-import { state, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
+import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
          showScreen, _isLeaving } from './state.js';
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
@@ -352,13 +352,13 @@ function refreshSubmitButton() {
  * Returns fractional seconds for precise bar rendering.
  */
 function getServerTimeLeft() {
-  return _getServerTimeLeft(state.questionStartedAt, state.serverTimeOffset, state.timerSeconds);
+  return _getServerTimeLeft(state.questionStartedAt, state.serverTimeOffset, roundTimerSeconds());
 }
 
 /** Update both question-screen and reveal-screen timer displays */
 function updateTimerDisplay(timeLeft) {
   const secs = Math.max(0, Math.ceil(timeLeft));
-  const pct = `${Math.max(0, (timeLeft / state.timerSeconds) * 100)}%`;
+  const pct = `${Math.max(0, (timeLeft / roundTimerSeconds()) * 100)}%`;
   const warn = secs <= 5;
 
   // Question screen timer
@@ -661,10 +661,12 @@ async function handleTimerExpired() {
             playerId: a.player_id,
             questionNumber: state.currentQuestion,
             questionId: q.id,
-            wager: 0,
+            // Locked is locked, and a blank under a locked bet loses it
+            // (owner, 2026-11-02) — the same rule as migration 079.
+            wager: a.wager || 0,
             submittedAnswer: '',
             isCorrect: false,
-            scoreEarned: 0
+            scoreEarned: -(a.wager || 0)
           })), 'finalWagerBlankFill (fallback — op_fill_blank_answers was unreachable)');
         }
       }
@@ -724,6 +726,65 @@ async function handleSubmitAnswer() {
  * them where they are — and WRONG for a phase handler, where the room has
  * already moved and this phone's late auto-submit is a separate question.
  */
+/**
+ * The wager an answer is sent with. One rule for a deliberate submit, an
+ * auto-submit and a draft sent as the phone leaves the page.
+ *
+ * THE FINAL ROUND KEEPS ITS BET WHETHER OR NOT ANYTHING WAS TYPED (owner,
+ * 2026-11-02: "lose the bet"). It used to stake 0 on a blank, so a player who
+ * locked 20 and walked away lost nothing — reported as "my friend bet 20 and
+ * it showed he bet zero". A player who never locked a wager holds 0 here
+ * (the wager clock commits 0 for somebody who never touched the screen), so
+ * absence alone still costs nothing; a deliberate bet is a bet.
+ */
+function wagerForSubmit(isBlank = false) {
+  // A blank from somebody who never LOCKED a bet stakes nothing: finalWager
+  // defaults to 20 to punish indecision on a typed answer, and absence is not
+  // indecision.
+  if (state.isFinalWagerRound) {
+    if (isBlank && !state.finalWagerLocked) return 0;
+    return state.finalWager || 0;
+  }
+  if (state.currentWager) return state.currentWager;
+  const wager = findNextAvailableWager(state.usedWagers, state.totalQuestions);
+  logger.warn('Game', 'doSubmitAnswer: no wager selected, auto-assigned ' + wager);
+  return wager;
+}
+
+let _lastDraftSent = null;
+
+/**
+ * SEND WHAT IS TYPED WHEN THE PHONE LEAVES THE PAGE (owner, 2026-11-02).
+ *
+ * Every round auto-submits the box when the timer runs out — but only on a
+ * page that is still running. A player who switched apps mid-question came
+ * back to a closed round and a server-written blank, though they had typed
+ * an answer: "it should be like every other question and auto submit".
+ *
+ * This is a DRAFT, not a submit: nothing on this screen changes and
+ * hasSubmitted stays false, so a player who comes back in time can keep
+ * typing and press Submit, which overwrites it (op_submit_answer upserts
+ * while the round is open). Server path only and fire-and-forget: the page
+ * may be frozen a moment later, and a refused draft has nothing to say.
+ */
+export function sendDraftAnswer() {
+  if (state.hasSubmitted || !state.room?.playerId) return;
+  if (state.gamePhase !== 'question' && state.gamePhase !== 'final_question') return;
+  const input = $('#answer-input');
+  const text = String(input?.value || '').trim();
+  if (!text) return;
+  const key = `${state.currentQuestion}:${text}`;
+  if (_lastDraftSent === key) return;
+  _lastDraftSent = key;
+  submitAnswerViaServer({
+    roomId: state.room.id,
+    playerId: state.room.playerId,
+    questionNumber: state.currentQuestion,
+    answer: text,
+    wager: wagerForSubmit()
+  }).catch(err => logger.warn('Game', 'draft answer not sent', err));
+}
+
 export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowReveal = true } = {}) {
   if (state.hasSubmitted) return;
   state.hasSubmitted = true;
@@ -762,21 +823,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   const alternates = getAlternates(q);
   const isCorrect = answer ? fuzzyMatch(answer, correctAnswer, alternates) : false;
   const isBlank = !String(answer || '').trim();
-  let wager;
-  if (state.isFinalWagerRound) {
-    // A blank final answer wagers 0 whatever was locked in. The final wager is
-    // the only round that can SUBTRACT points, and losing 20 for a question you
-    // were never present to attempt is not a bet, it is a penalty for going
-    // away — which no other round in this game imposes. Someone who typed
-    // something and got it wrong still pays: they made the bet.
-    wager = isBlank ? 0 : (state.finalWager || 0);
-  } else if (state.currentWager) {
-    wager = state.currentWager;
-  } else {
-    // Fallback: find lowest available wager (centralised in scoring-helpers)
-    wager = findNextAvailableWager(state.usedWagers, state.totalQuestions);
-    logger.warn('Game', 'doSubmitAnswer: no wager selected, auto-assigned ' + wager);
-  }
+  const wager = wagerForSubmit(isBlank);
   const scoreEarned = computeScoreEarned(isCorrect, wager, state.isFinalWagerRound);
 
   // An AUTO-submitted blank must never overwrite an answer that is already
@@ -838,7 +885,8 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
       playerId: state.room.playerId,
       questionNumber: state.currentQuestion,
       questionId: q.id,
-      wager
+      wager,
+      scoreEarned
     }]).then(() => ({ data: null, error: null }), error => ({ data: null, error }));
   } else {
     const sentAt = performance.now();

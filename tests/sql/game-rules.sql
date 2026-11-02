@@ -228,8 +228,15 @@ BEGIN
   SELECT 'a blank final answer keeps the wager the player locked', wager::text, '20'
   FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 3;
   INSERT INTO result (check_name, got, want)
-  SELECT 'and still costs them nothing', score_earned::text, '0'
+  SELECT 'and LOSES it — a bet is a bet (079, owner 2026-11-02)', score_earned::text, '-20'
   FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 3;
+  -- Somebody who never locked a bet has no placeholder, gets a blank at 0,
+  -- and loses nothing: absence alone is still free.
+  INSERT INTO result (check_name, got, want)
+  SELECT 'a final blank with no locked bet still costs nothing',
+         score_earned::text || '/' || wager::text, '0/0'
+  FROM answers WHERE room_id = rid AND player_id <> alice AND question_number = 3
+  ORDER BY player_id LIMIT 1;
 
   -- ...and an answer that lands just after the fill is judged on 20, not 0.
   UPDATE rooms SET current_question = 3, question_started_at = now() WHERE id = rid;
@@ -237,6 +244,24 @@ BEGIN
   INSERT INTO result (check_name, got, want) VALUES
     ('an answer arriving after the fill still wagers what was locked', res.wager::text, '20'),
     ('and is paid on it', res.score_earned::text, '20');
+
+  -- ---- the final question runs 15 seconds longer (080, owner 2026-11-02) ---
+  -- 40s into a 30s clock: past a regular round's 33s allowance, inside the
+  -- final round's 48s. Both directions, or a clock that ignored the phase
+  -- (or extended EVERY round) would pass.
+  UPDATE rooms SET game_phase = 'final_question', current_question = 3,
+                   question_timer = 30, question_started_at = now() - interval '40 seconds' WHERE id = rid;
+  SELECT * INTO res FROM op_submit_answer(rid, alice, 3, 'Marie Antoinette', 20);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('the final question takes an answer 40s into a 30s clock', coalesce(res.rejected, 'accepted'), 'accepted');
+  INSERT INTO result (check_name, got, want) VALUES
+    ('and the backstop waits for the longer clock',
+     (SELECT op_advance_deadline(r) > now() FROM rooms r WHERE r.id = rid)::text, 'true');
+  UPDATE rooms SET game_phase = 'question' WHERE id = rid;
+  SELECT * INTO res FROM op_submit_answer(rid, alice, 3, 'Marie Antoinette', 20);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('a regular round gets no extra time', coalesce(res.rejected, 'accepted'), 'time is up');
+  UPDATE rooms SET question_started_at = now() WHERE id = rid;
 
   -- ---- __WAGER_LOCKED__ is not an answer ------------------------------------
   -- Locking a final wager writes a placeholder row. If the blank fill treated

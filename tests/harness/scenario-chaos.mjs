@@ -149,6 +149,20 @@ try {
   const stored = await bob.page.evaluate(() => localStorage.getItem('oracle_party_honk_sound_off'));
   if (stored !== '1') problems.push(`the sound switch did not save (stored ${stored})`);
 
+  // THE TALLY OUTLIVES THE LOBBY PAGE (owner, 2026-11-02: "honks count
+  // resetting when i start the game"). Alice honks Bob in the lobby; after
+  // Start, Bob's phone must still count it.
+  heading('a lobby honk is still counted once the game starts');
+  const bobLobbyId = await bob.page.evaluate(() => JSON.parse(sessionStorage.getItem('oracle_party_room') || '{}').playerId);
+  await host.page.evaluate(async target => {
+    const h = await import(new URL('js/honk.js', location.href).href);
+    h.sendHonk(target);
+  }, bobLobbyId);
+  await bob.page.waitForTimeout(1200);
+  const lobbyCount = await bob.page.evaluate(async id =>
+    (await import(new URL('js/honk.js', location.href).href)).getHonkCount(id), bobLobbyId);
+  note(`Bob's count of honks at himself in the lobby: ${lobbyCount}`);
+
   heading('starting the game');
   await clickIfReady(bob, '#btn-ready');
   await host.page.waitForTimeout(800);
@@ -162,6 +176,14 @@ try {
       .catch(() => problems.push(`${r.name} never reached the game`));
   }
 
+  await bob.page.waitForFunction(() => !!window.__state?.room?.playerId, null, { timeout: 20000 }).catch(() => {});
+  const gameCount = await bob.page.evaluate(async id =>
+    (await import(new URL('js/honk.js', location.href).href)).getHonkCount(id), bobLobbyId);
+  note(`...and in the game: ${gameCount}`);
+  if (lobbyCount >= 1 && gameCount < lobbyCount) {
+    problems.push(`Bob's honk count was ${lobbyCount} in the lobby and ${gameCount} once the game started — the tally reset at Start`);
+  }
+  if (lobbyCount < 1) problems.push('the lobby honk was never counted, so the carry-over could not be checked');
   const bobId = () => bob.page.evaluate(() => window.__state?.room?.playerId);
   const honkBob = async () => {
     const id = await bobId();
