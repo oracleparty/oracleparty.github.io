@@ -151,8 +151,12 @@
 > pure roasts ("insulting, not worthy of a legendary": Bonehead, Gasbag,
 > Airhead), and Bombshell, Six-Pack, Heavenly Body, Maximus, Heavyweight,
 > Moonwalker.
-> **THE GOAL IS FUNNY COMBOS** (owner): judge a noun by the titles it makes
-> beside the real reel-1 and reel-2 words, never on its own.
+> **THE GOAL IS FUNNY COMBOS BETWEEN REEL 2 AND REEL 3** (owner): "Mooning
+> Caveman", "Single-Celled Guru", "Gassy Hermit" — a silly describing word on
+> an oddly specific character you can picture. Judge a noun by those combos,
+> never on its own. **Alien (Space) is a maybe.** Wizard was "not good enough"
+> (generic); Moonshiner and Bartender rejected for Elements. The owner also
+> said reel-1 words need an overhaul — NOT the current task, raised in passing.
 > **Do not spray guesses** — the owner called that out twice; agree the
 > meaning first, then offer few words.
 
