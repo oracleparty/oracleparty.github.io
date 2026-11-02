@@ -149,8 +149,10 @@
 > Quack, Warlock, Lunatic), styles (Dragon, Phoenix, Blacksmith, Gremlin),
 > compliments with no joke (Catalyst, Heartthrob, Superstar, Supernova),
 > pure roasts ("insulting, not worthy of a legendary": Bonehead, Gasbag,
-> Airhead), and Bombshell, Heavenly Body, Maximus, Heavyweight, Moonwalker.
-> **Six-Pack was "the only remotely funny one … a better direction".**
+> Airhead), and Bombshell, Six-Pack, Heavenly Body, Maximus, Heavyweight,
+> Moonwalker.
+> **THE GOAL IS FUNNY COMBOS** (owner): judge a noun by the titles it makes
+> beside the real reel-1 and reel-2 words, never on its own.
 > **Do not spray guesses** — the owner called that out twice; agree the
 > meaning first, then offer few words.
 
