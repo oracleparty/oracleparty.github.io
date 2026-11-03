@@ -2542,13 +2542,26 @@ async function renderTitleWheel(userId, profile, stats) {
   // written word) is dropped, never shown — the preview printed it as a raw id.
   for (const k of [1, 2, 3]) if (selectedWords[k] && !TITLE_WORDS[selectedWords[k]]) selectedWords[k] = null;
 
+  // WHICH WHEELS ARE WORN (owner, 2026-11-03: "a toggleable button above or
+  // below each"). A switched-off wheel keeps its pick on screen but saves as
+  // empty, so the title is one, two or three words. A slot saved empty starts
+  // switched off; with nothing saved at all every wheel starts on. At least one
+  // stays on — a title of no words is not a title (owner agreed).
+  const anySaved = [1, 2, 3].some(k => selectedWords[k]);
+  const shown = { 1: !anySaved || !!selectedWords[1], 2: !anySaved || !!selectedWords[2], 3: !anySaved || !!selectedWords[3] };
+  // Remember the pick under a switched-off wheel so switching it back on
+  // restores it, and fill an empty one with whatever the wheel lands on.
+  const worn = () => ({ 1: shown[1] ? selectedWords[1] : null, 2: shown[2] ? selectedWords[2] : null, 3: shown[3] ? selectedWords[3] : null });
+
   // THE PAIRING RULE (owner, 2026-10-30): a rank may only sit beside a reel-2
   // word whose SUBJECT you have reached that step in, so "Organelle Oracle"
   // means you really did conquer Science. A rank you hold elsewhere stays in the
   // column, dimmed, and says what would let you pair it.
   const rankIdx = rankIndexBySubject(stats);
   const subjectOf = (id) => TITLE_WORDS[id]?.unlock?.condition?.category || null;
-  const capNow = () => rankCapFor(rankIdx, subjectOf(selectedWords[2]));
+  // With reel 2 switched off there is no subject beside the rank, so it is
+  // capped by the highest rank held anywhere (rankCapFor's no-subject answer).
+  const capNow = () => rankCapFor(rankIdx, shown[2] ? subjectOf(selectedWords[2]) : null);
   const rankStep = (w) => (w?.unlock?.type === 'rank' && !(w.unlock.condition?.subjects > 1))
     ? RANK_TIERS.indexOf(w.unlock.condition.tier) : -1;
   // ORACLE GOES ANYWHERE (owner, 2026-11-01): it is so hard to reach — every
@@ -2639,9 +2652,9 @@ async function renderTitleWheel(userId, profile, stats) {
       if (slot === 2) { enforceCap(); drawColumn(3); }
 
       // Update preview
-      updateTitlePreview(selectedWords);
+      updateTitlePreview(worn());
       // Update uniqueness
-      updateTitleUniqueness(selectedWords);
+      updateTitleUniqueness(worn());
     };
 
     // Scroll to selected item
@@ -2652,9 +2665,35 @@ async function renderTitleWheel(userId, profile, stats) {
   };
   for (const slotNum of [1, 2, 3]) drawColumn(slotNum);
 
+  const paintToggles = () => {
+    const onCount = [1, 2, 3].filter(k => shown[k]).length;
+    for (const k of [1, 2, 3]) {
+      const btn = document.querySelector(`.title-toggle[data-toggle-slot="${k}"]`);
+      const col = $(`#wheel-slot${k}`);
+      if (col) col.classList.toggle('title-wheel-column--off', !shown[k]);
+      if (!btn) continue;
+      btn.setAttribute('aria-pressed', String(shown[k]));
+      btn.textContent = shown[k] ? 'Shown' : 'Hidden';
+      // The last wheel still on cannot be switched off.
+      btn.disabled = shown[k] && onCount === 1;
+    }
+  };
+  document.querySelectorAll('.title-toggle').forEach(btn => {
+    btn.onclick = () => {
+      const k = Number(btn.dataset.toggleSlot);
+      if (shown[k] && [1, 2, 3].filter(j => shown[j]).length === 1) return;
+      shown[k] = !shown[k];
+      if (k === 2) { enforceCap(); drawColumn(3); }
+      paintToggles();
+      updateTitlePreview(worn());
+      updateTitleUniqueness(worn());
+    };
+  });
+  paintToggles();
+
   // Initial preview
-  updateTitlePreview(selectedWords);
-  updateTitleUniqueness(selectedWords);
+  updateTitlePreview(worn());
+  updateTitleUniqueness(worn());
 
   // Save button
   const saveBtn = $('#btn-save-title');
@@ -2662,19 +2701,20 @@ async function renderTitleWheel(userId, profile, stats) {
     saveBtn.onclick = async () => {
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
+      const w = worn();
       const { error: titleErr } = await updateProfile(userId, {
-        title_slot1: selectedWords[1],
-        title_slot2: selectedWords[2],
-        title_slot3: selectedWords[3]
+        title_slot1: w[1],
+        title_slot2: w[2],
+        title_slot3: w[3]
       });
       if (reportWriteFailure('Save title', titleErr, "Couldn't save your title")) {
         saveBtn.textContent = 'Not saved';
         setTimeout(() => { saveBtn.textContent = 'Save Title'; saveBtn.disabled = false; }, 2000);
         return;
       }
-      profile.title_slot1 = selectedWords[1];
-      profile.title_slot2 = selectedWords[2];
-      profile.title_slot3 = selectedWords[3];
+      profile.title_slot1 = w[1];
+      profile.title_slot2 = w[2];
+      profile.title_slot3 = w[3];
       // Update header title display
       const headerTitle = $('#profile-title');
       if (headerTitle) headerTitle.textContent = buildDisplayTitle(profile);

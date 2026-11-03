@@ -83,6 +83,13 @@
           <div id="wheel-slot2" class="title-wheel-column"></div>
           <div id="wheel-slot3" class="title-wheel-column"></div>
         </div>
+        <!-- One switch per wheel (owner, 2026-11-03): wear one, two or three
+             words. At least one stays on. -->
+        <div class="title-builder__toggles">
+          <button type="button" class="title-toggle" data-toggle-slot="1" aria-pressed="true">Shown</button>
+          <button type="button" class="title-toggle" data-toggle-slot="2" aria-pressed="true">Shown</button>
+          <button type="button" class="title-toggle" data-toggle-slot="3" aria-pressed="true">Shown</button>
+        </div>
         <p id="title-hint-toast" class="title-builder__hint"></p>
         <p id="title-uniqueness" class="title-builder__uniqueness"></p>
         <button id="btn-save-title" class="btn btn-primary btn-block">Save Title</button>

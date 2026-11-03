@@ -877,10 +877,14 @@ function fwRevealGate() {
   // same fallback a sleeping phone gets.
   const me = String(state.room?.playerId);
   const votes = state.difficultyVotes || {};
-  const total = state.players.length;
-  const done = state.players.filter(p => {
+  // PEOPLE ONLY (owner, 2026-11-03: "it shouldn't count the bot"). The bot
+  // locks its wager the instant the screen opens, so counting it only padded
+  // the number — "2/3" with one person still choosing read as nearly done.
+  const people = state.players.filter(p => !p.is_bot);
+  const total = people.length;
+  const done = people.filter(p => {
     const bet = _fwWagers[String(p.id)] !== undefined || (String(p.id) === me && state.finalWagerLocked);
-    const voted = p.is_bot || !!votes[String(p.id)] || !!votes[p.id];
+    const voted = !!votes[String(p.id)] || !!votes[p.id];
     return bet && voted;
   }).length;
   const left = _getServerTimeLeft(state.questionStartedAt, state.serverTimeOffset, FINAL_WAGER_TIMER_SECONDS);
@@ -1604,7 +1608,10 @@ function renderFavouriteAnswers(allAnswers) {
     if (!answer) return null;
     const player = state.players.find(p => String(p.id) === String(answer.player_id));
     return {
-      question: getQuestionText(e.questionNumber) || '',
+      // getQuestionText takes the QUESTION, not its number. Passing the number
+      // read a field off an integer and every card's question line came out
+      // empty — the owner's photo, "8 / Roman 👏1" with nothing above it.
+      question: (state.questions[e.questionNumber] && getQuestionText(state.questions[e.questionNumber])) || '',
       answer: (answer.submitted_answer || '').trim(),
       who: player?.display_name || 'Someone',
       claps: e.claps,

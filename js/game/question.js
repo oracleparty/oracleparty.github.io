@@ -4,7 +4,7 @@
 // ============================================
 
 import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
-         showScreen, _isLeaving } from './state.js';
+         showScreen, _isLeaving, noteRoundShown, noteAnswerSent } from './state.js';
 import { $, transitionScreens, fuzzyMatch } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { lastRequestMs } from '../db/client.js';
@@ -66,6 +66,7 @@ export function showQuestionScreen() {
     && state._renderedFinalRound === !!state.isFinalWagerRound;
   state._renderedQuestion = state.currentQuestion;
   state._renderedFinalRound = !!state.isFinalWagerRound;
+  noteRoundShown(state.currentQuestion, q?.id);
 
   if (!sameQuestion) {
     $('#answer-form').classList.remove('answer-input--submitted');
@@ -776,6 +777,7 @@ export function sendDraftAnswer() {
   const key = `${state.currentQuestion}:${text}`;
   if (_lastDraftSent === key) return;
   _lastDraftSent = key;
+  noteAnswerSent(state.currentQuestion, state.questions[state.currentQuestion]?.id, text);
   submitAnswerViaServer({
     roomId: state.room.id,
     playerId: state.room.playerId,
@@ -889,6 +891,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
       scoreEarned
     }]).then(() => ({ data: null, error: null }), error => ({ data: null, error }));
   } else {
+    noteAnswerSent(state.currentQuestion, q.id, answer);
     const sentAt = performance.now();
     const server = await submitAnswerViaServer({
       roomId: state.room.id,

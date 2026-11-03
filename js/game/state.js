@@ -322,6 +322,30 @@ export function resolveFieldMap(question) {
 }
 
 export function getQuestionText(q) { return q[FIELD_MAP.text] || ''; }
+
+/**
+ * WHAT THIS PHONE ACTUALLY SENT, per round (owner, 2026-11-03: "my friend
+ * didn't type an answer, and somehow it answered Scorpio for him"). Not found
+ * by reading, so it is recorded instead: the round is noted when its question
+ * is drawn on this page, every text this page sends is noted, and the reveal
+ * reports its own row if it shows text this page never sent. A page that was
+ * reloaded mid-round never noted the round, so it is never asked.
+ */
+const _sent = new Map();
+const _roundKey = (n, qid) => `${n}|${qid || ''}`;
+export function noteRoundShown(n, qid) {
+  const k = _roundKey(n, qid);
+  if (!_sent.has(k)) _sent.set(k, new Set());
+}
+export function noteAnswerSent(n, qid, text) {
+  const set = _sent.get(_roundKey(n, qid));
+  if (set) set.add(String(text ?? '').trim().toLowerCase());
+}
+/** null = this page cannot tell (it never showed the round). */
+export function sentThisRound(n, qid) {
+  const set = _sent.get(_roundKey(n, qid));
+  return set ? [...set] : null;
+}
 export function getCorrectAnswer(q) { return q[FIELD_MAP.correct] || ''; }
 export function getAlternates(q) { return q[FIELD_MAP.alternates] || []; }
 export function getDifficulty(q) { return q[FIELD_MAP.difficulty] || 'medium'; }

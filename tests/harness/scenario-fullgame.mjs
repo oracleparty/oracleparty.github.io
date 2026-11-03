@@ -795,11 +795,15 @@ try {
         return {
           shown: getComputedStyle(host).display !== 'none',
           entries: host.querySelectorAll('.fav-answer').length,
+          question: (host.querySelector('.fav-answer__q')?.textContent || '').trim(),
         };
       }).catch(() => null);
       note(`${r.name}'s Favourite Answers card: ${JSON.stringify(card)}`);
       if (!card || !card.shown || card.entries === 0) {
         problems.push(`${r.name} reached results with ${standingClaps} clap(s) in the room and no Favourite Answers card`);
+      } else if (!card.question) {
+        // The owner's photo: a card with the answer and no question above it.
+        problems.push(`${r.name}'s Favourite Answers card shows no question for the clapped answer`);
       }
     }
   } else {

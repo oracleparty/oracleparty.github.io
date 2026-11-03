@@ -91,6 +91,27 @@ try {
   if (after.hermitCapped || !after.hermitPickable) {
     problems.push('Hermit stayed locked beside a Science word, the subject Dana earned it in');
   }
+
+  // ONE SWITCH PER WHEEL (owner, 2026-11-03): wear one, two or three words,
+  // never none. Dana saved no reel-1 word, so that wheel starts switched off.
+  await dana.page.click('#wheel-slot3 [data-word-id="hermit"]');
+  await dana.page.click('.title-toggle[data-toggle-slot="2"]');
+  const tog = await dana.page.evaluate(() => ({
+    preview: document.querySelector('#title-preview')?.textContent,
+    t1: document.querySelector('.title-toggle[data-toggle-slot="1"]')?.getAttribute('aria-pressed'),
+    t3disabled: document.querySelector('.title-toggle[data-toggle-slot="3"]')?.disabled,
+  }));
+  note(`with reel 2 switched off: ${JSON.stringify(tog)}`);
+  if (tog.preview !== 'Hermit') problems.push(`switching reel 2 off left the title as "${tog.preview}", want "Hermit"`);
+  if (tog.t1 !== 'false') problems.push('a wheel with no saved word did not start switched off');
+  if (!tog.t3disabled) problems.push('the last wheel still on could be switched off, leaving no title at all');
+  await dana.page.click('#btn-save-title');
+  await dana.page.waitForTimeout(800);
+  const saved = table.store.table('profiles').find(p => p.user_id === dana.userId);
+  note(`saved: ${saved.title_slot1} / ${saved.title_slot2} / ${saved.title_slot3}`);
+  if (saved.title_slot2 !== null || saved.title_slot3 !== 'hermit') {
+    problems.push(`saving with reel 2 off stored ${saved.title_slot2} / ${saved.title_slot3}, want an empty middle and "hermit"`);
+  }
 } catch (err) {
   problems.push(`threw: ${err.message.split('\n')[0]}`);
 } finally {

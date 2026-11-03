@@ -8,9 +8,9 @@ import { state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getC
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
          _qbFeedback, setQbFeedback,
-         judgementBusy, beginJudgement, endJudgement } from './state.js';
+         judgementBusy, beginJudgement, endJudgement, sentThisRound } from './state.js';
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast } from '../utils.js';
-import { logger } from '../logger.js';
+import { logger, recordFault } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS, CLOCK_STAMP_TIMEOUT_MS, CLAP_POLL_MS } from '../constants.js';
 import { fetchAnswersForQuestion, updateAnswerJudgment, setJudgementOnServer,
          disqualifyRoundOnServer, undisqualifyRoundOnServer, updateGameState, setPhaseOnServer,
@@ -602,6 +602,30 @@ export function catchUpAnswerFrom(playerId) {
     .finally(() => { _catchUpBusy = false; });
 }
 
+/**
+ * THIS PHONE'S OWN ROW SAYS SOMETHING THIS PHONE NEVER SENT. Unexplained and
+ * reported once (owner, 2026-11-03: "Scorpio" as a friend's answer on his own
+ * phone when he typed nothing). Written to error_logs so the next one can be
+ * read rather than guessed: what the row says, what this page sent, which
+ * round, and whether the room had a bot. Never on a page that did not show the
+ * round itself (a reload cannot know what it sent).
+ */
+const _foreignReported = new Set();
+function reportForeignOwnAnswer(answer) {
+  const text = String(answer.submitted_answer || '').trim();
+  if (!text || text === '__WAGER_LOCKED__') return;
+  const sent = sentThisRound(answer.question_number, answer.question_id);
+  if (!sent || sent.includes(text.toLowerCase())) return;
+  const key = `${answer.id}|${text}`;
+  if (_foreignReported.has(key)) return;
+  _foreignReported.add(key);
+  recordFault('AnswerNotMine',
+    `q${answer.question_number}: my row says "${text.slice(0, 60)}" and this page sent ${sent.length ? sent.map(t => `"${t.slice(0, 40)}"`).join(', ') : 'nothing'}`,
+    { answerId: answer.id, questionId: answer.question_id, playerId: answer.player_id,
+      bots: state.players.filter(p => p.is_bot).map(p => p.id), host: !!state.room?.isHost,
+      phase: state.gamePhase, typed: (document.getElementById('answer-input')?.value || '').slice(0, 60) }, 'warn');
+}
+
 export function renderRevealAnswers(answers, { holdColours = false } = {}) {
   // Colours are painted when the round is revealed AND the caller is not
   // holding them back for the reveal animation. `stillWaiting` deliberately
@@ -615,6 +639,7 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
 
   for (const player of state.players) {
     const answer = answers.find(a => a.player_id === player.id);
+    if (answer && String(player.id) === String(state.room?.playerId)) reportForeignOwnAnswer(answer);
     const row = document.createElement('div');
     row.className = 'answer-row' + (isPlayerAway(player.id) ? ' answer-row--away' : '');
     row.dataset.playerId = player.id;
