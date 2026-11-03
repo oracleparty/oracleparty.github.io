@@ -96,6 +96,30 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-03 (later) — Reveal Question waits; "Reveal Early" with everybody in; the host-left card
+>
+> **Reveal Question waits for every person's BET AND difficulty VOTE, or the
+> 20s wager clock** (owner: the host revealed "before I had even placed a
+> wager"; then chose "bet and vote"). Greyed, reading "Waiting for bets and
+> votes (n/m)". A bot only has to bet. Votes are broadcast-only, so a missed one
+> holds the gate until the clock — the sleeping-phone fallback.
+> `fwRevealGate`/`refreshFwRevealGate` in `scores.js`; `handleRevealFinalQuestion`
+> refuses too. `scenario-fullgame` checks the host's button is greyed while
+> Carol has not bet (not break-tested yet). `scenario-finalq` robots now vote,
+> and its set-up runs once — waiting turns had stacked 47 watchers on one spin.
+>
+> **"Reveal Early" with everybody answered:** on the final round every answer
+> is a Realtime UPDATE (each player holds a `__WAGER_LOCKED__` row), and that
+> branch redrew the rows without refreshing the controller's button.
+> `renderRevealAnswers` now ends by refreshing the button and timer — every
+> road that learns of an answer redraws there. Inspection-verified only.
+>
+> **"Host returned to lobby" was a card appended into the results content**,
+> which is sized around the scoreboard: it squeezed the board to nothing and
+> was cut off by the footer, and its button duplicated Back to Lobby. It is one
+> line above Back to Lobby now (`.results-footer__note`). `scenario-playagain`
+> requires the line and 2+ visible rows; not break-tested.
+
 > ## 2026-11-03 — Gassy dropped from a worn title; the title collection hidden; honks
 >
 > **"Brave Hermit" for "Brave Gassy Hermit" (owner's lobby photo).** A seat
