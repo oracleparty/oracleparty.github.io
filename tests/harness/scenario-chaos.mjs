@@ -221,7 +221,8 @@ try {
       };
     }).catch(() => null);
   };
-  const closeSheet = r => r.page.click('#host-settings-backdrop').catch(() => {});
+  // Tap the backdrop's TOP edge: its centre sits under a tall sheet (the host's).
+  const closeSheet = r => r.page.click('#host-settings-backdrop', { position: { x: 20, y: 20 } }).catch(() => {});
 
   heading('round 0: Chaos ON, Bob answering, sound OFF');
   await bob.page.waitForSelector('#answer-input', { state: 'visible', timeout: 20000 })
@@ -312,6 +313,58 @@ try {
     if (!h?.open || h.readonly || h.toggles !== 1 || !h.returnBtn) problems.push(`the host's sheet lost its controls: ${JSON.stringify(h)}`);
     await closeSheet(host);
     await host.page.waitForTimeout(400);
+  }
+
+  // THE SOUND SWITCH IS ON THE QUESTION SCREEN TOO (owner, 2026-11-03: "No
+  // audio button when answering question?"). It lived on the chat bar, which
+  // is hidden while answering — the one moment Chaos honks reach you.
+  heading("Bob's sound switch is in the question screen's top bar");
+  {
+    const vis = await bob.page.evaluate(() => {
+      const b = document.querySelector('#question-screen.active .game-header .honk-sound-toggle');
+      return !!b && b.getClientRects().length > 0;
+    }).catch(() => false);
+    if (!vis) problems.push('Bob is answering and has no honk sound switch on screen');
+    else {
+      const was = await bob.page.evaluate(() => localStorage.getItem('oracle_party_honk_sound_off'));
+      await bob.page.click('#question-screen .game-header .honk-sound-toggle').catch(() => {});
+      const now = await bob.page.evaluate(() => localStorage.getItem('oracle_party_honk_sound_off'));
+      note(`sound-off flag: ${was} -> ${now}`);
+      if (was === now) problems.push("tapping the question screen's sound switch changed nothing");
+    }
+  }
+
+  // A HONK MUST NOT OUTRUN THE HONKER'S ANSWER (owner, 2026-11-03: "it said
+  // they were still answering"). Honk buttons only exist once you have
+  // submitted, so a honk from somebody drawn as "Waiting…" means their answer
+  // is in flight. Alice is made deaf to answers so the honk is the only news.
+  heading("Bob honks Alice before his answer reaches her — she still sees it");
+  {
+    await host.page.locator('#question-screen .wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first().click({ timeout: 5000 }).catch(() => {});
+    await host.page.fill('#answer-input', 'AliceSays');
+    await host.page.click('#btn-submit-answer');
+    await host.page.waitForSelector('#reveal-screen.active', { timeout: 10000 })
+      .catch(() => problems.push('Alice submitted and never reached the reveal screen'));
+    await host.page.waitForTimeout(2500);   // past the reveal's own 1.5s re-read
+    host.deafTables = new Set(['answers']);
+    await bob.page.locator('#question-screen .wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first().click({ timeout: 5000 }).catch(() => {});
+    await bob.page.fill('#answer-input', 'BobSays');
+    await bob.page.click('#btn-submit-answer');
+    await bob.page.waitForSelector('#reveal-screen.active', { timeout: 10000 }).catch(() => {});
+    await bob.page.waitForTimeout(600);
+    const aliceId = await host.page.evaluate(() => window.__state?.room?.playerId);
+    await bob.page.evaluate(async target => {
+      (await import(new URL('js/honk.js', location.href).href)).sendHonk(target);
+    }, aliceId);
+    let seen = false;
+    for (let i = 0; i < 20 && !seen; i++) {
+      await host.page.waitForTimeout(250);
+      seen = await host.page.evaluate(() =>
+        (document.querySelector('#reveal-answers')?.textContent || '').includes('BobSays')).catch(() => false);
+    }
+    note(`Alice sees Bob's answer within 5s of his honk: ${seen}`);
+    if (!seen) problems.push("Bob honked Alice from his answers screen and Alice still shows him as answering");
+    host.deafTables = null;
   }
 } catch (e) {
   problems.push(`scenario crashed: ${e.stack || e}`);

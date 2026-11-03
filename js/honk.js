@@ -183,21 +183,23 @@ export function setHonkSoundOff(off) {
  * Wire a speaker button that toggles this player's honk sound. The label is a
  * word as well as an icon — a bare glyph is a guess.
  */
+const _soundToggles = new Set();
+function _paintSoundToggle(btn) {
+  btn.textContent = _soundOff ? '🔇' : '🔊';
+  btn.setAttribute('aria-pressed', String(_soundOff));
+  btn.setAttribute('aria-label', _soundOff ? 'Honk sound off — tap to turn on' : 'Honk sound on — tap to turn off');
+  btn.title = _soundOff ? 'Honk sound off' : 'Honk sound on';
+}
 export function attachHonkSoundToggle(btn) {
   if (!btn || btn.dataset.honkSoundWired) return;
   btn.dataset.honkSoundWired = '1';
-  const paint = () => {
-    btn.textContent = _soundOff ? '🔇' : '🔊';
-    btn.setAttribute('aria-pressed', String(_soundOff));
-    btn.setAttribute('aria-label', _soundOff ? 'Honk sound off — tap to turn on' : 'Honk sound on — tap to turn off');
-    btn.title = _soundOff ? 'Honk sound off' : 'Honk sound on';
-  };
-  paint();
+  // The game page carries one per screen header; flipping any repaints all.
+  _soundToggles.add(btn);
+  _paintSoundToggle(btn);
   btn.addEventListener('click', (e) => {
-    // The game's chat bar opens the chat on any click inside it.
     e.stopPropagation();
     setHonkSoundOff(!_soundOff);
-    paint();
+    _soundToggles.forEach(_paintSoundToggle);
   });
 }
 
@@ -326,7 +328,7 @@ export function initHonkSystem(roomId, playerId, onCountUpdate) {
       // Update count and UI immediately — no debounce, honk spam is fun
       honkCounts[targetId] = (honkCounts[targetId] || 0) + 1;
       _saveHonkCounts();
-      if (onCountUpdate) onCountUpdate(targetId, honkCounts[targetId]);
+      if (onCountUpdate) onCountUpdate(targetId, honkCounts[targetId], String(payload.from_id));
 
       // Everyone sees WHO honked, not just the person hit — the count badge
       // already updates on every device, so the room already knows a honk

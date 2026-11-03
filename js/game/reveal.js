@@ -567,6 +567,41 @@ export function roundClosed() {
     || state.gamePhase === 'scores_reveal';
 }
 
+/**
+ * A honk arrived from `playerId` while this phone's reveal still draws them as
+ * answering. Their honk can only come from their own reveal screen, so their
+ * answer exists (or is a moment from existing) — the broadcast simply beat the
+ * row's Realtime event here. Read the round once now and once shortly after,
+ * and redraw only if it grew. One read in flight at a time.
+ */
+let _catchUpBusy = false;
+const isRealAnswer = a => { const t = (a.submitted_answer || '').trim(); return !!t && t !== '__WAGER_LOCKED__'; };
+export function catchUpAnswerFrom(playerId) {
+  if (!playerId || _catchUpBusy) return;
+  if (!state.onRevealScreen || state.resultsRevealed) return;
+  if (!state.players.some(p => String(p.id) === String(playerId))) return;
+  const have = (state.currentAnswers || []).find(a => String(a.player_id) === String(playerId));
+  if (have && isRealAnswer(have)) return;
+  const q = state.currentQuestion;
+  _catchUpBusy = true;
+  const pull = async () => {
+    if (!state.onRevealScreen || state.resultsRevealed || state.currentQuestion !== q) return false;
+    const fresh = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, q));
+    if (!state.onRevealScreen || state.resultsRevealed || state.currentQuestion !== q) return false;
+    const got = fresh.some(a => String(a.player_id) === String(playerId) && isRealAnswer(a));
+    if (submittedCount(fresh) > submittedCount(state.currentAnswers)) {
+      const pending = state.currentAnswers.filter(a => String(a.id).startsWith('optimistic-')
+        && !fresh.some(f => String(f.player_id) === String(a.player_id)));
+      state.currentAnswers = [...fresh, ...pending];
+      renderRevealAnswers(state.currentAnswers);
+    }
+    return got;
+  };
+  pull().then(got => got ? null : new Promise(r => setTimeout(r, 1200)).then(pull))
+    .catch(err => logger.warn('Game', 'honk catch-up read failed', err))
+    .finally(() => { _catchUpBusy = false; });
+}
+
 export function renderRevealAnswers(answers, { holdColours = false } = {}) {
   // Colours are painted when the round is revealed AND the caller is not
   // holding them back for the reveal animation. `stillWaiting` deliberately

@@ -77,7 +77,7 @@ import {
   showRevealScreen, enableRevealButton,
   enableNextQuestion, updateRevealButtonText, placeHostReview,
   updateHonkBadges, handleNextQuestion, initFeedbackListeners,
-  handleClapChange,
+  handleClapChange, catchUpAnswerFrom,
   registerScoresRef as registerRevealScoresRef,
 } from './reveal.js';
 import {
@@ -389,11 +389,17 @@ async function init() {
   // Every worn title on this page colours its words by rarity; owner-written
   // words arrive by fetch, so repaint once they land.
   loadTitleWords().then(() => repaintTitleColours()).catch(() => {});
-  initHonkSystem(state.room.id, state.room.playerId, () => {
+  initHonkSystem(state.room.id, state.room.playerId, (_t, _n, fromId) => {
     // Re-render visible player rows to update honk badges
     updateHonkBadges();
+    // A honk from somebody still drawn as answering means their answer is on
+    // its way — honk buttons only exist once you have submitted. Fetch it
+    // rather than leave them "Waiting…" while they honk (owner, 2026-11-03).
+    catchUpAnswerFrom(fromId);
   });
-  attachHonkSoundToggle($('#btn-honk-sound'));
+  // One switch in every screen's top bar (owner, 2026-11-03: the chat bar's
+  // was hidden while answering, the one moment Chaos honks reach you).
+  document.querySelectorAll('.honk-sound-toggle').forEach(attachHonkSoundToggle);
 
   // Honk click handler (event delegation on scores + results containers)
   // Note: #reveal-answers is NOT included here because renderRevealAnswers()

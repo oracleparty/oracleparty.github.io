@@ -96,6 +96,34 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-03 — Gassy dropped from a worn title; the title collection hidden; honks
+>
+> **"Brave Hermit" for "Brave Gassy Hermit" (owner's lobby photo).** A seat
+> carries its title as TEXT, copied from `_cachedTitle` — computed on boot
+> BEFORE the owner's words load, so an overlay word resolved to nothing and
+> dropped. `seatTitle()` in `auth.js` awaits the (bounded) word load first, at
+> all four seat sites. A seat ADOPTED by claimSeat keeps its old text: clients
+> cannot write `players.title` (058's column grants). Not robot-checked.
+>
+> **The title collection ("See all titles") is HIDDEN** — owner: "confusing as
+> fuck and wrong. Just get rid of it for now". Nothing opens it; the code stays
+> for the redesign, which waits on the owner. `scenario-account` fails if
+> anything opens it. Also raised, NOT built: a way to choose which earned words
+> are "active" on the builder's wheels — meaning not yet confirmed.
+>
+> **A 🔊 in every game screen's top bar** (owner's pick of three). The switch
+> lived on the chat bar, which hides while answering — the one moment Chaos
+> honks reach you. Moved, not copied: one per header, any one repaints all.
+>
+> **A honk outran the honker's answer** ("it said they were still answering").
+> Honk buttons only exist after Submit (the reveal draws at once, optimistic),
+> and a broadcast beats the answer row's Realtime event. A honk from a player
+> still drawn as waiting now re-reads the round (`catchUpAnswerFrom` in
+> `reveal.js`). `scenario-chaos` makes Alice deaf to answers and requires
+> Bob's answer within 5s of his honk; both new checks break-tested. Its old
+> `closeSheet` tapped the backdrop's centre, which on the HOST's tall sheet is
+> the sheet — the host's sheet had silently stayed open; it taps the top now.
+
 > ## 2026-11-02 — a playtest list: a lost bet, claps never read back, +15s (079, 080)
 >
 > **"My friend bet 20, it showed he bet zero" — not a wager bug.** He typed,
