@@ -190,10 +190,16 @@ try {
         if (!done.has(key)) {
           const opt = r.page.locator('#final-wager-screen [data-wager="20"]').first();
           if (await opt.isVisible().catch(() => false)) await opt.click().catch(() => {});
+          // Everybody votes too: Reveal Question waits for every person's bet
+          // AND vote (owner, 2026-11-03), or for the 20s clock.
+          await r.page.locator('#final-wager-screen .dv-option[data-difficulty="medium"]').first().click().catch(() => {});
           if (await r.page.locator('#fw-status:not(.hidden)').isVisible().catch(() => false)) done.add(key);
         }
-        // THE HOST PRESSES IT — the ordinary case, and the reported one.
-        if (r === host && done.has(key) && done.has('Bob:final')) {
+        // THE HOST PRESSES IT — the ordinary case, and the reported one. Only
+        // once it is pressable: the set-up below must run ONCE, or every turn
+        // spent waiting adds another set of watchers (47 counted one spin).
+        if (r === host && done.has(key) && done.has('Bob:final')
+            && await host.page.isEnabled('#btn-fw-reveal').catch(() => false)) {
           heading('the host reveals the final question, with a slow server');
           // Count the slot-machine chains. Each run of the animation shows the
           // final pill once, so two chains is "it rerolled the difficulty".
