@@ -5,7 +5,7 @@
 import { $, $$, escapeHtml, showToast, navigateWithFade, navigateWithFadeReplace } from './utils.js';
 import { findRoomByCode, fetchPublicRooms, addPlayer, claimSeat, cleanupOrphanedRooms,
          fetchHostReputations, describeHostReputation } from './supabase.js';
-import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, recallSeat } from './auth.js';
+import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, recallSeat } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel } from './categories.js';
 import { logger } from './logger.js';
@@ -148,7 +148,7 @@ async function joinRoom(code) {
     if (authUser?.profile) {
       extras.avatarColor = authUser.profile.avatar_color;
       extras.avatarEmoji = authUser.profile.avatar_emoji;
-      extras.title = authUser.profile._cachedTitle || null;
+      extras.title = await seatTitle();
     }
     // claimSeat, not addPlayer: joining used to add a row unconditionally, so
     // anybody whose unload beacon never fired — locked phone, lost signal —

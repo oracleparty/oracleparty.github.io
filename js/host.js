@@ -5,7 +5,7 @@
 
 import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount, chaosAvailable } from './supabase.js';
-import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
+import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
@@ -785,7 +785,7 @@ async function handleHostGame() {
     if (authUser?.profile) {
       extras.avatarColor = authUser.profile.avatar_color;
       extras.avatarEmoji = authUser.profile.avatar_emoji;
-      extras.title = authUser.profile._cachedTitle || null;
+      extras.title = await seatTitle();
     }
     // Same as join: the identity is acquired at the moment a seat is taken.
     const seatUserId = await ensureAnonymousIdentity() || userId;

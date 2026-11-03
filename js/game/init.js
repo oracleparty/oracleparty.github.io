@@ -42,7 +42,7 @@ import {
   fetchExclusiveWildCardQuestions,
   fetchQuestionFeedback
 } from '../supabase.js';
-import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
+import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
 import { loadTitleWords } from '../title-content.js';
 import { repaintTitleColours } from '../titles.js';
@@ -256,7 +256,7 @@ async function init() {
     if (authUser?.profile) {
       extras.avatarColor = authUser.profile.avatar_color;
       extras.avatarEmoji = authUser.profile.avatar_emoji;
-      extras.title = authUser.profile._cachedTitle || null;
+      extras.title = await seatTitle();
     }
 
     const stale = Date.now() - STALE_TIMEOUT_MS;

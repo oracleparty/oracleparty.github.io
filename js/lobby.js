@@ -50,7 +50,7 @@ import {
   fetchExclusiveWildCardCount,
   chaosAvailable
 } from './supabase.js';
-import { getDisplayName, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
+import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkChaos, attachHonkSoundToggle, updateHonkBadges } from './honk.js';
 import { initTypingIndicator, notifyTyping, destroyTypingIndicator } from './typing.js';
 import { attachProfileCardHandler } from './profile.js';
@@ -1625,7 +1625,7 @@ async function ensureCurrentPlayer() {
   if (authUser?.profile) {
     extras.avatarColor = authUser.profile.avatar_color;
     extras.avatarEmoji = authUser.profile.avatar_emoji;
-    extras.title = authUser.profile._cachedTitle || null;
+    extras.title = await seatTitle();
   }
   // This used to adopt an existing row only when there was EXACTLY ONE match
   // and otherwise add another — so at two duplicates it made a third, at three

@@ -173,6 +173,25 @@ let _anonUserId = null;
  * database know who is asking". They are different questions and were only ever
  * the same question because a guest had no answer to the second one.
  */
+/**
+ * The title to write onto a SEAT. A seat carries its title as text for the
+ * whole game, so it must be built AFTER the owner's written words are loaded —
+ * `_cachedTitle` is computed on boot before that fetch, and a word like Gassy
+ * then resolves to nothing and drops out ("Brave Hermit" for "Brave Gassy
+ * Hermit", owner's photo 2026-11-03). loadTitleWords is bounded, so this
+ * cannot hold a join up for long; on a failed load it is the old title.
+ */
+export async function seatTitle() {
+  const profile = _currentProfile;
+  if (!profile) return null;
+  try {
+    await loadTitleWords();
+    const t = buildDisplayTitle(profile);
+    if (t) profile._cachedTitle = t;
+  } catch { /* the cached title stands */ }
+  return profile._cachedTitle || null;
+}
+
 export function getCurrentUser() {
   if (!_currentUser) return null;
   return { user: _currentUser, profile: _currentProfile };
