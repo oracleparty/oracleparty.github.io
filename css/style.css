@@ -9391,3 +9391,10 @@ body.kb-open #question-screen .question-card {
 }
 .title-toggle:disabled { opacity: 0.6; cursor: default; }
 .title-wheel-column--off { opacity: 0.35; }
+
+/* The gear and the 🔊 are 28px tall but must not make the progress bar taller
+   than its text: the question screen has no pixels to spare at 375x560 with
+   20 wagers (the FIT sweep, 2026-11-03: 3px over once the 🔊 arrived). They
+   overhang the row's own height instead, keeping their full tap size. */
+.game-progress .host-settings-gear,
+.game-progress .honk-sound-toggle--header { margin-block: -5px; }

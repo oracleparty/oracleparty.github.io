@@ -96,6 +96,33 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-03 (latest) — title switches, a scrolling results page, a recorder for "Scorpio"
+>
+> **One switch under each Title Builder wheel** (owner): wear one, two or three
+> words; a switched-off wheel saves EMPTY; the last one on cannot be turned off
+> (owner agreed nobody should have no title). With reel 2 off a rank is capped
+> by the highest rank held anywhere (`rankCapFor`'s no-subject answer).
+> `scenario-titles` checks preview, the locked last switch and the saved row;
+> break-tested.
+>
+> **Results: the page scrolls, not the scoreboard box** (owner's pick) — "▾
+> scroll for all 3" read as a Favourite Answers cue. **Favourite cards never
+> showed their question:** `getQuestionText` was passed the round NUMBER; the
+> mock passed text, so only a real game could show it. `scenario-fullgame`
+> requires the question line now. The final-wager gate counts PEOPLE only.
+> The gear and 🔊 overhang the progress row (`margin-block: -5px`) — the 🔊 put
+> the 20-wager question screen 3px over at 375x560 (FIT sweep).
+>
+> **"Scorpio" — a bot-style wrong answer SAVED on a friend's seat who typed
+> nothing** (both phones saw it; owner hosted; bot in the room). NOT FOUND:
+> every writer is keyed to the right seat (bots.js, `op_bot_answer`, the
+> reassign paths), nothing writes text into `#answer-input`, and
+> `scenario-silent` (host + silent Bob + bot) leaves Bob's rows empty. A
+> recorder ships instead: `[AnswerNotMine]` in error_logs when this phone's
+> own row shows text it never sent (`noteAnswerSent` / `sentThisRound` in
+> `state.js`). Read it before guessing; rerun `scenario-silent` under the
+> condition it names (lag, reload, a backgrounded phone).
+
 > ## 2026-11-03 (later) — Reveal Question waits; "Reveal Early" with everybody in; the host-left card
 >
 > **Reveal Question waits for every person's BET AND difficulty VOTE, or the
