@@ -211,6 +211,9 @@ try {
   // was a card appended into the results content, which is sized around the
   // board, and squeezed it to nothing.
   {
+    // The host is on a slow link here, so the room reaches the lobby a few
+    // seconds after the tap: wait for the line rather than for a fixed time.
+    await bob.page.waitForSelector('#lobby-return-notice', { timeout: 12000 }).catch(() => {});
     const r = await bob.page.evaluate(() => ({
       note: (document.querySelector('#lobby-return-notice')?.textContent || '').trim(),
       board: document.querySelector('#results-screen .results-scoreboard')?.getBoundingClientRect().height || 0,

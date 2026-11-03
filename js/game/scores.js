@@ -871,12 +871,20 @@ let _fwGateTimer = null;
  * that is asleep never locks, and the room must not wait on it for ever.
  */
 function fwRevealGate() {
+  // AND every person has VOTED on the difficulty (owner, same day: "bet and
+  // vote"). A bot cannot vote, so it only has to bet. Votes are broadcast, so a
+  // vote this phone never heard keeps the gate shut until the clock ends — the
+  // same fallback a sleeping phone gets.
   const me = String(state.room?.playerId);
+  const votes = state.difficultyVotes || {};
   const total = state.players.length;
-  const locked = state.players.filter(p => _fwWagers[String(p.id)] !== undefined
-    || (String(p.id) === me && state.finalWagerLocked)).length;
+  const done = state.players.filter(p => {
+    const bet = _fwWagers[String(p.id)] !== undefined || (String(p.id) === me && state.finalWagerLocked);
+    const voted = p.is_bot || !!votes[String(p.id)] || !!votes[p.id];
+    return bet && voted;
+  }).length;
   const left = _getServerTimeLeft(state.questionStartedAt, state.serverTimeOffset, FINAL_WAGER_TIMER_SECONDS);
-  return { ready: locked >= total || left <= 0, locked, total, left };
+  return { ready: done >= total || left <= 0, locked: done, total, left };
 }
 
 /** Paint the Reveal Question button from the gate; re-check when the clock ends. */
@@ -885,7 +893,7 @@ export function refreshFwRevealGate() {
   if (!btn || btn.classList.contains('hidden')) return;
   const { ready, locked, total, left } = fwRevealGate();
   btn.disabled = !ready;
-  btn.textContent = ready ? 'Reveal Question' : `Waiting for wagers (${locked}/${total})`;
+  btn.textContent = ready ? 'Reveal Question' : `Waiting for bets and votes (${locked}/${total})`;
   clearTimeout(_fwGateTimer);
   if (!ready) _fwGateTimer = setTimeout(refreshFwRevealGate, Math.max(250, left * 1000 + 150));
 }
@@ -957,6 +965,7 @@ export async function updateFinalWagerPlayerList() {
 function _renderInlineDvTally() {
   const screen = document.getElementById('final-wager-screen');
   if (!screen) return;
+  refreshFwRevealGate();   // a vote can be the last thing the gate waits on
   const groups = { easy: [], medium: [], hard: [] };
   for (const [pid, diff] of Object.entries(state.difficultyVotes || {})) {
     if (groups[diff]) groups[diff].push(pid);
