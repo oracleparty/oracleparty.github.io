@@ -1108,16 +1108,14 @@ export async function initProfilePage() {
         }
         if (best) {
           const label = CATEGORY_META[best.cat]?.label || best.cat;
-          peek.textContent = `Closest: ${label}, ${best.needed} more right · See what there is to earn \u203a`;
+          peek.textContent = `Closest: ${label}, ${best.needed} more right`;
         }
       }
     }
 
-    // The padlock opens the collection whether or not the builder is unlocked.
-    const lockedBtn = $('#title-builder-locked');
-    if (lockedBtn) lockedBtn.onclick = () => openTitleGallery(userId);
-    const galleryBtn = $('#btn-open-gallery');
-    if (galleryBtn) galleryBtn.onclick = () => openTitleGallery(userId);
+    // THE COLLECTION IS HIDDEN (owner, 2026-11-03: "confusing as fuck and
+    // wrong. Just get rid of it for now"). Nothing opens it until it is
+    // redesigned with them; the code stays so the redesign starts from it.
     const closeBtn = $('#btn-close-gallery');
     if (closeBtn) closeBtn.onclick = closeTitleGallery;
   }

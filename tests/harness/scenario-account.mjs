@@ -338,49 +338,18 @@ try {
   // nothing draws exactly as happily, which is the lesson the admin panels and
   // the deputy's dead buttons both taught.
   // ============================================================
-  heading('the collection collapses by subject');
+  // THE COLLECTION IS HIDDEN until the owner redesigns it (2026-11-03).
+  // Nothing on the profile may open it — a way in is a way back to a screen
+  // the owner called wrong.
+  heading('the title collection cannot be opened');
   {
-    await alice.page.locator('#btn-open-gallery, #title-builder-locked').first()
-      .click().catch(() => {});
-    await alice.page.waitForTimeout(1500);
-
-    const heads = alice.page.locator('.title-gallery__group--toggle');
-    const n = await heads.count().catch(() => 0);
-    const openAtFirst = await alice.page
-      .locator('.title-gallery__group--toggle[aria-expanded="true"]').count().catch(() => 0);
-    note(`subject headers: ${n}, open on arrival: ${openAtFirst}`);
-    if (n < 2) {
-      problems.push(`the collection shows ${n} collapsible subjects — Knowledge is not grouped, so it is one long scroll again`);
-    }
-    if (openAtFirst !== 0) {
-      problems.push(`${openAtFirst} subject(s) already open on arrival — the point of the collapse is that the page starts short`);
-    }
-
-    // OPENING ONE MUST ACTUALLY SHOW ITS WORDS.
-    await heads.first().click().catch(() => {});
-    await alice.page.waitForTimeout(500);
-    const visibleRows = await alice.page
-      .locator('#title-gallery-body [data-subject-body]:not([hidden]) .title-row').count().catch(() => 0);
-    note(`rows visible after opening the first subject: ${visibleRows}`);
-    if (visibleRows === 0) {
-      problems.push('opening a subject revealed no words — the header toggles and nothing happens');
-    }
-
-    // AND ONLY ONE AT A TIME, or the scroll grows straight back.
-    if (n > 1) {
-      await heads.nth(1).click().catch(() => {});
-      await alice.page.waitForTimeout(500);
-      const openNow = await alice.page
-        .locator('.title-gallery__group--toggle[aria-expanded="true"]').count().catch(() => 0);
-      const bodiesShown = await alice.page
-        .locator('#title-gallery-body [data-subject-body]:not([hidden])').count().catch(() => 0);
-      note(`after opening a second subject: ${openNow} header(s) open, ${bodiesShown} list(s) shown`);
-      if (openNow !== 1 || bodiesShown !== 1) {
-        problems.push(`opening a second subject left ${openNow} open — they are meant to close each other`);
-      }
-    }
-    await alice.page.locator('#btn-close-gallery').click().catch(() => {});
-    await alice.page.waitForTimeout(400);
+    await alice.page.locator('#title-builder-locked').click({ timeout: 2000 }).catch(() => {});
+    await alice.page.waitForTimeout(800);
+    const shown = await alice.page.locator('#title-gallery').isVisible().catch(() => false);
+    const button = await alice.page.locator('#btn-open-gallery').count().catch(() => 0);
+    note(`collection visible: ${shown}, See all titles buttons: ${button}`);
+    if (shown) problems.push('tapping the padlock opened the hidden title collection');
+    if (button) problems.push('the See all titles button is still on the profile');
   }
 
   heading('leaderboard');
