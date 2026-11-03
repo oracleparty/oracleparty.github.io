@@ -9354,3 +9354,12 @@ body.kb-open #question-screen .question-card {
 @media (prefers-reduced-motion: reduce) { .avatar.is-typing { animation: none; } }
 /* A honk still shakes a typer: the jiggle outranks the ring's pulse. */
 .avatar.is-typing.honk-jiggle { animation: honk-jiggle 0.55s ease-in-out; }
+
+/* "The host is back in the lobby" — a line above Back to Lobby, never a card
+   inside the results content, which is sized around the scoreboard. */
+.results-footer__note {
+  margin: 0 0 var(--space-xs);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}

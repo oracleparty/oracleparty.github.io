@@ -207,6 +207,20 @@ try {
   }
   // Non-host is offered a notice rather than being yanked out.
   await bob.page.waitForTimeout(2000);
+  // THE NOTICE MUST NOT EAT THE SCOREBOARD (owner's photo, 2026-11-03): it
+  // was a card appended into the results content, which is sized around the
+  // board, and squeezed it to nothing.
+  {
+    const r = await bob.page.evaluate(() => ({
+      note: (document.querySelector('#lobby-return-notice')?.textContent || '').trim(),
+      board: document.querySelector('#results-screen .results-scoreboard')?.getBoundingClientRect().height || 0,
+      rows: [...document.querySelectorAll('#results-list .results-row')]
+        .filter(el => { const b = el.getBoundingClientRect(); return b.height > 0 && b.bottom > 0 && b.top < innerHeight; }).length,
+    })).catch(() => null);
+    note(`Bob after the host left: ${JSON.stringify(r)}`);
+    if (!r?.note) problems.push('the host went back to the lobby and Bob was not told');
+    if (r && r.rows < 2) problems.push(`the "host is back in the lobby" notice squeezed Bob's scoreboard to ${Math.round(r.board)}px (${r.rows} rows visible)`);
+  }
   await clickIfReady(bob, '#btn-return-lobby');
   await clickIfReady(bob, '#btn-play-again');
 

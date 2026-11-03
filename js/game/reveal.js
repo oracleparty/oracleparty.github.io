@@ -795,6 +795,23 @@ export function renderRevealAnswers(answers, { holdColours = false } = {}) {
   // Profile card on player tap
   attachProfileCardHandler(newContainer, () => state.players, state.room.id,
     () => state.room?.playerId);
+
+  // THE BUTTON FOLLOWS THE ROWS. Every road that learns of an answer redraws
+  // here, and only some of them also refreshed the controller's button — the
+  // Realtime UPDATE did not, and on the FINAL round every answer is an UPDATE
+  // (each player already holds a __WAGER_LOCKED__ row). So the host read
+  // "Reveal Early" with everybody answered (owner, 2026-11-03). One place now.
+  if (state.onRevealScreen && !state.resultsRevealed) {
+    const everyone = countAnswersFrom(state.currentAnswers, state.players) >= state.players.length;
+    if (everyone) {
+      const t = $('#reveal-timer');
+      if (t) t.style.display = 'none';
+    }
+    if (canControlGame()) {
+      if (everyone) enableRevealButton();
+      updateRevealButtonText();
+    }
+  }
 }
 
 export function enableNextQuestion() {

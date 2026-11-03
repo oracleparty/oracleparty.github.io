@@ -49,7 +49,7 @@ import {
 } from './reveal.js';
 import {
   showScoresScreen, showFinalWagerScreen, showResultsScreen,
-  updateScores, updateFinalWagerPlayerList, handleRevealFinalQuestion,
+  updateScores, updateFinalWagerPlayerList, handleRevealFinalQuestion, refreshFwRevealGate,
   showScoreEditSheet, clearFinalWagerTimer, showNextButtonOnScores,
 } from './scores.js';
 
@@ -215,6 +215,7 @@ function _activateHostControlsForCurrentPhase() {
     if (revealBtn && state.finalWagerLocked) {
       revealBtn.classList.remove('hidden');
       revealBtn.onclick = handleRevealFinalQuestion;
+      refreshFwRevealGate();
     }
   }
 
@@ -494,29 +495,20 @@ function _showLobbyReturnNotice() {
     return;
   }
 
-  const notice = document.createElement('div');
-  notice.id = 'lobby-return-notice';
-  notice.className = 'signup-nudge';
-  notice.style.margin = 'var(--space-md) var(--space-lg)';
-  notice.innerHTML = `
-    <p class="signup-nudge__text">Host returned to lobby</p>
-    <button class="btn btn-primary btn-block" id="btn-return-lobby">Return to Lobby</button>
-  `;
-
-  // Insert into the visible results screen content area
-  const resultsContent = document.querySelector('#results-screen .game-content');
-  if (resultsContent) {
-    resultsContent.appendChild(notice);
-  } else {
-    document.body.appendChild(notice);
-  }
-
-  document.getElementById('btn-return-lobby').onclick = () => {
-    setIsLeaving(true);
-    try { if (_cleanup) _cleanup(); } catch (_) {}
-    sessionStorage.setItem('oracle_party_returning_from_game', '1');
-    navigateWithFadeReplace('lobby.html');
-  };
+  // ONE LINE ABOVE THE BUTTON THAT ALREADY DOES THIS (owner, 2026-11-03:
+  // "completely botched"). This used to append a whole card with its own
+  // "Return to Lobby" button into the results content — the same action as
+  // "Back to Lobby" right under it — and that content is sized around the
+  // scoreboard, so the card squeezed the scoreboard to nothing and was itself
+  // cut off by the footer. The footer says it now, and the scoreboard is
+  // untouched.
+  const footer = document.querySelector('#results-screen .results-footer');
+  const note = document.createElement('p');
+  note.id = 'lobby-return-notice';
+  note.className = 'results-footer__note';
+  note.textContent = 'The host is back in the lobby';
+  if (footer) footer.prepend(note);
+  else document.body.appendChild(note);
 }
 
 /**

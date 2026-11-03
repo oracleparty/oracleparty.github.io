@@ -522,6 +522,7 @@ export function showFinalWagerScreen() {
   const sameWagerScreen = state._renderedFinalWager === true;
   state._renderedFinalWager = true;
   if (!state.finalWagerLocked && !sameWagerScreen) state.finalWagerSelected = false;
+  if (!sameWagerScreen) _fwWagers = {};
 
   $('#fw-category').textContent = getCategoryLabel();
   $('#fw-current-score').textContent = state.scores[state.room.playerId] || 0;
@@ -796,6 +797,7 @@ async function lockInFinalWager() {
   // Host/co-host: now show the reveal button (was hidden until wager locked)
   if (canControlGame()) {
     $('#btn-fw-reveal').classList.remove('hidden');
+    refreshFwRevealGate();
   }
 
   // Submit placeholder so others see the wager via Realtime.
@@ -858,8 +860,39 @@ async function lockInFinalWager() {
   }], 'lockInFinalWager');
 }
 
+// WHO HAS LOCKED A FINAL WAGER, as last read. The Reveal Question gate reads it.
+let _fwWagers = {};
+let _fwGateTimer = null;
+
+/**
+ * May the final question be revealed yet? (owner, 2026-11-03: the host
+ * revealed "before I had even placed a wager".) Yes once every player in the
+ * room has locked a bet, OR the 20-second wager clock has run out — a phone
+ * that is asleep never locks, and the room must not wait on it for ever.
+ */
+function fwRevealGate() {
+  const me = String(state.room?.playerId);
+  const total = state.players.length;
+  const locked = state.players.filter(p => _fwWagers[String(p.id)] !== undefined
+    || (String(p.id) === me && state.finalWagerLocked)).length;
+  const left = _getServerTimeLeft(state.questionStartedAt, state.serverTimeOffset, FINAL_WAGER_TIMER_SECONDS);
+  return { ready: locked >= total || left <= 0, locked, total, left };
+}
+
+/** Paint the Reveal Question button from the gate; re-check when the clock ends. */
+export function refreshFwRevealGate() {
+  const btn = $('#btn-fw-reveal');
+  if (!btn || btn.classList.contains('hidden')) return;
+  const { ready, locked, total, left } = fwRevealGate();
+  btn.disabled = !ready;
+  btn.textContent = ready ? 'Reveal Question' : `Waiting for wagers (${locked}/${total})`;
+  clearTimeout(_fwGateTimer);
+  if (!ready) _fwGateTimer = setTimeout(refreshFwRevealGate, Math.max(250, left * 1000 + 150));
+}
+
 function renderFinalWagerPlayers(lockedWagers) {
   const wagers = lockedWagers || {};
+  if (lockedWagers) _fwWagers = { ...lockedWagers };
   const sorted = [...state.players].sort((a, b) =>
     (state.scores[b.id] || 0) - (state.scores[a.id] || 0)
   );
@@ -907,6 +940,7 @@ function renderFinalWagerPlayers(lockedWagers) {
       if (btn) sendHonk(btn.dataset.honkTarget);
     });
   }
+  refreshFwRevealGate();
 }
 
 export async function updateFinalWagerPlayerList() {
@@ -949,6 +983,9 @@ export async function handleRevealFinalQuestion() {
   // second controller alike, and it is set BEFORE the first await so two taps
   // in the same turn cannot both get past it.
   if (_revealHeldBy) return;
+  // NOT BEFORE EVERYBODY HAS BET (or the clock has run out). The button is
+  // greyed until then; this refuses a tap that beat the repaint.
+  if (!fwRevealGate().ready) { refreshFwRevealGate(); return; }
   _revealHeldBy = String(state.room.playerId);
   // Off the screen immediately, which is also the only feedback the press has
   // ever given: the animation takes a beat to appear and the button sat there

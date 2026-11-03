@@ -674,6 +674,17 @@ try {
     if (room && room.game_phase === 'final_wager' && !waitedOutWagerClock
         && answered.has('Alice:final') && answered.has('Bob:final')) {
       waitedOutWagerClock = true;
+      // THE HOST CANNOT REVEAL WHILE SOMEBODY HAS NOT BET (owner, 2026-11-03:
+      // "host clicked advance to final question before I had even placed a
+      // wager"). Alice and Bob have locked, Carol has not, the clock runs.
+      await host.page.waitForTimeout(1200);
+      const gate = await host.page.evaluate(() => {
+        const b = document.querySelector('#btn-fw-reveal');
+        return b && { shown: !b.classList.contains('hidden'), disabled: b.disabled, text: b.textContent.trim() };
+      }).catch(() => null);
+      note(`host's Reveal Question while Carol has not bet: ${JSON.stringify(gate)}`);
+      if (!gate?.shown) problems.push('the host locked a final wager and was never shown Reveal Question');
+      else if (!gate.disabled) problems.push('the host could reveal the final question while Carol had not bet and the wager clock was still running');
       // DROP THE UPDATE THAT CARRIES THE NEW FINAL QUESTION.
       //
       // The host swaps the final question for one matching the difficulty vote
