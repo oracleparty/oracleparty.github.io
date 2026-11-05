@@ -2665,4 +2665,99 @@ BEGIN
 END $$;
 
 
+-- 081: what somebody typed is kept as a draft, and the fill uses it.
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  alice uuid := gen_random_uuid();
+  bob uuid := gen_random_uuid();
+  carol uuid := gen_random_uuid();
+  q uuid[] := ARRAY[]::uuid[];
+  qid uuid;
+  verdict text;
+  row answers;
+  n int;
+BEGIN
+  FOR i IN 1..4 LOOP
+    qid := gen_random_uuid();
+    INSERT INTO questions (id, question, correct_answer, acceptable_answers, format)
+    VALUES (qid, 't81 Q' || i, CASE i WHEN 1 THEN 'Napoleon' WHEN 2 THEN 'Tokyo'
+                                     WHEN 3 THEN '1969' ELSE 'Paris' END,
+            ARRAY[]::text[], 'open');
+    q := q || qid;
+  END LOOP;
+  INSERT INTO rooms (id, code, question_ids, current_question, questions_per_game,
+                     question_timer, question_started_at, game_phase)
+  VALUES (rid, lpad((random() * 999999)::int::text, 6, '0'), q, 0, 3, 30, now(), 'question');
+  INSERT INTO players (id, room_id, display_name, is_host, joined_at)
+  VALUES (alice, rid, 'Alice', true,  now() - interval '3 min'),
+         (bob,   rid, 'Bob',   false, now() - interval '2 min'),
+         (carol, rid, 'Carol', false, now() - interval '1 min');
+
+  -- Bob typed the right answer and picked 3; it never got submitted.
+  verdict := op_save_draft(rid, bob, 0, 'napolean', 3);
+  INSERT INTO result (check_name, got, want) VALUES ('081: a draft is saved', verdict, 'saved');
+  -- Alice submitted for real AND has an older draft; the real answer must stand.
+  PERFORM op_save_draft(rid, alice, 0, 'Wellington', 2);
+  PERFORM op_submit_answer(rid, alice, 0, 'Napoleon', 1);
+
+  n := op_fill_blank_answers(rid, 0);
+  SELECT * INTO row FROM answers WHERE room_id = rid AND player_id = bob AND question_number = 0;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: an unsubmitted draft becomes the answer', row.submitted_answer, 'napolean'),
+    ('081: and is judged like a submitted one', row.is_correct::text, 'true'),
+    ('081: with the bet the screen had picked', row.wager::text, '3'),
+    ('081: and earns it', row.score_earned::text, '3');
+  SELECT * INTO row FROM answers WHERE room_id = rid AND player_id = alice AND question_number = 0;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: a real answer still beats a draft', row.submitted_answer, 'Napoleon');
+  SELECT * INTO row FROM answers WHERE room_id = rid AND player_id = carol AND question_number = 0;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: no draft is still a blank', row.submitted_answer || '/' || row.score_earned::text, '/0');
+
+  -- A draft whose bet is already spent takes the lowest one left (046's rule).
+  UPDATE rooms SET current_question = 1, question_started_at = now() WHERE id = rid;
+  PERFORM op_save_draft(rid, bob, 1, 'Osaka', 3);
+  n := op_fill_blank_answers(rid, 1);
+  SELECT * INTO row FROM answers WHERE room_id = rid AND player_id = bob AND question_number = 1;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: a spent bet is not spent twice', row.wager::text, '1'),
+    ('081: a wrong draft scores nothing on a regular round', row.score_earned::text, '0');
+
+  -- A draft from the LAST round cannot answer this one.
+  UPDATE rooms SET current_question = 2, question_started_at = now() WHERE id = rid;
+  verdict := op_save_draft(rid, bob, 1, 'late', 2);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: a draft for a round that is not on is refused', verdict, 'not the current question');
+  -- Nor once the clock has run out.
+  UPDATE rooms SET question_started_at = now() - interval '5 min' WHERE id = rid;
+  verdict := op_save_draft(rid, bob, 2, '1969', 2);
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: a draft after the deadline is refused', verdict, 'time is up');
+
+  -- The final round uses the LOCKED bet, and a wrong draft loses it.
+  UPDATE rooms SET current_question = 3, question_started_at = now(), game_phase = 'final_question'
+   WHERE id = rid;
+  INSERT INTO answers (room_id, player_id, question_number, submitted_answer, wager)
+  VALUES (rid, bob, 3, '__WAGER_LOCKED__', 20), (rid, carol, 3, '__WAGER_LOCKED__', 10);
+  PERFORM op_save_draft(rid, bob, 3, 'Lyon', 0);
+  PERFORM op_save_draft(rid, carol, 3, 'paris', 0);
+  n := op_fill_blank_answers(rid, 3);
+  SELECT * INTO row FROM answers WHERE room_id = rid AND player_id = bob AND question_number = 3;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: a final draft keeps the locked bet', row.wager::text, '20'),
+    ('081: and a wrong one loses it', row.score_earned::text, '-20');
+  SELECT * INTO row FROM answers WHERE room_id = rid AND player_id = carol AND question_number = 3;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: a right final draft wins the locked bet', row.score_earned::text, '10');
+
+  -- Nobody reads drafts directly.
+  INSERT INTO result (check_name, got, want) VALUES
+    ('081: drafts are not readable by players',
+     has_table_privilege('anon', 'answer_drafts', 'SELECT')::text, 'false');
+
+  DELETE FROM questions WHERE question LIKE 't81 %';
+END $$;
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

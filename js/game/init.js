@@ -1217,6 +1217,10 @@ function cleanup() {
     clearInterval(state.finalWagerTimerId);
     state.finalWagerTimerId = null;
   }
+  if (state._draftTimerId) {
+    clearTimeout(state._draftTimerId);
+    state._draftTimerId = null;
+  }
   if (state.feedbackFadeTimer) {
     clearTimeout(state.feedbackFadeTimer);
     state.feedbackFadeTimer = null;

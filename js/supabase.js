@@ -27,7 +27,7 @@ export {
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
   fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers, botAnswerOnServer,
-  submitAnswerViaServer, fillBlankAnswersViaServer,
+  submitAnswerViaServer, fillBlankAnswersViaServer, saveDraftOnServer,
   setJudgementOnServer, disqualifyRoundOnServer, undisqualifyRoundOnServer,
   deleteAnswersByRoom, reassignPlayerAnswers, subscribeToAnswers,
   clapAnswerOnServer, fetchClaps, recordClapsOnServer, subscribeToClaps,

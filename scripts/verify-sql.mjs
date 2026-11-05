@@ -97,6 +97,7 @@ const MIGRATIONS = [
   '078_topic_sizes.sql',
   '079_a_blank_final_answer_loses_the_bet.sql',
   '080_the_final_question_gets_more_time.sql',
+  '081_a_typed_answer_is_kept_as_a_draft.sql',
 ];
 
 // EVERY MIGRATION FROM 045 ON MUST BE IN THAT LIST OR EXCUSED BY NAME.

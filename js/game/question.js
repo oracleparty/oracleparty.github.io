@@ -8,8 +8,8 @@ import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCatego
 import { $, transitionScreens, fuzzyMatch, showToast } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { lastRequestMs } from '../db/client.js';
-import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
-import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
+import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, DRAFT_SAVE_DEBOUNCE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
+import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, saveDraftOnServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
@@ -243,7 +243,7 @@ export function showQuestionScreen() {
   }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;
-  $('#answer-input').oninput = refreshSubmitButton;
+  $('#answer-input').oninput = () => { refreshSubmitButton(); scheduleDraftSave(); };
   $('#answer-input').onkeydown = (e) => {
     if (e.key === 'Enter' && !state.hasSubmitted) {
       handleSubmitAnswer();
@@ -317,6 +317,8 @@ function selectWager(value, btnEl) {
   $('#wager-error').textContent = '';
 
   refreshSubmitButton();
+  // The draft carries the bet, so a changed bet is a changed draft.
+  scheduleDraftSave();
 }
 
 /**
@@ -755,6 +757,49 @@ function wagerForSubmit(isBlank = false) {
 let _lastDraftSent = null;
 
 /**
+ * KEEP WHAT IS TYPED AS A DRAFT WHILE THEY TYPE (owner, 2026-11-05).
+ *
+ * Every phone sends its box when the clock runs out, but on a slow database
+ * that send can land after the server's deadline and be refused, leaving the
+ * blank the fill already wrote: "No answer" for somebody who had typed one.
+ * So a pause in typing saves a DRAFT (migration 081) — a separate table the
+ * fill reads only when no real answer has arrived. It does not lock the bet
+ * and does not show the player as answered; Submit still works exactly as it
+ * did. An emptied box saves an empty draft, so deleted text cannot stand.
+ */
+let _lastDraftKey = null;
+function scheduleDraftSave() {
+  if (state._draftTimerId) clearTimeout(state._draftTimerId);
+  state._draftTimerId = setTimeout(() => {
+    state._draftTimerId = null;
+    saveDraftNow();
+  }, DRAFT_SAVE_DEBOUNCE_MS);
+}
+function saveDraftNow() {
+  if (state.hasSubmitted || !state.room?.playerId) return;
+  if (state.gamePhase !== 'question' && state.gamePhase !== 'final_question') return;
+  const round = state.currentQuestion;
+  const text = String($('#answer-input')?.value || '').trim();
+  // Only the bet the player actually picked; otherwise the server takes their
+  // lowest unspent one, the same as a blank would. The final round's bet is
+  // locked on its row and the server uses that.
+  const wager = (!state.isFinalWagerRound && state.wagerExplicitlySelected) ? state.currentWager : null;
+  const key = `${round}:${wager}:${text}`;
+  if (key === _lastDraftKey) return;
+  // Nothing to say until something has been typed this round.
+  if (!text && !(_lastDraftKey || '').startsWith(`${round}:`)) return;
+  _lastDraftKey = key;
+  if (text) noteAnswerSent(round, state.questions[round]?.id, text);
+  saveDraftOnServer({
+    roomId: state.room.id,
+    playerId: state.room.playerId,
+    questionNumber: round,
+    answer: text,
+    wager,
+  }).catch(err => logger.warn('Game', 'draft not saved', err));
+}
+
+/**
  * SEND WHAT IS TYPED WHEN THE PHONE LEAVES THE PAGE (owner, 2026-11-02).
  *
  * Every round auto-submits the box when the timer runs out — but only on a
@@ -790,6 +835,7 @@ export function sendDraftAnswer() {
 export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowReveal = true } = {}) {
   if (state.hasSubmitted) return;
   state.hasSubmitted = true;
+  if (state._draftTimerId) { clearTimeout(state._draftTimerId); state._draftTimerId = null; }
 
   // SAY SOMETHING — DO NOT JUST GO GREY.
   //

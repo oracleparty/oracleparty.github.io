@@ -65,6 +65,7 @@ export const state = {
   presenceReady: false,
   awayTimestamps: new Map(), // player ID → Date.now() when first seen as away
   feedbackFadeTimer: null,
+  _draftTimerId: null,
   // The host review, which is ONE VOTE PER GAME rather than per round — so it
   // lives here rather than being re-read for each question. 'up' | 'down' | null.
   hostVote: null,

@@ -861,6 +861,41 @@ export async function submitAnswerViaServer({ roomId, playerId, questionNumber, 
 }
 
 /**
+ * Keep what this player has TYPED, unsubmitted, on the server (migration 081).
+ *
+ * If their real answer never arrives in time — a slow link, a send that lands
+ * after the deadline — the blank fill uses this instead of a blank. It is a
+ * draft: it lives in its own table, so it does not lock the bet or show the
+ * player as answered.
+ *
+ * Background chatter, so it never toasts (CLAUDE.md #4: a toast per dropped
+ * request is noise). Not installed is remembered and never asked again.
+ * Returns 'saved', the server's reason for refusing, 'unavailable', or null on
+ * a failed request.
+ */
+let _draftsUnavailable = false;
+export async function saveDraftOnServer({ roomId, playerId, questionNumber, answer, wager }) {
+  if (_draftsUnavailable) return 'unavailable';
+  const { data, error } = await supabase.rpc('op_save_draft', {
+    p_room_id: roomId,
+    p_player_id: playerId,
+    p_question_number: questionNumber,
+    p_answer: answer ?? '',
+    p_wager: wager ?? null,
+  });
+  if (error) {
+    if (functionMissing(error)) {
+      _draftsUnavailable = true;
+      logger.debug('Supabase', 'op_save_draft not installed (migration 081); drafts are off');
+      return 'unavailable';
+    }
+    logger.warn('Supabase', 'draft not saved', error);
+    return null;
+  }
+  return typeof data === 'string' ? data : (Array.isArray(data) ? data[0] : data) ?? null;
+}
+
+/**
  * Give a zero to everyone in the room who never answered this question.
  *
  * ANY client may call this and it is idempotent, which is the point: the round

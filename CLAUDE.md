@@ -96,6 +96,28 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-05 (later) — a typed answer is kept as a draft (migration 081); the bot's write
+>
+> **Owner: "shouldn't it automatically submit whatever they had typed?"** It
+> does, at expiry — but on a slow database that send lands after `timer + 3s`
+> and is refused, leaving the blank. **081** adds `answer_drafts` (no client
+> access) and `op_save_draft`; the phone saves 1.2s after typing pauses and on a
+> bet change (`scheduleDraftSave` in `question.js`), and `op_fill_blank_answers`
+> uses a draft for this question, saved this round, when no real answer
+> exists: judged and scored like a submit, the screen's bet if unspent, the
+> LOCKED bet on the final. **Not an answer row on purpose** — a row would lock
+> the bet (`op_submit_answer` keeps `existing.wager`) and count as answered.
+> 316 SQL rules hold; disabling the draft fails 6. `scenario-draft` (in CI)
+> holds Bob's last-second send past the deadline; with drafts off it reports
+> his typed answer lost. **081 IS NOT APPLIED until the owner runs it**; until
+> then `op_save_draft` answers PGRST202 and drafts switch themselves off.
+>
+> **The bot's "No answer": cause NOT found.** It answers a second into the
+> round, so a missing answer means the write failed. It retries twice now and a
+> final failure reaches error_logs as `[BotAnswer]` — read that after the next
+> game. The retry is not robot-checked (the fake store cannot fail a plain
+> insert with an error).
+
 > ## 2026-11-05 — a late answer sent the host back to a closed round (game-breaking)
 >
 > **Reported:** host answered, the friend and the bot read "No answer" at the

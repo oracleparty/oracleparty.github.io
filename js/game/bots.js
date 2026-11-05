@@ -28,7 +28,7 @@
 // ============================================
 
 import { state, getCorrectAnswer } from './state.js';
-import { logger } from '../logger.js';
+import { logger, recordFault } from '../logger.js';
 import { BOT_ACCURACY, BOT_FINAL_WAGER } from '../constants.js';
 import { fetchAllAnswers, insertAnswersIfAbsent, upsertAnswers, botAnswerOnServer } from '../supabase.js';
 import { computeScoreEarned, answersForCurrentGame } from './scoring-helpers.js';
@@ -121,8 +121,21 @@ export async function answerQuestionForBots() {
   }
 
   if (rows.length === 0) return;
-  const { error } = await insertAnswersIfAbsent(rows, 'answerQuestionForBots');
-  if (error) logger.warn('Bots', 'Could not answer for bots', error);
+  // RETRIED, AND A FINAL FAILURE IS RECORDED (owner's playtest, 2026-11-05: the
+  // bot read "No answer"). It answers a second into the round, so even the
+  // database's measured worst (3.9s a request) lands well inside the clock —
+  // a missing bot answer means this write FAILED, and that used to reach only
+  // the host phone's console. ON CONFLICT DO NOTHING makes a retry harmless.
+  const round = state.currentQuestion;
+  let error = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, attempt * 2000));
+    if (state.currentQuestion !== round || state.gamePhase !== 'question') return;
+    ({ error } = await insertAnswersIfAbsent(rows, 'answerQuestionForBots'));
+    if (!error) return;
+  }
+  recordFault('BotAnswer', `the bot's answer was not saved on round ${round}`,
+    `${error?.code || ''} ${error?.message || error}`.trim());
 }
 
 /**

@@ -7,6 +7,11 @@
 export const COUNTDOWN_DELAY_MS = 500;
 export const COUNTDOWN_STEP_MS = 900;
 export const TIMER_GRACE_MS = 500;
+// How long typing must pause before what is typed is saved as a DRAFT on the
+// server (migration 081). Short enough that the last word is almost always in
+// before the clock runs out; long enough that a fast typist sends a few
+// requests a round rather than one per letter.
+export const DRAFT_SAVE_DEBOUNCE_MS = 1200;
 // How long past the clock before a NON-CONTROLLING phone asks the server to end
 // the round itself (migration 056). The host still ends its own rounds at
 // TIMER_GRACE_MS above, exactly as before; this is the backstop for a host whose

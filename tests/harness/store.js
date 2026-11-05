@@ -274,7 +274,7 @@ export class FakeStore {
     const idx = rooms.findIndex(r => String(r.id) === String(roomId));
     if (idx === -1) return false;
 
-    for (const child of ['answers', 'players', 'chat_messages']) {
+    for (const child of ['answers', 'players', 'chat_messages', 'answer_drafts']) {
       const rows = this.table(child);
       for (let i = rows.length - 1; i >= 0; i--) {
         if (String(rows[i].room_id) !== String(roomId)) continue;
@@ -1986,6 +1986,28 @@ export class FakeStore {
     // takes. An unimplemented RPC answers null with no error, which the client
     // correctly falls back from, so without this every robot would keep
     // testing the old client-side route and the new one would ship unplayed.
+    // ---- migration 081: a typed answer kept as a draft -----------------------
+    // Refuses what op_submit_answer refuses; the fill below reads it.
+    if (name === 'op_save_draft') {
+      const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
+      if (!room) return 'no such room';
+      if (!this.table('players').some(p => String(p.id) === String(args.p_player_id) && String(p.room_id) === String(room.id))) return 'not in this room';
+      const qnum = Number(args.p_question_number);
+      if (qnum !== room.current_question) return 'not the current question';
+      if (room.game_phase !== 'question' && room.game_phase !== 'final_question') return 'round is over';
+      if (room.question_started_at
+          && Date.now() > new Date(room.question_started_at).getTime() + (roundSeconds(room) + 3) * 1000) return 'time is up';
+      const drafts = this.table('answer_drafts');
+      const key = d => String(d.room_id) === String(room.id) && String(d.player_id) === String(args.p_player_id) && d.question_number === qnum;
+      const row = { room_id: room.id, player_id: args.p_player_id, question_number: qnum,
+        question_id: (room.question_ids || [])[qnum] ?? null,
+        answer_text: String(args.p_answer ?? '').slice(0, 500), wager: args.p_wager ?? null,
+        updated_at: new Date().toISOString() };
+      const i = drafts.findIndex(key);
+      if (i >= 0) drafts[i] = row; else drafts.push(row);
+      return 'saved';
+    }
+
     if (name === 'op_submit_answer' || name === 'op_fill_blank_answers') {
       const room = this.table('rooms').find(r => String(r.id) === String(args?.p_room_id));
       if (!room) {
@@ -2026,8 +2048,29 @@ export class FakeStore {
 
       if (name === 'op_fill_blank_answers') {
         let written = 0;
+        const question = this.table('questions').find(q => String(q.id) === String(qid));
+        const startedMs = room.question_started_at ? new Date(room.question_started_at).getTime() : null;
+        // Migration 081: the draft for THIS question, saved during THIS round.
+        const draftFor = (playerId) => {
+          const d = this.table('answer_drafts').find(d => String(d.room_id) === String(room.id)
+            && String(d.player_id) === String(playerId) && d.question_number === qnum
+            && String(d.question_id ?? '') === String(qid ?? '')
+            && (startedMs == null || new Date(d.updated_at).getTime() >= startedMs - 10000));
+          return d && String(d.answer_text || '').trim() ? d : null;
+        };
+        const draftWager = (d, playerId, rows) => {
+          let w = d.wager;
+          const spent = rows.some(a => String(a.room_id) === String(room.id)
+            && String(a.player_id) === String(playerId) && a.question_number < total
+            && a.question_number !== qnum && a.wager === w
+            && String(a.submitted_answer || '').trim() !== '__WAGER_LOCKED__');
+          if (w == null || w < 1 || w > total || spent) w = nextWager(playerId);
+          return w;
+        };
+        const judge = (text) => !!(question && fuzzyMatch(text, question.correct_answer, question.acceptable_answers || []));
         for (const p of this.table('players').filter(p => String(p.room_id) === String(room.id))) {
           const rows = this.table('answers');
+          const draft = draftFor(p.id);
           const existing = rows.find(a => String(a.room_id) === String(room.id)
             && String(a.player_id) === String(p.id) && a.question_number === qnum);
           if (existing) {
@@ -2072,19 +2115,26 @@ export class FakeStore {
             // the player chose. This fake was zeroing it, which made the
             // harness harsher than the live database: less dangerous than the
             // other direction, and still wrong.
-            if (existing.wager == null) existing.wager = isFinal ? 0 : nextWager(p.id);
-            existing.is_correct = false;
-            existing.auto_correct = false;
+            if (existing.wager == null) existing.wager = isFinal ? 0 : (draft ? draftWager(draft, p.id, rows) : nextWager(p.id));
+            const right = draft ? judge(draft.answer_text) : false;
+            if (draft) existing.submitted_answer = draft.answer_text;
+            existing.is_correct = right;
+            existing.auto_correct = right;
             // A blank under a locked final bet LOSES it (migration 079, owner
-            // 2026-11-02). Every other blank costs nothing.
-            existing.score_earned = (isFinal && isPlaceholder) ? -(existing.wager || 0) : 0;
+            // 2026-11-02). Every other blank costs nothing. A draft (081) is
+            // scored like an answer: right earns the bet.
+            existing.score_earned = right ? (existing.wager || 0)
+              : (isFinal && isPlaceholder) ? -(existing.wager || 0) : 0;
             this._broadcast('UPDATE', 'answers', { ...existing }, before);
           } else {
+            const wager = isFinal ? 0 : (draft ? draftWager(draft, p.id, rows) : nextWager(p.id));
+            const right = draft ? judge(draft.answer_text) : false;
             const row = {
               id: newId('answers'), room_id: room.id, player_id: p.id,
-              question_number: qnum, question_id: qid,
-              wager: isFinal ? 0 : nextWager(p.id),
-              submitted_answer: '', is_correct: false, auto_correct: false, score_earned: 0,
+              question_number: qnum, question_id: qid, wager,
+              submitted_answer: draft ? draft.answer_text : '',
+              is_correct: right, auto_correct: right,
+              score_earned: right ? wager : (isFinal ? -wager : 0),
             };
             rows.push(row);
             this._broadcast('INSERT', 'answers', { ...row }, null);
