@@ -96,6 +96,26 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-05 — a late answer sent the host back to a closed round (game-breaking)
+>
+> **Reported:** host answered, the friend and the bot read "No answer" at the
+> minimum wager, the screen "kept jumping back and forth between same question
+> and answer", and nobody could advance. **REPRODUCED and fixed.** Submit draws
+> the reveal at once (optimistic, 10-28). If the write reaches the server after
+> `timer + 3s`, it has already lost: the host's own expiry blank-filled
+> everybody without a row (the "No answer, minimum wager" rows) and moved the
+> room to `reveal`. The refused write then sent the host BACK to the question
+> screen, with the room's `reveal` already handled (`handlePhaseTransition`
+> refuses a phase it is on) and Next living on the reveal: stranded for good,
+> and every re-Submit went round the same loop. Now a failure on a CLOSED round
+> (refused "time is up", or the phase has moved on) stays on the reveal and
+> redraws it; only a failure while the round is still open goes back
+> (`roundStillOpen` in `doSubmitAnswer`). `scenario-latesubmit` (in CI) holds
+> `op_submit_answer` for 5s on a last-second Submit; break-tested: the old code
+> strands the host for 170s and never reaches results. **Not established:** why
+> the owner's request was that late. The 10-29 probe measured the database at
+> up to 3.9s, so a submit in the last second or two is enough.
+
 > ## 2026-11-03 (latest) — title switches, a scrolling results page, a recorder for "Scorpio"
 >
 > **One switch under each Title Builder wheel** (owner): wear one, two or three

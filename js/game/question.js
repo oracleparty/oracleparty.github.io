@@ -5,7 +5,7 @@
 
 import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
          showScreen, _isLeaving, noteRoundShown, noteAnswerSent } from './state.js';
-import { $, transitionScreens, fuzzyMatch } from '../utils.js';
+import { $, transitionScreens, fuzzyMatch, showToast } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { lastRequestMs } from '../db/client.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
@@ -868,6 +868,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   // nothing is ever lost silently. Auto-submits and callers that own the
   // screen are unchanged.
   let optimisticId = null;
+  const roundAtSubmit = state.currentQuestion;
   if (!autoSubmit && thenShowReveal && _showRevealScreen) {
     optimisticId = `optimistic-${state.room.playerId}-${state.currentQuestion}`;
     state.currentAnswers = (state.currentAnswers || []).filter(a =>
@@ -944,6 +945,38 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   // shown as "no answer" on reveal (because host's auto-submit pass writes a
   // blank for them), and silently loses their actual answer.
   if (submitResult && submitResult.error && !autoSubmit) {
+    // A ROUND THAT HAS CLOSED CANNOT BE GONE BACK TO (owner's playtest,
+    // 2026-11-05: "it kept jumping back and forth between same question and
+    // answer ... couldn't even advance"). The screen moved on the tap; if the
+    // save then failed BECAUSE the round is over — the server said "time is
+    // up", or the room has already moved to the reveal while the write was out
+    // — the question screen is a dead end: the room's `reveal` phase has
+    // already been handled (or is about to be, and the reveal screen is where
+    // it lands), handlePhaseTransition refuses a phase it is already on, and
+    // the host's Next button lives on the reveal. Putting the host back there
+    // stranded the game, and every re-Submit went round the same loop. A
+    // refusal on a closed round means the row already standing (the blank
+    // fill's) is the answer, so stay on the reveal and redraw it.
+    const sameRound = state.currentQuestion === roundAtSubmit;
+    const roundStillOpen = sameRound
+      && (state.gamePhase === 'question' || state.gamePhase === 'final_question')
+      && serverRefusal !== 'time is up';
+    if (optimisticId && !roundStillOpen) {
+      state.currentAnswers = (state.currentAnswers || []).filter(a => a.id !== optimisticId);
+      logger.warn('Game', 'the round closed before this answer landed; staying on the reveal', {
+        reason: serverRefusal || submitResult.error?.code || 'write failed', round: roundAtSubmit, phase: state.gamePhase
+      });
+      if (!sameRound) return;   // the room has moved on; that round's screen owns nothing now
+      if (serverRefusal === 'time is up' || state.gamePhase !== 'question') {
+        showToast("Time's up — your answer arrived too late", 'info');
+      }
+      // Redraw from the server's rows (the blank that stands) unless the
+      // verdicts are already up, which drew from their own read.
+      if (state.onRevealScreen && !state.resultsRevealed && _showRevealScreen) _showRevealScreen();
+      if (canControlGame() && _enableRevealButton) _enableRevealButton();
+      if (canControlGame() && _updateRevealButtonText) _updateRevealButtonText();
+      return;
+    }
     state.hasSubmitted = false;
     if (optimisticId) {
       // The screen moved on the tap; the save did not land. Back to the
