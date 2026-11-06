@@ -96,6 +96,48 @@
 >
 > Last verified against the code: 2026-08-30.
 
+> ## 2026-11-06 — the unattended robot stress playtest: five faults, all fixed
+>
+> **The owner was away; the plan and the full results are in
+> `docs/STRESS-PLAN.md`.** Every fault was reproduced by a robot, fixed and
+> break-tested; all 30 regression runs green after. **No SQL is pending.**
+>
+> - **A slow host froze the game** (`badnetwork --lag=1500 --on=Alice`, 3/3):
+>   `syncToCurrentState` asked the direction rule only when the ROUND matched,
+>   so a room one round BEHIND was adopted — which is what a read taken while
+>   the host's own Next is still being written looks like. The host went back
+>   to the scoreboard, the phase write (reading the round after its await)
+>   announced the old round, `_advancedFrom` refused Next for good.
+>   `trackOwnAdvance` / `readMayPredateOwnAdvance` (`state.js`); the advance
+>   writes the round fixed at the press. `scenario-staleresync`.
+> - **A refused late answer left the bet buttons wrong** — the server then
+>   swapped the next bet. `reconcileUsedWagers` (`question.js`) rebuilds them
+>   from the rows `updateScores` already reads; a grid on screen is re-marked
+>   in place and every button asks at the tap. `scenario-lastsecond`.
+> - **A phone back from the pocket ran its held timers:** the host's closed
+>   the room's NEWER round early; a player's late auto-submit fell back to a
+>   write that read the round after its await and filed the old answer and bet
+>   in the new round, spending a bet twice. `handleTimerExpired` closes only a
+>   round still open on this phone; `doSubmitAnswer` fixes its round at the
+>   tap. `scenario-background`, and **`robot.goToBackground()` / `comeBack()`**
+>   in the harness (seat with `{ pocketable: true }`: headless Chromium cannot
+>   freeze a page, so a page-level script holds its timers).
+> - **`[AnswerNotMine]` was a false report on EVERY deliberate Submit from
+>   11-03** (the optimistic row was drawn before the phone noted what it sent),
+>   eating recordFault's ten-a-minute budget that `[BotAnswer]` needs. **Every
+>   such row before this deploy is noise.** Noted first now.
+> - Clean, no fault: refresh at every phase (`scenario-refresh`), the host's
+>   phone dying at question/reveal/scores (`scenario-hostleaves`), four games
+>   in one room with and without a slow phone.
+>
+> **The habit, four times in one night: never read shared state after an
+> await and act on it as if nothing moved.** The re-sync, the advance, the
+> round-closing chain and the submit all did, and on a slow link something
+> always had moved. **Not fixed, recorded in the plan:** the final question
+> can come back after an early reveal on a very slow link (same shape, in
+> `handleRoomChange`); rounds start ~10s late while a host is gone but not yet
+> replaced; the lobby robot's old intermittent failure skips its whole CI job.
+
 > ## 2026-11-05 (later) — a typed answer is kept as a draft (migration 081); the bot's write
 >
 > **Owner: "shouldn't it automatically submit whatever they had typed?"** It

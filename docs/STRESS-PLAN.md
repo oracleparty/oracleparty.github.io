@@ -40,6 +40,67 @@ cannot come back. Work through the list in order; stop and report when time runs
 - Record every finding — fixed or not — in the Results section below and a short
   CLAUDE.md entry in the same commit.
 
-## Results
+## Results (2026-11-06, run unattended)
 
-(fill in as you go: scenario, what happened, fixed? how proven)
+**Pending migrations: NONE.** Every fix below is JavaScript; nothing needs
+pasting into the SQL editor.
+
+**Five faults found and fixed, each reproduced by a robot, each break-tested**
+(the fix reverted, the check watched failing, the fix restored from a `cp`
+backup). Full regression afterwards: all 30 runs of every CI robot plus the
+new ones green on the final code.
+
+| # | Scenario | What happened | Fixed | How proven |
+|---|---|---|---|---|
+| 1 | Slow phone all game (`badnetwork` 800/1500/3000 x Bob/Alice x 3) | 800ms: 6/6 clean. Bob 1500: 3/3 clean. **Alice (host) 1500: 3/3 FROZE at round 3** — host back on round 3's scoreboard, the room re-asking round 3, Next refused for good. Alice 3000: one backwards jump on the final round. Bob 3000: "never showed the scoreboard" — the robot host presses Next 2.8s into each scoreboard, shorter than Bob's 3s read; refusing to draw a late scoreboard over the next question is the 10-23 design, not a fault. The other 3000ms "failures" were the app's own `[SlowSubmit]` recorder counted as errors (the scenario now ignores it). | **Yes** — see A | `scenario-staleresync` (new) forces the re-read on every Next at 1500ms: old code 8 backwards jumps by name, fixed code clean; `badnetwork` host 1500 3/3 and 3000 3/3 clean after |
+| 2 | Last-second answers every round (`lastsecond`, new: host, guests, final round; "fast" and "paused" typists; 7s server hold) | Nobody stranded, drafts kept the text AND the bet, every late phone's own row honest, boards agree with the rows. **But the bet buttons drifted after every refused late answer** (9 disagreements per game): the phone offered a bet the server had spent, and the server silently swapped the next pick. | **Yes** — see B | with the reconcile off: the same 9 disagreements |
+| 3 | Phone in a pocket (`background`, new; harness `goToBackground`/`comeBack`) — typed, never pressed Submit, away 10-60s, frozen or running, slow on return | Typed text always carried (it is sent as the phone leaves). **Three faults, all from timers held while away and run on return:** the HOST's held round timer closed the room's NEWER round 12s early for everybody; a returning PLAYER's late auto-submit filed its old round's answer and bet in the new round's slot, spending one bet twice; and (found in the trace) `[AnswerNotMine]` filed a false report on EVERY deliberate Submit since 11-03. | **Yes** — see C, D, E | each break-tested: "round 2 closed 12s BEFORE its clock ran out"; "Bob spent bet 2 more than once: [1,2,2,3,4]"; "17 false [AnswerNotMine] reports" |
+| 4 | Refresh at every phase (`refresh`, new: player at question/scores/final wager, host at reveal/question/final question) | Every reload lands on the room's phase and round, can still answer, bet buttons right, Bob's locked final 20 survives. **No fault.** | — | 2 clean runs |
+| 5 | Host's phone dies at each phase (`hostleaves`, new: killed outright, no beacon) | At question, reveal, scores, final wager and final question: the game finishes every time, deputy controls after ~30s, seat released at 120s, the two boards agree; longest stall 31-44s. Observation, not a break: until the host is replaced every round starts ~10s late, because only the host stamps a round's clock and the backstop repairs it after 8s. **No fault.** | — | all five phases clean |
+| 6 | Several games in one room (`sitting --games=4`, and with `--lag=800 --on=Bob`) | Both: 18 answers / 3 seats / 6 rounds every game, channels flat (8 and 9), 0 errors per game — **nothing accumulates**, with or without the slow phone. | — | both clean |
+
+### The fixes
+
+- **A — a room read older than this phone's own advance is not news**
+  (`trackOwnAdvance` / `readMayPredateOwnAdvance` in `state.js`, used by
+  `syncToCurrentState`). The re-sync only ever asked the direction rule when
+  the ROUND matched, so a room one round BEHIND was adopted outright — and that
+  is exactly what a read taken while the host's own Next is still being
+  written looks like. On a 1500ms link the 60s poll kept landing in that gap.
+  `_advanceFromRound` also writes the round fixed at the press (it read
+  `state.currentQuestion` after its own await and announced the old round).
+- **B — the bets a phone offers come from the server's rows** every time the
+  scores are read (`reconcileUsedWagers`, called from `updateScores`, no extra
+  trip); a grid already on screen is re-marked in place, every button asks at
+  the tap. A round the read predates keeps this phone's own accepted bet
+  (`_myWagerByRound`).
+- **C — a held timer only closes a round still open on this phone**
+  (`handleTimerExpired`: the round fixed at entry, `stillOpenHere()` before
+  the read, the fill and the `reveal` write).
+- **D — a submit fixes its round at the tap** (`doSubmitAnswer`): every write
+  names `round`, and a reply that comes back after the phone has left that
+  round touches nothing but the bet it spent.
+- **E — `[AnswerNotMine]` is noted before the optimistic row is drawn.** Every
+  deliberate Submit since 11-03 filed one false report, and they share
+  recordFault's ten-a-minute budget with `[BotAnswer]` — the recorder meant to
+  explain the bot's "No answer". **Read the error log with that in mind: every
+  `[AnswerNotMine]` row before this deploy is noise.**
+
+### Found and NOT fixed
+
+- **The final question can come back after an early reveal on a very slow
+  link.** In `handleRoomChange`, the final-question branch awaits the question
+  list and then calls `handlePhaseTransition('final_question')` without asking
+  whether the phone has moved on; seen once at 3000ms (Bob's trail
+  `answer_reveal@5 -> final_question@5`). Needs friends answering within the
+  fetch time AND an early reveal. Not fixed: no check yet that can fail on it.
+- **While the host is gone (before promotion), rounds start ~10s late** — only
+  the host stamps the clock. Recoverable; changing who stamps is a design call.
+- **CI: the lobby robot's known intermittent leave-and-rejoin failure** (on
+  record since 09-07) failed run 619 on a docs-only commit, and because it is
+  the first step of its job every game robot after it was skipped.
+- **Harness gaps found and closed:** fake-server answer rows lacked
+  `disqualified: false` (the live column's default), so the client fell back to
+  guessing "everybody wrong = thrown out"; robots tapped locked final-bet
+  buttons with Playwright's 30s wait, which once stalled a loop past the final
+  question.

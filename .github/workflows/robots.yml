@@ -198,3 +198,52 @@ jobs:
       # colour it is, and running the cross-product triples the time for nothing.
       - name: Layout under stress — long names and titles
         run: node scripts/layout-sweep.mjs --stress --themes=light
+
+
+  # THE STRESS PLAYTEST'S CHECKS (2026-11-06, docs/STRESS-PLAN.md). A third job
+  # rather than more steps on the other two: both are already 20-30 minutes, and
+  # this note's own advice is to split before a job nears its limit.
+  playtest-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # The host presses Next on a 1500ms link and a room re-read lands while it
+      # is still being written. The re-sync believed the older room: the host
+      # went back to the scoreboard and the game froze for good.
+      - name: Stale re-sync — a slow host's own Next is not undone by an old read
+        run: node tests/harness/scenario-staleresync.mjs
+
+      # Somebody presses Submit in the last second of every round on a slow
+      # server: nobody stranded, drafts carry the text and the bet, and every
+      # phone's bet buttons stay the bets the server still holds.
+      - name: Last second — late answers every round, bets stay in step
+        run: node tests/harness/scenario-lastsecond.mjs
+
+      # The HOST puts the phone away for 40s, comes back slow; a deputy has
+      # moved the room on meanwhile. The held round timer must not close the
+      # newer round.
+      - name: Pocket — the host comes back and must not end the next round
+        run: node tests/harness/scenario-background.mjs --who=Alice --secs=40 --return-lag=1500
+
+      # A PLAYER puts the phone away and comes back slow: what they typed counts,
+      # they can answer the round they are back for, and no bet is spent twice.
+      - name: Pocket — a player comes back, every bet spent once
+        run: node tests/harness/scenario-background.mjs --who=Bob --secs=30 --return-lag=1500
+
+      # A player and the host reload at every phase.
+      - name: Refresh — at every phase, the phone lands where the room is
+        run: node tests/harness/scenario-refresh.mjs
+
+      # The host's phone dies mid-question; the others finish the game.
+      - name: Host leaves — the others finish without them
+        run: node tests/harness/scenario-hostleaves.mjs --phase=question
