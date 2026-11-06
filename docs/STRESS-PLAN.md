@@ -25,8 +25,14 @@ cannot come back. Work through the list in order; stop and report when time runs
 - A bug counts only if REPRODUCED by a robot. Reproduce → fix → break-test the check
   (revert fix, watch it fail; restore from a `cp` backup, never `git checkout` a file).
 - Fix only game-breakers and wrong scores/screens. No design changes, no new features,
-  no wording changes, no SQL migrations (the owner cannot run them). If a fix needs SQL,
-  write it down here instead.
+  no wording changes.
+- **SQL is allowed** (the owner pastes it later). A new migration must: pass
+  `node scripts/verify-sql.mjs` with new rules that fail when the fix is reverted; end
+  with a SELECT verification (one row per rule, `ok`); be added to verify-sql's list;
+  and come with a comment-stripped copy in the scratchpad ready to paste. **The JS must
+  stay safe BEFORE the SQL is run** (detect the missing function and fall back) — the
+  deploy goes live before the owner pastes anything. List every pending migration at
+  the top of Results.
 - Before any push: `npx vitest run`, `node scripts/check-rpc-args.mjs`,
   `node scripts/check-arity.mjs`, and the robot scenarios touching the change.
   Then `node scripts/bump-version.js <date+letter>` and push to `claude/setup-oracle-party-PHRgj`.
