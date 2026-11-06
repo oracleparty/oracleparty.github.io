@@ -101,7 +101,11 @@ new ones green on the final code.
 ### Found and NOT fixed
 
 - **While the host is gone (before promotion), rounds start ~10s late** — only
-  the host stamps the clock. Recoverable; changing who stamps is a design call.
+  the host stamped the clock. **FIXED same day, owner's go-ahead:** the deputy
+  (who can already press Next) stamps it if no stamp has arrived 2s into the
+  round (`DEPUTY_CLOCK_WAIT_MS`); the crown does not move. `scenario-hostleaves`
+  now fails if such a round's clock starts over 6s late: old code ~9.8s, fixed
+  ~2.9s.
 - **At 3s+ per request a phone still LOADING routes from an older room
   snapshot** — `badnetwork --lag=3000 --on=Bob` flicked `question@0 ->
   countdown@0` at the start and corrected itself. The same "read after an
@@ -112,7 +116,10 @@ new ones green on the final code.
   loading flick just above.
 - **CI: the lobby robot's known intermittent leave-and-rejoin failure** (on
   record since 09-07) failed run 619 on a docs-only commit, and because it is
-  the first step of its job every game robot after it was skipped.
+  the first step of its job every game robot after it was skipped. **Fixed
+  same day:** every step in that job runs `if: !cancelled()`, so one failure
+  no longer hides the rest (the job is still red). The flake's cause is still
+  unknown.
 - **Harness gaps found and closed:** fake-server answer rows lacked
   `disqualified: false` (the live column's default), so the client fell back to
   guessing "everybody wrong = thrown out"; robots tapped locked final-bet

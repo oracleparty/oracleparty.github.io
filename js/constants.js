@@ -46,6 +46,16 @@ export const CLAP_POLL_MS = 3000;
 // better at, and because the stamp normally lands in well under a second.
 export const CLOCK_STAMP_TIMEOUT_MS = 4000;
 
+// HOW LONG A DEPUTY WAITS FOR THE HOST'S CLOCK STAMP BEFORE STAMPING ITSELF.
+//
+// Only the host stamped a round's clock, so while the host was away (before
+// promotion) every round sat on a full, unmoving timer until op_advance_phase's
+// repair started it ~8-10s late (stress playtest 2026-11-06, scenario-hostleaves).
+// The deputy already advances the game; it now also starts the clock — but only
+// if no stamp for this round has arrived by then, because op_start_clock
+// re-stamps unconditionally and a second stamp would reset a running timer.
+export const DEPUTY_CLOCK_WAIT_MS = 2000;
+
 // HOW LONG THE FINAL QUESTION'S DIFFICULTY SWAP MAY TAKE BEFORE WE GIVE UP ON IT.
 //
 // The last question is swapped for one matching the room's difficulty vote, and

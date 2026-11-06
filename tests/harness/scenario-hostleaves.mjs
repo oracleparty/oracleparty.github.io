@@ -80,6 +80,11 @@ try {
   const done = new Set();
   let killedAt = null, lastKey = null, since = Date.now(), longestStill = 0, finished = false;
   const onResults = new Set();
+  // How late each round's clock starts once a deputy stands in. Only the host
+  // used to stamp it, so until promotion every round sat ~10s on a full,
+  // unmoving timer before the server's repair started it (2026-11-06).
+  const clockDelays = [];
+  let roundOpenedAt = null, roundKey = null;
   const deadline = Date.now() + 420000;
 
   while (!finished && Date.now() < deadline) {
@@ -88,6 +93,14 @@ try {
     if (key !== lastKey) {
       if (killedAt) longestStill = Math.max(longestStill, Date.now() - since);
       lastKey = key; since = Date.now(); note(`room: ${key} ${at()}`);
+      if (['question', 'final_question'].includes(rm?.game_phase)) { roundOpenedAt = Date.now(); roundKey = key; }
+    }
+    if (roundKey === key && roundOpenedAt && rm?.question_started_at) {
+      // A round that opened while a deputy should hold the controls: past the
+      // 30s handover, before the 120s promotion.
+      const sinceKill = killedAt ? roundOpenedAt - killedAt : -1;
+      if (sinceKill > 35000) clockDelays.push({ key, ms: Date.now() - roundOpenedAt, sinceKill });
+      roundOpenedAt = null;
     }
     if (!killedAt && rm?.game_phase === PHASE && rm?.current_question === ROUND && Date.now() - since > 1500) {
       await host.killAbruptly();
@@ -136,6 +149,9 @@ try {
   await guests[0].page.waitForTimeout(3000);
 
   note(`the longest the room sat still after the host died: ${Math.round(longestStill / 1000)}s`);
+  for (const d of clockDelays) note(`${d.key} opened ${Math.round(d.sinceKill / 1000)}s after the host died; its clock started ${d.ms}ms later`);
+  const lateClock = clockDelays.filter(d => d.sinceKill < 115000 && d.ms > 6000);
+  if (lateClock.length) problems.push(`with the host gone and a deputy standing in, ${lateClock.length} round(s) started their clock late: ${lateClock.map(d => `${d.key} ${d.ms}ms`).join(', ')} — only the host stamps the clock`);
   if (!killedAt) problems.push(`the room never reached ${PHASE}@${ROUND}, so the host was never killed`);
   const screens = await Promise.all(guests.map(screenOf));
   note(`where the players ended: ${guests.map((g, i) => `${g.name}=${screens[i]}`).join(', ')}`);

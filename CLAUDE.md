@@ -138,10 +138,13 @@
 > final-round branch awaited the swapped question list and then put the final
 > question back even after its answers were revealed (and the reveal named the
 > OLD final question). A phone past that question now stays and corrects its
-> reveal text. `scenario-finalslow`. **Not fixed, recorded in the plan:** rounds
-> start ~10s late while a host is gone but not yet replaced (only the host
-> stamps the clock); the lobby robot's old intermittent failure skips its
-> whole CI job when it fires.
+> reveal text. `scenario-finalslow`. **Fixed later the same day, with the
+> owner's go-ahead:** rounds started ~10s late while a host was gone but not
+> yet replaced (only the host stamped the clock) — the deputy now stamps it if
+> no stamp has arrived 2s in (`DEPUTY_CLOCK_WAIT_MS`, `question.js`), crown
+> unchanged; `scenario-hostleaves` fails over 6s (old ~9.8s, new ~2.9s). And
+> the lobby robot's old flake no longer skips its whole CI job (every step
+> runs `if: !cancelled()`); its cause is still unknown.
 
 > ## 2026-11-05 (later) — a typed answer is kept as a draft (migration 081); the bot's write
 >

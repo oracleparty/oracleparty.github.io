@@ -8,7 +8,7 @@ import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCatego
 import { $, transitionScreens, fuzzyMatch, showToast } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { lastRequestMs } from '../db/client.js';
-import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, DRAFT_SAVE_DEBOUNCE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
+import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, DRAFT_SAVE_DEBOUNCE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS, DEPUTY_CLOCK_WAIT_MS } from '../constants.js';
 import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, saveDraftOnServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame, buildUsedWagersMap, buildDisqualifiedSet } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
@@ -232,6 +232,28 @@ export function showQuestionScreen() {
           updateGameState(state.room.id, { question_started_at: startedAt })
             .catch(err => logger.warn('Game', 'Could not stamp the round clock', err));
         }
+      } else if (state.isDeputy) {
+        // THE HOST IS AWAY: THE DEPUTY STARTS THE CLOCK, IF NOBODY HAS.
+        //
+        // The crown does not move — this is the same stand-in that may already
+        // press Next. It waits DEPUTY_CLOCK_WAIT_MS and stamps only if this
+        // round still has no stamp, so a host who is merely slow wins, and a
+        // second stamp never resets a timer that is already running. No local
+        // estimate on failure: the server's backstop still repairs it.
+        const round = state.currentQuestion;
+        const phase = state.isFinalWagerRound ? 'final_question' : 'question';
+        setTimeout(() => {
+          if (!state.isDeputy || state.room.isHost) return;
+          if (state.currentQuestion !== round || state.gamePhase !== phase) return;
+          if (state.questionStartedAt) return;
+          startClockOnServer(state.room.id, phase, round)
+            .then(served => {
+              if (served && state.currentQuestion === round && !state.questionStartedAt) {
+                state.questionStartedAt = served;
+              }
+            })
+            .catch(err => logger.warn('Game', 'Deputy could not stamp the round clock', err));
+        }, DEPUTY_CLOCK_WAIT_MS);
       }
 
       // Start timer from server timestamp

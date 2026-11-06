@@ -43,28 +43,41 @@ jobs:
       # phone viewport.
       - run: npx playwright install --with-deps chromium
 
+      # EVERY STEP RUNS EVEN IF ONE BEFORE IT FAILED (2026-11-06). The lobby
+      # robot's known intermittent leave-and-rejoin failure (on record since
+      # 09-07) is the first step, and when it fired every game robot after it
+      # was SKIPPED — run 619 tested nothing else. The job is still red on any
+      # failure; it just no longer hides the others' results.
       - name: Lobby — host and two players see each other
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-lobby.mjs
 
       - name: Full game — completion, score agreement, channel cleanup
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-fullgame.mjs
 
       - name: Nasty — host away, rejoin, simultaneous answers
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-nasty.mjs
 
       - name: Play Again — second game, room reset, no state leakage
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-playagain.mjs
 
       - name: Social — chat, honks, score editing, question review
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-social.mjs
 
       - name: Join — public listing, privacy, hot join, bad codes
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-join.mjs
 
       - name: Feedback — votes, flags, and timer expiry scoring
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-feedback.mjs
 
       - name: Co-host — promote, demote, and gated controls
+        if: ${{ !cancelled() }}
         run: node tests/harness/scenario-cohost.mjs
 
 
