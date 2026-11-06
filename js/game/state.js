@@ -18,6 +18,10 @@ export const state = {
   totalQuestions: 0,
   timerSeconds: 30,
   usedWagers: new Map(), // Map<wagerValue, isCorrect> for green/red styling
+  // round -> { wager, correct } from this phone's own ACCEPTED submits, so a
+  // scores read that predates one cannot hand its bet back. See
+  // reconcileUsedWagers in question.js.
+  _myWagerByRound: new Map(),
   currentWager: null,
   hasSubmitted: false,
   onRevealScreen: false,
@@ -90,6 +94,11 @@ export const state = {
   // host's clock stamp waits on it — see showQuestionScreen. Null at every
   // other moment.
   _roomWritePending: null,
+  // A ROUND THIS PHONE HAS ANNOUNCED AND THE ROOM HAS NOT HEARD YET — see
+  // trackOwnAdvance. How many such writes are out, and when the last one came
+  // back. Unlike _roomWritePending, nothing consumes these early.
+  _ownAdvances: 0,
+  _ownAdvanceSettledAt: 0,
   // WHICH ROUND HAS ALREADY BEEN ADVANCED OUT OF, and whether an advance is
   // in flight right now.
   //
@@ -298,6 +307,43 @@ export function beginRoundClock({ keepStamp = false } = {}) {
   state._roundEnteredAt = state.questionStartedAt
     ? new Date(state.questionStartedAt).getTime()
     : Date.now() + state.serverTimeOffset;
+}
+
+/**
+ * THIS PHONE IS AHEAD OF THE ROOM WHILE ITS OWN ADVANCE IS BEING WRITTEN
+ * (stress playtest, 2026-11-06).
+ *
+ * Next Question and Reveal Question move this phone to the new round at once
+ * and write the room behind it. On a 1500ms link that is a couple of seconds in
+ * which the room still says the old round — and a room read taken then
+ * (the 60-second poll, a return from another app) used to be believed: the
+ * host went BACKWARDS to the scoreboard, and the phase write, reading the round
+ * after its own await, announced the old round again. `_advancedFrom` then
+ * refused every later Next and the game was stuck for good
+ * (scenario-badnetwork --lag=1500 --on=Alice, 3 runs in 3).
+ *
+ * Every optimistic round advance hands its write here; readMayPredateOwnAdvance
+ * then says whether a read could describe the room from BEFORE that write.
+ */
+export function trackOwnAdvance(write) {
+  state._ownAdvances += 1;
+  const settle = () => {
+    state._ownAdvances = Math.max(0, state._ownAdvances - 1);
+    state._ownAdvanceSettledAt = Date.now();
+  };
+  Promise.resolve(write).then(settle, settle);
+  return write;
+}
+
+/**
+ * Could a room read sent at `issuedAt` be older than this phone's own advance?
+ * Yes while one is still being written, or if one came back after the read
+ * was sent (the read may have reached the database first). Ignoring such a read
+ * is harmless — Realtime and the next poll carry the truth — while believing it
+ * is what stranded the game.
+ */
+export function readMayPredateOwnAdvance(issuedAt) {
+  return state._ownAdvances > 0 || state._ownAdvanceSettledAt >= issuedAt;
 }
 
 // --- Question field name resolution ---

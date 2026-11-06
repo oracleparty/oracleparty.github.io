@@ -10,7 +10,7 @@ import { logger, recordFault } from '../logger.js';
 import { lastRequestMs } from '../db/client.js';
 import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, DRAFT_SAVE_DEBOUNCE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS } from '../constants.js';
 import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, saveDraftOnServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
-import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame } from './scoring-helpers.js';
+import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame, buildUsedWagersMap, buildDisqualifiedSet } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
 import { hideChatBar, _appendLocalChatNotice } from './chat.js';
 import { showHostSettingsGear } from './host.js';
@@ -284,9 +284,12 @@ function renderWagerGrid() {
     if (state.usedWagers.has(i)) {
       const wasCorrect = state.usedWagers.get(i);
       btn.classList.add(wasCorrect ? 'wager-btn--correct' : 'wager-btn--incorrect');
-    } else {
-      btn.addEventListener('click', () => selectWager(i, btn));
     }
+    // EVERY button listens and asks at the tap whether the bet is still held,
+    // so reconcileUsedWagers can re-mark a grid that is already on screen
+    // without rebuilding it under somebody's finger (a rebuilt button between
+    // touchstart and click never fires — CLAUDE.md, 2026-09-14).
+    btn.addEventListener('click', () => { if (!state.usedWagers.has(i)) selectWager(i, btn); });
 
     grid.appendChild(btn);
   }
@@ -305,6 +308,80 @@ function renderWagerGrid() {
     state.wagerExplicitlySelected = true;
     logger.warn('Game', 'All wagers exhausted, fallback to ' + state.currentWager);
   }
+}
+
+/**
+ * THE BETS THIS PHONE OFFERS ARE THE BETS THE SERVER STILL HOLDS (stress
+ * playtest, 2026-11-06).
+ *
+ * state.usedWagers was only ever written by this phone's OWN successful
+ * submit. Two roads left it wrong, and both were found by scenario-lastsecond:
+ *   * a last-second answer refused as late returns early (the 2026-11-05 fix
+ *     that stops the loop) and records nothing — while the server's fill spent
+ *     the lowest bet, or the bet a draft carried;
+ *   * an auto-submitted blank loses the race to the host's fill
+ *     (ON CONFLICT DO NOTHING), and this phone recorded its own choice while
+ *     the stored row holds the fill's.
+ * Either way the grid offered a bet already spent, and the server silently
+ * swapped the next pick for another — "I bet 5 and it said I bet 1".
+ *
+ * So every time the scores are read, the map is rebuilt from the same rows
+ * (updateScores calls this — no extra trip), exactly as a reconnect already
+ * rebuilds it. A round the read has no row for yet keeps what this phone's own
+ * accepted submit recorded: that write had landed, so the read simply predates
+ * it. If the grid is already on screen it is re-marked in place.
+ */
+export function reconcileUsedWagers(allAnswers) {
+  if (!state.room?.playerId || !Array.isArray(allAnswers) || !state.totalQuestions) return;
+  const mine = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
+  state.disqualifiedQuestions = buildDisqualifiedSet(allAnswers);
+  const next = buildUsedWagersMap(mine, state.totalQuestions, state.disqualifiedQuestions);
+  const stored = new Set(mine.map(a => Number(a.question_number)));
+  for (const [round, { wager, correct }] of state._myWagerByRound || []) {
+    if (stored.has(round) || state.disqualifiedQuestions.has(round)) continue;
+    if (round < state.totalQuestions && wager) next.set(wager, correct);
+  }
+  const same = next.size === state.usedWagers.size
+    && [...next].every(([v, ok]) => state.usedWagers.get(v) === ok);
+  state.usedWagers = next;
+  if (!same) syncWagerGrid();
+}
+
+/** A bet the server took for `round`, recorded for the grid and the reconcile. */
+function recordSpentWager(round, wager, correct) {
+  if (round >= state.totalQuestions || !wager) return;
+  state.usedWagers.set(wager, correct);
+  (state._myWagerByRound ||= new Map()).set(round, { wager, correct });
+  syncWagerGrid();
+}
+
+/** Re-mark the wager buttons on screen from state.usedWagers, in place. */
+function syncWagerGrid() {
+  if (state.isFinalWagerRound || state.hasSubmitted || state.gamePhase !== 'question') return;
+  if (state._renderedQuestion !== state.currentQuestion) return;
+  const grid = $('#wager-grid');
+  const buttons = grid ? grid.querySelectorAll('.wager-btn') : [];
+  if (!buttons.length) return;
+  for (const btn of buttons) {
+    const v = Number(btn.dataset.value);
+    const used = state.usedWagers.has(v);
+    btn.classList.toggle('wager-btn--correct', used && state.usedWagers.get(v) === true);
+    btn.classList.toggle('wager-btn--incorrect', used && state.usedWagers.get(v) !== true);
+    if (used) btn.classList.remove('wager-btn--selected');
+  }
+  // A bet picked on a button the server has since said is spent is not a bet.
+  if (state.wagerExplicitlySelected && state.usedWagers.has(state.currentWager)) {
+    state.wagerExplicitlySelected = false;
+    state.currentWager = null;
+  }
+  // The last-one-left rule, exactly as renderWagerGrid applies it.
+  const available = grid.querySelectorAll('.wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)');
+  if (available.length === 1 && !state.wagerExplicitlySelected) {
+    available[0].classList.add('wager-btn--selected');
+    state.currentWager = Number(available[0].dataset.value);
+    state.wagerExplicitlySelected = true;
+  }
+  refreshSubmitButton();
 }
 
 function selectWager(value, btnEl) {
@@ -567,6 +644,20 @@ async function handleTimerExpired() {
 
   state.timerExpired = true;
 
+  // THE ROUND WHOSE CLOCK RAN OUT, fixed here and never re-read (stress
+  // playtest, 2026-11-06). A phone put in a pocket holds its timers; when it
+  // comes back this fires for the round it LEFT, and on a slow link the chain
+  // below — auto-submit, read, fill — takes seconds. Meanwhile the phone has
+  // caught up with the room, which may be on that round's scoreboard or the
+  // NEXT question. The host's phase write at the end then rewound the room to
+  // `reveal` (seen at +92s in scenario-background --who=Alice), and against a
+  // newer question it would end that question for everybody. So the
+  // controller's half only runs while this phone still believes the round is
+  // open.
+  const round = state.currentQuestion;
+  const stillOpenHere = () => state.currentQuestion === round
+    && (state.gamePhase === 'question' || state.gamePhase === 'final_question');
+
   // Hide the reveal screen timer (round is over)
   const revealTimer = $('#reveal-timer');
   if (revealTimer) revealTimer.style.display = 'none';
@@ -591,18 +682,21 @@ async function handleTimerExpired() {
   }
 
   // Host/cohost: auto-submit blank for any players who didn't answer, then broadcast reveal.
-  if (canControlGame()) {
+  if (canControlGame() && !stillOpenHere()) {
+    logger.warn('Game', 'the round this clock was for has already closed here; not closing it again', {
+      round, phone: `${state.gamePhase}@${state.currentQuestion}` });
+  } else if (canControlGame()) {
     // Re-fetch answers to ensure we have the host's just-submitted answer
-    const freshAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, state.currentQuestion));
-    state.currentAnswers = freshAnswers;
+    const freshAnswers = currentGameAnswers(await fetchAnswersForQuestion(state.room.id, round));
+    if (stillOpenHere()) state.currentAnswers = freshAnswers;
     const submittedIds = new Set(freshAnswers.map(a => String(a.player_id)));
-    const q = state.questions[state.currentQuestion];
+    const q = state.questions[round];
 
     // One call, and the database works out who is missing and what each of them
     // still holds — including the locked-final-wager rows this used to need a
     // whole second pass for. It is idempotent, so it does not matter how many
     // phones make it.
-    const served = await fillBlankAnswersViaServer(state.room.id, state.currentQuestion);
+    const served = await fillBlankAnswersViaServer(state.room.id, round);
 
     if (q && !served.ok) {
       // Each absent player burns their OWN lowest unused wager, not a hardcoded
@@ -624,7 +718,7 @@ async function handleTimerExpired() {
         blanks.push({
           roomId: state.room.id,
           playerId: p.id,
-          questionNumber: state.currentQuestion,
+          questionNumber: round,
           questionId: q.id,
           wager: findNextAvailableWager(used, state.totalQuestions)
         });
@@ -662,7 +756,7 @@ async function handleTimerExpired() {
           await upsertAnswers(unanswered.map(a => ({
             roomId: state.room.id,
             playerId: a.player_id,
-            questionNumber: state.currentQuestion,
+            questionNumber: round,
             questionId: q.id,
             // Locked is locked, and a blank under a locked bet loses it
             // (owner, 2026-11-02) — the same rule as migration 079.
@@ -678,11 +772,16 @@ async function handleTimerExpired() {
     // The host's OWN timer path. op_advance_phase (056) is the backstop for
     // when nobody is driving; this is the ordinary case, and it goes through
     // the server too so that `rooms` can be locked without it breaking.
-    setPhaseOnServer(state.room.id, state.room.playerId, null, 'reveal')
-      .then(served => {
-        if (!served) return updateGameState(state.room.id, { game_phase: 'reveal' });
-      })
-      .catch(err => logger.error('Game', 'Failed to broadcast reveal phase', err));
+    if (!stillOpenHere()) {
+      logger.warn('Game', 'the room moved on while this round was being closed; not writing reveal', {
+        round, phone: `${state.gamePhase}@${state.currentQuestion}` });
+    } else {
+      setPhaseOnServer(state.room.id, state.room.playerId, null, 'reveal')
+        .then(served => {
+          if (!served) return updateGameState(state.room.id, { game_phase: 'reveal' });
+        })
+        .catch(err => logger.error('Game', 'Failed to broadcast reveal phase', err));
+    }
   }
 
   // If host/co-host and already on reveal, enable the appropriate button and update text
@@ -857,7 +956,15 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   $('#btn-submit-answer').disabled = true;
   $('#btn-submit-answer').textContent = 'Sending\u2026';
 
-  const q = state.questions[state.currentQuestion];
+  // THE ROUND THIS ANSWER IS FOR, fixed at the tap (stress playtest,
+  // 2026-11-06). Everything below waits on the network, and a phone that
+  // catches up with the room meanwhile moves state.currentQuestion on: the
+  // refused-then-fallback write below once read it AFTER its await and filed
+  // a round-1 answer — round 1's question, round 1's bet — in round 2's slot,
+  // and the server then kept that bet for the real round-2 answer (spent once,
+  // only once), so one bet was spent twice. scenario-background --return-lag.
+  const round = state.currentQuestion;
+  const q = state.questions[round];
   if (!q) {
     // No question loaded means nothing can be written, and the player is still
     // looking at this screen. Give the control back rather than leaving them
@@ -914,15 +1021,20 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   // nothing is ever lost silently. Auto-submits and callers that own the
   // screen are unchanged.
   let optimisticId = null;
-  const roundAtSubmit = state.currentQuestion;
+  const roundAtSubmit = round;
+  // Noted BEFORE the optimistic row is drawn: drawing it runs the
+  // [AnswerNotMine] recorder, which read this row as "text this page never
+  // sent" and filed a false report on every deliberate Submit since 11-03 —
+  // sharing recordFault's ten-a-minute budget with the reports that matter.
+  if (!(autoSubmit && isBlank)) noteAnswerSent(round, q.id, answer);
   if (!autoSubmit && thenShowReveal && _showRevealScreen) {
-    optimisticId = `optimistic-${state.room.playerId}-${state.currentQuestion}`;
+    optimisticId = `optimistic-${state.room.playerId}-${round}`;
     state.currentAnswers = (state.currentAnswers || []).filter(a =>
       !(String(a.player_id) === String(state.room.playerId)
-        && Number(a.question_number) === Number(state.currentQuestion)));
+        && Number(a.question_number) === Number(round)));
     state.currentAnswers.push({
       id: optimisticId, room_id: state.room.id, player_id: state.room.playerId,
-      question_number: state.currentQuestion, question_id: q.id,
+      question_number: round, question_id: q.id,
       submitted_answer: answer, wager, is_correct: isCorrect, score_earned: scoreEarned,
     });
     _showRevealScreen();
@@ -932,18 +1044,18 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
     submitResult = await insertBlankAnswers([{
       roomId: state.room.id,
       playerId: state.room.playerId,
-      questionNumber: state.currentQuestion,
+      questionNumber: round,
       questionId: q.id,
       wager,
       scoreEarned
     }]).then(() => ({ data: null, error: null }), error => ({ data: null, error }));
+    if (state.currentQuestion !== round) return;   // see "a write that outlived its round" below
   } else {
-    noteAnswerSent(state.currentQuestion, q.id, answer);
     const sentAt = performance.now();
     const server = await submitAnswerViaServer({
       roomId: state.room.id,
       playerId: state.room.playerId,
-      questionNumber: state.currentQuestion,
+      questionNumber: round,
       answer,
       wager
     });
@@ -955,7 +1067,18 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
     if (totalMs >= 2000) {
       const netMs = lastRequestMs('rest:rpc/op_submit_answer');
       recordFault('SlowSubmit', `Submit took ${totalMs}ms`,
-        `network ${netMs ?? '?'}ms, waiting in the phone ${netMs == null ? '?' : totalMs - netMs}ms, round ${state.currentQuestion}, auto=${autoSubmit}`);
+        `network ${netMs ?? '?'}ms, waiting in the phone ${netMs == null ? '?' : totalMs - netMs}ms, round ${round}, auto=${autoSubmit}`);
+    }
+    // A WRITE THAT OUTLIVED ITS ROUND. The phone has moved on while this was
+    // out; nothing below — the fallback write, the screen, this round's flags —
+    // belongs to the round now on screen. Only the bet, if the server took it.
+    if (state.currentQuestion !== round) {
+      if (server.row && !server.row.rejected) {
+        recordSpentWager(round, server.row.wager ?? wager, !!server.row.is_correct);
+      }
+      logger.warn('Game', 'an answer came back after this phone left its round; leaving the new round alone', {
+        round, now: state.currentQuestion, refused: server.row?.rejected || null });
+      return;
     }
     if (server.row && !server.row.rejected) {
       verdict = !!server.row.is_correct;
@@ -972,7 +1095,7 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
       submitResult = await submitAnswer({
         roomId: state.room.id,
         playerId: state.room.playerId,
-        questionNumber: state.currentQuestion,
+        questionNumber: round,
         questionId: q.id,
         wager,
         submittedAnswer: answer,
@@ -1061,6 +1184,11 @@ export async function doSubmitAnswer(answer, { autoSubmit = false, thenShowRevea
   // handed back a different value, because it refuses to let one number be
   // spent twice and this screen can be out of date about what is left.
   state.usedWagers.set(wagerFinal, verdict);
+  // Per round as well, for reconcileUsedWagers: a scores read taken before
+  // this write landed must not hand the bet back.
+  if (!state.isFinalWagerRound) {
+    (state._myWagerByRound ||= new Map()).set(roundAtSubmit, { wager: wagerFinal, correct: !!verdict });
+  }
 
   // Track question answered (fire-and-forget, skip final wager round)
   if (!state.isFinalWagerRound) {

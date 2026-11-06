@@ -60,10 +60,12 @@ import {
   _qbFeedback,
   beginRoundClock,
   judgementBusy, beginJudgement, endJudgement,
+  trackOwnAdvance,
 } from './state.js';
 import { repositionChatBar, showChatBar, hideChatBar, closeChatDrawer } from './chat.js';
 import { showHostSettingsGear } from './host.js';
 import { lockBotFinalWagers, getHumans } from './bots.js';
+import { reconcileUsedWagers } from './question.js';
 
 // Forward references — registered by init.js to avoid circular imports
 let _cleanup = null;
@@ -1119,7 +1121,11 @@ export async function handleRevealFinalQuestion() {
   const questionIds = state.questions.map(qn => qn.id);
   // CHAINED, SO THE ORDER HOLDS — but not awaited before the screen, because
   // this phone already knows everything it needs to draw one. See below.
-  const roomWrite = (async () => {
+  // TRACKED as an advance the room has not heard yet: a room read taken
+  // meanwhile still names the final wager and the OLD list, and believing it
+  // would put this phone back on a question the room has swapped away
+  // (trackOwnAdvance in state.js).
+  const roomWrite = trackOwnAdvance((async () => {
     // ONE TRIP WHEN THE SERVER CAN (migration 073): the list and the phase in a
     // single call, in the same order. On a slow link the second write used to
     // start only once the first came back, which was the whole wait between
@@ -1135,7 +1141,7 @@ export async function handleRevealFinalQuestion() {
         current_question: state.totalQuestions,
       });
     }
-  })();
+  })());
   // The clock stamp — and ONLY the clock stamp — waits for those writes.
   // op_start_clock checks the phase it is given against the ROOM's, so a stamp
   // sent before the phase lands is refused however long we wait; gating it here
@@ -2249,4 +2255,7 @@ export async function updateScores(answersAlreadyRead = null) {
   // What each row looked like when these scores were drawn, so an UPDATE that
   // changes nothing scoring can be told apart from a real correction.
   state._scoreSigs = new Map(read.map(a => [String(a.id), answerScoreSig(a)]));
+  // The bets this phone offers next come from the same rows — see
+  // reconcileUsedWagers (stress playtest, 2026-11-06).
+  reconcileUsedWagers(allAnswers);
 }

@@ -138,6 +138,46 @@ export class Robot {
     return this.page.isVisible(selector).catch(() => false);
   }
 
+  /**
+   * PUT THE PHONE IN A POCKET (stress playtest, 2026-11-06).
+   *
+   * The page is told it is hidden (`visibilitychange`, which is where the app
+   * sends what is typed as a draft), and from then on this phone hears NOTHING:
+   * no Realtime rows, no broadcasts, no presence — a backgrounded phone loses
+   * its socket, and Supabase does not replay what it missed.
+   *
+   * `frozen` (the default) also holds every timer the page sets, as iOS
+   * suspends a backgrounded tab: no countdown expiry, no auto-submit, no
+   * heartbeat, no poll. They run when the phone comes back, once each, as a
+   * resumed page's do. Headless Chromium cannot freeze a page for real (it
+   * always reports itself visible), so the seat must be taken with
+   * `{ pocketable: true }`, which installs the timer hold before the app loads.
+   * `frozen: false` is a phone that keeps running in the background (Android
+   * keeps a tab alive a while) but has still lost its connection.
+   */
+  async goToBackground({ frozen = true } = {}) {
+    this.away = true;
+    await this.page.evaluate(f => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      if (f) {
+        if (!window.__freezeTimers) throw new Error('seat this robot with { pocketable: true } to freeze it');
+        window.__freezeTimers(true);
+      }
+    }, frozen);
+  }
+
+  /** Take the phone out of the pocket: timers resume, then the page is shown. */
+  async comeBack() {
+    this.away = false;
+    await this.page.evaluate(() => {
+      window.__freezeTimers?.(false);
+      delete document.hidden; delete document.visibilityState;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  }
+
   /** Simulate the phone dying: no beacon, no cleanup — the nastiest real case. */
   async killAbruptly() {
     await this.page.context().close();
@@ -180,7 +220,7 @@ export class PlaytestTable {
    * Guests remain the default — plenty of real players never sign in, and both
    * kinds share a lobby.
    */
-  async seatSignedIn(name, { tier = 'Scholar', title = null, isAdmin = false, storageState, desktop = false } = {}) {
+  async seatSignedIn(name, { tier = 'Scholar', title = null, isAdmin = false, storageState, desktop = false, pocketable = false } = {}) {
     const userId = `user-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     this.store.table('profiles').push({
       id: `profile-${userId}`,
@@ -203,7 +243,7 @@ export class PlaytestTable {
       is_admin: isAdmin,
     });
 
-    const robot = await this.seat(name, { storageState, desktop, session: { userId, name } });
+    const robot = await this.seat(name, { storageState, desktop, pocketable, session: { userId, name } });
 
     // Without this the display-name modal opens and ensureDisplayName() never
     // resolves, so init() stops before it fetches anything — the host page sat
@@ -219,7 +259,7 @@ export class PlaytestTable {
     return robot;
   }
 
-  async seat(name, { storageState, session, desktop = false } = {}) {
+  async seat(name, { storageState, session, desktop = false, pocketable = false } = {}) {
     // storageState lets a robot come back as the SAME browser rather than a
     // fresh one. Without it, "rejoining" silently tests a different device,
     // because localStorage — where a player's seat is remembered — starts empty.
@@ -281,7 +321,7 @@ export class PlaytestTable {
         deliver: async payload => {
           // ONE PHONE MISSING A MESSAGE. store.dropEvents swallows an event for
           // everybody; a real lost frame belongs to one connection.
-          if (robot.deafTables?.has(cfg.table)) return;
+          if (robot.away || robot.deafTables?.has(cfg.table)) return;
           // A slow link delays what ARRIVES as well as what is sent, or the
           // phone would be slow to ask and instant to hear, which is no phone.
           if (robot.latencyMs) await lag();
@@ -304,6 +344,7 @@ export class PlaytestTable {
     });
     await context.exposeFunction('__presenceWatch', topic => {
       this.store.watchPresence(topic, snapshot => {
+        if (robot.away) return;
         page.evaluate(
           ([t, s]) => window.__presenceSync && window.__presenceSync(t, s),
           [topic, snapshot]
@@ -312,6 +353,7 @@ export class PlaytestTable {
     });
     await context.exposeFunction('__dbBroadcast', async (topic, event, payload) => {
       for (const r of this.robots) {
+        if (r.away) continue;   // a phone in a pocket hears no broadcast
         await r.page.evaluate(
           ([t, e, p]) => window.__fakeBroadcast && window.__fakeBroadcast(t, e, p),
           [topic, event, payload]
@@ -365,6 +407,40 @@ export class PlaytestTable {
       route.fulfill({ status: 200, contentType: 'font/woff2', body: '' }));
 
     await page.addInitScript(n => { window.__robotId = n; }, name);
+    // The timer hold robot.goToBackground() uses — opt-in, inert until asked.
+    if (pocketable) {
+      await page.addInitScript(() => {
+        const realTimeout = window.setTimeout.bind(window);
+        const realInterval = window.setInterval.bind(window);
+        const realRaf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : null;
+        let frozen = false;
+        const held = [];
+        window.setTimeout = (fn, ms, ...args) => realTimeout(() => {
+          if (typeof fn !== 'function') return;
+          if (frozen) held.push(() => fn(...args)); else fn(...args);
+        }, ms);
+        window.setInterval = (fn, ms, ...args) => {
+          let owed = false;
+          return realInterval(() => {
+            if (typeof fn !== 'function') return;
+            if (!frozen) return fn(...args);
+            if (!owed) { owed = true; held.push(() => { owed = false; fn(...args); }); }
+          }, ms);
+        };
+        if (realRaf) {
+          window.requestAnimationFrame = cb => realRaf(t => {
+            if (frozen) held.push(() => cb(performance.now())); else cb(t);
+          });
+        }
+        window.__freezeTimers = on => {
+          frozen = !!on;
+          if (frozen) return;
+          for (const run of held.splice(0)) {
+            try { run(); } catch (e) { realTimeout(() => { throw e; }, 0); }
+          }
+        };
+      });
+    }
     // The end-of-game podium replays the game for ~5s and then waits ~3s; a
     // robot has no eyes for it, so it plays at 20x unless a scenario turns it
     // back down (scenario-podium does, to look at it).

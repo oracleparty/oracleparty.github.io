@@ -58,6 +58,7 @@ import {
   _isLeaving, setIsLeaving,
   _syncInFlight, setSyncInFlight,
   _qbFeedback,
+  readMayPredateOwnAdvance,
 } from './state.js';
 import { buildDisqualifiedSet, buildUsedWagersMap, answersForCurrentGame } from './scoring-helpers.js';
 import {
@@ -972,6 +973,7 @@ async function syncToCurrentState() {
   if (_syncInFlight) return; // Prevent overlapping syncs
   setSyncInFlight(true);
   try {
+    const issuedAt = Date.now();
     const { data: roomData } = await fetchRoom(state.room.id);
     if (!roomData || !roomData.game_phase) return;
 
@@ -980,6 +982,23 @@ async function syncToCurrentState() {
       setIsLeaving(true);
       cleanup();
       navigateWithFadeReplace('lobby.html');
+      return;
+    }
+
+    // A READ OLDER THAN THIS PHONE'S OWN ADVANCE IS NOT NEWS (stress playtest,
+    // 2026-11-06). The direction rule below was only ever asked when the ROUND
+    // matched: a room one round BEHIND this phone was adopted outright. That is
+    // exactly what a read taken while this phone's own Next Question is still
+    // being written looks like — on a 1500ms link the 60-second poll landed in
+    // that gap, the host went back to the scoreboard, the phase write announced
+    // the old round again and Next was refused for good. See trackOwnAdvance.
+    if (Number.isInteger(roomData.current_question)
+        && roomData.current_question < state.currentQuestion
+        && readMayPredateOwnAdvance(issuedAt)) {
+      logger.warn('Game', 'ignoring a room read older than this phone\'s own advance', {
+        room: `${roomData.game_phase}@${roomData.current_question}`,
+        phone: `${state.gamePhase}@${state.currentQuestion}`,
+      });
       return;
     }
 

@@ -316,3 +316,45 @@ describe('roundTimerSeconds — the final question runs 15s longer (owner, 2026-
     expect(roundTimerSeconds('final_wager')).toBe(30);
   });
 });
+
+// ============================================
+// A room read older than this phone's own advance (stress playtest, 2026-11-06)
+// ============================================
+import { trackOwnAdvance, readMayPredateOwnAdvance } from '../js/game/state.js';
+
+describe('a room read taken while this phone\'s own advance is being written', () => {
+  beforeEach(() => { state._ownAdvances = 0; state._ownAdvanceSettledAt = 0; });
+
+  it('is suspect while the advance is still out', () => {
+    let finish;
+    trackOwnAdvance(new Promise(r => { finish = r; }));
+    expect(readMayPredateOwnAdvance(Date.now())).toBe(true);
+    finish();
+  });
+
+  it('is suspect if the advance came back after the read was sent', async () => {
+    const issuedAt = Date.now() - 50;
+    await trackOwnAdvance(Promise.resolve());
+    await Promise.resolve();   // let the settle handler run
+    expect(state._ownAdvances).toBe(0);
+    expect(readMayPredateOwnAdvance(issuedAt)).toBe(true);
+  });
+
+  it('is believed once the advance had landed before the read was sent', async () => {
+    await trackOwnAdvance(Promise.resolve());
+    await Promise.resolve();
+    const issuedAt = state._ownAdvanceSettledAt + 1;
+    expect(readMayPredateOwnAdvance(issuedAt)).toBe(false);
+  });
+
+  it('a FAILED advance still counts as settled, so it cannot leave the phone deaf', async () => {
+    await trackOwnAdvance(Promise.reject(new Error('network'))).catch(() => {});
+    await Promise.resolve();
+    expect(state._ownAdvances).toBe(0);
+    expect(readMayPredateOwnAdvance(state._ownAdvanceSettledAt + 1)).toBe(false);
+  });
+
+  it('with no advance at all, every read is believed', () => {
+    expect(readMayPredateOwnAdvance(Date.now())).toBe(false);
+  });
+});

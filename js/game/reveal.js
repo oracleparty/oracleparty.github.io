@@ -8,7 +8,7 @@ import { state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getC
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
          _qbFeedback, setQbFeedback,
-         judgementBusy, beginJudgement, endJudgement, sentThisRound } from './state.js';
+         judgementBusy, beginJudgement, endJudgement, sentThisRound, trackOwnAdvance } from './state.js';
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { REVEAL_ANSWER_DELAY_MS, RESULTS_ACTION_DELAY_MS, CLOCK_STAMP_TIMEOUT_MS, CLAP_POLL_MS } from '../constants.js';
@@ -1573,22 +1573,29 @@ async function _advanceFromRound(advancingFrom) {
     // old behaviour rather than stalling; migration 069 makes op_set_phase
     // clear the stamp in the same statement as the phase, which closes the
     // window by construction and leaves this as belt and braces.
-    state.currentQuestion = advancingFrom + 1;
-    const roomWrite = (async () => {
+    const target = advancingFrom + 1;
+    state.currentQuestion = target;
+    const roomWrite = trackOwnAdvance((async () => {
       await Promise.race([
         updateGameState(state.room.id, { question_started_at: null })
           .catch(err => logger.warn('Game', 'Could not clear the previous round clock', err)),
         new Promise(resolve => setTimeout(resolve, CLOCK_STAMP_TIMEOUT_MS)),
       ]);
+      // THE ROUND DECIDED AT THE PRESS, never re-read after the await above:
+      // a stale room read once put state.currentQuestion back during it, and
+      // this announced the round that had just finished (stress playtest,
+      // 2026-11-06). Math.max so a phone that has meanwhile followed the room
+      // further cannot pull the room back either.
+      const round = Math.max(target, state.currentQuestion);
       if (!await setPhaseOnServer(state.room.id, state.room.playerId, null,
-                                  'question', state.currentQuestion)) {
+                                  'question', round)) {
         await updateGameState(state.room.id, {
           game_phase: 'question',
-          current_question: state.currentQuestion,
+          current_question: round,
           question_started_at: null
         });
       }
-    })();
+    })());
     // showQuestionScreen's clock stamp is the ONE thing that waits on this —
     // op_start_clock checks the phase it is given against the room's, so
     // stamping before the phase lands is refused however long you wait.

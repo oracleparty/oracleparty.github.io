@@ -613,6 +613,7 @@ export async function handlePhaseTransition(phase) {
       state._advancedFrom = null;
       state._advanceInFlight = false;
       state.usedWagers = new Map();
+      state._myWagerByRound = new Map();
       state.disqualifiedQuestions = new Set();
       // Track game play start
       insertGamePlay({

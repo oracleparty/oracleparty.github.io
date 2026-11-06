@@ -199,7 +199,11 @@ try {
     r.page.on('console', m => {
       const t = m.text();
       if (t.startsWith('PROBE')) { console.log(`   probe ${r.name}: ${t}`); return; }
-      if (m.type() === 'error') consoleErrors.push(`${r.name} console: ${t.slice(0, 240)}`);
+      // [SlowSubmit] / [SlowRequest] are the app's own recorders reporting the
+      // very slowness this scenario injects (logged at error level so they
+      // reach error_logs) — measurements, not faults. Counted as errors, every
+      // run at --lag=3000 "failed" on them (stress playtest, 2026-11-06).
+      if (m.type() === 'error' && !/\[Slow(Submit|Request)\]/.test(t)) consoleErrors.push(`${r.name} console: ${t.slice(0, 240)}`);
     });
     r.page.on('pageerror', e => {
       consoleErrors.push(`${r.name} THREW: ${(e.message || String(e)).slice(0, 240)}`);

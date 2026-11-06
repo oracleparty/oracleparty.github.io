@@ -2135,6 +2135,12 @@ export class FakeStore {
               submitted_answer: draft ? draft.answer_text : '',
               is_correct: right, auto_correct: right,
               score_earned: right ? wager : (isFinal ? -wager : 0),
+              // The live column's default (068). Without it a game whose rows
+              // all came from these functions looked to the client as if the
+              // column did not exist, and buildDisqualifiedSet fell back to
+              // guessing "everybody wrong = thrown out" (stress playtest,
+              // 2026-11-06: the Edit Scores sheet lost its toggles).
+              disqualified: false,
             };
             rows.push(row);
             this._broadcast('INSERT', 'answers', { ...row }, null);
@@ -2205,6 +2211,7 @@ export class FakeStore {
           question_number: qnum, question_id: qid, wager: chosen,
           submitted_answer: text, is_correct: verdict, auto_correct: verdict,
           score_earned: earned,
+          disqualified: false,   // the live column's default — see op_fill_blank_answers above
         };
         rows.push(row);
         this._broadcast('INSERT', 'answers', { ...row }, null);
