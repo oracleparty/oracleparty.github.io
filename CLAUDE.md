@@ -109,8 +109,9 @@
 > the bet (`op_submit_answer` keeps `existing.wager`) and count as answered.
 > 316 SQL rules hold; disabling the draft fails 6. `scenario-draft` (in CI)
 > holds Bob's last-second send past the deadline; with drafts off it reports
-> his typed answer lost. **081 IS NOT APPLIED until the owner runs it**; until
-> then `op_save_draft` answers PGRST202 and drafts switch themselves off.
+> his typed answer lost. **081 IS APPLIED (2026-11-06): the owner ran the
+> comment-stripped copy and reported all six verification rows `ok`** (reported,
+> not pasted verbatim). Drafts are live from the 20261105b deploy on.
 >
 > **The bot's "No answer": cause NOT found.** It answers a second into the
 > round, so a missing answer means the write failed. It retries twice now and a
