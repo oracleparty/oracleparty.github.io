@@ -247,3 +247,10 @@ jobs:
       # The host's phone dies mid-question; the others finish the game.
       - name: Host leaves — the others finish without them
         run: node tests/harness/scenario-hostleaves.mjs --phase=question
+
+      # The final question on a phone with a 6s link, revealed early by the
+      # host: the question list comes back after the reveal, and the phone must
+      # not go back to the final question — and its reveal must name the
+      # question the room actually asked.
+      - name: Final question, slow phone — a late list fetch does not go back
+        run: node tests/harness/scenario-finalslow.mjs

@@ -38,6 +38,7 @@ import {
   _staleCheckCount, setStaleCheckCount,
   beginRoundClock,
   staleJudgementEcho,
+  getQuestionText, getCorrectAnswer,
 } from './state.js';
 import { showChatBar, hideChatBar } from './chat.js';
 import { initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear, syncChaosDisplay } from './host.js';
@@ -442,12 +443,37 @@ export function handleRoomChange(payload) {
   // so showQuestionScreen() displays the correct (difficulty-matched) question.
   // Same blocking pattern as the initial-load fetch above.
   if (questionIdsChanged && (game_phase === 'final_question' || game_phase === 'difficulty_vote')) {
+    // THE ROOM MAY HAVE MOVED ON WHILE THE LIST WAS FETCHED (2026-11-06,
+    // scenario-finalslow). On a very slow link the host can reveal the final
+    // answers before this fetch comes back; the reveal arrives, is handled, and
+    // then this called handlePhaseTransition('final_question') regardless —
+    // putting the final question back on screen after its answers were shown.
+    // The same "read after an await" shape the stress playtest found four
+    // times. A phone already past this round's question leaves it be, and
+    // corrects the screen it is on, which was drawn from the OLD list.
+    const forRound = current_question;
+    const proceed = () => {
+      const roundOver = ['reveal', 'answer_reveal', 'scores_reveal', 'results'].includes(state.gamePhase);
+      if (state.currentQuestion !== forRound || roundOver) {
+        logger.warn('Game', 'the room moved on while the question list was fetched; not going back', {
+          event: `${game_phase}@${forRound}`, phone: `${state.gamePhase}@${state.currentQuestion}` });
+        const q = state.questions[state.currentQuestion];
+        if (q && state.onRevealScreen && state.currentQuestion === forRound) {
+          const textEl = $('#reveal-question-text');
+          if (textEl) textEl.textContent = getQuestionText(q);
+          const answerEl = $('#reveal-answer');
+          if (answerEl) answerEl.textContent = getCorrectAnswer(q);
+        }
+        return;
+      }
+      if (game_phase) handlePhaseTransition(game_phase);
+    };
     fetchQuestionsByIds(question_ids).then(qs => {
       if (qs.length > 0) { state.questions = qs; resolveFieldMap(qs[0]); }
-      if (game_phase) handlePhaseTransition(game_phase);
+      proceed();
     }).catch(() => {
       // Fetch failed — proceed with old questions as fallback
-      if (game_phase) handlePhaseTransition(game_phase);
+      proceed();
     });
     return;
   }

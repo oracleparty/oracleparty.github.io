@@ -225,6 +225,10 @@ try {
   // A confidently wrong number is worse than no number.
   let currentPhase = null;
   let phaseStartedAt = 0;
+  // The longest the room ever stayed in each phase. A phone on a slow link
+  // cannot show a screen the room left before one round trip could bring it —
+  // and refusing to draw it late over the next one is the design (screenStillFits).
+  const longestStay = {};
   let arrivedThisPhase = new Set();
 
   const SAMPLE_MS = 400;
@@ -248,6 +252,7 @@ try {
       roomTimeline.push(`${stamp} at ${Date.now() - bootAt}ms`);
     }
     if (phase !== currentPhase) {
+      if (currentPhase) longestStay[currentPhase] = Math.max(longestStay[currentPhase] || 0, Date.now() - phaseStartedAt);
       currentPhase = phase;
       phaseStartedAt = Date.now();
       arrivedThisPhase = new Set();
@@ -547,10 +552,17 @@ try {
   // another page. The other player was able to advance." A late screen still
   // arrives; a screen that never arrives is what this catches, and it cannot
   // be flaky for the same reason.
+  if (currentPhase) longestStay[currentPhase] = Math.max(longestStay[currentPhase] || 0, Date.now() - phaseStartedAt);
   for (const r of everyone) {
     for (const phase of phasesVisited) {
       const want = SCREEN_FOR_PHASE[phase];
       if (!want) continue;
+      // Too brief to reach the slow phone at all (stress playtest, 2026-11-06:
+      // at --lag=3000 the robot host left every scoreboard after 2.8s).
+      if (r === laggy && (longestStay[phase] || 0) < 2 * LAG + 1000) {
+        if (!screensShown[r.name].has(want)) note(`${r.name} never showed ${want}: the room never stayed in "${phase}" longer than ${Math.round((longestStay[phase] || 0) / 100) / 10}s, under two ${LAG}ms trips`);
+        continue;
+      }
       if (!screensShown[r.name].has(want)) {
         problems.push(`the room reached "${phase}" and ${r.name}'s screen NEVER showed ${want} — the room moved on without them`);
       }

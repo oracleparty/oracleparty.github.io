@@ -96,7 +96,7 @@
 >
 > Last verified against the code: 2026-08-30.
 
-> ## 2026-11-06 — the unattended robot stress playtest: five faults, all fixed
+> ## 2026-11-06 — the unattended robot stress playtest: six faults, all fixed
 >
 > **The owner was away; the plan and the full results are in
 > `docs/STRESS-PLAN.md`.** Every fault was reproduced by a robot, fixed and
@@ -133,10 +133,14 @@
 > **The habit, four times in one night: never read shared state after an
 > await and act on it as if nothing moved.** The re-sync, the advance, the
 > round-closing chain and the submit all did, and on a slow link something
-> always had moved. **Not fixed, recorded in the plan:** the final question
-> can come back after an early reveal on a very slow link (same shape, in
-> `handleRoomChange`); rounds start ~10s late while a host is gone but not yet
-> replaced; the lobby robot's old intermittent failure skips its whole CI job.
+> always had moved — and a fifth, fixed as a follow-up: `handleRoomChange`'s
+> final-round branch awaited the swapped question list and then put the final
+> question back even after its answers were revealed (and the reveal named the
+> OLD final question). A phone past that question now stays and corrects its
+> reveal text. `scenario-finalslow`. **Not fixed, recorded in the plan:** rounds
+> start ~10s late while a host is gone but not yet replaced (only the host
+> stamps the clock); the lobby robot's old intermittent failure skips its
+> whole CI job when it fires.
 
 > ## 2026-11-05 (later) — a typed answer is kept as a draft (migration 081); the bot's write
 >

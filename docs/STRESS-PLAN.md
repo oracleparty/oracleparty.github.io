@@ -45,7 +45,7 @@ cannot come back. Work through the list in order; stop and report when time runs
 **Pending migrations: NONE.** Every fix below is JavaScript; nothing needs
 pasting into the SQL editor.
 
-**Five faults found and fixed, each reproduced by a robot, each break-tested**
+**Six faults found and fixed (five in the run, a sixth as a follow-up), each reproduced by a robot, each break-tested**
 (the fix reverted, the check watched failing, the fix restored from a `cp`
 backup). Full regression afterwards: all 30 runs of every CI robot plus the
 new ones green on the final code.
@@ -86,14 +86,20 @@ new ones green on the final code.
   explain the bot's "No answer". **Read the error log with that in mind: every
   `[AnswerNotMine]` row before this deploy is noise.**
 
+- **F — a question-list fetch that comes back after the room moved on does
+  not go back** (follow-up, same night). In `handleRoomChange` the final
+  round's branch awaits the swapped question list, then called
+  `handlePhaseTransition('final_question')` regardless: on a very slow link
+  with an early reveal the final question came back after its answers
+  (seen at 3000ms: `answer_reveal@5 -> final_question@5`), and the reveal had
+  been drawn from the OLD list — it named the wrong final question. Now a phone
+  already past that round's question stays put and its reveal is corrected.
+  `scenario-finalslow` (Bob on 6s from the final wager, host reveals early):
+  old code goes back by name; with only the text fix removed the reveal shows
+  "Test question 3?" while the room asked "Test question 5?".
+
 ### Found and NOT fixed
 
-- **The final question can come back after an early reveal on a very slow
-  link.** In `handleRoomChange`, the final-question branch awaits the question
-  list and then calls `handlePhaseTransition('final_question')` without asking
-  whether the phone has moved on; seen once at 3000ms (Bob's trail
-  `answer_reveal@5 -> final_question@5`). Needs friends answering within the
-  fetch time AND an early reveal. Not fixed: no check yet that can fail on it.
 - **While the host is gone (before promotion), rounds start ~10s late** — only
   the host stamps the clock. Recoverable; changing who stamps is a design call.
 - **CI: the lobby robot's known intermittent leave-and-rejoin failure** (on
