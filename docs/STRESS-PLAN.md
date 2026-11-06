@@ -102,6 +102,14 @@ new ones green on the final code.
 
 - **While the host is gone (before promotion), rounds start ~10s late** — only
   the host stamps the clock. Recoverable; changing who stamps is a design call.
+- **At 3s+ per request a phone still LOADING routes from an older room
+  snapshot** — `badnetwork --lag=3000 --on=Bob` flicked `question@0 ->
+  countdown@0` at the start and corrected itself. The same "read after an
+  await" shape, in `init.js`'s routing; recorded and deliberately left alone on
+  10-23 because init's routing interacts with Realtime in ways no check pins.
+- **The slow-phone matrix re-run on the final code (20261106b):** 800, 1500
+  and 3000ms on the host and on a player — 5 of 6 clean; the sixth is the
+  loading flick just above.
 - **CI: the lobby robot's known intermittent leave-and-rejoin failure** (on
   record since 09-07) failed run 619 on a docs-only commit, and because it is
   the first step of its job every game robot after it was skipped.

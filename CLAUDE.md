@@ -127,8 +127,9 @@
 >   eating recordFault's ten-a-minute budget that `[BotAnswer]` needs. **Every
 >   such row before this deploy is noise.** Noted first now.
 > - Clean, no fault: refresh at every phase (`scenario-refresh`), the host's
->   phone dying at question/reveal/scores (`scenario-hostleaves`), four games
->   in one room with and without a slow phone.
+>   phone dying at every phase from question to final question
+>   (`scenario-hostleaves`), four games in one room with and without a slow
+>   phone. Deployed as 20261106 and 20261106b.
 >
 > **The habit, four times in one night: never read shared state after an
 > await and act on it as if nothing moved.** The re-sync, the advance, the
