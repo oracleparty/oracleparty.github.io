@@ -2085,8 +2085,9 @@ function renderDraft() {
       <span class="draft-chip__state">${draftStateWord(status, entry, share)}</span>
     </span>`;
   }).join('');
-  $('#draft-chips').innerHTML = chips
-    || '<span class="draft-chips__empty">No moves yet. Want a category or ban one.</span>';
+  const chipsEl = $('#draft-chips');
+  chipsEl.innerHTML = chips;
+  chipsEl.classList.toggle('hidden', !chips);
 
   const mine = myDraftMove();
   const btn = $('#btn-draft-move');
@@ -2095,7 +2096,7 @@ function renderDraft() {
     btn.textContent = `${mine.kind === 'want' ? '👍' : '🚫'} ${emoji} ${DRAFT_SHORT_LABELS[mine.category] || mine.category}`;
     btn.classList.add('draft-bar__btn--made');
   } else {
-    btn.textContent = 'Make your move';
+    btn.textContent = 'Choose';
     btn.classList.remove('draft-bar__btn--made');
   }
   if ($('#draft-sheet')?.classList.contains('active')) renderDraftSheet();
@@ -2116,9 +2117,6 @@ function renderDraftSheet() {
   const tally = draftTally(players);
   const share = draftShare(room.settings?.questionsPerGame, humanPlayers().length);
   const mine = myDraftMove();
-  $('#draft-sheet-hint').textContent =
-    `One move each. Want: +${share} question${share === 1 ? '' : 's'}. Ban: none.`;
-
   $('#draft-tiles').innerHTML = DRAFT_CATEGORIES.map(c => {
     const entry = tally[c];
     const status = draftStatus(entry);
@@ -2135,15 +2133,15 @@ function renderDraftSheet() {
 
   const actions = $('#draft-actions');
   if (!_draftSelected) {
-    actions.innerHTML = '<p class="draft-actions__prompt">Tap a category.</p>';
+    actions.innerHTML = '';
     return;
   }
   const label = DRAFT_SHORT_LABELS[_draftSelected];
   const isMine = mine && mine.category === _draftSelected;
   actions.innerHTML = `
-    <button type="button" class="draft-act draft-act--want${isMine && mine.kind === 'want' ? ' draft-act--on' : ''}" data-draft-kind="want">👍 Want ${label}</button>
+    <button type="button" class="draft-act draft-act--want${isMine && mine.kind === 'want' ? ' draft-act--on' : ''}" data-draft-kind="want">👍 Want ${label} +${share}</button>
     <button type="button" class="draft-act draft-act--ban${isMine && mine.kind === 'ban' ? ' draft-act--on' : ''}" data-draft-kind="ban">🚫 Ban ${label}</button>
-    ${mine ? '<button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear my move</button>' : ''}`;
+    ${mine ? '<button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear</button>' : ''}`;
 }
 
 /** Save a move at the tap, show it at once, and take it back if it did not land. */

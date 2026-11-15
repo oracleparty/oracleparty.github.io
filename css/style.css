@@ -9407,7 +9407,7 @@ body.kb-open #question-screen .question-card {
    ============================================ */
 .draft-entry {
   width: 100%;
-  min-height: 56px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   gap: var(--space-md);
@@ -9426,7 +9426,6 @@ body.kb-open #question-screen .question-card {
 .draft-entry__icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; }
 .draft-entry__text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .draft-entry__title { font-family: var(--font-heading); font-size: var(--text-base); font-weight: 700; }
-.draft-entry__hint { font-size: var(--text-xs); color: var(--color-text-muted); }
 .draft-entry__chev { color: var(--color-text-muted); font-size: var(--text-xl); flex-shrink: 0; }
 
 .draft-bar {
@@ -9465,7 +9464,6 @@ body.kb-open #question-screen .question-card {
   color: var(--color-text);
 }
 .draft-chips { display: flex; flex-wrap: wrap; gap: 6px; cursor: pointer; }
-.draft-chips__empty { font-size: var(--text-xs); color: var(--color-text-muted); }
 .draft-chip {
   display: inline-flex;
   align-items: center;
@@ -9500,13 +9498,7 @@ body.kb-open #question-screen .question-card {
   padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
 }
 .draft-sheet .bottom-sheet__handle { margin-bottom: var(--space-sm); }
-.draft-sheet .bottom-sheet__title { margin-bottom: 2px; }
-.draft-sheet__hint {
-  margin: 0 0 var(--space-sm);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  text-align: center;
-}
+.draft-sheet .bottom-sheet__title { margin-bottom: var(--space-sm); }
 .draft-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .draft-tile {
   display: flex;
@@ -9535,7 +9527,6 @@ body.kb-open #question-screen .question-card {
 .draft-tile--selected { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 
 .draft-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-sm); margin-top: var(--space-sm); min-height: 44px; }
-.draft-actions__prompt { width: 100%; margin: 0; align-self: center; text-align: center; font-size: var(--text-sm); color: var(--color-text-muted); }
 .draft-act {
   flex: 1 1 0;
   min-width: 0;

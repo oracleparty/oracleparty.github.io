@@ -46,6 +46,10 @@ screens, and they are usually right when they push back.
 - **Never generate title words, bot numbers or acceptable answers.** These are
   the owner's. Model-written title text has been deleted twice. The only
   exception is the mechanical placeholder (`placeholderWord`: tier + subject).
+- **No explanatory or flavour copy in the UI** (owner, 2026-11-15: "AI text
+  everywhere lowers the quality"). No taglines, hints, helper sentences or
+  empty-state prose such as "Shape tonight's game". A screen gets labels and
+  numbers; if a control seems to need a sentence, redesign it or ask.
 - **Never tell the owner to stop or move on.** They decide when a topic is done.
 - **Showing a design:** one table, rules spelled out, real numbers. When a
   spacing or layout rule is described in words, draw the candidate readings

@@ -706,7 +706,7 @@ async function _updateSettingsBadge(cat) {
   // Show subcategory count if selected, otherwise parent count
   const countEl = $('.selected-category__count');
   if (selectedSubcategory === DRAFT_KEY) {
-    countEl.textContent = 'Players choose in the lobby';
+    countEl.textContent = '';
   } else if (selectedSubcategory === '__all_questions__') {
     countEl.textContent = '';
     const allCount = await fetchAllOpenQuestionCount();

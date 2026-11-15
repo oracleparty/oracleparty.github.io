@@ -168,7 +168,7 @@ try {
   const told = await carol.page.evaluate(() =>
     [...document.querySelectorAll('.toast')].some(t => /draft move/i.test(t.textContent))).catch(() => false);
   if (!told) problems.push('a draft move failed to save and Carol was told nothing');
-  if (refusedBtn !== 'Make your move') problems.push(`Carol's move was refused and her button still reads "${refusedBtn}"`);
+  if (refusedBtn !== 'Choose') problems.push(`Carol's move was refused and her button still reads "${refusedBtn}"`);
   if (refusedChip) problems.push('a refused move is still drawn as a chip');
   // The refusal may have surfaced the removed-seat notice path; it must not have.
   const removed = await carol.page.locator('#removed-modal.active').isVisible().catch(() => false);
