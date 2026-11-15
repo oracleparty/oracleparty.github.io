@@ -1,0 +1,10033 @@
+> **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
+
+# Oracle Party
+
+> ## STATE OF PLAY — 2026-08-30, written as a handover
+>
+> **Read this section first, and read it sceptically.** The owner asked for it
+> after a run of game-breaking faults, and asked specifically that it NOT be
+> written with false confidence. So each claim below says how it was
+> established. Where the answer is "I reasoned it out", treat it as a lead, not
+> a fact — several confident statements in this file have turned out wrong, and
+> the sections below catalogue them.
+>
+> ### What is MEASURED (someone ran something and read the answer)
+>
+> | | Evidence |
+> |---|---|
+> | Migrations 048–064 are applied | the owner ran each one's verification block and pasted the result; every rule read `ok`. 063 needed a follow-up REVOKE. |
+> | **Migration 066 is applied** (2026-09-06) | the owner ran its verification query and pasted `verdict: ok` — it reads `pg_proc.prosrc` for both halves of the new `ON CONFLICT` rule, so it cannot pass on a partial paste. |
+> | **065 is applied** (inferred 2026-09-07, NOT a verification report) | the owner kicked somebody in a real game and it worked: the player left the lobby, and their client then took a screenful of identical toasts, which is the shape of `room_bans` refusing every re-seat with 42501. `kickPlayer` has no fallback, so with 065 unapplied nothing would have been removed at all. Strong, and one notch weaker than a pasted `ok`. |
+> | **067 and 068: the owner says they ran them** (2026-09-09, "just ran the sql now"). **NO VERIFICATION ROWS WERE PASTED**, so this is one notch weaker than every other applied migration in this table — a paste that stopped halfway would look identical from here. Ask for the rows before relying on either. |
+> | **069 and 070: the owner says they ran them** (2026-09-14). **BOTH NOW MEASURED, 2026-10-23, by two different instruments.** 070: the CI probe on `c88824d` reports `op_undisqualify_round installed`. 069: 073's verification checks `op_set_phase`'s installed source for 069's own words (*"skips a round"*) and the owner reported it `ok`. Neither is a pasted 069/070 verification block, so a partial paste of either is not strictly ruled out — but the function each one exists to install is there, which is the claim that matters. |
+> | **073 is applied** (2026-10-23) | the owner ran the SELECT-form verification and reported all three rows `ok` ("All okay") — installed as DEFINER, the 069 `op_set_phase` beneath it, callable by players. Reported, not pasted verbatim; the next CI probe will confirm `op_reveal_final_question` independently. |
+> | The live database has every function and table the app needs | the CI probe on commit `18d199f`. **That tick only started meaning something on 2026-08-30** — before that the probe printed its alarm and still exited 0. |
+> | All 12 subjects have title slots (36 subject-level, 45 topics, 26 clearing the size floor) | computed from `title-tiers.js` and `CATEGORY_META` |
+> | 664 unit tests and 12 robot scenarios pass | run locally, and in CI on every push |
+> | The two round-ending faults were real | reproduced in the harness with an injected slow request, and each re-broken to watch the check fail |
+>
+> ### What is NOT verified
+>
+> - **Real games HAVE been played since** — 2026-09-09, 2026-09-14 and
+>   2026-10-23, each written up in its own section. The 10-23 game is the first
+>   since the 2026-09-14 tap fixes, and it reported no dead taps — only slow
+>   ones, which measured as the network (see that entry). That is WEAK evidence
+>   the keyboard-inset guard holds: absence of a report, not a measurement, and
+>   nothing in this repo can shrink a real visual viewport.
+> - **"Friend couldn't submit at times" was never reproduced.** A mechanism was
+>   found that follows from a stalled round, and it is plausible, but it was
+>   inferred rather than measured. If it recurs, do not assume it is fixed.
+> - **The countdown backstop and the clock-stamp timeout are new** (2026-08-30)
+>   and have never run in a real game.
+> - **No placeholder title words exist live.** Migration 064 is applied and the
+>   admin button exists; the owner had not pressed it as of this writing.
+>
+> ### What is the OWNER'S to do, and cannot be done for them
+>
+> 1. **Write the title words.** ~86 slots are empty. The admin page's Title
+>    Words panel lists every one with its target. **Do not generate these** —
+>    model-written title text has been deleted twice at their instruction. The
+>    only exception is the mechanical placeholder (`placeholderWord`), which is
+>    tier + subject and never invented.
+> 2. **Add ~a dozen questions each to History's Ancient (58) and Medieval (52)**
+>    so they clear the 60-question floor and can carry words of their own.
+> 3. **Play a real game** and report what breaks.
+> 4. **071 and 072: the owner says they ran both (2026-10-19). NO
+>    VERIFICATION ROWS WERE PASTED** — the same evidence level as 067–070. **The
+>    cheap check for 071 is the 👏 button appearing on a real reveal**: the
+>    client hides it whenever `answer_claps` cannot be read, so a missing
+>    migration reads as a missing feature, never as an error. 072 has no visible
+>    tell at all — the bot's card falls back to its stated skill — so ask for its
+>    rows.
+> 5. **067 and 068: the owner recalls the checks passing** (2026-10-28,
+>    "pretty sure the sql passed as well"). Still no row seen here, so it is a
+>    memory rather than a paste; do not chase it further unless something
+>    points at those two. (069, 070 and 073 are measured — see the table above.)
+>
+> **SUPABASE'S SQL EDITOR MAY NOT SHOW `RAISE NOTICE` OUTPUT.** 073's check was
+> rewritten as a plain SELECT returning one row per rule so the answer lands in
+> the results grid. Write every future verification that way. And when showing
+> the owner what the result should look like, say plainly it is NOT to be run —
+> a sample table pasted into the editor raises 42601, which happened once.
+>
+> ### The three faults reported in the last playtest, and their status
+>
+> | Reported | Cause found | Fixed | Proven how |
+> |---|---|---|---|
+> | timer ran out, nothing auto-submitted, "Reveal early" stuck | the round-ending backstop skipped the host, and in a solo game the host is the only human | yes | harness: `round ended after never` → `after 39s` |
+> | bot slow to show its answer | the host's whole question screen, and the bot, sat behind one un-timed network call | yes | harness: card and answer box visible while the stamp hangs |
+> | a player could not submit at times | *inferred* — a stalled round means later answers are refused as late | probably | **not reproduced** |
+>
+> ### Habits this session kept proving right, and kept violating
+>
+> - **A check that cannot fail is worse than none.** Three checks written today
+>   passed with the fix reverted and had to be rewritten. Always break the fix
+>   and watch it go red.
+> - **Only change what was asked.** The Title Builder slot machine was rebuilt
+>   without being asked and had to be reverted in full. A question from the
+>   owner is not an instruction.
+> - **The harness lies in the direction of permissiveness.** It could not see
+>   column grants until today, and it still cannot see real latency except
+>   through `store.slowFunction` / `slowReads`.
+>
+
+> **This file describes the code as it actually is, including what's broken.**
+> The previous version described a smaller, abandoned game and misled every
+> session that read it. If you change the architecture, update this file **in
+> the same commit** — a change that leaves this file stale is not finished.
+>
+> Last verified against the code: 2026-08-30.
+
+> ## 2026-11-06 — the unattended robot stress playtest: six faults, all fixed
+>
+> **The owner was away; the plan and the full results are in
+> `docs/STRESS-PLAN.md`.** Every fault was reproduced by a robot, fixed and
+> break-tested; all 30 regression runs green after. **No SQL is pending.**
+>
+> - **A slow host froze the game** (`badnetwork --lag=1500 --on=Alice`, 3/3):
+>   `syncToCurrentState` asked the direction rule only when the ROUND matched,
+>   so a room one round BEHIND was adopted — which is what a read taken while
+>   the host's own Next is still being written looks like. The host went back
+>   to the scoreboard, the phase write (reading the round after its await)
+>   announced the old round, `_advancedFrom` refused Next for good.
+>   `trackOwnAdvance` / `readMayPredateOwnAdvance` (`state.js`); the advance
+>   writes the round fixed at the press. `scenario-staleresync`.
+> - **A refused late answer left the bet buttons wrong** — the server then
+>   swapped the next bet. `reconcileUsedWagers` (`question.js`) rebuilds them
+>   from the rows `updateScores` already reads; a grid on screen is re-marked
+>   in place and every button asks at the tap. `scenario-lastsecond`.
+> - **A phone back from the pocket ran its held timers:** the host's closed
+>   the room's NEWER round early; a player's late auto-submit fell back to a
+>   write that read the round after its await and filed the old answer and bet
+>   in the new round, spending a bet twice. `handleTimerExpired` closes only a
+>   round still open on this phone; `doSubmitAnswer` fixes its round at the
+>   tap. `scenario-background`, and **`robot.goToBackground()` / `comeBack()`**
+>   in the harness (seat with `{ pocketable: true }`: headless Chromium cannot
+>   freeze a page, so a page-level script holds its timers).
+> - **`[AnswerNotMine]` was a false report on EVERY deliberate Submit from
+>   11-03** (the optimistic row was drawn before the phone noted what it sent),
+>   eating recordFault's ten-a-minute budget that `[BotAnswer]` needs. **Every
+>   such row before this deploy is noise.** Noted first now.
+> - Clean, no fault: refresh at every phase (`scenario-refresh`), the host's
+>   phone dying at every phase from question to final question
+>   (`scenario-hostleaves`), four games in one room with and without a slow
+>   phone. Deployed as 20261106 and 20261106b.
+>
+> **The habit, four times in one night: never read shared state after an
+> await and act on it as if nothing moved.** The re-sync, the advance, the
+> round-closing chain and the submit all did, and on a slow link something
+> always had moved — and a fifth, fixed as a follow-up: `handleRoomChange`'s
+> final-round branch awaited the swapped question list and then put the final
+> question back even after its answers were revealed (and the reveal named the
+> OLD final question). A phone past that question now stays and corrects its
+> reveal text. `scenario-finalslow`. **Fixed later the same day, with the
+> owner's go-ahead:** rounds started ~10s late while a host was gone but not
+> yet replaced (only the host stamped the clock) — the deputy now stamps it if
+> no stamp has arrived 2s in (`DEPUTY_CLOCK_WAIT_MS`, `question.js`), crown
+> unchanged; `scenario-hostleaves` fails over 6s (old ~9.8s, new ~2.9s). And
+> the lobby robot's old flake no longer skips its whole CI job (every step
+> runs `if: !cancelled()`); its cause is still unknown.
+
+> ## 2026-11-05 (later) — a typed answer is kept as a draft (migration 081); the bot's write
+>
+> **Owner: "shouldn't it automatically submit whatever they had typed?"** It
+> does, at expiry — but on a slow database that send lands after `timer + 3s`
+> and is refused, leaving the blank. **081** adds `answer_drafts` (no client
+> access) and `op_save_draft`; the phone saves 1.2s after typing pauses and on a
+> bet change (`scheduleDraftSave` in `question.js`), and `op_fill_blank_answers`
+> uses a draft for this question, saved this round, when no real answer
+> exists: judged and scored like a submit, the screen's bet if unspent, the
+> LOCKED bet on the final. **Not an answer row on purpose** — a row would lock
+> the bet (`op_submit_answer` keeps `existing.wager`) and count as answered.
+> 316 SQL rules hold; disabling the draft fails 6. `scenario-draft` (in CI)
+> holds Bob's last-second send past the deadline; with drafts off it reports
+> his typed answer lost. **081 IS APPLIED (2026-11-06): the owner ran the
+> comment-stripped copy and reported all six verification rows `ok`** (reported,
+> not pasted verbatim). Drafts are live from the 20261105b deploy on.
+>
+> **The bot's "No answer": cause NOT found.** It answers a second into the
+> round, so a missing answer means the write failed. It retries twice now and a
+> final failure reaches error_logs as `[BotAnswer]` — read that after the next
+> game. The retry is not robot-checked (the fake store cannot fail a plain
+> insert with an error).
+
+> ## 2026-11-05 — a late answer sent the host back to a closed round (game-breaking)
+>
+> **Reported:** host answered, the friend and the bot read "No answer" at the
+> minimum wager, the screen "kept jumping back and forth between same question
+> and answer", and nobody could advance. **REPRODUCED and fixed.** Submit draws
+> the reveal at once (optimistic, 10-28). If the write reaches the server after
+> `timer + 3s`, it has already lost: the host's own expiry blank-filled
+> everybody without a row (the "No answer, minimum wager" rows) and moved the
+> room to `reveal`. The refused write then sent the host BACK to the question
+> screen, with the room's `reveal` already handled (`handlePhaseTransition`
+> refuses a phase it is on) and Next living on the reveal: stranded for good,
+> and every re-Submit went round the same loop. Now a failure on a CLOSED round
+> (refused "time is up", or the phase has moved on) stays on the reveal and
+> redraws it; only a failure while the round is still open goes back
+> (`roundStillOpen` in `doSubmitAnswer`). `scenario-latesubmit` (in CI) holds
+> `op_submit_answer` for 5s on a last-second Submit; break-tested: the old code
+> strands the host for 170s and never reaches results. **Not established:** why
+> the owner's request was that late. The 10-29 probe measured the database at
+> up to 3.9s, so a submit in the last second or two is enough.
+
+> ## 2026-11-03 (latest) — title switches, a scrolling results page, a recorder for "Scorpio"
+>
+> **One switch under each Title Builder wheel** (owner): wear one, two or three
+> words; a switched-off wheel saves EMPTY; the last one on cannot be turned off
+> (owner agreed nobody should have no title). With reel 2 off a rank is capped
+> by the highest rank held anywhere (`rankCapFor`'s no-subject answer).
+> `scenario-titles` checks preview, the locked last switch and the saved row;
+> break-tested.
+>
+> **Results: the page scrolls, not the scoreboard box** (owner's pick) — "▾
+> scroll for all 3" read as a Favourite Answers cue. **Favourite cards never
+> showed their question:** `getQuestionText` was passed the round NUMBER; the
+> mock passed text, so only a real game could show it. `scenario-fullgame`
+> requires the question line now. The final-wager gate counts PEOPLE only.
+> The gear and 🔊 overhang the progress row (`margin-block: -5px`) — the 🔊 put
+> the 20-wager question screen 3px over at 375x560 (FIT sweep).
+>
+> **"Scorpio" — a bot-style wrong answer SAVED on a friend's seat who typed
+> nothing** (both phones saw it; owner hosted; bot in the room). NOT FOUND:
+> every writer is keyed to the right seat (bots.js, `op_bot_answer`, the
+> reassign paths), nothing writes text into `#answer-input`, and
+> `scenario-silent` (host + silent Bob + bot) leaves Bob's rows empty. A
+> recorder ships instead: `[AnswerNotMine]` in error_logs when this phone's
+> own row shows text it never sent (`noteAnswerSent` / `sentThisRound` in
+> `state.js`). Read it before guessing; rerun `scenario-silent` under the
+> condition it names (lag, reload, a backgrounded phone).
+
+> ## 2026-11-03 (later) — Reveal Question waits; "Reveal Early" with everybody in; the host-left card
+>
+> **Reveal Question waits for every person's BET AND difficulty VOTE, or the
+> 20s wager clock** (owner: the host revealed "before I had even placed a
+> wager"; then chose "bet and vote"). Greyed, reading "Waiting for bets and
+> votes (n/m)". A bot only has to bet. Votes are broadcast-only, so a missed one
+> holds the gate until the clock — the sleeping-phone fallback.
+> `fwRevealGate`/`refreshFwRevealGate` in `scores.js`; `handleRevealFinalQuestion`
+> refuses too. `scenario-fullgame` checks the host's button is greyed while
+> Carol has not bet (not break-tested yet). `scenario-finalq` robots now vote,
+> and its set-up runs once — waiting turns had stacked 47 watchers on one spin.
+>
+> **"Reveal Early" with everybody answered:** on the final round every answer
+> is a Realtime UPDATE (each player holds a `__WAGER_LOCKED__` row), and that
+> branch redrew the rows without refreshing the controller's button.
+> `renderRevealAnswers` now ends by refreshing the button and timer — every
+> road that learns of an answer redraws there. Inspection-verified only.
+>
+> **"Host returned to lobby" was a card appended into the results content**,
+> which is sized around the scoreboard: it squeezed the board to nothing and
+> was cut off by the footer, and its button duplicated Back to Lobby. It is one
+> line above Back to Lobby now (`.results-footer__note`). `scenario-playagain`
+> requires the line and 2+ visible rows; not break-tested.
+
+> ## 2026-11-03 — Gassy dropped from a worn title; the title collection hidden; honks
+>
+> **"Brave Hermit" for "Brave Gassy Hermit" (owner's lobby photo).** A seat
+> carries its title as TEXT, copied from `_cachedTitle` — computed on boot
+> BEFORE the owner's words load, so an overlay word resolved to nothing and
+> dropped. `seatTitle()` in `auth.js` awaits the (bounded) word load first, at
+> all four seat sites. A seat ADOPTED by claimSeat keeps its old text: clients
+> cannot write `players.title` (058's column grants). Not robot-checked.
+>
+> **The title collection ("See all titles") is HIDDEN** — owner: "confusing as
+> fuck and wrong. Just get rid of it for now". Nothing opens it; the code stays
+> for the redesign, which waits on the owner. `scenario-account` fails if
+> anything opens it. Also raised, NOT built: a way to choose which earned words
+> are "active" on the builder's wheels — meaning not yet confirmed.
+>
+> **A 🔊 in every game screen's top bar** (owner's pick of three). The switch
+> lived on the chat bar, which hides while answering — the one moment Chaos
+> honks reach you. Moved, not copied: one per header, any one repaints all.
+>
+> **A honk outran the honker's answer** ("it said they were still answering").
+> Honk buttons only exist after Submit (the reveal draws at once, optimistic),
+> and a broadcast beats the answer row's Realtime event. A honk from a player
+> still drawn as waiting now re-reads the round (`catchUpAnswerFrom` in
+> `reveal.js`). `scenario-chaos` makes Alice deaf to answers and requires
+> Bob's answer within 5s of his honk; both new checks break-tested. Its old
+> `closeSheet` tapped the backdrop's centre, which on the HOST's tall sheet is
+> the sheet — the host's sheet had silently stayed open; it taps the top now.
+
+> ## 2026-11-02 — a playtest list: a lost bet, claps never read back, +15s (079, 080)
+>
+> **"My friend bet 20, it showed he bet zero" — not a wager bug.** He typed,
+> left the page during the final question, came back to a closed round. A page
+> that is not running cannot auto-submit, so the server filled a blank, and a
+> blank final answer scored 0 by design. Owner's two calls: **what is typed is
+> sent as the phone leaves** (`sendDraftAnswer` in `question.js`, on
+> visibility-hidden and pagehide; a draft, so a returning player can still edit
+> and Submit), and **a blank under a locked bet LOSES it** (migration 079;
+> a player who never locked still stakes 0). `scenario-timesup` empties the box
+> after the hide so only the draft can carry the text; break-tested.
+>
+> **+15s on every final question (owner).** `op_round_seconds` (080) is the
+> one server rule, read by `op_submit_answer` and `op_advance_deadline`;
+> `roundTimerSeconds()` in `state.js` + `FINAL_QUESTION_EXTRA_SECONDS` mirror
+> it. Rules pin both directions.
+>
+> **079 AND 080 ARE APPLIED (2026-11-02), before this JS went live:** the owner
+> ran one combined paste and then a four-column check reading `prosrc` for each
+> change; all four `true` (reported, not pasted verbatim). DEPLOYED 20261102.
+>
+> **CLAPS WERE NEVER READ BACK LIVE — measured, and the harness hid it.**
+> `op_clap_answer` files a clap under `countdown_started_at::text`
+> (`2026-11-02 02:01:01.76+00`); the phone filtered by its ISO copy
+> (`...T02:01:01.76+00:00`). Measured on Postgres 16: `now()::text` and
+> `to_json(now())` differ exactly so. Every claps read came back empty, and the
+> 3-second poll wiped each clap Realtime had drawn — "vanishes randomly", and
+> Favourite Answers mostly empty. `clapGameKey` in `clap-logic.js`; `fetchClaps`
+> asks both spellings. **The fake store filed the key in the client's spelling**,
+> so every robot agreed; it uses the Postgres spelling now and
+> `scenario-fullgame` failed on the old client.
+>
+> **The scoreboard animation played twice:** on `scores_reveal` ANY answer
+> UPDATE re-animated it, and `record_round_history` stamps every row. It now
+> re-runs only when a scoring field changed (`answerScoreSig`).
+> `scenario-latescreen` sends a history-only UPDATE; break-tested.
+>
+> **Also:** honk counts persist per room in sessionStorage (they reset at Start);
+> the achievement pop-up waits for the podium (`state._podiumDone`); every worn
+> title now colours its words by rarity on every row (`titleWordsHtml`, matched
+> reel by reel from the text on the seat — the owner's 10-30 rule had only ever
+> reached the Title Builder); a player typing in chat gets a NEUTRAL ring and
+> dots badge on their avatar (owner's pick; any hue would read as a rarity).
+>
+> **Word-3 nouns (open, owner's rules so far):** a topic's Legendary also gives
+> a noun, wearable with any word. It says *"I mastered THIS topic"*: a REAL
+> topic term with a second meaning about a person (the rule behind Basic,
+> Unstable, Gassy). At Legendary it must be a FLEX FIRST, cheeky second —
+> Supermassive is the model (biggest in space, and a big-butt joke). Rejected:
+> plain roles (Surgeon, Alchemist, Astronaut), mystic figures (Shaman, Wizard,
+> Quack, Warlock, Lunatic), styles (Dragon, Phoenix, Blacksmith, Gremlin),
+> compliments with no joke (Catalyst, Heartthrob, Superstar, Supernova),
+> pure roasts ("insulting, not worthy of a legendary": Bonehead, Gasbag,
+> Airhead), and Bombshell, Six-Pack, Heavenly Body, Maximus, Heavyweight,
+> Moonwalker.
+> **THE GOAL IS FUNNY COMBOS BETWEEN REEL 2 AND REEL 3** (owner): "Mooning
+> Caveman", "Single-Celled Guru", "Gassy Hermit" — a silly describing word on
+> an oddly specific character you can picture. Judge a noun by those combos,
+> never on its own. **LOCKED by the owner 2026-11-02: Space → Alien,
+> Elements → Gold-Digger, Human Body → Bigfoot** (hyphenated, as Oxford/Collins spell it — one word
+> like Single-Celled). Elements nouns must carry a REAL ELEMENT NAME (the
+> owner rejected chemistry jobs as "not related to elements"). **UNLOCK AT RARE (owner, 2026-11-02)**: ½ of the
+> topic, shown in Rare's blue, wearable with ANY word. It shares reel 3 with the
+> ranks, so a player picks prestige (Guru) or a joke (Gold-Digger); the rank is
+> still on the profile. Rare's floor is 70 questions, so Alien (Space, 86) is
+> earnable now. **BUILT 2026-11-02**: each noun is a slot-3 `count` word with
+> `followsWord` naming its topic's Rare word; `linkTopicNouns()` in `titles.js`
+> copies that word's live goal, so no Rare word written means no noun earnable.
+> Not rank-type, so the wheel never caps it. The gallery shows a "Topic nouns"
+> group. `tests/topic-nouns.test.js`; `scenario-titles` checks Alien beside a
+> History word. Wizard was "not good enough"
+> (generic); Moonshiner and Bartender rejected for Elements. The owner also
+> said reel-1 words need an overhaul — NOT the current task, raised in passing.
+> **Do not spray guesses** — the owner called that out twice; agree the
+> meaning first, then offer few words.
+
+> ## 2026-11-01 — the Map wears your rank: colour and a hard-earned glow (DEPLOYED 20261101b)
+>
+> **Designed with the owner over mock-ups; built on the dev branch, shown to
+> them as real-page screenshots, not yet on the live branch.** Fill HEIGHT is
+> still mastery. The fill's COLOUR is the rank held there (`data-rank` on each
+> `.hexcell`, coloured by `--rarity-*`). The GLOW is the owner's "hard earned"
+> rule: nothing below half of a topic, full at the whole topic, shining INWARD from the cell edge because the hexes touch and an outer halo was hidden for the middle subjects (`hexGlow`,
+> `GLOW_START` in `honeycomb.js`). A SUBJECT glows like its best topic — the
+> same rule ranks use, because a whole subject's share stays tiny for months.
+> Mythic alone pulses. Rejected on the way: a counts strip ("3 at Caveman"),
+> glow by flat rank, glow by progress to the next rank, a colour per subject.
+> Then, by the owner's notes: the fill's top is a WAVE (a ruled line looked
+> odd), the description line is gone ("fluff"), and the Map has its OWN fill
+> colours (`--hex-*`) because `--rarity-*` are text colours — paled on dark,
+> browned on light. Owner's pick: soft set on light, gem set on dark and OLED.
+> Open: words to take the same hues, adjusted to stay readable (owner chose it).
+
+> ## 2026-11-01 — a playtest list: a flip-flopping verdict, Back to Lobby, the keyboard, the profile
+>
+> **"I tapped once to change it to correct, but visually it flipped two more
+> times" — a lead from reading, NOT reproduced.** Every phone calls
+> `record_round_history` at the reveal, and it UPDATEs every answer row, so
+> Realtime sends each row out again. A save still in flight when the host taps
+> echoes the verdict from BEFORE the tap, after it (flip back), and then the
+> host's own write echoes (flip forward). **The fake store does not broadcast
+> that UPDATE, which is why no robot ever saw it.** `staleJudgementEcho` in
+> `state.js` drops an echo that disagrees with the host's latest choice until
+> the agreeing echo (their own write) arrives, bounded by 15s; unit-tested in
+> `tests/state.test.js`, break-tested. Also: each answer's toggle is LOCKED
+> while its write is out (`judgementBusy`), and the Edit Scores toggle now moves
+> on the tap — it waited for the write and two re-reads, which invites a
+> second tap that flips it back for real. `scenario-social` double-taps on a
+> 2s `op_set_judgement`; the old code reports two announcements. **Not
+> explained:** the photo's chat line "marked incorrect" needs the handler to
+> have run twice, and a simulated single tap on the old code ran it once.
+>
+> **The chat line states the CHANGE in points (owner's choice):** "(−5 points)",
+> not the round's new score, which read "+0" for somebody who had just lost 5.
+>
+> **Back to Lobby — the host's tap did nothing; NOT reproduced, the slow
+> database is the lead.** It awaited the whole room reset (answers, list,
+> clocks, status, phase) in silence before moving. **It now leaves on the tap**
+> ("Returning…"), and the HOST's lobby performs the reset on arrival
+> (`isReturningFromGame && room.isHost`). `scenario-playagain` on a 1500ms
+> link: **old 4.4s with nothing on screen, new ~1.3s**; it fails over 2.6s.
+> Found on the way, and real: a phone that reached the lobby while the room
+> was still `playing` was bounced back to game.html by the next room UPDATE;
+> `_awaitingRoomReset` in `lobby.js` ignores 'playing' until the room is seen
+> in the lobby.
+>
+> **The keyboard photo (question gone, wagers under the answer box) was the
+> question card set to SHRINK** (`flex: 0 1 auto; min-height: 0` under
+> `.kb-open`): measured 3px tall around 47px of text, 20 wagers, 320 wide. It
+> no longer shrinks (capped at 40%, own scroll); the wagers scroll under the
+> pinned answer box. Measured by setting `kb-open` by hand — still not seen on
+> an iPhone.
+>
+> **The lobby honk "as soon as I host", no tap: cause NOT found.** No code
+> path plays the honk file without a tap or a received honk. The one thing
+> that played the honk RECORDING without a honk was the iOS unlock (muted
+> honk.mp3, pause, unmute); it now unlocks on a silent clip and only then
+> points the element at honk.mp3. Asked the owner whether a 🦆 appears with it
+> (a duck means a received honk broadcast; no duck means the audio stack).
+>
+> **Profile: Stats, title, bio and favourite category no longer wait** for the
+> whole question bank download and the per-subcategory counts — the Map and
+> mastery list draw in the background (`drawMapAndMastery`). Not timed.
+
+> ## 2026-10-30 (night) — a deploy left the owner's phone on "Connection issue"
+>
+> **Every page, front page included, after the rank-ladder deploy; fine in a
+> private tab** — so the phone held a broken mix of old and new saved files,
+> not a code fault (robots and the probe were green on that commit). Module
+> imports carry no `?v=`, so a new page could pair with an old copy of a
+> module missing a new export, and the module never runs. Two fixes:
+> `sw.js` now fetches same-origin files with `cache: 'no-cache'` (the server
+> is asked every time; a 304 when unchanged; navigations untouched, since a
+> navigate Request cannot take options), and the boot guard on every page
+> REPAIRS ONCE before blaming the connection — clears Cache Storage,
+> unregisters the service worker and reloads (`op_boot_repair` in
+> sessionStorage stops a loop). Verified in Chromium with esm.sh blocked: two
+> loads, then the message. **The exact stale layer on the phone is not
+> established** (HTTP cache vs the worker's cache); the fix covers both.
+
+> ## 2026-10-30 (latest) — the three reels and the rank ladder: BUILT
+>
+> **Settled with the owner by interview; the rank ladder and the pairing rule
+> are now in the code** (the owner: "no one plays this game yet, let's just
+> change it"). The old accuracy x log2 rank formula is DELETED everywhere —
+> `computeCategoryTiers`, `tierProgress`, `calculateTitle`, the TIER_* constants
+> and the `mastery` unlock type. A subject's rank is `subjectRank` in
+> `title-tiers.js`: its highest step by the same rules that earn its words
+> (needs the topic sizes from 078; without them only Caveman can be judged).
+> The profile's Proficiency rows show it ("Hermit · 13 more right → Hippie"),
+> the builder opens at Caveman (`hasEarnedARank`: 10 right in a subject), and
+> Eternal is Oracle in 3 subjects. `scenario-titles` (in CI) drives the pairing
+> rule on the real page; with the rule off it reports *"the title reads
+> "Chronicles Hermit", want "Chronicles Caveman""*. **The owner must run
+> `retire-old-ranks` SQL AFTER deploying** (it was handed over in chat), or the
+> old build re-awards Apprentice on the next sign-in.
+> **DONE 2026-11-01:** a read-only check found 1 old-rank unlock left and no
+> title wearing one; the owner then deleted apprentice/scholar/master/oracle/
+> eternal unlocks (nobody can have earned the new Oracle or Eternal yet).
+>
+> | reel | grammar | means | fed by |
+> |---|---|---|---|
+> | 1 | describing word | how you play | wins, streaks, hosting, secrets |
+> | 2 | describing word | what you know | the topic ladder below |
+> | 3 | noun | who you are | the RANK ladder, plus feats |
+>
+> **The rank ladder replaces Apprentice/Scholar/Master/Oracle AND the
+> accuracy x log2 formula:** Common **Caveman**, Uncommon **Hermit**, Rare
+> **Hippie**, Epic **Pilgrim**, Legendary **Guru**, Mythic **Oracle** — stuck in
+> the cave, thinking in the cave, out seeking, the sacred journey, the one people
+> travel to, the source. **A rank is capped by your highest step in the subject
+> of the reel-2 word you picked**: "Organelle Oracle" is only possible for
+> somebody Mythic in Science; ranks above that show locked when you spin to it.
+> Feats (Champion, Guardian) are not capped. **Capping by the SUBJECT, not
+> the topic, is the owner's decision (2026-11-01), weighed against capping by
+> the word's own topic:** "Spacey Guru" may be worn by somebody who reached
+> Guru in Human Body rather than in Space. The owner chose fun combos and one
+> rank per subject over titles that prove the exact topic — reaching Legendary
+> anywhere is already a huge achievement. Do not reopen it on the
+> "titles over-claim" argument; it was put to them. **Oracle is the one
+> exception (owner, 2026-11-01): once earned anywhere it pairs with ANY word**,
+> because it is so hard to reach; a capped saved rank steps DOWN to the highest
+> allowed rank below it, never up to Oracle. Eternal and Untouchable are
+> describing words and belong in reel 1.
+>
+> **Colour (owner, 2026-10-30): every word ALWAYS shows in its own rarity
+> colour, everywhere a title appears** (Organelle stays green beside Oracle). No
+> single-colour title and no setting for it — one rule beats a rule plus a
+> toggle. When built, measure each colour against all three themes; that is how
+> the tier badges broke.
+>
+> **Parked, owner's call later:** more reel-3 feats (Polymath, High Roller,
+> Comeback Kid, Crowd Favourite, Hype Man, Heckler, Ringleader).
+>
+> **Human Body's reel-2 words, LOCKED by the owner:** Uncommon **Organelle**,
+> Rare **Single-Celled**, Epic **Multicellular**, Legendary **Bipedal** (renamed from Hominid by the owner, 2026-11-02 — Hominid
+> was a noun, not a describing word) — a zoom
+> from part of a cell to the whole human. Real biology words that are funny to
+> wear. Evolution words (Fishy, Vertebrate, Monkey) were rejected because they
+> drift into Animals; a pun (Gutsy) was rejected for breaking the
+> real-science-word pattern. Not yet entered on the admin page.
+>
+> **Elements, LOCKED "for now" by the owner:** Uncommon **Basic**, Rare
+> **Unstable**, Epic **Periodic**, Legendary **Elemental** — boring, a mess, on
+> a schedule, a force of nature. The rule that made it work: every word is real
+> chemistry AND a joke about a person, and the joke meanings must climb without
+> echoing (Periodic above Unstable reads as "more together"; Elemental at the
+> top, away from Basic, reads as power rather than "elementary"). When the owner
+> questions a word, ANSWER the question about the agreed ladder — do not swap in
+> new words.
+>
+> **Space, LOCKED by the owner:** Uncommon **Spacey**, Rare **Gassy**, Epic
+> **Mooning**, Legendary **Supermassive** — ESCALATING CHEEKINESS (dazed, a
+> fart, flashing someone, the biggest of all), not a size climb; I read it as
+> size and put Gassy above Mooning, which the owner rightly called out.
+> Supermassive waits: Space has 86 questions and Legendary needs 100.
+> **Do not insert it early** — `applyLiveTargets` falls back to the saved
+> target when a topic is too small, so a row written now would be earnable.
+> The other 11 Science words were handed to the owner as one SQL paste
+> (2026-10-30). **MEASURED LIVE 2026-11-01 by the probe's new title-words
+> section: all 11 are written, none a placeholder, Supermassive correctly absent.**
+>
+> **Medieval, LOCKED by the owner 2026-11-02:** Uncommon **Peasant**, Rare
+> **Diseased**, Epic **Gothic**, Legendary **Inbred** — the GRIM side of
+> medieval, climbing two ways at once: grimmer AND grander (poor, sick,
+> barbarian/cathedral/goth, royal blood). Inbred is a roast at Legendary and the
+> owner chose it knowingly. Rules learned getting here: words must be
+> instantly MEDIEVAL to a normal person (Galloping, Divine, Berserk were "what do
+> these have to do with medieval"), FUNNY with an edge (polite flexes like
+> Noble, Crowned, Holy, Anointed were "not funny"), not obscure (Motley,
+> Jousting, Enthroned), and ONE WORD — hyphens only if amazingly comedic.
+> Rejected also: Cursed, Chivalrous, Royal, Clownish, Knighted, Majestic,
+> Bloodthirsty, Beheaded, Pillaging, Lousy, Toothless, Possessed, Bewitched,
+> Barbaric (close second to Gothic). The old code words Crusade and Dynasty are
+> DELETED (owner: "we are replacing all the old ones" — every old History era
+> word goes as its era is redone). The four live in `title_words`, handed over as
+> SQL. **A TOPIC UNDER A STEP'S FLOOR KEEPS THAT STEP LOCKED** (owner,
+> 2026-11-02, reversing the old saved-goal fallback): `applyLiveTargets` sets
+> `opensAtSize` and a zero goal when `get_topic_sizes` (078, installed — probe
+> 11-01) reports the topic too small, and the gallery reads "Opens when
+> Medieval has 60 questions". Unmeasured topics keep the saved goal. So a word
+> may now be written early — Supermassive included. `tests/topic-floor-lock`
+> break-tested. Old unlocks of retired words are cleared by SQL (owner: "no one
+> plays the game yet"). Medieval's reel-3 noun: **Jester** (owner, 2026-11-02), `nounJester`.
+>
+> **Ancient, LOCKED by the owner 2026-11-02:** Uncommon **Cursed**, Rare
+> **Mummified**, Epic **Civilized**, Legendary **Classical**. **I first wrote
+> Primitive / Barbaric / Imperial into the SQL after the owner said "Okay fine"
+> to a table — they had agreed to Civilized only.** A reply to a table is not
+> agreement to every cell: confirm each word by name before writing SQL, and
+> hand over ONE paste once all four are settled (owner: "I'm not running SQL
+> every time"). Ancient's reel-3 noun: **Pharaoh** (`nounPharaoh`); Mummy was
+> dropped because Mummified is the Rare word beside it. Old code words Chronicles and Antiquity DELETED; the four go in by SQL;
+> Ancient (58) is under every floor, so all four stay locked until it grows.
+> **WHAT FINALLY WORKED, after ~15 rejected batches:** the locked words are
+> PLAIN TEXTBOOK VOCABULARY of the topic that turns into a roast or a deadpan
+> joke when said about a person. NOT clever references (Sacked, Fiddling,
+> Narcissistic, Platonic — "no one will understand the references"), NOT myths
+> ("this is history not religion"), NOT the topic's trivia, NOT "old" jokes.
+> Rejected also: Primitive, Barbaric, Imperial, Dramatic, Tragic,
+> Spartan, Olympic, Toga-Wearing, Golden, Shuffling, Divine, Hieroglyphic,
+> Colossal, Fertile, Sedentary, Domesticated, Nomadic. **Never tell the owner to
+> stop or move on** — they decide when a topic is done.
+>
+> **How words get chosen with the owner — learned the hard way, over ~30
+> rejected batches:** a ladder is ONE kind of thing, each step exactly one notch
+> above the last (Caveman → Toddler was too little, Caveman → Hipster too much);
+> words are characters you can PICTURE, never descriptions (Overthinker),
+> obscure words (Sophist) or slang (Galaxy Brain); one word; funny at the bottom,
+> earned at the top; reel-2 words must read as describing words in a full title
+> ("Brave ___ Scholar"), so job titles fail. Agree the STAGES of a ladder before
+> proposing words, and show whole ladders in a table — never spam single slots.
+
+> ## 2026-10-30 (later) — the title ladder, settled with the owner
+>
+> **The owner's rules, by interview; the words are still theirs to write.**
+>
+> | step | rule | topic must hold | most it asks |
+> |---|---|---|---|
+> | Common | 10 right in the subject | — | 10 |
+> | Uncommon | ¼ of one topic | 60+ | 25 |
+> | Rare | ½ of one topic (was "¼ of every topic") | 70+ | 100 |
+> | Epic | ¾ of one topic | 80+ | 250 |
+> | Legendary | all of one topic | 100+ | no cap |
+> | Mythic | all of the subject | — | no cap |
+>
+> **GOALS ARE LIVE NOW — this reverses "targets are frozen" below.** The owner:
+> goals follow how many questions a topic has today; the caps keep the easier
+> steps reachable as the bank grows ("whichever comes first, % or #"). Earned
+> words are kept forever. `liveTarget` / `shapeTopicSizes` in `title-tiers.js`,
+> applied by `applyLiveTargets` in `titles.js` from `loadTitleWords`.
+> **Migration 078 (`get_topic_sizes`) is NOT APPLIED until the owner runs it**;
+> until then every word keeps the number saved with it (`savedRight`), which is
+> exactly the old behaviour. `title_words.target_right` is that fallback now.
+> Break-tested: removing the caps fails two checks by name.
+>
+> **How to show the owner anything here:** one table, rules spelled out, real
+> numbers, no options to pick from. Three redesigns were rejected for being
+> unasked (a single subject-wide track, topic trophies) or unclear. A future
+> admin view carries the full rules; a simpler player view (words + bars, rare
+> ones hidden as ???) comes later. **Polymath** (Common in all 12 subjects) was
+> liked and is NOT built.
+
+> ## 2026-10-30 — the play counts were blank for a signed-in player, and never lost
+>
+> **Owner: "blank on every card", signed in.** `game_plays` still holds every
+> play (78, measured 10-29). The counts were applied only after sign-in, the
+> bank AND the signed-in player's mastery had ALL answered, so one slow read —
+> and a signed-in player has one more — left every card blank, and a failed
+> read was never retried. Now `loadPlayCounts` paints them the moment they
+> land, retries (2/5/10/20s), and remembers the last numbers on the phone
+> (`op_play_counts`) so the next visit shows them at once. Unknown reads
+> "… plays", never blank; every topic row shows its count, **0 included**
+> (owner's call: an unplayed topic is an invitation). `scenario-join` hangs
+> mastery and fails the first count read; the old code reports `" "` and
+> `5 of 5 topic rows showed no play count`.
+
+> ## 2026-10-29 (later) — the podium in a real game stood at 60px: measured while hidden
+>
+> **The owner saw short steps and could not screenshot them; every mock showed
+> tall ones.** The mocks start ON the podium. A real game arrives from another
+> screen, and `showScreen` fades — leaving `#podium-screen` `display:none` for
+> 500ms while `layout()` measured it: 0px tall, so gold's step fell to its 60px
+> floor (243px at 320x523 once fixed). The screen is displayed (still opacity 0)
+> before measuring, and the replay starts when the fade lands. Reproduced with a
+> mock that starts on the final wager screen; `scenario-fullgame` now requires
+> gold's step over 150px and reports *"gold step was 60px"* on the old code.
+> **A mock that begins where the real path ends cannot see the path.**
+
+> ## 2026-10-29 (playtest) — the database itself was slow; claps flickered off
+>
+> **MEASURED, by the probe that ran DURING the owner's game (01:23–01:27 UTC,
+> game started 01:25):** time spent INSIDE Supabase (`x-envoy-upstream-service-
+> time`) was up to **3.9s** against a usual 24–67ms; the first request 3.5s;
+> single checks took 5–15s. From a datacenter, no phone involved — so the slow
+> buttons, "Revealing…", "Waiting…" after the timer and refused submits that
+> night were the database, not the app or the Wi-Fi. Why it was slow is NOT
+> established; the Supabase dashboard (database health / disk IO budget) is
+> where to look.
+>
+> **Claps disappearing was ALSO a real client fault the slowness exposed.** The
+> clap poll's read, sent before a tap, answered after it and was believed,
+> taking the clap off until the next read. `_clapTapGen` moves on every tap and
+> a read older than it is discarded; one poll read at a time.
+> `store.slowReadReplies` (rows taken now, answered late) reproduces it:
+> `scenario-fullgame` reported *"the clap disappeared … gone 3000ms after the
+> tap"* on the old code.
+
+> ## 2026-10-29 — "the total play counts disappeared / reset": they did not
+>
+> **MEASURED by the probe on `55ba688`:** `game_plays` holds 56 rows back to
+> 2026-08-20 and `get_category_play_counts` totals **78** — nothing was lost.
+> The same run took ~4 minutes against a usual 45s: the live database was
+> answering slowly. A FAILED play-count read returned `{}`, and Choose Category
+> then printed **"0 plays" on every card** — the most likely thing the owner
+> saw. It returns `null` now and the line stays blank. The probe prints the
+> play totals on every run from now on.
+
+> ## 2026-10-28 (final) — the end of a game is two screens: a podium, then the scoreboard
+>
+> **Designed with the owner over a long run of mockups; every look decision is
+> theirs.** `js/game/podium.js` draws it, `js/game/podium-logic.js` (no imports,
+> 15 tests) holds the ranking, the order the steps stand in and the replay curve.
+>
+> - **The podium:** gold in the middle (with two players gold is on the LEFT),
+>   metallic rings, a medal on each avatar, points on plain gradient steps
+>   flush with the zero line — **no sheen**, the owner rejected it. Gold's step
+>   is a fixed size and the others are in proportion; a score below zero hangs
+>   striped below the floor and may run off the screen (no white strip, no
+>   rounded end). Everyone below zero flips it: gold hangs 40px. Ties stand
+>   level. The winner's avatar sits equidistant from the headline and its own
+>   name — asked for three times before it was measured; keep it measured.
+> - **The replay:** every bar starts at 0 and glides through the running totals
+>   **without stopping** (owner: "glide, never stop"; a cubic through the raw
+>   points eased to a halt at every question). Same 3.2s for 8 questions or 20,
+>   then a slower final-wager beat, then medals, headline and a gold glow. A
+>   player who crosses below zero has their AVATAR turned upside down (never the
+>   medal), only when the winner is above zero. The medal-falling gags were all
+>   scratched by the owner.
+> - **Tap to continue — tap ONLY (owner, 2026-10-29)**; it used to move on 3s
+>   after the replay and the owner missed it. Robots tap it from `harness.js`.
+>   A phone that rejoins a game already on its results skips it.
+> - **Steps ~35% taller (owner: "they just weren't that tall")**: with nothing
+>   below zero, `FOOT_RESERVE` was 64px of empty floor ABOVE a foot that is
+>   laid out below the stage anyway; it is 10 now. Gold 181px -> 243px at 320x523.
+> - **The scoreboard screen** opens on the scoreboard (the winner block is gone —
+>   the podium said it), medals 🥇🥈🥉 in the place column by competition rank,
+>   rows compact enough that six fit at 320x523, then Favourite Answers as a swipe
+>   carousel (86% cards, dots), then Rate your host on one line. The board scrolls
+>   itself; the fade and "▾ scroll for all N" appear ONLY when it overflows.
+>   Markup lives in `js/game/results-view.js` (no Supabase) so the mocks render
+>   the real thing — the hand-built results mock had drifted twice.
+>
+> **THE EQUAL GAP: I HAD THE WRONG TWO GAPS, TWICE** (2026-10-29). The owner's
+> rule is that the winner's picture, name and title are ONE BLOCK centred
+> between the headline and the top of gold's step: headline -> picture equals
+> title -> step (24px, `GOLD_GAP`). I built headline -> picture equals picture
+> -> name, shipped it 4px off on top, and only the interview tool with two
+> drawn options settled it. **When a spacing rule is described in words, draw
+> the candidate readings and ask before building.** Gold's step is always tall
+> enough to hold its number, so its "over" label is hidden and its room becomes
+> the gap — for BOTH golds in a tie, or the second sat 22px higher, touching
+> the headline. When everyone is below zero no step is reserved above the
+> floor (it left 92px of empty screen above the pictures). Measured 24/24 at
+> 320x523, 375x667 and 430x932 on every podium mock. **The layout sweep fails
+> the build if the two gaps differ by more than 1px**; break-tested by pushing
+> the step 8px off (*"24px above, 32px below"*).
+>
+> `scenario-fullgame` requires every phone to be shown the podium exactly once
+> AND to leave it for the scoreboard; break-tested both halves (skipping it, and
+> a podium that never lets go). The layout sweep now skips text on a gradient
+> that carries its own shadow (it read white-on-gold as white-on-page, 1.07) and
+> treats an x-snapping box as a deliberate carousel. **Not seen on a real phone
+> yet**, and the replay's smoothness is a feel nobody here can measure.
+
+> ## 2026-10-28 (after last) — 076 is applied; the timer and Chaos lock at the start; friend requests were never live
+>
+> **076 IS APPLIED — the owner pasted its rows:** `answer_claps ok`, and
+> rooms, players, answers, chat_messages all ok. **The same check read
+> `friend_requests NOT LIVE`**: `js/auth.js` listens for a new request to pop
+> up "X sent a friend request", and that popup has never appeared. Migration
+> 077 adds the table to the publication — **APPLIED 2026-10-28: the owner ran
+> it and reported its checks ok** (reported, not pasted). The popup also called `parseInt` on the request id (the fault the
+> profile's own Accept fixed on 2026-08-31) and closed even on a refusal; both
+> fixed, never seen because the popup never fired.
+>
+> **The timer and Chaos are locked once a game starts (owner: "chaos mode /
+> base settings should be locked after starting").** The in-game sheet shows
+> them as fixed rows beside Category and Questions, for the host too. **Auto-
+> Proceed stays changeable** — pacing, not a rule; that was my recommendation
+> on the owner's "not sure what should be allowed", and is theirs to reverse.
+> The lobby still sets all of them. `scenario-chaos` now fails if the host's
+> sheet offers a Chaos or timer switch mid-game; it reaches Chaos OFF for its
+> honk check by changing the room row directly, since nothing in a game can.
+>
+> **Results: owner likes B's scoreboard and wants the fun answers seen.**
+> Mockup D sent — the top favourite answer as one line between the winner and
+> the scoreboard, "+N more" to open the rest. Nothing built until they choose.
+
+> ## 2026-10-28 (last) — Submit and the final wager stop waiting on the network
+>
+> **The owner: "each click be instant and snappy and the next screen loading
+> instant and snappy too".** Two changes, measured with one phone on a slow link.
+>
+> - **Submit shows the reveal at once.** `doSubmitAnswer` puts this phone's
+>   answer in `state.currentAnswers` as an `optimistic-` row and draws the
+>   reveal before the write; the server's row replaces it, and a failed write
+>   takes it back off and returns to the question. `showRevealScreen` draws
+>   from the cache first and re-reads behind it (keeping an optimistic row the
+>   read does not have yet). `scenario-latency` times Submit to the reveal at
+>   `--lag=800`: **574ms after, 2180ms before** (break-tested by stashing the
+>   change). The 500ms fade is most of what is left.
+> - **The final wager locks on tap (owner's decision).** `#btn-fw-lock` stays in
+>   the page and is never shown; tapping 0/10/20 calls `lockInFinalWager()`.
+>   The robots check `#fw-status` instead of pressing Lock In.
+> - **The Chaos dot on the gear is gone (owner: "unsustainable if i add other
+>   game options later").** The rules are in the settings sheet and on the lobby
+>   card; `scenario-chaos` now fails if the gear carries a marker.
+>
+> **"My friend didn't leave" — a player missing from the results. NOT
+> EXPLAINED.** The ranking is `state.players`; a seat swept mid-game (45s of
+> silence after the page reported closing, or 120s without) is not in it. Two
+> rows now reach `error_logs` so the next one can be read rather than guessed:
+> `[SeatSwept]` (whose phone judged whom gone, the silence by that phone's
+> clock, whether the page had reported closing) and `[ResultsMissing]` (somebody
+> answered this game and holds no seat at the results). Both log at warn.
+>
+> **Results layout: two mockups sent, nothing changed.** At 320x523 the winner
+> block takes ~170px and the scoreboard is below the fold. Proposed a one-line
+> winner, with or without the scoreboard moved above Favourite Answers (which
+> sits above it on the owner's earlier call).
+
+> ## 2026-10-28 (latest) — the owner's phone is 320 wide, and a media query lied about its height
+>
+> **MEASURED FROM TWO PHOTOS: the owner's iPhone uses DISPLAY ZOOM.** The 28px
+> gear and the 72px wager squares both render 1.23x, which is a 320px-wide
+> page; about 523px of it is visible between Safari's bars. Narrower than
+> anything the sweep rendered (360 was the floor). `WIDTHS` now starts at 320
+> (all 62 states clean) and FIT has `[320, 523, 692]`.
+>
+> **THE SHORT-SCREEN RULES NEVER FIRED ON IT.** They were `@media (max-height:
+> 600px)`; Safari answers a media query with the window as if its toolbars were
+> hidden (~692 there), while each `.screen` is 100dvh, the 523 actually seen.
+> Photographed: full-size squares, the vote below the fold, a scrollbar. Both
+> rules are `@container gamescreen` now, on `#question-screen` and
+> `#final-wager-screen`. **Lead, not an iPhone measurement** — but the FIT case
+> imitates it (window 692, screens held to 523) and with the old `@media` rule
+> reports the vote *"58px below what the screen shows"*, the photo.
+>
+> **The results winner's avatar sat at the left edge** under a centred trophy
+> and name — a fixed-size box ignores `text-align`. Centred; the mock now draws
+> the avatar, which it had left out, so nothing had ever seen it.
+>
+> **Open, owner's call:** whether the final wager keeps its Lock In button.
+
+> ## 2026-10-28 (late) — "answers take over 5 seconds": measuring it on the phone
+>
+> **Not explained, and now instrumented.** `op_submit_answer` takes no lock
+> and the client sends one request, so the time is the request's. Every
+> supabase-js request now goes through `timedFetch` in `js/db/client.js`; one
+> over 2s is written to `error_logs` as `[SlowRequest]`, and a Submit over 2s
+> as `[SlowSubmit]` with its total, its own network time
+> (`lastRequestMs('rest:rpc/op_submit_answer')`) and the gap — time waiting
+> INSIDE the phone before the request left (supabase-js gates requests on its
+> auth session). Verified in the harness at a 2.5s link: the row lands; its
+> network figure reads `?` there because the harness bypasses `fetch`. **Read
+> the Error Logs panel after the next game** before changing anything.
+>
+> **"I hear two honks" did not reproduce:** one tap is one play on each phone,
+> measured. Leading explanation: a call (FaceTime) carrying the friend's phone's
+> honk, newly audible since the silent-switch fix. Asked.
+
+> ## 2026-10-28 (night) — a phone that missed one message stayed on a dead question for ever
+>
+> **Owner's photo: question 10 of 20, timer at 0, "Time's up — your last
+> answer stands", the game stuck.** The round HAD closed on the server (the
+> refused submit proves a blank was filed); the phone never heard the Realtime
+> event, and TWO recovery paths both declined to act:
+>
+> - **The backstop ignored the server telling it so.** `startPhaseBackstop`
+>   asks `op_advance_phase` every 3s; a room past the question answers
+>   `nothing to do` (or `already moved`), and the client treated that as "fine"
+>   and asked again for ever. It now re-reads the room (`registerResyncWithRoom`
+>   → `syncToCurrentState`).
+> - **The 60s poll only caught up a phone that had been BACKGROUNDED.** Within
+>   one round, the phase sync was gated on `wasHidden`, so a phone with its
+>   screen on that lost one frame was never repaired. The gate is gone;
+>   `shouldSyncPhase` was always the real guard — a read can be behind the
+>   room, never ahead, and behind is refused.
+>
+> If the stuck phone is the HOST it is a deadlock: Next lives on the reveal
+> screen it cannot reach. `scenario-timesup` makes Bob deaf to `rooms`
+> (`robot.deafTables`, harness — ONE phone, where `store.dropEvents` is
+> everybody) across the round's close and judges the PHASE each phone holds,
+> not the screen: Bob's own auto-submit puts the reveal screen up while his game
+> still says `question`. Break-tested: with both old paths, *"Bob … still on the
+> question, which is the owner's photo"* after 20s.
+
+> ## 2026-10-28 (evening) — claps were never live, honks on silent, Script error
+>
+> **"Still can't see the clap from my friend or vice versa."** Migration 071
+> created `answer_claps` and **never added it to the `supabase_realtime`
+> publication — no migration in this repo has ever touched it**; rooms,
+> players, answers were added in the dashboard by hand. So every clap was saved
+> and no other phone was told. The fake store delivered every table, which is
+> why `scenario-fullgame` passed; it now treats `answer_claps` as unpublished
+> (`store.publish()` models 076). The reveal re-reads claps every
+> `CLAP_POLL_MS` (3s), skipped while this phone's own clap is in flight; that
+> is also the ONLY road for a withdrawn clap, since a filtered Realtime DELETE
+> is never delivered. Break-tested: with the poll off, *"another phone shows
+> the clap count as "", not 1"* — the report. **Migration 076 adds the table
+> to the publication; NOT APPLIED until the owner runs it**, and the probe
+> cannot see publication membership, so only 076's own SELECT confirms it.
+>
+> **Honks on silent, a lead:** creating an AudioContext makes iOS treat the
+> page's audio as ambient, which then holds `<audio>` to the switch too.
+> `honk.js` sets `navigator.audioSession.type = 'playback'` (Safari 16.4+).
+> Not measured; may pause another app's music.
+>
+> **"Script error." now records context** in `error_logs` (online, visible, the
+> last 8 warnings/errors from `logger`), because the message names nothing.
+> Leading suspect, not established: an error inside supabase-js (cross-origin
+> from esm.sh) during network trouble — both reports came with slow requests.
+>
+> **Submit "takes a few seconds":** one request, no lock inside
+> `op_submit_answer`; it costs one trip to the database. Not changed; making it
+> optimistic is a design question put to the owner.
+
+> ## 2026-10-28 (later) — a friend's report: a floating red 1, OLED, "Script error"
+>
+> **THE PHOTO THEN ARRIVED AND THE RED 1 WAS SOMEWHERE ELSE: the HOME page.**
+> `.home-avatar__badge` is `position: absolute` and the dock's profile button
+> was not positioned, so the badge anchored to the whole dock and drew at the
+> right edge of the screen. `#home-avatar { position: relative }`.
+> `scenario-account` measures it against the button; without the rule it
+> reports *"floats 208px away"*, the badge at x=376 of 393 — the photo. The
+> photo is Safari, so the in-app-browser lead below does not fit this friend.
+>
+> **The Friends TAB count, below, was a guess at the photo before it came and
+> was the wrong place — but its two faults were real and stay fixed.**
+>
+> **The Friends tab's count had two faults.**
+> It wrapped UNDER "Friends" (the tab is ~100px wide) and read as a badge
+> floating loose; and it was set once at page load and never again, so
+> accepting the only request left it on the tab. `.profile-tab` is `nowrap`,
+> and `loadFriendsTab` sets the count from the list it just read. The pending
+> list's handler was also `addEventListener` on every redraw, so after one
+> accept the next tap fired twice; it is `onclick` now. `scenario-account`
+> checks the count is on the word's line and gone after the accept; each half
+> break-tested separately.
+>
+> **OLED "resets every time" did NOT reproduce.** Toggled on the profile, it
+> held across index, join, lobby and back, switch still on. The code writes
+> and reads one localStorage key consistently. **Lead, not measured:** a
+> browser that does not keep localStorage — an app's built-in browser
+> (Messenger, Instagram, Discord, Snapchat) opening the invite link — would
+> forget it every time, and such browsers inject scripts that throw, which
+> is also the commonest source of a bare "Script error.". **The friend's photo
+> is plain Safari, which makes that lead unlikely for them.** Open.
+>
+> **"Script error." is no longer toasted** (`_showErrorToast` in
+> `logger.js`); it is still written to `error_logs`. It is all a browser says
+> about an error in another origin's script, so the toast named nothing. The
+> slow join that followed is **not explained**.
+
+> ## 2026-10-28 — room settings for everyone, a dot instead of "🔥 Chaos", and real phone sizes
+>
+> **Every player has the gear now (owner's choice from a mockup).** The host's
+> opens the controls; everyone else's opens the SAME settings read-only, with
+> "Set by the host · name". In the game the sheet also lists Category and
+> Questions as fixed rows — fixed for the host too once a game has started,
+> which was the owner's own point. The lobby's settings button works the same
+> way (`fillReadonlySettings` in `js/lobby.js`, `fillRoomSettingsSheet` in
+> `js/game/host.js`); both read the values off the controls the host would
+> press, so the words cannot disagree with them. Toggle handlers and
+> `handleSettingChange` refuse non-hosts behind the hidden controls.
+>
+> **Chaos shows as a DOT on the gear, not a word in the header.** The owner
+> found "🔥" reads as a streak, 🌪️ bland, 🦆 confusing, and spelled-out words
+> clunky; the header is "where am I", and a room rule belongs one tap away. The
+> lobby room card keeps its "🔥 Chaos" pill. `scenario-chaos` now checks the dot,
+> a player's read-only sheet in BOTH places (no toggles, no Return to Lobby,
+> the right words) and the host's controls; break-tested in each.
+>
+> **The question count moved right**, beside the gear: with three items,
+> space-between put it in the middle of the bar on every player's phone.
+>
+> **Layout sweep, owner: "are you covering me for all my bases?"** It renders
+> 360px wide now (Android) as well as 375 and 430, and a FIT pass checks the
+> question screen at five real visible sizes (360x640, 375x560, 393x659,
+> 412x780, 430x740): no scroll, nothing under the pinned answer box. Break-tested
+> against the old spacing: it reproduces the photographed fault at 375x560.
+> **The final wager fits every size now, and FAILS the build if it does not**
+> (owner: "it should fit cleanly no matter the screen size"). Under 600px tall
+> its gaps shrink together (title a step smaller, amount squares 60px, the
+> vote cards' padding) — nothing removed, taller phones untouched. The vote
+> ends 40px clear on the SE, room for a second row of voter dots. The check
+> now measures against the content's bottom, not the window: a card behind
+> the footer is out of sight too. **The mock had drifted** — 28px `.avatar`
+> voters where the app draws 22px dots, wrapping to a second row no phone
+> shows. Break-tested: without the block, *"ends 64px below what the screen
+> shows"* at 375x560.
+>
+> **Spacing, the owner's picks:** the question sits evenly between timer and
+> wagers (26/25px); the wager grid is centred; 42px of air above the answer box
+> (16 on screens under 600px tall in 20-wager games, which were 2px short).
+
+> ## 2026-10-27 — a playthrough list: Waiting after time's up, review, claps, layout
+>
+> **"Stuck until I pressed Reveal — every time he didn't submit in time."** The
+> round HAD closed: the friend's phone auto-submits and the host's fill writes a
+> blank before `reveal` is written. But `stillWaiting` ended only at
+> `resultsRevealed`, so the host read "Waiting..." for the friend until pressing
+> Reveal Results — the screen pointing at the wrong person. `roundClosed()` in
+> `reveal.js` ends it at the `reveal` phase, and a phone already on the reveal
+> redraws then. **The host still presses Reveal Results** — that is the design
+> (the dramatic reveal is a person's decision); what was wrong was the label.
+> `scenario-timesup` (in CI) checks both directions; the old code fails with the
+> reported row word for word.
+>
+> **Review Questions is a RECORD (owner's decision).** No right/wrong toggles for
+> anybody after the results; corrections belong to the game (reveal, Edit
+> Scores). Everyone sees everyone's answers, with a ✓/✗ mark as well as colour.
+> It opens from the answers `showResultsScreen` already read
+> (`rememberReviewAnswers`) and re-reads afterwards: **3.4s → 50ms** on a 1500ms
+> link. `scenario-social` checks both phones; break-tested, four failures.
+>
+> **Your own answer shows its clap count** (read-only `.clap-slot--own`). It was
+> an invisible spacer, so in a two-player game nobody ever saw a clap they
+> received — "if two ppl clapped shouldn't I see 2?". `scenario-fullgame` checks
+> the clapped player's row; break-tested.
+>
+> **The bot's card drew no chart**: `fetchBotProficiency` returned ratios where
+> `buildRadarAxes` reads `{met, mastered}`, and so did the stated-skill fallback.
+> The fake store now derives `bot_proficiency` from `bot_history`;
+> `scenario-bots` requires the chart. Break-tested.
+>
+> **Honk lag past ~100 — a lead, not a measurement on an iPhone.** The lobby
+> redrew the whole player list on every honk on every phone (rows rebuilt under
+> fingers); it now repaints badges only (`updateHonkBadges` in `honk.js`). The
+> sender cloned a new `<audio>` per tap and never reused one; a ring of 8 now.
+>
+> **Layout, measured:** 20 wagers ran 36px past 390x560. The first fix made the
+> buttons 46px rectangles and the owner rejected it — the square IS the look.
+> With more than 10 wagers (`.wager-grid--many`) the question card gives up its
+> padding instead (~43px back) and the squares fit. A three-line question at
+> 375x560 is still a few px tight; the sticky answer box covers that case. The
+> final-wager list loses its side padding, reserves the honk slot, fixes the
+> score/wager columns, shows ⏳ instead of "Waiting...", and always carries a
+> second line ("Guest"): titles get 188px at 375 (needed 152). Its mock had
+> drifted to rows with no title, which is why nothing saw the cut.
+>
+> **Open, the owner's call:** the top bar — three mockups sent (today; one quiet
+> line with modes in the gear; modes in a strip under the timer). Nothing
+> changed until they choose.
+
+> ## 2026-10-26 (later) — Chaos mode (migration 075), and honks ignore the silent switch
+>
+> **The owner's design, settled in conversation.** Ordinarily honks are dropped
+> while somebody is answering (the default). **Chaos mode** is a host setting on
+> the create-room screen, the lobby settings sheet and the in-game gear; it is
+> stored on the room (`rooms.chaos`, 075) and **every phone shows "🔥 Chaos"**:
+> on the lobby's room card, and in each game screen's header. With it on, honks
+> sound and show at every moment. `setHonkChaos` in `honk.js` lifts the
+> answering rule and nothing else.
+>
+> **Every player has a 🔊 switch** (lobby top bar, game chat bar), saved in
+> localStorage. It turns honk SOUND off on that phone only; the ducks and the
+> avatar shake still show, so a muted player still sees the chaos. It can only
+> make things quieter. That was the owner's open question and this is the
+> recommended answer — revisit if they decide otherwise.
+>
+> **075 IS APPLIED — MEASURED by the CI probe on `cf2bc3b`**: `rooms` now
+> carries `chaos`, and the column check reads all present. **071 and 072 are
+> measured by the same run**, for the first time: `clap_history` holds 2 rows,
+> `bot_history` 28 and `bot_proficiency` 3, so claps and the bot's own record
+> are live and being written. The probe watches all four tables now.
+>
+> **075 was NOT APPLIED at first.** The switch is hidden until
+> `chaosAvailable()` can read the column, so before then it is a missing feature,
+> never a dead control. 061 grants rooms columns by name, so 075 GRANTs `chaos`
+> or the host's write would be refused with 42501. The fake store's grant list
+> carries it.
+>
+> **Received honks are `<audio>` again, from a pool unlocked inside taps.** The
+> 20261026c fix used Web Audio, and **Web Audio obeys the iPhone silent switch
+> while `<audio>` does not** — the sender's own honk was always `<audio>`, which
+> is why the owner heard their own. Owner's call: honks are a game sound, not a
+> notification, so they ignore the switch. Web Audio is only the fallback. Still
+> a lead about iOS, not a measurement.
+>
+> `scenario-chaos` (in CI) checks both directions: Chaos on lets a honk reach
+> somebody answering, Chaos off still drops it; sound off plays nothing and
+> still shows a duck, sound on plays. Break-tested: ignoring Chaos and ignoring
+> the sound switch each fail by name.
+>
+> **074 IS APPLIED — MEASURED by the CI probe on `d86a866`**: *"ok — a row with
+> no question_id passes every column rule"*. Locked final wagers can be saved
+> live, so each phone's wager should now show beside its name. The same run
+> reports `rooms *** MISSING: chaos ***`, which is 075 not yet run.
+
+> ## 2026-10-26 — every locked final wager was refused (migration 074), and honks
+>
+> **"Final question we should see each other's wagers"** — the screen already
+> draws a locked wager beside each name, and the owner saw "Waiting..." for
+> everybody all game. **MEASURED by the CI probe on `0403654`:** the live
+> `answers.question_id` is **NOT NULL**, in no migration file. Since `c803c84`
+> (2026-09-09) `lockInFinalWager` writes the placeholder with `question_id`
+> NULL on purpose (the final question is swapped after the wagers are in), so
+> every lock died on 23502, into a log. Scoring survived — the final answer
+> carries its own wager — so the loss was the display and "locked is locked".
+>
+> **074 drops the NOT NULL. NOT APPLIED until the owner runs it**; the probe
+> exits 1 and names the fix until then. The scratch schema now carries the
+> NOT NULL so `verify-sql` reproduces the live error word for word without 074.
+> **The robots still cannot see this**: the fake store accepts NULL. A probe
+> section ("CAN A LOCKED FINAL WAGER BE SAVED?") is what watches it, and it
+> writes nothing — NOT NULL is checked before the room key, which stops it.
+>
+> **Honks, reported on FaceTime: each person heard their own and never the
+> other's.** A received honk plays from a Realtime event with no tap, through a
+> freshly cloned `<audio>` — and iOS Safari's gesture rule is per element, so
+> that clone was never unlocked. Received honks now play through Web Audio, which
+> unlocks per context on any tap; the sender keeps the old path, which works.
+> **A lead from reading, NOT measured** — nothing here runs iOS Safari. The owner
+> also could not hear their OWN honks between questions; the harness shows the
+> sender's duck there, so that is unexplained (FaceTime routing or the ringer are
+> the candidates, and neither can be tested here).
+>
+> Two measured faults on the way, by a scratch probe: the final-wager screen
+> drew honk buttons while honks were muted there (hideChatBar mutes them), so
+> they did nothing on either phone; and its list added a tap handler on every
+> redraw, so one tap sent several honks. **No CI check covers either.**
+>
+> **Chaos mode: proposed, not built** — the owner asked for advice. Honks are
+> ALREADY dropped while somebody is answering (the owner's chosen "non-chaos"
+> behaviour); chaos would lift that.
+
+> ## 2026-10-26 — the host slept, lost the seat, and both phones were wrong
+>
+> **Reported:** *"I had gone afk for a few minutes. Came back it said i was
+> host. Started round. Then got notification i wasnt host. Then friend said …
+> his only host power was to edit scores he couldnt update scores or move on to
+> the next question and said marker at bottom said waiting for host. On his end
+> it looked like i eventually left the lobby. On my end i'm still in, but dont
+> see myself in."* A few minutes is past `STALE_TIMEOUT_MS`, so the friend's
+> phone swept the host's seat and promoted itself. Two faults, one per phone,
+> both reproduced by `scenario-seatlost` (in CI) and both failing by name on
+> the old code.
+>
+> - **The new host on the SCOREBOARD got three lines that imitated the footer.**
+>   `_activateHostControlsForCurrentPhase`'s `scores_reveal` branch un-hid
+>   `#btn-scores-action` and stopped: no label (it read a stale "Update
+>   Scores"), no onclick, and "Waiting for host..." left up. Edit Scores was the
+>   one control it wired. It calls `showNextButtonOnScores()` now — the
+>   function that draws that footer — rather than a copy of part of it.
+> - **The swept phone never learned its seat was gone.** A Realtime DELETE is
+>   not delivered to this page (the room_id filter cannot match a key-only
+>   payload), and `checkStalePresence` only acted on its own row when it FOUND
+>   it. So the host kept host controls, every press was refused as "The host is
+>   running the game", and they were missing from their own list.
+>   `showSeatLostNotice()` drops the role flags and the controls and offers
+>   Rejoin (a reload: init takes a fresh seat and `op_reassign_answers` moves the
+>   answers, which is what it was built for) or Leave. The check also runs the
+>   moment the tab becomes visible, not only on the 30s poll.
+>
+> **A deputy is no longer offered judgement controls.** `canJudge()` in
+> `state.js` is host or co-host — the same rule `op_is_room_host` (049) applies
+> to `op_set_judgement` and `op_disqualify_round`. Toggles, disqualify and Edit
+> Scores were drawn on `canControlGame()`, which includes the deputy, so a
+> deputy was handed controls the server refuses: the other half of *"couldn't
+> update scores"* if the friend was deputised rather than promoted. Advancing
+> stays `canControlGame()`. **Inspection-verified only**: no scenario presses a
+> toggle as a deputy.
+>
+> **Not explained:** *"came back it said I was host"* is the stale flag above;
+> whether "started round" was a press of Next Question on the old controls is
+> inferred from the toast wording, not established.
+
+> ## 2026-10-26 — Choose Category showed grey boxes
+>
+> **Reported with a photograph from a real phone: six skeleton cards and
+> nothing else, "takes so long to load".** The grid waited on three things it
+> did not need: a read of every open question in the bank (to count them per
+> subject), sign-in, and play counts plus mastery — and a cached copy older
+> than `CATEGORY_CACHE_TTL` (30 min) was thrown away, so anybody who had not
+> hosted for half an hour got the skeletons every time. Listeners were attached
+> after all of it, so a card tapped during the wait did nothing.
+>
+> The twelve subjects are known without asking (`CATEGORY_META`), so the cards
+> are drawn from that at once; a cache of any age is used; the bank's counts
+> patch in the moment they land, before sign-in; play counts and mastery after.
+> Unknown numbers are a blank line, never `0 plays`. A late answer PATCHES the
+> cards rather than rebuilding them, because a rebuild would close a subject the
+> player has already opened. The empty-state error still shows on a first visit
+> whose bank read fails.
+>
+> | `--lag=2000`, signed in | cards visible |
+> |---|---|
+> | before (no cache, or cache >30 min) | 4253ms |
+> | after | ~130ms; counts at ~2.3s |
+>
+> `scenario-join` checks it at a 3s lag; on the old code: *"Choose Category
+> showed no subjects for over 9000ms"*. **What the harness cannot see is the
+> SIZE of the bank read** — it delays requests, it does not model bandwidth —
+> so how much of the owner's wait was that download is not measured.
+
+> ## 2026-10-23 — the first playtest in six weeks: a scoreboard drawn over the next question
+>
+> **Reported after a real game, remote, two phones in two places, both on
+> Wi-Fi:** the name prompt should offer a way to sign in; the profile, the
+> practice bot, Start, the game loading and Submit all slow — interviewed,
+> **5–15 seconds** for Start and loading, and **"new, it was fine before"**;
+> and the game-breaker: *"by the time I got to question 2, my friend did not see
+> the question I was on until I clicked reveal. Game is broken, stopped
+> there."* Asked what the friend's screen showed: **"still the scoreboard"**.
+>
+> ### Two screens fetched before they drew, and nothing asked whether it was too late
+>
+> `showScoresScreen` awaited `updateScores()` — a read of every answer — and
+> only then switched the screen. On a slow link that read was still out when
+> the host pressed Next Question. Question 2 arrived and drew itself at once;
+> then the read came back and **put the scoreboard up on top of it**. Nothing
+> ever put the question back: every later event for that round is the round
+> the phone already believes it is on, and `handlePhaseTransition` refuses a
+> phase it is already on. Only the next PHASE — the host's Reveal — moved the
+> screen. That is the report, word for word.
+>
+> `showRevealScreen` has the same shape (it reads the round's answers first).
+> `screenStillFits` in `phase-order.js` is the one rule both now ask after their
+> read: the scoreboard only on its own round's `scores_reveal`; the reveal only
+> on its own round's reveal phases, or during its question once this phone has
+> answered (the "waiting for everybody" view after Submit). A render that loses
+> the test is not lost work — whatever moved the phone on called its own
+> renderer, and that one owns the screen. Every caller was read first: all of
+> them set the phase before rendering, and `hasSubmitted` is set before the
+> post-Submit reveal.
+>
+> **Reproduced by SETTING the state, in `scenario-latescreen`** (now in CI): one
+> phone's link goes to 8s just before Show Scores, the host advances as soon as
+> it can. Before: `7567ms question-screen (own question@1) -> 12770ms
+> scores-screen (own question@1)`, can type: false. After: the question stays.
+> Seven unit tests; making the rule always answer yes fails exactly the four
+> refusals while the three that permit legitimate screens still pass.
+>
+> **`scenario-badnetwork` could not see it, and the reason is worth keeping.**
+> Its robot host reveals two seconds into every question, so the question was
+> on the slow phone's screen for two seconds before the round moved on — the
+> covering-up happened during the reveal instead, where nothing looked. **A
+> real host waits for their friend.** A robot that never waits cannot find a
+> bug that needs somebody's patience. It now also asks the question nothing
+> asked: is a phone that believes it is on a question showing something else?
+>
+> ### The slowness: our code did not get chattier
+>
+> Every reported action timed at a 300ms injected round trip, on the
+> September build (`c803c84`, what the owner played on 09-09 and 09-14) and on
+> today's — **identical, action for action**:
+>
+> | | round trips in series | requests |
+> |---|---|---|
+> | open the profile page | ~5 | 12 |
+> | Host Game → lobby | ~8.5 | 4 |
+> | + Practice Bot | ~1 | 1 |
+> | Start → game page | ~8 | 4 |
+> | game page loading | ~11.5 | **41** |
+> | Submit → reveal | ~4 | 7 |
+>
+> So "it was fine before" is a fact about the ROAD, not the code. **The probe
+> now times the live database first thing on every run**: requests spend 24–67ms
+> behind Supabase's gateway (`x-envoy-upstream-service-time`), so the database
+> itself is fast; the rest is the trip to it. Comparing like-for-like eastus
+> runners across the old logs: median request 109ms (08-27), 106ms (09-07),
+> **164ms (10-23)**, and the slowest tenth went from ~125ms to **788ms**, in a
+> burst. One sample, from one machine — a lead, not a measurement of anybody's
+> phone. The realtime join took **3.9s** to start delivering changes; there is
+> no older number to compare that with yet.
+>
+> ### The name prompt offers an account (owner's choice of layout)
+>
+> Two quiet links under Continue — guest stays the obvious path. Success
+> RELOADS, as the home page's own Sign In already does. **The trap was the road
+> back:** the sign-up box asks for a missing name by calling the name prompt
+> itself, which points Continue at a promise of its own; return to the
+> original prompt without re-binding and Continue closes it while the page
+> waits for ever. `scenario-join` walks that road; removing the re-bind reports
+> *"Continue closed the name prompt but the join page never started"*. Links
+> measured 44px tall at both widths.
+>
+> ### Found and NOT fixed
+>
+> - **The game page makes 41 requests to load**, ~11.5 in series — the room
+>   read ~12 times, the players ~9. Nothing here changed since September, and it
+>   is the biggest lever on how slow a slow link feels. **Partly fixed the same
+>   day — see "the waits that did not need to queue" below.**
+> - **At 8s per request, init routes on a stale room snapshot**: Bob went
+>   `answer_reveal@1 -> countdown@1` in `scenario-badnetwork --lag=8000 --on=Bob`.
+>   The same run had Bob never reach results, "Waiting…" rows after the final
+>   reveal, and a refused late submit logged as an error.
+> - **supabase-js is unpinned** (`@2`), so every deploy's cache clear takes
+>   whatever esm.sh serves: phones moved 2.116 → 2.118 on 10-22 with no review.
+>   The diff was read and holds nothing relevant; the drift is the fault.
+>
+> ### The waits that did not need to queue (deployed separately, same day)
+>
+> Our code had not got chattier, but a slow road makes every wait-in-a-row
+> cost a whole trip. So every reported action was timed with BOTH phones on a
+> 300ms link and every await read for whether it needed the one before it.
+> `--lag=300`, round trips in series, from the tap:
+>
+> | | before | after |
+> |---|---|---|
+> | profile, until your stats show | 10.0 | ~4–5 |
+> | Host screen, first visit | 7.7 | 3.4 |
+> | Start → countdown on both phones | 21.0 | 13.3 |
+>
+> - **`fetchCategories` read the whole bank five pages in a row.** ~4,800 open
+>   questions at 1000 a page, one after another, in front of the profile and a
+>   first Host visit. Six pages go out together now, ordered by id so separate
+>   queries agree on what is on which page; another batch follows only if the
+>   last came back full. **The harness hid this entirely** — every scenario
+>   seeds ~40 questions, which is one page. The measuring script seeds 4,800.
+> - **The profile** started its title words, stats and bank count one after
+>   another; they share one trip now, and the words are awaited just before
+>   the first thing that reads `TITLE_WORDS`.
+> - **The Host screen** asked for the bank and play counts only after sign-in
+>   answered. Only mastery needs to know who is asking.
+> - **Start Game** cleared the phase in its own trip after the clear-out, and
+>   the host then waited for the Realtime ECHO of its own successful write —
+>   up to the 5-second fallback. It navigates on the write's success now (and
+>   a FAILED status write no longer navigates at all; the old fallback did).
+>   The lobby's echo handler now ignores a phone already leaving.
+> - **The game page** asked sign-in, the clock offset, the players and the room
+>   one after another; one trip now. `initHostGame` reads the room row init
+>   already has instead of twice more — except after a branch that waited on
+>   the network again (rejoin, refresh heartbeat, answer reclaim), which nulls
+>   it and reads fresh exactly as before. Both reconnect paths read questions
+>   and answers together, and `updateScores(answersAlreadyRead)` scores from
+>   that read instead of a third.
+> - **Question selection** reads the room's history alongside the pool.
+> - **+ Practice Bot says "Adding…"** — one trip, but a greyed button with no
+>   word looks like a tap that never landed.
+>
+> **Deliberately NOT changed:** which screen a loading phone routes to. The
+> stale-snapshot finding above is real, but the routing during init interacts
+> with Realtime events in ways no check here pins; these changes keep every
+> decision in the same order and only remove waits.
+>
+> **The harness had been answering the clock-offset read instantly** — it is a
+> plain `fetch`, not a store op — so every measured page load was one trip
+> faster than a phone's. That GET now honours `slowConnection`.
+>
+> **The robot workflow is two jobs now.** One job had reached 32–41 minutes of
+> a 45-minute limit, and a timeout is a grey cancel, not a red fail.
+>
+> ### The habit
+>
+> **A screen that waited on the network must ask, before it draws, whether the
+> phone is still where it was when it asked.** The await is the moment the
+> world can change, and two renderers drew straight through it.
+
+> ## 2026-10-22 — the end of a game stopped waiting on the network
+>
+> **The owner's goal after a six-week break was "stable first", and asked for
+> work that needs no playtest.** Three changes, each measured before and after
+> with one phone on a slow link, because that is where every past report lived.
+>
+> ### Reviewing the unreviewed batch (claps, 071/072) found two real faults
+>
+> The owner had let thirteen commits through without reading them. Both
+> migrations, the clap logic and the quote-escaping fix were sound. Two were not:
+>
+> - **The Favourite Answers card awaited two reads in front of the results
+>   screen** — a claps read and a SECOND whole-game answers read — while its own
+>   comment said a card is not worth a screen. It now draws from the claps cache
+>   (every reveal re-reads them, Realtime keeps them current) and refreshes after
+>   the screen is up. `scenario-fullgame` now requires every phone to show the
+>   card; nothing checked it before. Break-tested: removing the render fails it
+>   on all three phones.
+> - **"+N more tied" counted everything that did not fit**, so 3, 2, 2 and a
+>   one-clap answer printed "+1 more tied" about an answer tied with nothing on
+>   the card. It counts only answers tied with the last one shown now.
+>
+> **Not fixed, and known:** `clapLabel` escapes names and `repaintClaps` sets the
+> result through `setAttribute`, so the clap tooltip reads `O&#39;Brien`. The
+> owner chose not to fix it yet.
+>
+> ### The results screen read the game's answers THREE times before showing
+>
+> `updateScores()`, the signed-in stats block and the final-wager deltas each
+> fetched every answer, in series, and the chat archive was awaited between
+> them. One read now feeds all of it, and the bookkeeping nobody can see — play
+> count, chat archive, game history, title unlocks — runs in
+> `recordFinishedGame()` AFTER the screen switch. Measured with
+> `scenario-badnetwork --lag=1500 --on=Alice`, which now prints this number:
+>
+> | | before | after |
+> |---|---|---|
+> | the slow host reaches results | 6008ms | 1205ms |
+> | the other phones | ~807ms | ~407ms |
+>
+> ### Migration 073 — the final question in one trip
+>
+> Closes the slowness the 2026-09-06 entry left open. `op_reveal_final_question`
+> writes the list and then CALLS `op_set_phase` (never copies it), in one
+> sub-transaction, so a declined phase rolls the list back. 12 rules; removing
+> the rollback fails *"the list it wrote first is rolled back"*.
+>
+> **THE FIRST CLIENT VERSION MADE THINGS WORSE BEFORE THE SQL IS RUN, and only
+> the `--old-server` run found it.** Trying the new function first costs a whole
+> round trip to hear "not installed" before the old two writes even start:
+> 29.5s became 41.5s on a 12s link, and the scenario failed by name. The wager
+> screen now asks once whether the function exists (`preflightRevealFinalQuestion`,
+> null arguments, touches nothing) and a known-missing function is never called.
+>
+> | `scenario-finalq` at 12s lag | room reaches the final question |
+> |---|---|
+> | 073 not applied (`--old-server`) | 29480ms — identical to before |
+> | 073 applied | 17481ms |
+>
+> **The habit:** a fallback that is only taken after a failed attempt is not
+> free — on a slow link the attempt IS the cost. Test the "SQL not applied yet"
+> state as its own run, every time.
+
+> ## 2026-09-15 — Favourite Answers, and what a clap is allowed to mean
+>
+> **Asked for as a discussion first, and the owner was right to insist:** *"was
+> wondering if there should be an optional Favorite answer vote? But this would
+> have to be thought thru well with discussion first."* Every decision below is
+> theirs, settled by interview before a line was written. The mechanic is built
+> in full: migrations 071 and 072, the reveal, the results card, both profile
+> surfaces and a third leaderboard.
+>
+> **THE OWNER SAYS BOTH ARE RUN (2026-10-19), and no verification row has been
+> seen.** Deployed the same day as `v=20261019`, CI green on the live branch. If
+> 071 is not really there, the clap button hides itself (`state.clapsUnavailable`)
+> rather than offering a control that records nothing.
+>
+> ### The design, and the reasoning that is not obvious from the code
+>
+> | | |
+> |---|---|
+> | the mark | 👏 a clap, **one per person per round**, on the reveal only |
+> | undo | tap another to move it, tap the same one again to take it back |
+> | who | visible, in the moment — *"if it was obvious someone was voting… others could try to neutralize it"* was the owner's own reasoning FOR it |
+> | per game | a **Favourite Answers** card above the scoreboard, capped at 3 |
+> | span | one game. Nothing accumulates in the lobby |
+> | lifetime | a total AND a weighted rate, claps received over claps AVAILABLE |
+> | bots | clappable, and can win |
+> | scoring | untouched. A clap is never a point |
+>
+> **CLAPPING IS PUBLIC AND HOST RATINGS ARE NOT, and the difference is the
+> whole safety argument.** A host rating is a verdict on somebody with power
+> over your score, so `host_ratings` admits admins only — a rating that is
+> unsafe to give is worse than none. A clap is a compliment. Hiding who gave it
+> would remove the thing that makes it fun and add nothing.
+>
+> ### TIES ARE THE NORMAL CASE, and the owner found that before I did
+>
+> *"What would happen if it is a draw? Like if i only play with my friend? Have
+> you even considered any edge cases?"* — **with two players nobody can win.**
+> Each can only clap the other, so every clapped answer sits at exactly one
+> clap. Three players caps it at two. A single winner is normal only at four or
+> more.
+>
+> So `favouriteAnswers` never picks one. It returns the top three in clap order
+> and **counts what did not fit** — a card silently showing three of eight equal
+> answers is claiming those three were special.
+>
+> ### A BOT IS NOT A CLAP AVAILABLE
+>
+> Found by reading the denominator back after it was written and passing. A bot
+> holds an answer row in every round exactly as a person does, so counting SEATS
+> gave a solo practice game one clap available per round — from a player with no
+> screen, no finger and no opinion. Every practice game would have dragged the
+> owner's own rate towards zero, permanently, and the number meant to say
+> "people liked your answers" would mostly have measured how often they played
+> alone.
+>
+> The `clappers` CTE counts people. **LEFT JOIN, and a row that cannot be found
+> counts as a person** — an answer outlives its seat (052), and this project's
+> oldest rule is that a missing value means *cannot tell* and takes the reading
+> that destroys nothing. The owner raised the departed-player case themselves
+> and called it negligible; it is.
+>
+> Break-tested: reverting to seat counting fails *"a bot is not a clap
+> available"* by name, and the rule beside it (*"a solo practice game still
+> records a row, at zero"*) is what stops the fix being a denominator quietly
+> switched off.
+>
+> ### Three surfaces, three different amounts of the same fact
+>
+> | | shows | why |
+> |---|---|---|
+> | the profile CARD | the total, and only above zero | it already carries four stats, a twelve-axis chart and a host rating. A second percentage there has nothing saying which of them it belongs to |
+> | the profile PAGE | total AND rate, with the denominator under it | this is where somebody reads their own numbers, and there is room for a sentence |
+> | the LEADERBOARD | both on every row, with a control for the ORDER | *"most claps"* and *"best rate"* are different achievements and neither is the other's tiebreak |
+>
+> **THE RATE IS WITHHELD UNDER 20 CLAPS AVAILABLE, never shown as 0%.** The
+> owner's number — *"about one game"*. `CLAP_RATE_FLOOR` is exported from
+> `clap-logic.js` and the page that explains the floor READS it rather than
+> typing 20 again, because the same quantity in two places is this file's most
+> repeated fault and would surface as a screen promising a threshold the maths
+> does not use.
+>
+> ### The leaderboard hides its own filters on that tab
+>
+> Claps have no category and no time window — `clap_history` records a game, not
+> a subject. So the category, subcategory and period menus are hidden on the
+> claps tab and an order control takes their place, and **the scope note says
+> the board is every category and all time**, so a filter vanishing is explained
+> rather than merely noticed.
+>
+> That is this file's own rule about the period control, applied one tab along:
+> *a control shown beside numbers that ignore it is worse than no control*.
+> `syncControls()` is the single place that decides, and it can only ever
+> NARROW — the period select has its own reason to be hidden and leaving the
+> claps tab must not bring it back.
+>
+> **Checked in both directions**, because hiding is exactly the trap this file
+> records as *"a control that only moved is a control that was deleted"*:
+> `scenario-account` fails if the category menu survives onto the claps board
+> AND if it does not come back when you leave.
+>
+> ### The bot's own record (migration 072), and the owner corrected me twice
+>
+> *"How many times do i have to say i want the bot's results recorded???? Forget
+> /wipe out any bit of not recording it"* and *"It should be actual results. It
+> answers no answer to plenty. The host may override some. There is chance on
+> others."* They were right on every count and I verified it against the code
+> before conceding.
+>
+> **IT CANNOT GO IN `question_history`.** That table's `user_id` is
+> `REFERENCES auth.users(id)` (011), a bot has no auth user, and
+> `record_round_history` (043) does every player in ONE statement — so a bot
+> written there raises 23503 and **rolls back the whole room's round**, every
+> round, reaching nothing but a log. `bot_history` is keyed on the bot's display
+> name and has no foreign key at all.
+>
+> **THE FIRST BREAK TEST PASSED, TWICE, AND BOTH REASONS ARE WORTH KEEPING.**
+> The scratch schema had no such FK, so the harness was more permissive than the
+> live database — adding it exposed leaderboard rules minting user ids that
+> never existed. Then it passed again because the comment I had written
+> described a mechanism that does not fire: bots are excluded by
+> `user_id IS NOT NULL`, not by the `is_bot` line I was deleting. The comment
+> was corrected rather than left standing, and a rule that gives a bot a user id
+> now reports *"a bot with a user id does not take everyone's round down with
+> it"*.
+>
+> ### A display name could break out of an HTML attribute
+>
+> Found on the way, unrelated, and live. `escapeHtml` is the textContent →
+> innerHTML trick, which **does not escape quotes** — and display names are
+> written into attributes on several screens. A name containing a quote could
+> close the attribute and add its own. Both quote forms are escaped now.
+>
+> ### CI WAS RED FOR THREE PUSHES AND NOBODY LOOKED — me
+>
+> Found a month later, before deploying, by checking the Actions tab the way
+> this file says to after every push. **Every robot scenario passed. The STRESS
+> layout sweep failed** on all three clap commits, and I had only ever run the
+> plain one locally.
+>
+> The clap button takes ~55px of the answer's line, so a long answer wrapped to
+> two lines on every clappable row and stayed on one on your own, which has no
+> button: `[108, 108, 108, 79, 108, 107]` at 430px. At 375px every row wrapped,
+> so they agreed by accident — which is exactly why the plain sweep, with short
+> mock answers, could not see it.
+>
+> The fix is the lobby's lesson: **a row that cannot be clapped still holds the
+> slot.** `.clap-slot` is built from the button's own icon and count classes, so
+> it is the button's width by construction (measured 44=44 and 50=50), and it is
+> a different class so nothing ever tries to press it. Break-tested by
+> collapsing it: the sweep reproduces CI's numbers exactly.
+>
+> **And the deploy push then failed `scenario-fullgame` on code byte-identical
+> to the green run** — *"another phone never saw the clap at all"*, with the
+> third phone's reading `null`, meaning never SAMPLED rather than seen wrong. My
+> probe waited for that phone's own turn, so it missed whenever the room moved on
+> first, and it watched one fixed phone, which cannot see a clap on its own
+> answer. It now polls every other phone in the same turn as the tap. Break-tested
+> by switching off Realtime clap delivery: *"another phone shows the clap count as
+> "", not 1"*, which is the real fault keeping its own message.
+>
+> **CI is part of "done".** A local run of the checks you remembered is not the
+> CI run of the checks that exist, and `--stress` is in CI precisely because a
+> layout that fits its mock data is one real answer away from breaking.
+>
+> ### The habit
+>
+> **Ask what the number is DIVIDED BY, and go and look at what is in the
+> denominator.** The clap rate was correct in every test it had, against a
+> denominator that counted a bot as a person — and the only thing that found it
+> was reading the SQL back and asking who, exactly, was being counted.
+
+> ## 2026-09-14 — "it only started recently", and that objection was right
+>
+> **The owner pushed back on the entry below and the push-back is the finding:**
+> *"the sticky buttons only started just recently. Why is this? And ur sure the
+> fix addresses this? Wouldn't it imply it's something that recently changed?"*
+>
+> **Yes, and the layout explanation below does not answer it.** Submit being
+> off-screen at 375x560 is real and measured, and it has been true for as long
+> as that screen has had wagers on it. A fault that STARTED implies a change,
+> and reaching for a long-standing cause because it is the one you measured is
+> exactly the mistake this file exists to catch.
+>
+> ### One thing changed, and it changed how the question screen is SIZED
+>
+> `git log` over the whole window: **`js/keyboard-inset.js` was created on
+> 2026-09-05**, in the same commit that added `interactive-widget=resizes-content`
+> to `game.html`. Nothing else since August touches the geometry of that screen
+> or what happens to it during a touch. The playtests reporting dead taps are
+> 2026-09-09 and 2026-09-14.
+>
+> ### THE 120px THRESHOLD WAS A GUESS ABOUT BROWSER CHROME, NEVER MEASURED
+>
+> The rule was `covered = innerHeight - visualViewport.height - offsetTop`, and
+> `open` when that passed 120px. Its own comment states the assumption: *"Browser
+> chrome sliding away while scrolling moves the visual viewport by far less."*
+>
+> **On iOS Safari the layout viewport does not shrink with the toolbars.** So the
+> top bar, the bottom bar and the home indicator all land inside `covered` — and
+> on a phone whose chrome totals more than 120px, `kb-open` was **TRUE for the
+> whole game, with no keyboard anywhere**. Under that class `#question-screen`
+> is given a different height and re-anchored with `top`, the question card gets
+> its own scroll, and `#answer-form` goes sticky. A screen laid out for a
+> keyboard that is not there, from the first round, all game.
+>
+> That is: recent, phone-only, invisible to every check here (nothing in this
+> repo can shrink a visual viewport), and it matches all three answers the owner
+> gave — **keyboard down, no press animation at all, bad from the first round.**
+>
+> **IT IS A LEAD AND NOT A MEASUREMENT**, and the distinction matters because the
+> number that decides it is a fact about the owner's phone that nothing here can
+> read. What IS established: the guess was never checked, iOS chrome is in the
+> right range to break it, and the code went in on the one date that fits.
+>
+> ### The fix removes the need for the threshold to be right
+>
+> **A keyboard cannot open without something focused to type into.** That is not
+> a pixel guess, it is the definition, so it holds on every phone at every chrome
+> height — which is the thing a number can never do. `isTypingTarget` reads
+> `document.activeElement`, and `open` now requires it AND the measurement.
+>
+> **Neither half is sufficient and the code says so.** `showQuestionScreen`
+> focuses the answer box every round, and iOS routinely refuses to raise a
+> keyboard for a programmatic focus — so focus alone would be worse than the
+> threshold. A focused box with nothing covered is still a closed keyboard.
+>
+> `focusin`/`focusout` are watched alongside `resize` and `scroll`: dismissing a
+> keyboard can leave the viewport unchanged, and without them the class would
+> stick.
+>
+> Three tests, break-tested: dropping the focus clause fails *"needs something
+> focused to type into, not just a shrunken viewport"* by name while the other
+> eleven — every one pinning the keyboard fix itself — still pass.
+>
+> ### What the sticky-Submit change is, now that it is not the explanation
+>
+> It stands on its own: at 375x560 with 15 wagers the Submit button really was
+> below the visible edge, measured, and it is reachable at every size now with
+> 600px and up byte-for-byte unchanged. **It is a fix for a real fault that was
+> never recent, and it is no longer offered as the cause of this report.** Two
+> true things, one of which answers the question asked.
+>
+> ### The habit
+>
+> **"It started recently" is a measurement, and it outranks any cause you
+> happened to find.** A long-standing fault cannot explain a new symptom, however
+> well you have measured it — and the owner spotted that before I did.
+
+> ## 2026-09-14 (interviewed) — Submit was below the bottom of the phone
+>
+> **The three answers that turned a guess into a measurement.** Asked what the
+> button DID when it failed, the owner said: **no reaction at all** — no press
+> animation — with the **keyboard down**, and **bad from the first round**.
+>
+> `.wager-btn:active { transform: scale(0.93) }` is pure CSS. It fires on touch
+> whatever the JavaScript is doing. **So a tap that produced no shrink never
+> reached the element**, and that rules out every mechanism in the entry below
+> this one: the handler, the network, the re-render. It is a HIT-TESTING
+> failure, and those have a small number of causes.
+>
+> ### Measured: the Submit button is off the bottom of a small phone
+>
+> With 15 wagers on screen — the owner's game was 15 questions — and the
+> question screen rendered at every real phone height:
+>
+> | | Submit's bottom edge | `.game-content` scrolls by |
+> |---|---|---|
+> | **375x560** (an SE in Safari with both bars) | **567px of 560 — BELOW THE EDGE** | 23px |
+> | 375x580 | 567 of 580 | 3px |
+> | 375x600 and up | fits | 0 |
+>
+> A 20-wager game pushes it off at **620px** too, and scrolls by up to 88px.
+> 560 is not a number invented for this: CLAUDE.md already names it as *"an SE
+> in Safari with both bars showing — the tightest case this app can meet"*, from
+> the profile-card work.
+>
+> ### AND THE SCROLLING COSTS FAR MORE THAN THE ONE BUTTON
+>
+> This is the part that explains the BET VALUES, which have no network in them
+> at all. Once `.game-content` overflows, it is a scroller — and a browser must
+> then wait on every touch to see whether it is the start of a drag. `:active`
+> is delayed and then **cancelled outright by a pixel of movement, taking the
+> click with it**. A tap on a wager produces nothing whatsoever: no shrink, no
+> highlight, no selection. That is the report, word for word.
+>
+> **It is a LEAD, not a proven cause** — nobody has confirmed which phone or
+> which visible height, and the harness cannot feel a finger. What IS measured
+> is that the control was off-screen at the tightest size this app claims to
+> support, and that the screen scrolls there.
+>
+> ### The fix: the answer box is pinned on this screen at ALL times
+>
+> `#question-screen #answer-form` is `position: sticky; bottom: 0` now,
+> unconditionally. **Sticky is inert wherever the content already fits**, so
+> every phone from 600px up is byte-for-byte unchanged — measured at 600, 620,
+> 667, 812, 664 and 932, all reporting the identical bottom edge as before.
+> Where it does not fit, the wagers scroll under a pinned answer box and Submit
+> is reachable at every size, 560 included.
+>
+> **THE RULE WAS ALREADY WRITTEN, ONE CONDITION TOO NARROW.** `body.kb-open
+> #question-screen #answer-form` said exactly this and gave the reason —
+> *"the answer box is the one thing that must never be the thing that scrolls
+> away"* — and applied it only while a keyboard was up. The keyboard was never
+> the only way to make that screen too tall. The `.kb-open` copy is deleted
+> rather than left beside the new one: the same rule in two places is the fault
+> this file records more than any other.
+>
+> **What is NOT fixed, said plainly:** at 375x560 a 20-wager game still has five
+> wagers below the fold. They can be scrolled to, and Submit no longer moves —
+> but that screen is still a scroller, and a scroller still costs taps.
+>
+> ### A PINCH-ZOOM WAS BEING READ AS A KEYBOARD
+>
+> Found while looking for the same class of fault, and it is real whether or not
+> it is the owner's bug. `maximum-scale=1, user-scalable=no` **is ignored by iOS
+> Safari and has been for years**, so every screen here is pinch-zoomable, and a
+> two-finger brush while holding a phone zooms it.
+>
+> `keyboardInset` measured `innerHeight - visualViewport.height - offsetTop`.
+> **A zoom shrinks the visual viewport exactly as a keyboard does**: at 1.5x on
+> an 844px phone that is 281px "covered", well past the 120px threshold. So the
+> app declared a keyboard nobody had opened and **resized and re-anchored the
+> question screen** — a fixed, full-screen element — underneath somebody who had
+> not typed a word.
+>
+> `visualViewport.scale` is the one signal that separates them, and it was not
+> being read. A zoom now reports NOTHING MEASURABLE, which is the same answer
+> the function already gives a broken reading and is what leaves the layout
+> exactly as it was. A keyboard opened WHILE zoomed loses the keyboard fix and
+> keeps the game, which is the right way round.
+>
+> Two tests, break-tested: removing the guard fails both by name while the seven
+> that pin the keyboard behaviour still pass — which is what says the guard is
+> narrow rather than a quiet deletion of the feature.
+>
+> ### The habit
+>
+> **Ask what the CONTROL did, not what the app did.** "No press animation"
+> is a fact about CSS, and CSS does not wait on a network or a handler — one
+> answer from the owner eliminated every software mechanism in an afternoon of
+> measurement and pointed at the layout instead.
+
+> ## 2026-09-14 — the taps that felt dead, and what the measurements RULED OUT
+>
+> **Reported after a game: "tapping buttons (submit, bet values) slow and non
+> responsive. It was nearly game stopping. Didn't notice anything else except
+> this issue of difficulty pressing buttons."**
+>
+> **THE CAUSE IS NOT FOUND, and this entry says that first rather than last.**
+> What follows is one real fix, one real finding, and a list of mechanisms that
+> were measured and are NOT it — which is worth writing down, because every one
+> of them was plausible enough to have been shipped as "the answer".
+>
+> ### The half that IS fixed: Submit went grey and said nothing
+>
+> `doSubmitAnswer` disabled the button and the input the instant it was pressed
+> — so there WAS feedback, and any claim that the tap did nothing would be
+> false. What it did not do is say a word: the label stayed "Submit", and the
+> next thing to move was the SCREEN, which is behind the write. On a real link
+> that is a greyed button reading Submit for a whole round trip, which is
+> indistinguishable from a button that never took the tap.
+>
+> **This file already records what that costs**, about the button one screen
+> along: *"six seconds of nothing happening on a phone is a person tapping
+> again."* Reveal Results got "Revealing…" for exactly this in September;
+> Submit never did. It says **"Sending…"** now.
+>
+> **And it is restored in every path that leaves the player on that screen** —
+> the write failing, and the `!q` early return, which previously left the player
+> holding a disabled button for ever. `refreshSubmitButton()` puts back both the
+> word and the enabled state, so there is one rule rather than two. That is the
+> first version of the Reveal Results guard's own mistake, avoided by having
+> read this file's account of it.
+>
+> ### THE BET VALUES ARE LOCAL, so slowness there cannot be the network
+>
+> `selectWager` has no `await` in it. It removes a class, adds a class, sets two
+> fields and refreshes the button. A bet tap that appears to do nothing is
+> therefore a tap that never became a **click** — and that narrows the search to
+> three mechanisms, all of which were measured:
+>
+> | candidate | measured | verdict |
+> |---|---|---|
+> | the grid is rebuilt under the finger (`renderWagerGrid` does `innerHTML = ''`, and a button detached between touchstart and click never fires) | **0 rebuilds** during a whole question, on both phones | not it, in the harness |
+> | the tap target is too small | **61x61px** at 375, 430 and on an SE, with 15 wagers on screen | not it |
+> | something is on top of it | `elementFromPoint` at every button's centre, in a LIVE game with the chat bar and host gear present: **0 unreachable, Submit ok** | not it |
+>
+> **The first measurement of the bet tap said 1222ms and it was the harness
+> lying.** `showQuestionScreen` hides the card, the grid, the answer box and the
+> timer for a one-second sync buffer, and Playwright's `click` auto-waits for an
+> actionable element — so timing a tap that starts inside that buffer measures
+> the buffer. It waits for the grid to be visible first now, and reports 25-42ms.
+> **A number taken before the thing is ready is a number about something else.**
+>
+> ### One real finding, on the smallest phone only
+>
+> Nothing in this repo can open a keyboard, so `.kb-open` — a whole block of the
+> stylesheet — had **never been rendered by anything**. Setting the same
+> variables `js/keyboard-inset.js` publishes and measuring:
+>
+> | | keyboard up |
+> |---|---|
+> | 375x812, 430x932 | every wager button on screen |
+> | **375x667 (an SE)** | **5 of 15 wager buttons sit below the visible window** |
+>
+> Under `.kb-open` the QUESTION CARD gets the scroll and the answer form is
+> sticky; the grid is between them and the screen is `overflow: hidden`, so
+> those five cannot be scrolled to. **Reported, not fixed** — it is the smallest
+> phone in the range and the owner has not said which shape their fault took,
+> and rebuilding a working screen on a hunch is what this file's rules forbid.
+>
+> ### What the latency scenario did NOT measure until now
+>
+> `scenario-latency` pressed the wager and the Submit buttons to get the game
+> moving and **timed neither** — the two controls the owner reported were the
+> two it walked past. Both are timed now, Submit against its own label and
+> disabled state rather than against the screen.
+>
+> ### The habit
+>
+> **When the reported control has no network in it, stop looking at the
+> network.** Three plausible mechanisms were eliminated by measurement in the
+> time it would have taken to ship one of them as a fix, and a fix for the wrong
+> cause would have closed the report while leaving the game exactly as it was.
+
+> ## 2026-09-05 — Ready Up reported success and wrote nothing
+>
+> **Reported: "left and rejoined and it didn't show me in the lobby till I
+> refreshed even tho I could send a message in the chat (not showing my icon).
+> Also had to leave and rejoin in order to even ready up and have the game
+> start."** Three symptoms, and they are one fact: **the returning client held a
+> seat the room did not have.** The list cannot draw a row that is not there,
+> the chat cannot find an avatar for it, and Ready Up writes to it.
+>
+> `toggleReady` was a bare UPDATE whose result was thrown away. **An update
+> against a row that no longer exists matches ZERO ROWS and returns NO ERROR**,
+> so the button flipped, the list redrew optimistically, and nothing was
+> written. That is #4 and #5 in the one place a player is most certain they
+> pressed something.
+>
+> It reports a THIRD answer now — `missing`, kept apart from both success and
+> failure, because the caller can do something about this one that it cannot do
+> about a dropped connection: **take a seat again and retry once**, which is
+> exactly what leaving and rejoining did by hand. Only if that also fails does
+> anything reach the player.
+>
+> ### TWO REPRODUCTIONS PASSED, AND THAT IS WHY THE CHECK DRIVES THE STATE
+>
+> `scenario-lobby` now leaves and rejoins **through the join screen** — nothing
+> had ever done that; `scenario-nasty` reloads the page, which is a different
+> path. It passed. So did a second one that rejoins WITHOUT waiting for the
+> leave to settle, racing the removal. **Neither reproduced it.**
+>
+> So the check sets the state instead: it removes the row underneath the client
+> and presses Ready Up. That is the position a returning player was in, and it
+> is deterministic where a race is not. Verified by deleting the repair: *"the
+> press reported success and did nothing"*.
+>
+> **The root cause of the stale seat is still not found.** What is fixed is that
+> the client no longer believes a write that wrote nothing — which is the
+> symptom that cost a game.
+>
+> **A ROAD TO IT WAS FOUND 2026-09-07** — a discarded Realtime UPDATE meant a
+> seat whose INSERT went missing could never be recovered, and in the lobby that
+> same branch also held `renderPlayers()` and the host/co-host detection for
+> yourself. See "a player whose arrival we missed". **Still not claimed as THE
+> cause**: nothing has reproduced the original report.
+>
+> ### The face opens the card, not the whole row
+>
+> Asked for in the same message: *"it should be from tapping the player icon not
+> the whole bar otherwise it is clunky."* A row-wide target on a row that also
+> holds a honk button and a status dot means every near-miss opens a sheet over
+> the lobby — and that sheet is a big one now.
+>
+> **It FALLS BACK to the row where there is no avatar to aim at.** The same
+> handler is attached on the reveal and the scoreboard, and a row without one
+> would otherwise stop opening the card at all. Three scenarios clicked the row
+> and now aim at the face; a check that reaches for a control by its old target
+> reports "gone" for one that merely moved.
+
+> ## 2026-09-05 — a sheet sized in the wrong viewport
+>
+> **Photographed on a real phone: the profile card ran off the bottom of the
+> screen with its buttons unreachable, and it was NOT the content.**
+>
+> `.modal-overlay` is `position: fixed; inset: 0`, which covers the **LAYOUT**
+> viewport — and on iOS Safari that extends underneath the address bar and the
+> toolbar. So a sheet centred in it is centred in a box taller than anything
+> you can see, and the bottom of it sits behind the chrome. `max-height: 88vh`
+> made it worse for the same reason: `vh` is the large viewport too.
+>
+> **`dvh` is the unit that shrinks with the browser chrome, and every `.screen`
+> in this app already uses it** — the overlay was the one place still on the old
+> unit. `bottom: auto; height: 100dvh` is what lets the height win over the
+> top/bottom pair.
+>
+> Measured after, with the card at its busiest (four role controls plus Add
+> Friend): **479px, fitting with no scrolling at 560px, 620px, 667px and on a
+> 390x640 phone.** 560 is an SE in Safari with both bars showing — the tightest
+> case this app can meet.
+>
+> **THE LESSON IS THE ONE THE KEYBOARD WORK ALREADY LEARNED**, one screen along:
+> a fixed element is positioned against a viewport the person cannot
+> necessarily see. That cost a question screen in August and a sheet in
+> September, and the tell is the same both times — it looks fine in every
+> desktop check, because a desktop browser has no chrome inside the viewport.
+>
+> ### "Best is Logic but Strongest is Science"
+>
+> Reported in the same message, and it was a contradiction I had shipped hours
+> earlier. The card printed **"Strongest: X" directly under a stat labelled
+> "Best"** — two names for nearly the same idea, computed differently:
+> `bestCat` takes the highest accuracy over `MIN_QUESTIONS_FOR_ACCURACY`;
+> `radarExtremes` takes the highest axis over 5 questions met. **Different
+> thresholds, so they can and did name different categories.**
+>
+> The caption is gone from the CARD. One number in one place: the stat says
+> which category, the chart shows the shape, and that is what a chart is for.
+> The profile PAGE keeps its caption — there is no competing stat beside it
+> there. It also took 19px off the sheet, which was the smaller of the two
+> reasons.
+
+> ## 2026-09-05 (third playtest) — the final round's clock was the host's guess
+>
+> **Reported: "the player could answer but host couldn't see the question till
+> after the timer, then it rerolled the difficulty, gave the same question, and
+> the player's prior answer was locked."** One cause found by reading, and it is
+> an ORDER.
+>
+> `handleRevealFinalQuestion` drew the question screen BEFORE it wrote the
+> phase. `showQuestionScreen` is where the host stamps the round clock, and
+> `op_start_clock` checks the phase it is given against the ROOM's — which was
+> still `final_wager`. **So the stamp was refused every single time**, the
+> client fell back to its own `Date.now() + serverTimeOffset` estimate, and
+> wrote that instead.
+>
+> **This is migration 047's fault arriving by a different road.** That one
+> passed the wrong phase NAME; this passed the right name at the wrong MOMENT,
+> and `op_start_clock` cannot tell those apart — both are "you are not where you
+> think you are". 047 exists because `op_submit_answer` compares the stamp
+> against the database's own `now()`: **a host whose estimate runs slow has
+> every answer in the room refused as late, and one whose estimate runs fast
+> stops the timer expiring at all.** On the one round that subtracts points.
+>
+> The phase write now comes first and the screen last. The cost is that the
+> host's final question waits on one ordinary phase write, which every other
+> round already does; the 2026-08-30 rule is about an UNBOUNDED call gating a
+> screen, and this is not one.
+>
+> ### INSPECTION-VERIFIED ONLY, and two break tests are what established that
+>
+> **`scenario-cohost` cannot reach this**, and both attempts to check it passed
+> with the fix reverted:
+>
+> | check | why it could not fail |
+> |---|---|
+> | the room has a stamp when the phase flips | it never does, either way — the phase and the stamp are two calls, and a brief gap is the harmless direction |
+> | how long the round goes with no clock | ~1s either way: refused, the client writes its own estimate a moment later |
+> | whether a CLIENT-estimated stamp was written | 0 either way — because the reveal in that scenario is won by the CO-HOST, and only the HOST stamps |
+>
+> That last one is the real reason: the co-host writes the phase, the host hears
+> it, and by the time the host's screen stamps, the room IS on `final_question`.
+> **The fault needs the host to be the presser**, which that section is not
+> written to produce. The assertions were deleted rather than kept — a check
+> that agrees with you whatever you do is worse than none — and the two
+> diagnostic notes stay, so the next run prints who stamped the clock.
+>
+> **Still open from that report**: the rerolled difficulty and the locked prior
+> answer are not explained by this, and are not fixed.
+
+> ## 2026-09-06 — a leftover row made a player invisible (migration 066)
+>
+> **APPLIED TO THE LIVE DATABASE 2026-09-06** — the owner ran the verification
+> query and it returned `ok`. That query reads the installed function's own
+> source for BOTH halves of the rule (the stale-question clause and the
+> `__WAGER_LOCKED__` clause), so a paste that stopped halfway would have
+> reported FAIL rather than passing quietly.
+>
+> **The cause behind "a player's answer kept saying waiting… even after the time
+> was up and answers revealed."** The display was made honest earlier the same
+> day; this is why that player had no row at all, and it costs a score rather
+> than a label.
+>
+> ### A fix made it, which is the part worth reading
+>
+> A room survives Play Again, and `deleteAnswersByRoom` is **host-gated** — so a
+> room that returns to the lobby without its host keeps the last game's answers.
+> `answersForCurrentGame` was written for exactly that: it refuses any row whose
+> `question_id` is not what the room is asking at that round number, which
+> stopped last game's points being counted again in this one.
+>
+> **That fixed the score and created something worse.** The leftover row still
+> occupies `(room_id, player_id, question_number)` — the key the blank fill
+> conflicts on — and the fill only ever converted a `__WAGER_LOCKED__`
+> placeholder. So the row was:
+>
+> | | |
+> |---|---|
+> | invisible to the client | `answersForCurrentGame` filters it out |
+> | unfillable by the server | the `ON CONFLICT ... WHERE` does not match it |
+>
+> The player therefore had **no answer for the round at all**: "Waiting…" for
+> ever, and a score of nothing. Belt and braces, and the braces strangled
+> somebody.
+>
+> ### Written as failing rules FIRST, against a real Postgres
+>
+> Four rules went into `tests/sql/game-rules.sql` before a line of the migration
+> existed. **Three failed** — the leftover row is skipped, its points survive
+> into the new game, and it still names the old question. The fourth, *"a real
+> answer to THIS round is still never overwritten"*, passed, which is what proved
+> the protective half was intact and the rules were not simply too broad.
+>
+> With 066 applied: **all 207 hold.** That order matters — a rule written after
+> the fix is a rule that has never been seen to fail.
+>
+> ### What 066 does and, more importantly, does not
+>
+> The fill now also converts a row naming a DIFFERENT question from the one this
+> round is asking. Such a row belongs to a game that no longer exists, the client
+> has already decided it is not an answer, and overwriting it is the only way
+> that player gets a row for THIS round.
+>
+> **Three things it deliberately leaves alone:**
+>
+> - **A real answer to this round** — the question_id matches, the WHERE misses
+>   it. That is the race that once destroyed answers people had typed.
+> - **A row with a NULL question_id.** The client KEEPS those, because it cannot
+>   tell which game they belong to and dropping a real answer costs somebody
+>   their score. They are visible, so overwriting them would destroy something
+>   on screen. `IS NOT NULL` is what separates "stale" from "cannot tell", which
+>   is this project's oldest rule wearing another hat.
+> - **The `__WAGER_LOCKED__` rule**, unchanged and still needed: that row names
+>   the right question and still is not an answer.
+>
+> The fake store mirrors all three, so the harness cannot go on allowing what the
+> live database now refuses.
+>
+> ### The habit
+>
+> **After a fix that makes the client IGNORE something, ask what still holds the
+> space it used to occupy.** Filtering a row out of a view does not remove it
+> from a unique key, and the second half of that sentence is where this lived for
+> as long as Play Again has existed.
+
+> ## 2026-09-06 — the bot has a chart, and it is a circle on purpose
+>
+> **SUPERSEDED IN PART ON 2026-09-15 — read this whole entry as history.** It
+> argued that a bot's data can never accumulate, and the owner overruled it:
+> *"How many times do i have to say i want the bot's results recorded????"*
+> Migration 072 gives the bot its own table and its chart draws from what it
+> ACTUALLY did as soon as that migration is applied, falling back to the stated
+> skill below until then. What survives unchanged is the narrower rule, which
+> the owner has also stated separately: **nothing a bot does reaches
+> `question_stats` or `answer_tally`**, so its coin flips never shape a
+> question's difficulty band or its answer key. See "Favourite Answers, and what
+> a clap is allowed to mean".
+>
+> **Asked for by the owner: "give the bot its own proficiency chart… later when
+> I have more bots they'll show the differences."** Built, and one premise in the
+> request had to be corrected first rather than quietly worked around.
+>
+> ### A bot's data does not accumulate, and never will — WRONG, see above
+>
+> The owner expected the chart to fill in as the bot played. It cannot. **A bot
+> row carries no `user_id`** — `addBot` does not write one — and the owner's own
+> rule is that nothing a bot does is recorded, which is what keeps its coin flips
+> out of `question_stats` and `answer_tally`, the evidence used to decide whether
+> a question has a bad answer key.
+>
+> So a chart built to wait for data would have been permanently blank, and the
+> owner would have had no way to tell that from a bug. **Saying so was worth more
+> than shipping it.**
+>
+> ### It draws from the bot's SKILL instead
+>
+> `botSkillFor(category, accuracy, strengths)` in `bot-logic.js` — no imports,
+> unit tested, and the single place that answers "how good is this bot at this
+> subject". Today `strengths` is null and every category returns `BOT_ACCURACY`,
+> so the card draws an even twelve-sided shape.
+>
+> **THE EVENNESS IS THE POINT, not a placeholder.** It is what a bot with one
+> flat accuracy honestly looks like, and rendering it now is what proves the
+> whole path works before there is anything interesting to show. The day bots
+> gain per-category strengths, this function reads them and the shape changes
+> with nothing rewired — which is exactly what was asked for.
+>
+> **NOTHING IN IT IS INVENTED.** `BOT_ACCURACY` is the number the bot actually
+> plays by. `docs/BOTS.md` marks the per-category table as the owner's to write,
+> and two drafts of model-invented bot numbers have already been deleted at their
+> instruction. `strengths` is the seam that makes adding them a DATA change.
+>
+> ### A bot holds no rank
+>
+> The card defaulted to "Novice", which is the bottom rung of a ladder players
+> climb by answering questions — and a bot's answers are recorded nowhere, so it
+> could never leave it. It reads as a player who has never played. The title line
+> is omitted entirely for a bot, the same call the lobby row already makes in
+> saying "Guest" rather than "Novice" for somebody not on the ladder at all.
+>
+> `lobby-bot-card` is a mock state, so this is measured rather than assumed.
+
+> ## 2026-09-06 — a row that waited forever, and two things a photograph found
+>
+> ### "Waiting…" outlived the reveal
+>
+> **Reported: "a player's answer kept saying waiting… even after the time was up
+> and answers revealed. Shouldn't it at the very least say no answer?"** Yes, and
+> the rule was already written down — it was applied to two cases out of three.
+>
+> ```js
+> const stillWaiting = !answer
+>   || ((isPlaceholder || isEmptyRow) && !state.resultsRevealed);
+> ```
+>
+> A placeholder row and an empty row both stop waiting once the answers are
+> revealed. **`!answer` never did.** So a player with no row at all sat on
+> "Waiting…" through the reveal, the verdicts and the scoreboard.
+>
+> The guess itself is right and stays: before the reveal a real answer may still
+> be in flight behind the blank fill, and WAITING is the reading that never shows
+> somebody a verdict on an answer they did send. **Afterwards there is nothing
+> left to be in flight**, so no row means exactly what an empty row means.
+>
+> **Every read of `answer` in that branch is optional now.** It could only be
+> reached WITH a row before; it is reached without one now, and an unguarded
+> `answer.id` would throw and take the whole reveal screen down — trading a stuck
+> label for a blank screen. The host's correct/incorrect toggle is suppressed
+> too: a control bound to an id that does not exist is the dead button this
+> project keeps finding.
+>
+> **WHY that player had no row is NOT established.** The display is now honest
+> whatever the cause; that is a smaller claim than "fixed" and it is the true one.
+>
+> ### The crowns were two pixels apart, and a photograph is what caught it
+>
+> The lobby's role column is aligned — measured at 375px, `left: 268` on every
+> single row. **The crowns inside it were not.** The host's renders 24px in a
+> 21px cell, so it overflowed and started a pixel LEFT of the column; the
+> co-host's 20px crown sat a pixel right. Two pixels, which the emoji font
+> exaggerates on a real device into something clearly visible in a photo.
+>
+> The cell is 1.6rem now and both crowns are centred in it — measured, both on
+> 276. **The size difference stays**: it is half of what tells a host from a
+> co-host without relying on colour, which a colour-blind player cannot use. The
+> cell absorbs the difference rather than the row.
+>
+> ### The settings sheet had no mock, and shipped two faults because of it
+>
+> Photographed: **"Animals" rendered as "Ani…"** with two thirds of the sheet
+> empty beside it, and the sheet cut mid-section with the lobby's gold Start Game
+> button showing through the scrim right under the cut.
+>
+> - `#settings-category-grid` carries `.category-grid`, which is **two columns of
+>   category CARDS**, and it holds exactly one `.category-sheet-row`. The row got
+>   half the sheet and ellipsised at three characters. It also inherited a 200px
+>   scroll box for a single 44px row. `display: block` is the whole fix.
+> - **Six groups at `--space-xl` apart is more gap than content.** The sheet was
+>   mostly air, and the air is what pushed Auto-Proceed and Done off the bottom.
+>   `--space-md` between groups and 92dvh instead of 85 fits the whole thing on a
+>   375x812 phone with the Done button visible.
+>
+> **`lobby-settings` is a mock state now.** Nothing had ever rendered this sheet —
+> the fourth time this file records "a page with no mock is a page nobody is
+> checking", and the second time the consequence was text truncated to nothing.
+>
+> ### The habit, again
+>
+> Three faults, and the measurements were clean for all three. The role column
+> was aligned. The sheet was inside its max-height. The reveal threw no error.
+> **Every one was found by a person looking at a screen**, which is what this
+> file has asked for since it was written.
+
+> ## 2026-09-06 (later) — three conditions, two branches, and a screen that never moved
+>
+> **The fourth report of the same bug, and the first one I could reproduce
+> exactly:** *"Selected the difficulty. Immediately after it didn't move me
+> (host) to another page. The other player was able to advance."*
+>
+> **The fix earlier the same day was real and was not this.** That one was about
+> the presser's screen queueing behind two network writes, measured and
+> break-tested. It shipped, and the bug survived it — which is the useful fact,
+> because it meant a SECOND cause, not a bad fix.
+>
+> ### The hole, stated exactly
+>
+> `showQuestionScreen` switched screens like this:
+>
+> ```js
+> if (currentScreen && currentScreen !== questionScreen && !_screenTransitioning) {
+>   …fade…
+> } else if (!currentScreen || currentScreen === questionScreen) {
+>   …show…
+> }
+> ```
+>
+> **Three conditions, two branches.** A screen is active, it is not the target,
+> and a transition is already in flight — that case falls through BOTH arms and
+> the screen simply does not change. And nothing stops: the rest of the function
+> reveals the question card, starts the timer, stamps the round clock and lets
+> the room advance. **Everything works except the one thing the player can see.**
+>
+> `showFinalWagerScreen` had the same shape and worse — no `else` at all — so a
+> transition in flight meant the final-wager screen never appeared either.
+>
+> **The other four screen switches in `js/game/` are fine**, and the difference
+> is the tell: they have two conditions and two branches. The hole exists in
+> exactly the two places that added the `_screenTransitioning` guard. *A guard
+> added to N places introduced the same unhandled case in all N.*
+>
+> ### Reproduced, by setting the state rather than racing for it
+>
+> `scenario-finalq --lag=0 --stuck` sets `_screenTransitioning` through the app's
+> own setter and has the host press Reveal. Before the fix:
+>
+> ```
+> Alice could answer the final question NEVER
+> Bob   could answer the final question 6547ms after the press
+> room asks "Test question 39?" — and everybody agrees
+> ```
+>
+> The room moved, took a clock, and agreed on the question. Only the host's
+> screen stayed put. That is the report word for word.
+>
+> **SET, NOT RACED, deliberately.** Reaching this by playing needs a fade and a
+> phase change inside the same ~250ms, which is luck rather than a check, and a
+> flaky check is one people learn to re-run.
+>
+> ### The fix: a transition in flight is a reason to CUT, never to stay
+>
+> `showScreen(targetEl)` in `js/game/state.js`, beside the flag it reads. It
+> fades when it can and hard-cuts when it cannot, and it can never do nothing.
+> Both call sites go through it.
+>
+> The guard itself is kept — two fades fighting over one pair of screens is a
+> real fault. What was wrong was the answer to "I cannot fade right now":
+> arriving instantly is a visual compromise, staying behind is a broken game.
+>
+> **One function, because this rule was written out twice and followed zero
+> times** — the shape this file records more than any other, arriving with both
+> copies wrong rather than N-1.
+>
+> ### What is NOT established
+>
+> **What set `_screenTransitioning` in the owner's game is unknown**, and this
+> file is not going to guess. The class of fault is removed whatever the trigger
+> was; that is a weaker claim than "the cause is found" and it is the true one.
+> If a screen ever fails to move again, this is no longer a candidate.
+
+> ## 2026-09-06 — the admin page is a workbench, and workbenches are not phones
+>
+> **The owner's call, and the reasoning is theirs:** *"the admin page, which has
+> a lot of data and technical fixes etc. and may even be expanded in the future,
+> should be made primarily for desktop interaction… at this point managing all
+> that from mobile is impractical."*
+>
+> **The strongest argument for it is not "more room".** The Title Words panel
+> holds about 130 slots and ~86 of them are empty — the single biggest piece of
+> outstanding work in this project, and it has not happened because typing
+> eighty-six things into a 375px phone is miserable. Desktop is not cosmetic
+> here; it unblocks the job.
+>
+> ### What was built
+>
+> | | |
+> |---|---|
+> | the shell | a fixed sidebar of the ten sections and one work area beside it, at `min-width: 900px` |
+> | the phone | keeps the EMERGENCY half — flagged questions, flagged hosts, recent games, error logs, announcement, feature flags — and says where the rest went |
+> | desktop-only | question bank, question health, chat archive, title words: `data-desktop-only`, hidden below the breakpoint rather than offered and miserable |
+>
+> **The accordion was already the right shape for a sidebar** — one panel open at
+> a time, keyed on `data-panel`, with every lookup in `js/admin.js` by attribute
+> or id and never by position. So the shell REPARENTS the existing heads into a
+> nav and the bodies into a work area, and not one handler had to change. Two
+> copies of the head markup would have meant two count chips to keep in step,
+> which is this file's most repeated fault wearing a new hat.
+>
+> ### `js/admin-shell.js` is a classic script with no imports, deliberately
+>
+> Every module in this app pulls the Supabase client from esm.sh, so `js/admin.js`
+> **never runs under the layout sweep or the screenshot tool** — which is why
+> every admin mock builds the page by hand. A mock that rebuilds a LAYOUT is a
+> mock that drifts away from it, and CLAUDE.md records that shipping three times.
+>
+> So the transform lives in a plain script that always executes, and
+> `scripts/mock-states.js` calls `window.buildAdminShell()` — the same function
+> the page calls. One implementation, so the preview cannot disagree with what
+> ships.
+>
+> ### A mock may now declare its own widths
+>
+> `STATES[name].widths` — and `admin-title-words`, `admin-question-edit` and
+> `admin-answer-review` declare `[1280]`. Without it the sweep would measure a
+> desktop layout at 375px: reporting faults nobody can see, and **going green
+> about a layout it never looked at**, which is the shape #6 catalogues.
+>
+> Two guards, because the feature is worthless if it silently does not apply:
+> the sweep **exits 2** if a state declares widths and would be measured at the
+> defaults anyway, and the report **prints the override** (`admin-title-words @
+> 1280px`) rather than the header's defaults. Verified by forcing `widthsFor` to
+> ignore declarations — it names the state and refuses to run.
+>
+> ### Three faults, and all three came from reading the screenshot
+>
+> This project's own rule, earning its keep three times in one sitting:
+>
+> - **The sidebar truncated the NAMES and not the counts** — "Question B…",
+>   "Flagged Q…" and, worst, "Q…" for Question Health, because the count chip
+>   ("3 ratings, 0 played") was taking the width. That is backwards: the count is
+>   information, the name is how you get anywhere. The chip yields now.
+> - **The requirement column was EIGHT PIXELS wide**, rendering "10 right in the
+>   whole subject" as "1". A title-word row varies — a word defined in code has
+>   no boxes, an empty slot has no Remove button — so the row had three, four or
+>   five children and any attempt to line up columns put a different thing in
+>   each. `.tw-slot__edit` wraps the variable part, so the row is always exactly
+>   four cells.
+> - **THE ROOT FONT-SIZE IN THIS APP IS 20px, NOT 16.** I wrote `minmax(0, 26rem)`
+>   meaning "about 416px", got 520, and blamed flex min-content sizing in a code
+>   comment. Measuring the computed track said otherwise. **Any `rem` written
+>   here off the browser default is a quarter too big** — and a wrong explanation
+>   left in a comment is worse than no comment, so that one was corrected rather
+>   than left standing.
+>
+> ### The conversion found a live bug, which is the point of converting carefully
+>
+> `scenario-admin` reported *"the save happened at 0px"*. The Title Words panel
+> restores the reader's scroll position after a save — thousands of pixels of
+> panel, redrawn on every one of the ~86 words — and it found the scroller by
+> naming `.screen--scrollable`. **On the desktop shell that element does not
+> scroll; `.admin-work` does.** So the feature written for exactly this job would
+> have been silently dead on the layout built for it. `twScroller()` asks which
+> ancestor is actually scrolling instead of naming one.
+>
+> That is the pattern this file records more than any other, arriving on
+> schedule: *a guard written for the old world is quietly wrong in the new one.*
+>
+> ### The robot drives it on a computer now
+>
+> `table.seat(name, { desktop: true })` gives one robot a 1280x900 non-touch
+> viewport. **It is for this page and should stay that way** — every other screen
+> is mobile-only and a desktop robot would be driving a layout nobody is served.
+>
+> `scenario-admin` checks BOTH halves, because either alone cannot fail:
+> asserting only that the heavy panels are absent from a phone passes on a build
+> where nothing opens at all, and asserting only that the light ones work passes
+> on the old page. Verified by breaking each — un-hiding one panel names it, and
+> hiding every panel names all five that must stay.
+>
+> ### Still to do, and it is the second pass
+>
+> The other seven panels move into the work area as they are, and each will want
+> its own desktop treatment — the question bank most of all, since it is the
+> other job a phone cannot do. **One panel at a time**: a rebuild nobody can use
+> until the end is a rebuild nobody can test, and doing Title Words first means
+> the owner can start writing this week.
+
+> ## 2026-09-06 — Question Health, third panel of the desktop pass
+>
+> **The panel whose whole job is deciding which answer keys need a human, and
+> nothing had ever rendered it.** Fifth time this file records *a page with no
+> mock is a page nobody is checking* — so the mock came first, and the faults
+> were visible the moment it did.
+>
+> | | before | after |
+> |---|---|---|
+> | sort, direction, search | **three controls stacked one above another**, each the width of the work area, text CENTRED | one row, 900px |
+> | the alternates box | 1450px, holding two words | capped at 780px |
+> | the answer tally | its count a thousand pixels from the answer it counts | capped with it |
+>
+> **The controls carried their widths inline again** (`style="flex:1;
+> min-width:150px"`), and inline beats a stylesheet whatever its specificity —
+> the same thing that blocked the Question Bank. Moved to CSS at the same values,
+> so the phone is unchanged and the desktop rule can win.
+>
+> **`.input` CENTRES its text**, which is right for a four-letter room code and
+> wrong for a menu you read down a list of. That is measured rather than judged:
+> the check counts controls whose computed `text-align` is `center`.
+>
+> **It deliberately shares the Question Bank's shape.** Two data panels on one
+> page that read differently is a page you re-learn every time you switch.
+>
+> `scenario-admin` measures it with a row OPEN, since the cap is about the
+> editor. Verified by removing the block: three failures by name — three lines,
+> three centred controls, and an editor filling its whole panel.
+>
+> `admin-question-health` renders one row OPEN on purpose: the answer tally is
+> the reason this panel exists and only appears when a row is opened, so a
+> closed list would review markup that never shows the thing it is for.
+>
+> ## 2026-09-06 — "Waiting…" outlived the reveal, and there were TWO of them
+>
+> **The finding `scenario-badnetwork` left open, reproduced at ZERO LAG on
+> untouched code — so it was never about a bad connection.** It is the owner's
+> oldest surviving report: *"a player's answer kept saying waiting… even after
+> the time was up and answers revealed."* The September fix made the display
+> honest for a player with NO ROW. This is the case where they had a row.
+>
+> ### One flag was answering two questions
+>
+> `state.resultsRevealed` means both:
+>
+> | | |
+> |---|---|
+> | **has the round closed?** | → nobody is still waiting |
+> | **paint the colours now?** | → no, hold one frame so the CSS transition fires |
+>
+> `doReveal` needed OPPOSITE answers to those at the same moment, and resolved
+> it by rendering BEFORE flipping the flag — which gets the second right and the
+> first wrong. So the reveal's own render drew every row without a real answer
+> as "Waiting…", and nothing re-rendered afterwards. **The
+> `requestAnimationFrame` cannot rescue it**: it adds a colour class to a row,
+> and a waiting row has no answer in it to colour.
+>
+> **INVISIBLE ON EVERY ROUND BUT THE LAST.** A regular round blank-fills its
+> non-submitters into real (empty) rows first, so they read "No answer". On the
+> FINAL round every player holds a `__WAGER_LOCKED__` placeholder from the
+> moment they lock a wager, and `handleRevealResults` deliberately uses
+> `ON CONFLICT DO NOTHING` so those placeholders SURVIVE — that is the guard
+> that stops a host revealing early from turning somebody's 20 into a blank. So
+> every row in the room was a placeholder and every row said "Waiting…".
+>
+> `holdColours` splits the two meanings. The flag moves above the render;
+> `stillWaiting` reads the flag, the colours read the option. Break-tested:
+> reverted, `scenario-badnetwork --lag=0` reports *"Alice showed 3 rows reading
+> Waiting… for over 3s after the reveal"* and exits 1.
+>
+> ### THE FIRST FIX WAS NOT THE WHOLE BUG, and the new check is what said so
+>
+> With only the reorder shipped, `scenario-fullgame` reported it again on **Bob,
+> a non-host** — and a second run at the same commit did NOT. **Intermittent,
+> which is a real failure with a timing condition attached**, and the condition
+> is whether the auto-submit gets refused.
+>
+> `doSubmitAnswer` has THREE early returns — already submitted, no question
+> loaded, the write failed — and every one of them skips the
+> `_showRevealScreen()` at its bottom. **That was the phase handler's only route
+> to the reveal screen.** On the final round the commonest auto-submit is an
+> empty string from a player already holding a placeholder row: the server
+> refuses it as late, and the fallback upsert cannot write either because 049
+> revoked UPDATE on `answers`.
+>
+> **THAT REFUSAL IS THE SYSTEM WORKING** — this file has a whole section saying
+> so. What was wrong is that it also silently cancelled the reveal, leaving
+> `resultsRevealed` true over rows drawn while it was false.
+>
+> `thenShowReveal: false` lets a caller own the screen, and both phase handlers
+> (`reveal` and `answer_reveal`) now paint unconditionally. **Whether this
+> phone's answer landed and whether the room has revealed are two different
+> facts**, and the screen follows the room.
+>
+> ### The check, and what it honestly is
+>
+> `scenario-fullgame` samples EVERY phone on EVERY reveal and fails if any row
+> reads "Waiting…" while `resultsRevealed` is true. It is deterministic for the
+> ordering bug and **PROBABILISTIC for the refused-submit one** — it caught that
+> in one run of two. Said plainly rather than dressed up, the same call the
+> third blank-fill site got. A deterministic version needs the refusal driven
+> directly, and this file records what a new synthetic section in
+> `scenario-feedback` cost last time: three checks broken three sections away.
+>
+> It also caught something for free: in the failing run Bob was offered no host
+> rating at all (`row:false`), because the stuck reveal suppressed it. A screen
+> that will not repaint takes every control on it down too.
+>
+> ### The 1500ms stall has not recurred, and that is a weaker claim than fixed
+>
+> The OTHER finding `scenario-badnetwork` left open — *"passes 1 run in 2; the
+> other stalls at the FINAL scoreboard"* — was measured again after these fixes:
+> **five consecutive clean runs at `--lag=1500`.**
+>
+> That is real evidence. A failure reproducible at roughly one in two does not
+> go five for five by chance. **It is not proof and must not be written up as
+> one:** five runs cannot separate *fixed* from *made much rarer*, and NOBODY
+> ROOT-CAUSED IT. If it recurs, this entry is where to start, not a reason to
+> doubt the report.
+>
+> **The plausible link, offered as a lead rather than an explanation:** the bug
+> above left a screen that would not repaint, and a screen that will not repaint
+> takes every control on it down with it — which is one way a room stops
+> advancing. The same run that showed the stuck reveal also showed a non-host
+> being offered no host rating at all. That is a mechanism worth checking if
+> somebody ever goes looking for the cause; it is not a measurement.
+>
+> **`scenario-badnetwork` is STILL NOT IN CI.** One of its two open findings is
+> fixed and the other is only quiet. A check that fails for reasons nobody has
+> explained is one people learn to re-run, and this file records that costing
+> weeks. Wire it in after it has been quiet across a few more sessions.
+>
+> ### The habit
+>
+> **When one variable answers two questions, find the caller that needs opposite
+> answers to them.** That caller will have resolved it with an ordering, and the
+> ordering will be right for one question and silently wrong for the other.
+
+> ## 2026-09-09 (third playtest) — the timer that was deleted, and the round that ended before it began
+>
+> **Nine things reported after one game, two of them photographed.** Three are
+> one family — the round's clock — and the photograph of question 13 turned out
+> to be the plainest bug in this file: a line that deleted the timer out of the
+> DOM and never put it back.
+>
+> ### "The timer was not working and said timer is up"
+>
+> Photographed on **question 13 of 15**: the words "Time's up!" standing at the
+> top of a fresh question screen, above an empty answer box and a full wager
+> grid. One line, in the `reveal` branch of `handlePhaseTransition`:
+>
+> ```js
+> const timerEl = document.querySelector('.timer');
+> if (timerEl) { timerEl.textContent = "Time's up!"; ... }
+> ```
+>
+> **`.timer` IS THE WRAPPER.** It holds `#timer-bar` and `#timer-text`, and
+> `textContent` on a parent deletes its children. So the first time this phone
+> reached a reveal without having submitted, both were destroyed — permanently,
+> because nothing anywhere recreates them. `updateTimerDisplay` looks them up by
+> id, finds null, and quietly does nothing, so **every later round drew a
+> question screen with no countdown at all** and the leftover words where it
+> should have been.
+>
+> The stylesheet has always said what was meant: `.timer--expired .timer__text`
+> exists and colours the NUMBER red. Only the text was ever supposed to change.
+> `showTimerExpired()` in `question.js` does that, and `showQuestionScreen`
+> clears it for a new round — nothing else did, and the sync buffer means the
+> first real paint is a second away.
+>
+> **`scenario-fullgame` could not see it and still cannot.** Everybody there
+> submits, so nobody takes the branch. The check that fails is in
+> `scenario-nasty`, which is the only place in the repo that deliberately closes
+> a round under somebody who has not answered: it then moves the room to the
+> next question and requires the timer to still be a timer. Verified by putting
+> the old line back.
+>
+> ### "Only seconds in it advanced us without allowing us to type"
+>
+> Photographed: the reveal screen on question 9 of 15 with every human reading
+> "Waiting…". `op_advance_deadline` (056) is
+> `question_started_at + question_timer + 8s`, so **a room that announces round
+> N+1 while still holding round N's stamp has a deadline already in the past**,
+> and the first phone whose backstop polls ends the round on the spot.
+>
+> Two roads to that state, and both are closed:
+>
+> - **The clock clear was FIRE-AND-FORGET and raced the phase write.**
+>   `handleNextQuestion` issued `question_started_at: null` and then wrote the
+>   phase, on two separate requests with no ordering between them. It is awaited
+>   now (bounded, and hung off `state._roomWritePending` so the host's own stamp
+>   still waits for it), and **migration 069 makes `op_set_phase` clear the stamp
+>   in the same statement as the phase**, which closes the window rather than
+>   narrowing it. Only on entry to a DIFFERENT round — re-announcing the round
+>   the room is on must not wipe a clock that is legitimately running.
+> - **`syncToCurrentState` adopted the room's stamp unconditionally** and then
+>   set `state.gamePhase = 'loading'` so the phase router would KEEP it. On a
+>   stale value that is catastrophic: `showQuestionScreen` reads a non-null stamp
+>   as a reconnect, starts the timer at once, and an expired clock fires inside
+>   half a second — on the host, that writes `reveal` for the whole room.
+>   `shouldAdoptRoomClock` in `timer-helpers.js` refuses a stamp that has already
+>   run out **while the room is still asking a question**, which is a
+>   contradiction rather than a guess: if the round were really over the room
+>   would not still be on it.
+>
+> ### "Question 2 was skipped entirely" — and it needs only one person
+>
+> The owner's reading was the right one: *"I'm confused why two people pressing
+> next at the same time would skip a question? Shouldn't it just proceed
+> normally? So that's a bug right?"* Yes.
+>
+> `handleNextQuestion` reads `state.currentQuestion`, adds one, and writes that.
+> **Nothing latched the function and nothing disabled the button**, and the
+> scores screen stays up for the ~500ms screen fade — so a second tap read the
+> number the first tap had ALREADY INCREMENTED and announced **N+2**. No
+> question on any screen, no answer row for anybody, and one wager left unspent
+> for the rest of the game. Two people are not required; a double-tap does it.
+>
+> Three guards, because they catch different things:
+>
+> | | |
+> |---|---|
+> | `state._advanceInFlight` | a second call while the first is still writing |
+> | `state._advancedFrom` | a later one, after it finished |
+> | migration 069 | `op_set_phase` refuses a question number more than one past the room's — the case neither client guard can see, two different phones |
+>
+> The button also disables itself on press and comes back in a `finally`, which
+> is the half a person can see. **A control that stays dead is worse than one
+> that is slow**, and the screen has moved on by the time it is restored.
+>
+> **THE CO-HOST KEEPS ITS POWERS**, on the owner's decision. The fix is that
+> advancing twice is impossible, not that fewer people may advance.
+>
+> ### "Room scores were not updated"
+>
+> Two faults, and the second is the one that made the first invisible.
+>
+> - **`addRoomScores` was a bare `.update()` whose result was thrown away**, so a
+>   refusal, a vanished room and a successful write were the same silence. #4 in
+>   the one place a group's running tally lives. It `.select()`s now and says so
+>   in the log when it wrote nothing.
+> - **It sat below four awaits that can each throw** — `archiveChatMessages`,
+>   `fetchAllAnswers` and two more inside the signed-in branch — so any one of
+>   them failing took the tally with it, having already drawn the results. It
+>   runs directly after `updateScores()` now: the first moment the numbers exist
+>   and the last moment nothing can have gone wrong.
+>
+> **And a room with NO HOST AT ALL wrote nothing and said nothing.** The write is
+> host-gated so a shared total is not multiplied by the number of phones — but a
+> host can be swept mid-game without the crown moving, and then nobody wrote it.
+> The earliest-joined present human is the fallback: a rule every phone computes
+> the same way from the same list, so exactly one takes it. Two phones can only
+> both write if they disagree about whether a host exists, and a doubled line is
+> the right way round from a tally that silently never appears.
+>
+> ### "Couldn't be promoted to host"
+>
+> **A regression from the previous session's own fix.** `handlePlayerChange` used
+> to end in `ensureCurrentPlayer()`, which read the role off the row; replacing
+> that with `checkSeatStillMine()` left the Realtime UPDATE handler as the ONLY
+> thing that could notice a promotion. A dropped frame, a backgrounded tab or a
+> channel mid-resubscribe — all of which this file has a section about — and the
+> 8-second poll drew the new crown on somebody's row while leaving the person it
+> belonged to reading as an ordinary player.
+>
+> `syncRoleFromRow` is the one rule now, and both the poll and the Realtime
+> handler go through it. **The same gap existed one page along**:
+> `checkStalePresence` in `phases.js` re-fetches every player every 30 seconds
+> and never looked at its own row either. It does now.
+>
+> ### The kick notice said the wrong thing
+>
+> *"I thought I saw the eject notification but when I clicked rejoin it said I
+> was kicked."* An eject, a kick and a stale sweep all look identical from
+> outside — a seat that is gone — and only the middle one is permanent. The
+> notice guessed the recoverable one and offered Rejoin to everybody.
+>
+> Guessing was never necessary: `op_is_banned` is callable by clients for exactly
+> this, and `addPlayer` has asked it on a refusal since 065. The notice asks the
+> same question one step earlier, before anything reaches the screen, bounded by
+> `REMOVAL_REASON_TIMEOUT_MS`. **A timeout lands on the recoverable wording**,
+> whose Rejoin is refused with an honest message anyway.
+>
+> ### A long URL made the whole chat draggable sideways
+>
+> A URL has no spaces, so its min-content width is the whole string — and
+> `.chat-bubble__text` is `flex: 1` with the default `min-width: auto`, which
+> cannot go below that. The pane has `overflow-y: auto`, and per CSS that
+> computes `overflow-x: auto` too, so the overflow became a horizontal scroll.
+>
+> `overflow-wrap: anywhere` is the one that fixes the SIZING as well as the
+> painting: unlike `break-word` it lowers the element's min-content width, so the
+> flex item can shrink and there is nothing left to scroll to.
+>
+> **THE FIRST BREAK TEST PASSED AND THE MOCK WAS THE PROBLEM.** The URL I seeded
+> had hyphens and slashes in it, and Chromium breaks a URL at both — so it
+> wrapped by itself and the check agreed with me whatever the CSS said. With one
+> unbroken run of letters and digits, reverting the rule reports it exactly as
+> the owner described it: `SCROLLS-X div.lobby-chat__messages scrollW=564
+> clientW=327 overflow-x=auto`.
+>
+> ### A disqualification can be undone (migration 070)
+>
+> Asked for: *"need to be able to un disqualify round if done by accident."*
+> Disqualifying is one unconfirmed tap, it sets every answer in the round to
+> wrong and worth nothing, and there was no way back from it on any screen — the
+> button read "Round Disqualified" and disabled itself.
+>
+> **It is possible only because 049 refused to touch `auto_correct`.** That
+> column holds the machine's verdict at submit time, kept so the gap between it
+> and `is_correct` can be read as `times_overridden`; it is also the only copy of
+> the original verdict that survives a disqualification. The score is recomputed
+> from the wager by op_set_judgement's own rule rather than remembered, because a
+> stored "score before" would be a second copy of that rule.
+>
+> **WHAT IT DOES NOT RESTORE, said plainly:** a host override made BEFORE the
+> disqualification. That verdict was overwritten and only the machine's survived,
+> so undoing puts the machine's back and the host flips it again from the same
+> screen. Storing a third copy of the verdict to cover one rare sequence would be
+> wrong every other time an answer is edited.
+>
+> `history_recorded` is cleared by the same statement, which is the exact mirror
+> of the revoke that disqualifying performs — without it the marker would still
+> read "already counted" and the attempt would stay revoked for ever.
+>
+> ### NOT BUILT: a favourite-answer vote
+>
+> Raised in the same message and explicitly as a discussion first: *"was
+> wondering if there should be an optional Favorite answer vote? But this would
+> have to be thought thru well with discussion first."* Nothing was built. The
+> thing worth deciding before anything is: a vote on somebody's typed answer is
+> the first mechanic in this game that is about a PERSON rather than a question,
+> and every other tally here (`question_stats`, `answer_tally`, host ratings) is
+> deliberately about the material or the role.
+>
+> ### "It kept accumulating" — a whole sitting, measured
+>
+> **The owner's answer to the one question worth asking was the useful part:**
+> one room the whole evening, Play Again between games, and *"I feel like it
+> kept accumulating."* Every scenario in this repo plays ONE game;
+> `scenario-playagain` plays two. **A fault that grows a little each game is
+> invisible at one or two**, which is why nothing here had ever seen it.
+>
+> `tests/harness/scenario-sitting.mjs` plays N games in one room and takes a
+> census after every one: answers left over from a finished game, seats, rounds
+> actually answered, `used_question_ids`, Realtime channels per phone, and
+> console errors **per game rather than in total** — a total can only rise, so a
+> rising total says nothing; a rising RATE is the accumulation.
+>
+> **A HEALTHY SITTING IS CLEAN, and that is a real result rather than a null
+> one.** Four games: answers 18 → 18 → 18 → 18, seats 3 → 3 → 3 → 3, rounds
+> 6 → 6 → 6 → 6, channels flat, no errors. Nothing leaks on its own, so whatever
+> the owner saw needed a condition — which is this file's own rule arriving
+> again: *a scenario that plays a healthy game proves nothing about a sick one.*
+>
+> ### The condition was one phone on a real connection
+>
+> `--lag=800 --on=Bob` for the WHOLE sitting — `scenario-badnetwork` does that
+> for a single game and nothing had ever carried it across Play Again. Four
+> games, and **game three inherited an answer from game two.**
+>
+> Play Again clears the room's answers; a write that was **still in flight when
+> it ran lands after the delete and survives**. On a real phone that is an
+> ordinary straggler — a final-round auto-submit or a locked wager, one round
+> trip late. What it leaves is the worst possible row:
+>
+> | | |
+> |---|---|
+> | invisible on every screen | `answersForCurrentGame` filters out a row naming a finished game |
+> | still occupying `(room, player, round)` | which is the key the next game's blank fill conflicts on |
+>
+> So that player has **no answer at all** for that round — "Waiting…" through the
+> reveal and a score of nothing. That is migration 066's exact subject, and
+> **066 is the weakest applied-claim in this file**: the owner says they ran it,
+> and no verification rows were ever pasted. Its protection cannot be assumed.
+>
+> ### The fix clears at the START of a game, not only at the end of one
+>
+> `handleStartGame` already empties `question_ids` and both clocks; it clears
+> the answers now too, in the same `Promise.all`, so it costs no extra round
+> trip. **A late write can land after a game finishes. It cannot land after the
+> next one is announced**, because that is a lobby and several seconds later.
+> Play Again's clear-out stays — this is the belt and that is the braces.
+>
+> **SET, NOT RACED, for the check.** The lag run reproduced it once in four
+> games, which is a real failure with a timing condition attached and a check
+> nobody would trust. `--straggler` writes exactly what a late phone leaves,
+> after Play Again, and the assertion is taken at the **START** of the next game
+> — the only moment it is visible, because 066's blank fill converts the row as
+> soon as a round runs and the end-of-game census can no longer see what the
+> beginning inherited. Break-tested: without the clear, *"game 2 STARTED holding
+> 1 answer(s) from a finished game"*, and game 3 as well.
+>
+> ### AND THE ROW IT CAUGHT WAS NOT A STRAGGLER AT ALL
+>
+> The first fix was right and was not the whole thing. Two more runs kept
+> reporting a leftover, and the check had been taught to NAME the row rather
+> than count it — because "an answer naming a question the room is not asking"
+> has two very different causes and the count cannot tell them apart:
+>
+> ```
+> game 3 left behind: Bob round 5 names q51 (answer "__WAGER_LOCKED", room is asking q20)
+> game 4 left behind: Bob round 5 names q45 (answer "__WAGER_LOCKED", room is asking q11)
+> ```
+>
+> **Round 5 is the FINAL round, and that is a locked wager.** `lockInFinalWager`
+> stamped the placeholder with `state.questions[totalQuestions]` — the final
+> question as that phone knew it. **The final question is REPLACED after the
+> wagers are locked**: `handleRevealFinalQuestion` picks one by difficulty and
+> writes a new `question_ids`. So the placeholder named a question the room was
+> about to stop asking, and on a phone that locks before the swap lands — which
+> a real connection makes ordinary — the row was wrong from the moment it was
+> written.
+>
+> What that costs, and the second half is the worse one:
+>
+> - **`answersForCurrentGame` filtered it out.** A row naming a question the room
+>   is not asking belongs to a finished game as far as the client can tell. So
+>   the locked wager was invisible to everybody, the reveal drew that player as
+>   "Waiting…", and the row was not in the scoring.
+> - **AND 066's OWN `CASE` THEN DESTROYED THE WAGER.** Its rule is `WHEN
+>   answers.question_id IS DISTINCT FROM EXCLUDED.question_id AND
+>   answers.question_id IS NOT NULL THEN EXCLUDED.wager` — the stale-row branch —
+>   and for the final round `EXCLUDED.wager` is **0**. A row naming q51 while the
+>   room asks q20 takes that branch, so somebody who deliberately locked 20 was
+>   filled in at 0. **That is "I bet 20 and it wagered 0" arriving by a road
+>   migration 050 never closed**, on the one round that subtracts.
+>
+> **NULL IS THE TRUE VALUE, not a missing one.** At the moment a wager is locked
+> nobody knows which question it is being locked against — that is the design.
+> And null is already what every rule here treats as *cannot tell, keep it*:
+> `answersForCurrentGame` keeps such a row, and 066's stale clause requires
+> `question_id IS NOT NULL` precisely so it cannot destroy one. The
+> `__WAGER_LOCKED__` clause still converts it into a blank at the right moment,
+> which is its job, and stamps the real question id on the way.
+>
+> **The fake store was stamping that id only on the STALE branch**, so a
+> placeholder came out of the fill still unnamed — harmless for the client and a
+> divergence from the migration, which does it unconditionally. Corrected in the
+> same commit.
+>
+> **THE EVIDENCE, STATED AS WHAT IT IS.** Before the fix, two of three
+> four-game laggy sittings reported it; after, three consecutive clean runs.
+> That is real — a failure at roughly two in three does not go three for three
+> by chance — and it is **not proof**. Three runs cannot separate *fixed* from
+> *made rarer*, and this file records exactly that distinction being blurred
+> before. What IS proved by reading is the mechanism: a placeholder naming a
+> question the room has swapped away takes 066's stale branch, and that branch
+> writes `EXCLUDED.wager`, which on the final round is 0.
+>
+> ### And the chat archive was written once per PHONE, per game
+>
+> Found by reading while the sitting ran, and it is the same shape one table
+> along. `archiveChatMessages` runs inside the results screen's per-device
+> block, and it takes no cut-off — deliberately, because the archive is the
+> ROOM's record rather than one player's view of it. So it copies the whole
+> transcript **every time, from every phone**: three people playing five games
+> in one room wrote FIFTEEN archive rows, each a superset of the last, the final
+> few holding everything said all evening.
+>
+> It also cost every phone a hundred-message read, a player fetch and an insert
+> on the results screen, awaited, **growing with the transcript** — which is
+> what "it kept accumulating" feels like from the inside even when nothing
+> visibly breaks.
+>
+> `recordsForTheRoom()` is now the single rule for both things at the end of a
+> game that belong to the ROOM rather than to a player — the running tally and
+> the archive. The other two things in that block are per-PLAYER facts and stay
+> per-player.
+>
+> ### The lobby flake is still there, at the same rate
+>
+> `scenario-lobby`'s quick leave-and-rejoin failed twice in eight runs this
+> session — `{"url":"/join.html","screen":"join-screen","stored":null}`, the
+> same words and the same place as the baseline measured on 2026-09-07 (one
+> failure in four runs, with and without that session's changes). Four passes
+> either side of it. **Recorded rather than re-diagnosed**: it is not new, it is
+> not caused by anything here, and the diagnostic that prints the page's real
+> state is what makes it possible to say so in one line instead of an evening.
+>
+> ### The habit
+>
+> **A method that writes to a parent writes over its children.**
+> `textContent` on a wrapper is a delete, and the deleted thing was the one
+> element the next fifteen minutes of the game depended on. Nothing threw,
+> nothing logged, and every check in the repo went on passing — because the only
+> place that branch runs is a phone that did not answer, and every robot answers.
+>
+> **AND A `git checkout` OF A FILE MID-SESSION IS NOT A REVERT OF ONE CHANGE.**
+> Restoring `js/game/reveal.js` to HEAD to undo a break test threw away every
+> other edit in it. Break tests belong on a copy (`cp file /tmp/file.bak`), which
+> is what the rest of this session used.
+
+> ## 2026-09-07 (second playtest) — the split host, and a seat nobody admitted was gone
+>
+> **Eleven things reported after one game.** Four of them are one fault, two are
+> the same fault one layer down, and the two questions in the list turned out to
+> have answers worth writing down.
+>
+> ### "It showed me not as host, yet I was able to start the game"
+>
+> The whole report, and every clause of it is one bug:
+>
+> > *"It showed me not as host, yet I was able to start the game?? Even tho I
+> > didn't seem to have other host functions? And after starting I couldn't
+> > return us to lobby like I wasn't host???"*
+>
+> `room.isHost` was written in FIVE places and only THREE of them touched the
+> buttons. The one that mattered is the rejoin: `ensureCurrentPlayer` correctly
+> believes the row it gets back — a host swept while away comes back an ordinary
+> player, which is right and the owner said so — and set the flag to false while
+> leaving Start Game on screen from the value `init()` had read out of
+> sessionStorage.
+>
+> So everything that reads the ROW said "not host": the crown, the per-player
+> controls, and the game page. One gold button left over from the old world said
+> otherwise.
+>
+> **AND IT WORKED, which is why this cost a game.** Starting is a `status` write
+> plus a phase write, and `op_may_advance` allows the phase write for anybody
+> present in a room with no live host. Returning to the lobby afterwards IS
+> host-gated, and was refused — so the room started under somebody the game
+> then treated as an ordinary player, and nobody could end it.
+>
+> `setHostRole()` is the one place the role changes now: the flag, the storage
+> and the buttons move together or not at all, and `syncHostUI()` is a function
+> OF the flag rather than a transition, so `init()` uses it too instead of
+> keeping its own copy of the rule. `handleStartGame` also refuses outright when
+> the row is not ours — a control that is merely hidden is one stale tap away
+> from being pressed, and the consequence here was a game nobody could end.
+>
+> **THE GAME PAGE HAD THE SAME SPLIT, TWICE, and both were quieter.**
+>
+> - `js/game/init.js` only ever CLEARED `isHost`, and only when its own second
+>   opinion about who was hosting said so — while `claimSeat` refuses a crown on
+>   a different rule, and its exact-seat branch returns whatever the row says
+>   regardless of what was asked for. It reads the row now, for both roles, on
+>   both the rejoin path and the ordinary one.
+> - `js/game/phases.js`'s player-UPDATE handler kept **co-host** in step with
+>   the row and left `is_host` out of it. So a player demoted MID-GAME went on
+>   believing they were host, with every advance refused by `op_may_advance`,
+>   and a player promoted mid-game got the controls only through the
+>   DELETE-driven promotion path, never from the row itself.
+>
+> Found by this project's own rule — *when fixing a bug, check whether the same
+> pattern exists elsewhere* — and it was the same rule stated in three places
+> and followed in one.
+>
+> ### A seat can be taken away and nothing said so
+>
+> Three separate reports, one fact:
+>
+> | reported | |
+> |---|---|
+> | *"my profile icon/slot was missing even tho I was on the page… when I refreshed I was back in"* | the 8-second poll redrew the room around an absent player and never repaired the seat |
+> | *"my friend said he was removed but it looks like he is still in the lobby"* | nothing tells a removed player they were removed; the page sits there chatting |
+> | *"when I kicked he got lots of repetitive popups"* | every heartbeat from anybody else brought his page through a re-seat the ban refused, one toast each |
+>
+> **`loadPlayers()` never asked whether the seat it just failed to draw was
+> ours.** That matters more than it looks: a Realtime DELETE is never delivered
+> to this handler at all — the subscription filters on `room_id` and a DELETE
+> payload carries only the primary key — so **the poll is the only thing that
+> can see a removal**, and it was the one place not looking. Everything else
+> repaired the seat as a side effect of an unrelated event.
+>
+> And the repair itself was the second bug. `handlePlayerChange` ended with an
+> unconditional `ensureCurrentPlayer()`, so an ejected player was handed a fresh
+> seat within about fifteen seconds — **Eject could not remove anybody** — and a
+> kicked one was refused by the ban and toasted, once per heartbeat, for ever.
+>
+> ### A deleted seat means you are out, and the page says so
+>
+> `#removed-modal`: "You're no longer in this room", with Rejoin and Leave. It
+> is the only way back in, deliberately.
+>
+> **WHY NOT KEEP THE SILENT REPAIR.** Because the client genuinely cannot tell
+> which removal it is. The host ejected you, the host kicked you, or another
+> client's stale sweep judged you absent — a DELETE looks identical for all
+> three, and there is no marker to ask about. Re-seating silently is right for
+> exactly one of them and makes Eject meaningless for another.
+>
+> So the decision goes to the person, which costs one tap in the innocent case
+> (a phone that sat in a pocket past the stale window) and is the honest answer
+> in the other two. A kicked player's Rejoin is refused by 065's ban and the
+> notice says so with the button gone — one sentence instead of a screenful.
+>
+> **`scenario-lobby`'s ready-up section changed with it, and that is stated
+> rather than slipped in.** It used to require the client to take a fresh seat
+> by itself and mark it ready — the 2026-09-05 fix. The load-bearing half of
+> that (the client must not believe a write that wrote nothing) is unchanged and
+> still pinned; what changed is the response, because the owner's report is that
+> a removed player must actually be removed. Verified in both directions: the
+> notice must appear, it must offer a way back for an eject, tapping Rejoin must
+> get a seat and clear the notice, and Ready Up must not go on claiming it
+> worked.
+>
+> **AND THE REVERT FOUND A SECOND BUG IN THE SAME FUNCTION.** Putting the Ready
+> Up button back was written out once and needed twice — the failure branch
+> reverted the label and the zero-rows branch reverted only the variable, so a
+> press that wrote nothing still read "Not Ready" on screen. One `revertReady()`
+> now.
+>
+> ### Wording, all three the owner's call and all three right
+>
+> - **Eject, not "Remove".** The feature has been called Eject since it was
+>   built — in the migration, in the confirm text, in every note about it — and
+>   the button was the one place saying something else.
+> - **"X was kicked", not "kicked out".** "Out" invites the question "out of
+>   what?" a beat after the screen has already named the room.
+> - **The invite drops the code.** `text: "Join with code ABCD"` beside a link
+>   that opens `join.html?code=ABCD` reads as a second, manual step the reader
+>   has to work out whether they need. The code is still on screen in the lobby
+>   for anybody typing it by hand.
+>
+> `scenario-cohost` reached for `/^Remove$/` and would have reported the control
+> as GONE — the "a control that only moved is a control that was deleted" trap,
+> caught this time because the grep was done before the rename shipped.
+>
+> ### THE EJECT CHECK WAS PASSING BECAUSE OF THE BUG
+>
+> Worth more than the fix. `scenario-cohost` ejected the real Carol, then
+> inserted a row for her and kicked THAT — and every later section went on using
+> Carol's browser as an ordinary player. It passed for years of runs.
+>
+> It passed because **an ejected client silently re-seated itself**. By the time
+> the check looked, Carol's browser already held a fresh seat, the raw insert
+> merely added a second row, and the kick landed on the throwaway. The scenario
+> was quietly asserting that removal does not remove.
+>
+> With removal actually removing, it broke in three places at once — and the
+> first instinct, that the wait was too short, was wrong: restoring the old
+> `ensureCurrentPlayer()` tail made it pass again, which is what proved the
+> cause. It now ejects a REAL client, requires that client to be TOLD, has them
+> tap Rejoin to come back, and kicks a synthetic seat instead — because a kick
+> bans an auth id for the life of the room, so kicking a robot the rest of the
+> file still needs is a scenario that can only work while the feature is broken.
+>
+> **When a check breaks because a fix landed, ask whether it was ever testing
+> what it claimed.** This one was testing the workaround.
+>
+> ### "It only said he bet 1, which he had already used" (migration 068)
+>
+> **The wager rule is the one rule this game cannot bend**: with N questions the
+> values 1..N are each used exactly once. A value handed back is a value spent
+> twice, and somebody else's ranking is wrong for the rest of the game with
+> nothing on any screen saying why.
+>
+> A disqualified round refunds its wager — that is what disqualifying MEANS.
+> **But nothing anywhere recorded that a round had been disqualified.**
+> `op_disqualify_round` (049) sets every answer in the round to
+> wrong-and-worth-nothing, and BOTH readers inferred the disqualification back
+> out of exactly those values:
+>
+> | | the test |
+> |---|---|
+> | `op_next_wager` (046) | `HAVING bool_and(NOT is_correct AND score_earned = 0)` |
+> | `buildDisqualifiedSet` (js) | `answers.every(a => !a.is_correct && !score)` |
+>
+> **A round everybody simply got wrong is indistinguishable from one that was
+> thrown out.** 046's own comment admits the flaw and ports it deliberately, so
+> that the server and the screen at least agree — which was the right call then.
+> It is still a heuristic that fires far more often than it is right: **in a
+> two-player game both players missing a question is ordinary**, and every time
+> it happened that round's wager was silently refunded and handed straight back
+> by the next blank fill.
+>
+> 068 adds `answers.disqualified`, sets it where the decision is actually made,
+> and reads it in both places. **Break-tested by restoring the old guess: `got
+> "1", want "2"`** — the reported bug, reproduced as a number.
+>
+> **THE CLIENT KEEPS THE GUESS AS A FALLBACK, and that is not timidity.**
+> Migrations here are applied by hand, so "the JavaScript is live and the SQL is
+> not" is a real state, and in it every row arrives without the column. Reading
+> a missing column as `false` would quietly stop disqualification refunding
+> anything AND stop the reveal suppressing a thrown-out round's scoring — a
+> different bug, shipped to cover this one. So it asks whether the column is
+> THERE (`Object.hasOwn`), and only guesses when it is not.
+>
+> **The fake store had NO disqualification rule at all**, so the harness was
+> quietly more correct than the live server and could not have seen this. It
+> ports the new rule now, and every answer row carries `disqualified: false` so
+> the client exercises the flag path rather than the fallback.
+>
+> ### An abandoned game that no sweep could reach (migration 067)
+>
+> *"The bugged game I left after it started keeps showing in active game
+> lobbies???"* — and there is a room shape `op_sweep_rooms` (048) cannot delete
+> at all:
+>
+> | rule | why it misses a room holding only a bot |
+> |---|---|
+> | 1. no player rows at all | a leftover bot row IS a player row |
+> | 2. a lobby older than two hours | deliberately not `playing` |
+> | 3. every HUMAN silent for 20 min | opens with `EXISTS(a human)`, which is false |
+>
+> 048's own comment says "a room of only bots is abandoned by definition" and
+> the JavaScript fallback really does treat it that way. **The SQL never did** —
+> the rule stated in two places and implemented in one, and the half that was
+> wrong is the load-bearing half, because 048 revoked DELETE on `rooms` and made
+> the function the only way a room can go. Rule 1 asks about HUMANS now.
+> Break-tested in both directions: the old rule fails "a room holding only a bot
+> is swept", and an over-broad one fails "a solo game with a bot in it survives
+> the sweep".
+>
+> **And a second road to the same place, closed client-side.** `addPlayer`
+> deliberately did not write `last_seen_at`, on a comment saying the column was
+> missing from the live table — which was true when written and stale now (058
+> ran `GRANT UPDATE (last_seen_at, …)` live and verified ok, and a grant naming
+> a column that does not exist raises). Rule 3 reads a NULL `last_seen_at` as
+> "cannot tell" and PROTECTS the room, which is right for a live game and made
+> an abandoned one **immortal**: a row inserted by a phone that closed before
+> its first heartbeat has NULL for ever. It is stamped at INSERT now, which is
+> also just true — they are here, that is what joining means.
+>
+> ### "It jumped to a different screen then back to the question"
+>
+> **The finding CLAUDE.md has carried as "established and NOT fixed" since the
+> bad-network run, reported from a real game with no bad connection at all.**
+>
+> `handleRoomChange` applied every room event unconditionally — the phase AND
+> `state.currentQuestion`. Realtime guarantees neither order nor timeliness, so
+> an event that left the server before the one already applied arrives after it
+> and drags the screen back; the next event, or the 60-second poll, drags it
+> forward again.
+>
+> **Two earlier attempts at a guard here each made the game unplayable**, and
+> both failed the same way: a flat phase list ranks `scores_reveal` after
+> `question`, so the next round's question read as backwards and every game
+> stalled at round one. `isStaleRoomEvent` in `phase-order.js` consults the
+> phase list **only within one round number**, so that transition is never even
+> asked about — the round number rises, and the event is let through untested.
+>
+> Two rules, and nothing else:
+>
+> - a `current_question` BEHIND ours can only be an echo of the past;
+> - within one round, a strictly earlier phase is stale.
+>
+> **Recoverable by construction**, which is what makes it safe to ship where the
+> earlier attempts were not: `syncToCurrentState` re-reads the room and applies
+> it WITHOUT asking this, so a client that ever did refuse a real event is
+> corrected rather than stuck.
+>
+> `scenario-badnetwork` samples every phone's own phase and question and fails
+> on any move the same rule calls backwards. **On unguarded code at `--lag=1500`
+> it reports four**, including the trace this was written from:
+>
+> ```
+> Alice's game went BACKWARDS 4 time(s): scores_reveal@2 -> answer_reveal@2,
+>   scores_reveal@3 -> answer_reveal@3, scores_reveal@4 -> answer_reveal@4,
+>   final_question@5 -> final_wager@4
+> ```
+>
+> That last one is the worse half and was invisible until now: the ROUND NUMBER
+> going backwards, which is a client re-entering a round it had finished.
+>
+> **AND WRITING THE GUARD FOUND A HOLE IN THE EXCEPTION IT REUSES.** The
+> 2026-09-07 fix taught `shouldSyncPhase` that a round's REVEAL is never
+> backwards from that round's own question, and listed `reveal` and
+> `answer_reveal`. **`scores_reveal` belongs there too and was missing.** After
+> every reveal — the final round included — the advance button reads "Show
+> Scores" and `handleShowScores` writes `game_phase = 'scores_reveal'` without
+> touching the question number, so the final round really runs
+> `final_question -> reveal -> answer_reveal -> scores_reveal -> results`. With
+> that phase missing, a phone still on `final_question` refused the scoreboard
+> as backwards and sat there — which is the identical fault, one step along, and
+> it was already live on the backgrounded-phone path this exception was written
+> for. Two tests fail by name when it is taken back out.
+>
+> ### The two questions in the list, answered
+>
+> - **A play counts only when that player reaches the RESULTS screen.**
+>   `insertGamePlay` writes the row at question 0, but
+>   `get_category_play_counts()` filters `completed = true`, and `completed` is
+>   set by `completeGamePlay` on the results screen — by each player for
+>   themselves. So starting is not enough, an abandoned game counts for nobody,
+>   and a player who leaves mid-game does not count that round. Migration 034
+>   also resets `completed` when a new game key starts, so Play Again re-arms it.
+> - **Host powers do not "split" by design — they split by ACCIDENT, and that
+>   was the bug.** There is one host and one optional co-host: the co-host helps
+>   run the GAME (advance, judge), while who is IN the room stays the host's
+>   alone, on the owner's earlier decision. What the report describes is not
+>   that split; it is one screen disagreeing with the seat, fixed above.
+
+> ## 2026-09-07 — the gap between a tap and the first pixel that moves
+>
+> **Asked for as a precaution, not as a report:** *"What about the smoothness of
+> the game… lag when clicking a button or changing pages. Not saying there is an
+> issue. But clean and crisp is always better right?"* — with one hunch attached,
+> *"clicking profile might lag a tad idk"*, which turned out to be the worse of
+> the two faults found and was right before anything had been measured.
+>
+> ### Nothing in this harness is slow, which is why nobody had ever looked
+>
+> The store is in memory, so every request answers instantly and every control
+> in every scenario is perfect. `robot.slowConnection(ms)` — built for the final
+> question — is what makes the question askable at all: give ONE phone a real
+> round trip and a button that does three of them before it draws costs three
+> times a button that does none.
+>
+> **So the numbers below are round trips wearing a clock, not milliseconds
+> anybody will experience.** What matters is the RATIO between controls, and
+> whether a control moves at all before its network work is done.
+>
+> `tests/harness/scenario-latency.mjs --lag=N` (default 300) presses what a
+> player presses and fails anything taking longer than **1.5 injected round
+> trips to show anything**. The exact millisecond count is not the fault;
+> waiting on the network before drawing is.
+>
+> | on a 300ms link | before | after |
+> |---|---|---|
+> | press Reveal Results | **625ms** | 14ms |
+> | open a player's profile card | **343ms** | 102ms |
+> | press Ready Up | 54ms | already correct |
+> | press Start Game | 31ms | already correct |
+> | press Next / Show Scores | 322ms | the screen changes first |
+>
+> ### The profile card drew nothing until its fetches returned
+>
+> And it never needed to. **The name, the avatar and the title are ARGUMENTS** —
+> the row that was tapped had them on screen a moment earlier — so the header is
+> drawn immediately and the stats fill in when they land.
+>
+> **The stats block is left OUT of that first paint rather than filled with
+> zeros.** A card reading "0 games" that then flips to 47 has told the reader
+> something false; a space that fills in has not. Same rule as the admin count
+> chips, which render `?` and never `0`.
+>
+> ### Reveal Results: the round trips cannot move, so the button says so
+>
+> Two round trips, no feedback, no re-entry guard. Absent players must be closed
+> out BEFORE the reveal or they show wrong, so reordering is not available — it
+> disables, reads "Revealing…", and refuses a second press. **This file already
+> records the other shape of that costing a game:** *"six seconds of nothing
+> happening on a phone is a person tapping again, and this is the button that
+> picks the last question."*
+>
+> **MY FIRST VERSION OF IT WAS WORSE THAN THE BUG.** It restored the button at
+> the END of the function, so a throw in `fetchAllAnswers` or
+> `insertBlankAnswers` — neither otherwise guarded — would have left the guard
+> latched and the control **disabled for the rest of the game**. It is a
+> `try/finally` now. A slow button is a nuisance; a dead one is the fault this
+> project keeps finding.
+>
+> ### THE PROBE WAS WRONG FOUR TIMES AND THE APP ONCE
+>
+> Worth more than either fix, because every wrong version read as a finding:
+>
+> | reported | what it really was |
+> |---|---|
+> | the profile card never opens | the predicate named `.profile-card`; the sheet's root is `#profile-card-sheet` |
+> | three later taps do nothing | the card stayed OPEN and swallowed them — Escape does not close it |
+> | Start Game takes **2371ms** | it was timing COMPLETION, not feedback. The button disables and says "Starting…" in **31ms** |
+> | Reveal Results answered instantly | measured against a probe state an earlier tap had already changed |
+>
+> The fix is that it names no end state at all. It snapshots a GENERIC page
+> probe — path, active screen, open sheets, every button's label and disabled
+> state — and waits for any of it to differ. **A predicate naming where a tap
+> should end is a guess about the app, and four of mine were wrong.**
+>
+> ### NOT IN CI, and the fade is the owner's call
+>
+> It needs a lag injected to mean anything and it measures a ratio rather than a
+> rule, so it is a tool to reach for after changing a control, not a gate.
+>
+> Measured on the way and deliberately NOT changed: the screen fade is **500ms**
+> and the page transition **260ms**. I had assumed 250. Whether 500 is right is a
+> judgement about how the game feels in a hand, which is the owner's — *working
+> code calibrated on a real device must not be "improved" on a hunch.*
+
+> ## 2026-09-07 — a player whose arrival we missed could never be recovered
+>
+> **Found by the sweep this file says pays off most: after a fix, look for every
+> other place with the same shape.** The playtest fix was *"a Realtime UPDATE for
+> a row we do not have cached redraws stale data"*, in the answers handler. Both
+> PLAYER handlers had it too, and the lobby's was worse.
+>
+> | | what a discarded UPDATE cost |
+> |---|---|
+> | `js/game/phases.js` | the seat stayed absent from `state.players` — which draws the reveal rows, the scoreboard and the results, and is what host promotion counts |
+> | `js/lobby.js` | the same, **plus `renderPlayers()` and the host/co-host detection for YOURSELF sat inside the discarded branch** |
+>
+> So a seat whose INSERT never landed — a dropped Realtime frame, a backgrounded
+> tab, a channel mid-resubscribe — **could never be recovered by any later event
+> about it.** Only a refresh fixed it. And if the missing row was YOURS, you
+> never learned you had been made host or co-host, because `activateHostUI()` is
+> in there too.
+>
+> **THAT IS THE SHAPE OF AN OPEN REPORT**, the 2026-09-05 one this file records
+> as *"the root cause of the stale seat is still not found"*: *"left and
+> rejoined and it didn't show me in the lobby till I refreshed even tho I could
+> send a message in the chat (not showing my icon). Also had to leave and rejoin
+> in order to even ready up."* A road to exactly those symptoms, found by
+> reading. **NOT claimed to be the cause** — that session could not reproduce it
+> and neither can I — but a real defect either way.
+>
+> An UPDATE means the row exists on the server. Adding it is the only reading
+> that can be right.
+>
+> ### I nearly threw the check away for looking broken
+>
+> `store.dropEvents` swallows the INSERT — exactly what a dropped frame does,
+> and deterministic where waiting for a real one is not. On the passing run it
+> printed:
+>
+> ```
+> after the dropped INSERT, host sees: Bob|Alice (You)|Carol|Latecomer
+> ```
+>
+> **Latecomer was already visible, so I read the check as inert** and said so.
+> Wrong: the break test prints `Bob|Alice (You)|Carol` at the same point and
+> fails by name. The drop worked — **the FIX had already recovered them from the
+> very next event** (a heartbeat UPDATE) before the check reached its ready-up.
+>
+> **A check whose intermediate state looks wrong is not the same as a check that
+> cannot fail, and only the break test tells them apart.** This file is full of
+> checks deleted for agreeing whatever you do; the opposite error — deleting a
+> good one on a glance — costs just as much and reads exactly the same from the
+> outside.
+
+> ## 2026-09-07 — the final round ran off the end of the phase list
+>
+> **The latent bug this file has flagged twice and nobody had fixed.** It was
+> recorded as *"the list in `init.js` is also wrong for the same reason — rarely
+> hit, because that path needs a phone backgrounded across the final round."*
+> **"Rarely" was wrong.** `_wasHidden` fires on ANY backgrounding: a locked
+> phone, a notification, switching apps. In a party game that is ordinary.
+>
+> ### What it did
+>
+> `syncToCurrentState` refuses to sync BACKWARDS, comparing two phases against a
+> flat list. Traced, one transition family is broken:
+>
+> | from | to | |
+> |---|---|---|
+> | question → reveal → answer_reveal → scores_reveal | | fine |
+> | final_wager → final_question | | fine |
+> | **final_question → reveal** | | **REFUSED** |
+> | **final_question → answer_reveal** | | **REFUSED** |
+> | final_question → results | | fine |
+>
+> A round's reveal comes AFTER its question — but on the final round the
+> question is `final_question` (index 7) while the reveal is `reveal` (2) or
+> `answer_reveal` (3). So a phone backgrounded across the final question came
+> back, read the room's real phase, and refused it as backwards. **It sat on the
+> final question through the entire reveal — nobody's answers, no verdicts, no
+> host rating — and only escaped when the room reached `results`.**
+>
+> ### Fixed as an EXCEPTION, never as a reordered list
+>
+> Reordering breaks the regular rounds that work, and this file records two
+> attempts at a phase graph — one flat, one per-round — that each made the game
+> unplayable at one specific moment. **A wrong entry does not fail loudly; it
+> silently discards the one event that mattered.**
+>
+> So the rule is stated as: *a round's reveal is never backwards from that
+> round's own question*. It changes exactly the two transitions traced above and
+> leaves every regular round byte-identical.
+>
+> ### THE REAL REASON IT SURVIVED: it could not be tested
+>
+> The guard was inline in `init.js`, and **everything in `js/game/` pulls the
+> Supabase client from esm.sh, so that module cannot be imported in Node.** The
+> rule was therefore unreachable by any unit test, and no scenario backgrounds a
+> phone across the final round.
+>
+> `js/game/phase-order.js` is a no-import module holding `shouldSyncPhase`, the
+> same pattern as `bot-logic.js`, `honeycomb.js` and `timer-helpers.js` — and
+> this file already says why those exist. Nine tests; removing the exception
+> fails two by name while the seven pinning existing behaviour still pass, which
+> is what says the fix is narrow rather than a licence to sync anywhere.
+>
+> **The habit: when a rule has been wrong for months and nothing caught it, ask
+> whether anything COULD have. If the answer is no, move the rule before fixing
+> it.**
+
+> ## 2026-09-07 — a real playtest, six reports, and a screen that undid its own fix
+>
+> **The first real game since the desktop pass.** Six things reported; four were
+> bugs, one was a design question the owner settled, one was already correct.
+>
+> ### "Cant tap bot profile" — and it was never only the bot
+>
+> `attachProfileCardHandler` opens on `data-profile-player-id` OR
+> `data-profile-user-id`. **A bot has no user id** — `addBot` does not write one
+> — so its row matched neither selector and the card could not open.
+>
+> **The LOBBY was converted to the seat id for exactly this reason**, and the
+> comment in `profile.js` spells it out: *"a user id is missing whenever
+> anonymous sign-in did not land, and keying the whole card on it would make
+> that player untappable."* **All four in-game surfaces were left on the user-id
+> hook** — the reveal rows, the animated scoreboard, the final-wager list and
+> the results rows. The same rule stated N times and followed N−4, which is the
+> shape this file records more than any other.
+>
+> So the bot was the visible half. The invisible half is **any guest whose
+> anonymous sign-in failed**, on every screen in the game — and that is the case
+> the lobby fix was written for.
+>
+> `scenario-bots` checks it STRUCTURALLY rather than by clicking: a click test
+> passes if any one row happens to work, while asserting that every row carries
+> the seat hook catches the class, including the guest case that cannot be
+> produced on demand.
+>
+> ### "His answer said waiting… until I clicked reveal"
+>
+> An UPDATE for a row the client does not have cached fell through to
+> `renderRevealAnswers(state.currentAnswers)` — **a re-render of a cache that,
+> by definition of `idx === -1`, does not contain the row the event is about.**
+> The event arrived, the screen redrew, and nothing changed.
+>
+> It bites hardest on the FINAL round: every player holds a `__WAGER_LOCKED__`
+> placeholder, so a real answer arrives as an UPDATE rather than an INSERT, and
+> a cache taken before that row existed has nowhere to put it. **Clicking Reveal
+> re-fetches, which is exactly why that fixed it and waiting never did** — the
+> owner's own description contained the diagnosis.
+>
+> ### The screen that undid its own fix
+>
+> *"Screen phasing between the question page and the page before that. When I
+> refreshed it was resolved."* **Two faults, and the second is the interesting
+> one.**
+>
+> `transitionScreens` strips `.active` at t=0 and adds it to the target only
+> after the fade, so **for the whole fade no screen carries `.active`.**
+>
+> 1. `showScreen`'s cut hid only the screen carrying `.active` — nothing,
+>    mid-fade — leaving the screen being faded IN on display underneath the one
+>    being cut to. Two screens, stacked.
+> 2. **The in-flight fade then FINISHES and re-shows its own target**, silently
+>    reversing the cut a moment later and putting the player back on a screen the
+>    game had already left.
+>
+> `showScreen` was written on 2026-09-06 to make "I cannot fade right now" mean
+> a hard cut rather than nothing. **It did not consider that the fade it was
+> superseding would keep running.** `_wantedScreen` records what was last asked
+> for, and a fade that is no longer it re-asserts the right screen when it ends.
+>
+> **Unit tested, not raced.** `tests/state.test.js` starts a fade and calls
+> `showScreen` for a third screen inside it — deterministic where waiting for a
+> real 250ms overlap is luck. Verified by reverting each half: both checks fail.
+> `state.js` pulls no Supabase, which is what makes this testable in Node at all.
+>
+> ### "We were supposed to play 10 rounds and it only did like 7"
+>
+> **The game shrank itself and said nothing.** `initHostGame` requests
+> `totalQuestions + 1` questions and, on getting fewer, quietly lowers
+> `totalQuestions`. That is #4 in a place nobody had looked: not a failed write,
+> just a number changed behind the player's back.
+>
+> Two halves:
+>
+> - **The fetchers now top up.** The smart-selection path has always ended with
+>   an *"absolute fallback: allow room repeats"*; the two guest-only paths and
+>   the wild-card path returned `slice(0, limit)` on a filtered list and simply
+>   came up short. `_fillTo` is the one rule, applied in all three. A repeat is
+>   a worse question and a better outcome than a game that drops three rounds.
+> - **And it SAYS SO** when the bank genuinely cannot fill the count. Reaching
+>   that now means a fact about the question bank, and the room is entitled to it.
+>
+> **Used question ids persist across Play Again**, so a room that plays several
+> games in one sitting runs its own category down — which is how a healthy
+> category still ends up short.
+>
+> ### THE UPSET IS NOW ALWAYS 1 IN 20 (owner's rule, 2026-09-07)
+>
+> **The owner's follow-up question is what found the real fault:** *"If only one
+> difficulty is selected, the 5% is split between the other two right? Like 2.5
+> and 2.5?"* Measured, the answer was no — and the numbers were worse than that.
+>
+> An unvoted level carried a fixed WEIGHT of 0.1 against the raw vote counts, so
+> the chance of a surprise depended on how many people had voted:
+>
+> | | easy | medium | hard | upset |
+> |---|---|---|---|---|
+> | 1 votes Easy | 83.3% | 8.4% | 8.4% | **16.8%** |
+> | 2 vote Easy | 90.9% | 4.5% | 4.5% | 9.0% |
+> | 3 vote Easy | 93.7% | 3.1% | 3.1% | 6.2% |
+> | 4 vote **Hard** | — | — | **100%** | **0%** |
+>
+> **That last row is the one nobody had noticed.** The vote was also a FLOOR, so
+> nothing sat above Hard and a room agreeing on Hard got no surprise at all —
+> while Easy voters got the most. **Voting Hard opted you out of the upset.**
+>
+> The owner's rule replaces it: *"the surprise upset should always be 1/20 —
+> that's a lot of games needed to be played, but not negligible."* The voted
+> levels share 95% in proportion to their votes; the unvoted levels share 5%
+> between them. **The floor goes with it**, so every level is always reachable
+> and the wheel honestly shows three pills in every room.
+>
+> | | easy | medium | hard | upset |
+> |---|---|---|---|---|
+> | any number vote Easy | 95% | 2.5% | 2.5% | **5%** |
+> | 1 Easy + 1 Hard | 47.5% | 5% | 47.5% | **5%** |
+> | 2 Easy + 1 Hard | 63.3% | 5% | 31.7% | **5%** |
+> | any number vote Hard | 2.5% | 2.5% | 95% | **5%** |
+> | one of each | 33% | 33% | 33% | 0% — nothing left to be surprised by |
+>
+> **SIX TESTS THAT PINNED THE FLOOR WERE REPLACED, NOT PATCHED.** They were not
+> wrong when written; the design under them changed. A test that goes on
+> asserting a rule the owner has replaced is one somebody will later "fix" the
+> code back to.
+>
+> **The first break test only caught 1 of 8**, and that is the part worth
+> keeping. Reverting the WEIGHTING alone left most checks passing, because at
+> the particular vote counts they used the two rules happen to agree — `{easy:4}`
+> gives 2.4% under the old rule and 2.5% under the new one. The checks were
+> rewritten at vote counts where the rules genuinely diverge (one voter, where
+> the old rule gave 8.3%; three-against-three, where it gave 1.6%). Against the
+> true original — floor AND fixed weight — **six of eight fail.**
+>
+> **A check that passes on the code you are replacing is not coverage**, and the
+> only way to find that out is to revert the whole change rather than half of it.
+>
+> ### SUPERSEDED: the earlier decision to keep it as it was
+>
+> *"If I select easy and my friend's hard, and no one medium, the visual
+> shouldn't cycle through medium right?"* — **it should, because Medium can
+> genuinely win.** Measured from `pickWeightedDifficulty` with `{easy:1,
+> hard:1}`: an unvoted level carries weight 0.1 against 1, so the real odds are
+> **Easy ≈48%, Hard ≈48%, Medium ≈5%.**
+>
+> The owner's instinct was right — *"I thought it was a small random chance"* —
+> and at that point they chose to keep it. **Their next question then found the
+> real fault** (the odds moved with the room size, and a Hard room got no upset
+> at all), and the rule above replaces this decision. Kept because the REASONING
+> still holds and is the thing that keeps being got wrong.
+>
+> **DO NOT NARROW THE WHEEL.** This has flip-flopped three times. The rule is:
+> `allowedDifficulties` governs what can HAPPEN, the wheel shows exactly that,
+> and hiding a reachable outcome is the only version that lies. Under the 1-in-20
+> rule everything is always reachable, so the wheel is always three.
+>
+> ### Already correct: a bot never touches the difficulty
+>
+> *"Even tho bot is recorded it shouldn't factor into the difficulty of
+> course."* It does not. `recordCurrentQuestionOutcomes` skips a row it cannot
+> attribute and any row whose player `is_bot`, so nothing a bot answers reaches
+> `question_stats` or `answer_tally` — the two tables the difficulty band reads.
+> Verified by reading, and `scenario-bots` fails by name if the guard is removed.
+>
+> ### The habit
+>
+> **A fix that changes what a screen does must account for what the OLD path is
+> still doing when it lands.** The mid-fade bug is the 2026-09-06 fix arriving
+> one layer down: it correctly decided to cut, and never asked what the thing it
+> was cutting past would do when it finished.
+
+> ## 2026-09-06 — Chat Archive, the last desktop-only panel
+>
+> **Sixth time this file records *a page with no mock is a page nobody is
+> checking*, and the mock found two faults before a line of CSS was written.**
+> Measured on a 1280px robot:
+>
+> | | before | after |
+> |---|---|---|
+> | the room list's four meta columns | **three different sets of x positions across three rooms** | one, on every row |
+> | a message | the full 932px panel — about a hundred characters a line | capped at 780 |
+> | where the message TEXT starts | **428, 398, 427** on consecutive lines | 427, every line |
+>
+> ### The grid has to be on the TRANSCRIPT, not on the message
+>
+> The first attempt put `grid-template-columns` on `.admin-chat-msg` and it
+> changed nothing — text still began at 428, 356, 427. **A grid aligns columns
+> only within ONE container**, so a grid per row lines each row up with itself
+> and with nothing else. `display: contents` on the row promotes its three spans
+> into the transcript's own grid, which is the move `.admin-q-row__meta` already
+> makes one panel up.
+>
+> `fit-content(170px)` then sizes the name column to the LONGEST name in that
+> room and no wider — a `min-width` could only ever set a floor, which is
+> exactly why the names grew past the old one. The per-message border goes with
+> it: a `display: contents` element paints nothing, and a rule broken by the
+> column gaps would look worse than the row gap replacing it. A chat log is
+> separated by its names.
+>
+> ### A row that skipped a column was shoving every column after it
+>
+> `renderChatArchive` emitted its meta spans conditionally — no `host_name`, no
+> span; no `player_count`, no span. On a phone that is a tidy inline list. As
+> grid columns it means **a room archived without a host puts its message count
+> under another room's host and its date under their player count.** Four spans
+> always now, with an em-dash where the archive has nothing, which is also the
+> more honest reading: a missing player count is a fact worth seeing.
+>
+> **The seeded data is what found it.** `chat_archive` had never been seeded at
+> all, so that panel opened, printed "No archived chats." and passed every check
+> ever written about it. The second seeded room deliberately carries no host and
+> no count.
+>
+> ### Both halves break-tested, separately
+>
+> Removing the CSS block fails three by name — the columns, the cap, and the
+> ragged left edge. Restoring the conditional spans fails two, reporting
+> `[4,2]`. Either check alone would pass on a build the other one catches: a cap
+> with no alignment is a ragged pile in a narrow box, and alignment with no cap
+> reads across the whole monitor.
+>
+> **The desktop pass is finished for the four `data-desktop-only` panels.**
+> Recent Games and Error Logs are phone-kept and shown on both, and have not
+> been given desktop treatment — they are the next candidates, not a gap.
+
+> ## 2026-09-06 — the host was navigated out of their own results screen
+>
+> **Bug 1 of the two the bad-network scenario left open, and it is FIXED. The
+> attempt to fix its root cause was REVERTED TWICE and that is the more useful
+> half of this entry.**
+>
+> ### What it was
+>
+> On a 1500ms link the host never reached the results screen and landed in the
+> lobby instead — 3 runs out of 3, clean at no lag. Measured with the room's
+> phase and status timeline recorded: the room's status stayed `playing` all
+> game, so this was never Play Again. It was `_showNewGameNotice`.
+>
+> `showResultsScreen()` awaits `updateScores()` AND `archiveChatMessages()`
+> before it switches the screen, so on a slow link `#results-screen` is still
+> hidden for SECONDS after the client has decided the game is over. Both notice
+> functions ask **"is `#results-screen` currently visible?"** as a proxy for
+> "where is this game", read the hidden screen as "we are mid-game, get out",
+> and navigate the host away from their own results.
+>
+> `state.gamePhase` already says where the game is, and does not wait on a
+> network call. **The screen catching up is not a fact about the game.** Both
+> functions consult it now.
+>
+> **The comment above `_showNewGameNotice` describes this exact fault and says
+> it was fixed** — by adding `game_phase !== 'results'`, which only protects
+> against the echo of the host's own results write. A STALE EARLIER phase
+> arriving late satisfies it perfectly. One rule, two functions, and the
+> visibility flaw was left in both.
+>
+> ### THE ROOT CAUSE IS REAL AND MY FIX FOR IT WAS WRONG TWICE
+>
+> Both this and the scoreboard stall come from the same thing: **Realtime
+> delivers a room event describing a moment the client has already passed, and
+> nothing checks.** The rule for it already exists in `init.js` — *"don't sync
+> backwards, only advance to later phases"* — behind a `wasHidden` guard, so the
+> live path never had it.
+>
+> I lifted that list into a shared module. **It broke the game twice:**
+>
+> | attempt | what broke |
+> |---|---|
+> | the flat list from `init.js` | a round goes `final_question` -> `answer_reveal`, and on that list `answer_reveal` ranks EARLIER — so the final round's reveal was discarded and nobody was offered the host rating. `scenario-fullgame` caught it |
+> | per-round STAGES instead | `final_wager` and `scores_reveal` share a round number, so the final wager screen was discarded as stale and every game stalled before the last question |
+>
+> **CLAUDE.md already warned about this in as many words**, under migration 060:
+> *"DELIBERATELY NOT A TRANSITION WHITELIST... a wrong entry does not fail
+> loudly, it makes a game unplayable at one specific moment."* I wrote one
+> anyway, twice, and it failed in exactly that way both times. **The list in
+> `init.js` is also wrong for the same reason** — rarely hit, because that path
+> needs a phone backgrounded across the final round.
+>
+> **FIXED 2026-09-07, and "rarely" was wrong** — `_wasHidden` fires on any
+> backgrounding. See "the final round ran off the end of the phase list".
+>
+> Reverted in full rather than patched a third time. The symptom fix above is
+> narrow, addresses the measured failure, and does not require anybody to have
+> the phase graph correct in their head.
+>
+> ### Where it stands, honestly
+>
+> `fullgame`, `nasty` and 706 unit tests pass. `scenario-badnetwork --lag=1500`
+> **passes 1 run in 2** — the other stalls at the FINAL scoreboard, which is a
+> different stall from the one fixed earlier today and is intermittent. A flaky
+> failure is a real failure with a timing condition attached, and it is written
+> down as open rather than dressed up.
+>
+> **SUPERSEDED LATER THE SAME DAY: five consecutive clean runs at `--lag=1500`
+> after the reveal fixes** — see "the 1500ms stall has not recurred". Quiet is
+> not the same as understood, and it was never root-caused.
+>
+> ## 2026-09-06 — a whole game on a bad link, and the guard that could not recover
+>
+> **The owner could not playtest and asked whether a machine could do anything.**
+> It can do one thing well: play a COMPLETE game with one phone on a bad
+> connection. Every adverse-condition check in this repo applies the lag to ONE
+> MOMENT and then removes it. Nobody had ever played lobby-to-results on a bad
+> link with all the recent fixes in place at once.
+>
+> `tests/harness/scenario-badnetwork.mjs`, `--lag=N --on=Name`. **It is NOT a
+> playtest and must not be reported as one**: Chromium against an in-memory
+> store cannot see iOS Safari, a keyboard, a real radio, or how anything feels.
+>
+> ### THE FINDING: the room sat on the scoreboard and the host stayed on the reveal
+>
+> Deterministic at a 1500ms round trip on the host. The game never left round 0.
+> Bob and Carol reached the scoreboard; Alice did not, her advance button was on
+> a screen she could not reach, **and not one error was thrown anywhere.**
+>
+> Instrumented, the trace is unambiguous:
+>
+> ```
+> enter q=0 guard=-1        the host starts rendering the scoreboard
+> phase-in answer_reveal    a STALE event, 1500ms late, arrives while the client
+>                           is already on scores_reveal, and drags the screen
+>                           back to the reveal
+> switching-screen          the first render finishes and switches to scores
+> phase-in scores_reveal    the real event lands
+> enter q=0 guard=0
+> blocked-by-guard          ...and every attempt after it, for ever
+> ```
+>
+> **Two faults compounding.** A late Realtime event drags a client BACKWARDS
+> through a phase it has already passed — there is no check that an arriving
+> phase is still the room's. Then `showScoresScreen`'s "already rendered for
+> this question" guard, which exists to stop the scoreboard ANIMATION running
+> twice, **also gated the only screen switch** — so once tripped, the screen
+> could never be corrected.
+>
+> **Only the second is fixed**, deliberately. Re-rendering a scoreboard twice is
+> a stutter; refusing to correct the screen is a game nobody can finish. The
+> early return now still puts the player where the room is. That is the same
+> call `syncToCurrentState`'s repair already makes, and it restores recovery
+> whatever dragged the screen away. **The stale-event handling is established
+> and NOT fixed** — dropping events risks breaking legitimate ordering, and
+> shipping a speculative second change beside a proven one is how a fix commit
+> introduces a regression.
+>
+> Measured: stuck at round 0 for the full 240s budget before; a complete
+> six-round game to results after. `fullgame`, `nasty` and `playagain` all pass.
+>
+> ### showScreen() had been applied to 2 of 6 in-game screen switches
+>
+> Found by the grep this file's own rules demand. `transitionScreens` strips
+> `.active` from the old screen at t=0 and adds it to the new one only after the
+> fade — **so for the whole fade NO screen carries `.active`** and
+> `querySelector('.screen.active')` returns null. Three hand-written switches
+> read that null, fell into an `else` that only called `showChatBar()`, and
+> never switched the screen at all. Converted: reveal, scores, results. The
+> countdown one is fine — its else branch really does switch.
+>
+> **This did NOT fix the stall** and is not claimed to; it is a real hole found
+> on the way, provable by reading.
+>
+> ### THREE OF MY OWN CHECKS WERE WRONG BEFORE ANY OF THE ABOVE WAS TRUE
+>
+> Worth more than the fix, because each looked completely convincing:
+>
+> | reported | what it really was |
+> |---|---|
+> | 3 rows "Waiting..." after the reveal | sampled in the gap between `resultsRevealed` flipping and the rows re-rendering. Now requires a 3s streak |
+> | every round asked 2 DIFFERENT questions | a per-round bucket keyed on a LOOP COUNTER, so a phone one round ahead read as a disagreement. Now reads the stored answers, which cannot be a timing artefact |
+> | 88-second screen lag on a link with no lag | a phase repeats every round, and the timer was stamped the FIRST time each phase was seen. **A confidently wrong number is worse than no number** |
+>
+> And the phase names were GUESSED — `reveal`/`scores` instead of
+> `answer_reveal`/`scores_reveal`/`difficulty_vote` — so the map skipped the
+> phases it did not recognise and the screen assertions silently passed over
+> them. They are read off `PHASE_ORDER` in `init.js` now.
+>
+> **The scenario also listened to `console` only.** An unhandled rejection
+> arrives as `pageerror`, never as a console message, and an async function
+> whose caller does not await it fails in exactly that silent way — so the run
+> printed "not one console error anywhere" while stalled. It listens to both.
+>
+> ### TWO FINDINGS ARE OPEN, REPRODUCED AND UNEXPLAINED
+>
+> **BOTH ARE CLOSED AS OF LATER THE SAME DAY, and the second one turned out to
+> be TWO bugs** — see *"'Waiting…' outlived the reveal, and there were two of
+> them"*. #1 was fixed by consulting `state.gamePhase` instead of asking whether
+> a screen happens to be visible. #2 was an ordering inside `doReveal` plus a
+> refused auto-submit that cancelled the reveal. Kept in full below because the
+> reasoning about how each was FOUND still stands, and because the honesty
+> markers on them ("plausible and NOT established") were the right call.
+>
+> Recorded rather than guessed at, and the scenario catches both:
+>
+> 1. **On a 1500ms link the host never reaches the results screen and lands in
+>    the lobby** (3/3 runs; clean at lag 0). `showResultsScreen` gates its
+>    screen switch behind `await updateScores()` AND `await
+>    archiveChatMessages()`, while `_showReturnToLobbyNotice` decides where the
+>    game is by asking whether `#results-screen` is *currently visible* — so a
+>    host whose screen is still queued reads as mid-game and is navigated away.
+>    **Plausible and NOT established**: whether the trigger is real or the
+>    scenario's own teardown is unknown.
+> 2. **On the final round the host shows "Waiting..." for over 3s after the
+>    reveal though every player already has an answer stored** — at lag 0, on
+>    UNTOUCHED code, so it is neither new nor lag-related. Confirmed
+>    pre-existing by reverting both fixes and re-running.
+>
+> **THE SCENARIO IS THEREFORE NOT IN CI.** A check that fails for reasons nobody
+> has explained is one people learn to re-run, and this file records that
+> costing weeks. Wire it in once both are settled.
+>
+> **STILL NOT IN CI as of the fixes above**, deliberately. One finding is fixed
+> and the other is only QUIET — five clean runs, no root cause. Give it a few
+> more sessions of silence before trusting it to gate a push.
+>
+> ## 2026-09-06 — the Question Bank, second panel of the second pass
+>
+> **The panel that most needed a computer was the one still wearing a phone.**
+> Title Words was converted first; this is the other job a phone cannot do, and
+> it had been sitting in a work area four times as wide as the layout it was
+> drawn for.
+>
+> ### THE SCREENSHOT TOOL WAS SHOWING A LAYOUT THAT DOES NOT SHIP
+>
+> Found before a line of CSS was written, and it is the same fault the sweep
+> already grew a guard for. `scripts/screenshot.js` renders at **375px unless
+> told otherwise**, and it ignored `STATES[name].widths` entirely — so
+> photographing `admin-question-edit`, a `data-desktop-only` panel, produced a
+> phone with a note saying the panel lives on a computer. **A picture of a
+> layout that never ships, offered as the review of it.** It honours the
+> declaration now; an explicit `--width` still wins, because asking for a size
+> is asking for that size.
+>
+> That is #6 in a new place: the sweep exits 2 rather than measure a desktop
+> state at 375, and the tool beside it had no such guard at all.
+>
+> ### The list is a table; the editor is a form
+>
+> Those are different shapes and the phone layout had to be one thing for both.
+>
+> | | before | after |
+> |---|---|---|
+> | Search, two menus, a button | the button **wrapped to its own line** | one row, 900px |
+> | a result row | question, then its meta clustered under it | four columns, at one x on **every** row |
+> | the editor | one column, 932px wide, an answer field the width of a monitor holding two words | six tracks, capped at 900 |
+>
+> **`display: contents` on the meta is what makes the list scannable.** It
+> promotes the three spans to grid items, so category, format and difficulty run
+> straight down the page and a misfiled question is visible without reading a
+> word. Measured: `855|1055|1145` on all five rows; without it, two different
+> layouts across the same five.
+>
+> **Scoped to `#panel-questions`, not to `.admin-q-row`.** Recent Games, Chat
+> Archive and Error Logs share that class with a different number of meta spans,
+> so a fixed column set would land their text in the wrong columns. The scope
+> also picks up the answer-key review, which builds its rows through the same
+> function — which is right, and is why the review note needs `grid-column:
+> 1 / -1` or it drops into the category column.
+>
+> ### Placed by the controls already there, not by new classes
+>
+> `label:has(.admin-q-edit__answer)` and friends. **Both `js/admin.js` and
+> `scripts/mock-states.js` build this markup**, so a class added for layout is
+> two files to keep in step — the drift this file records more than any other.
+> `:has()` reads what the row already carries, and a browser without it drops
+> those selectors, keeps `span 6` on everything, and renders the single column
+> that ships today: worse-looking, never broken.
+>
+> ### Two things that had to be moved before they could be styled
+>
+> - **Inline `style="flex:2"` beats a stylesheet whatever its specificity.** The
+>   three filter controls carried their widths inline, so the desktop shell could
+>   not reproportion them without `!important`. Same values, stated in CSS.
+> - **`var(--text-md)` does not exist in this project.** I wrote it three times;
+>   the scale is `--text-base`. An undefined custom property is not an error, it
+>   is a declaration that quietly computes to something else — caught by grepping
+>   the token list rather than by looking at the result.
+>
+> ### The check, and one assertion that is honestly labelled
+>
+> `scenario-admin` measures the panel on the desktop robot **after a fresh
+> search**, because the answer-key review leaves ONE row on screen and one row
+> can never show that columns line up. Reverting the desktop rules fails three
+> by name: the columns, the cap, and Answer/Alternates side by side.
+>
+> **THE FIRST CAP CHECK COULD NOT FAIL.** It compared the editor against
+> `.admin-work`, whose `clientWidth` includes its padding — so a completely
+> uncapped editor measured **932 inside 1012** and passed. Against the panel
+> body it is 932 inside 932, and fails. The check was written, run against the
+> revert, seen to agree with me, and rewritten.
+>
+> **The wrap check does not fire on that revert and is not claimed to.** The row
+> wrapped during an intermediate version of this work, not in the layout that
+> shipped before it. It is a forward guard against the next control that grows,
+> and the comment says so rather than counting it as proof.
+>
+> ### Still to do
+>
+> **Done as of later the same day** — Question Health and Chat Archive both have
+> their own entries above. Recent Games and Error Logs are phone-kept but shown
+> here too, and have had no desktop treatment. One panel at a time, still.
+
+> ## 2026-09-06 — the final question, reproduced at last, and the instrument that was missing
+>
+> **The owner asked the right question: "I must've mentioned it countless times
+> and it hasn't been resolved? There must be a reason??? Perhaps approach it
+> from a different perspective?"** They were right on every count. The reason is
+> below, and it is about the harness rather than the game.
+>
+> The report, three times now:
+>
+> > *"Last question was gamebreaking bugged. The player could answer but host
+> > couldn't see the question till after the timer? Then it rerolled the
+> > difficulty gave the same question and the player's prior answer was locked?"*
+>
+> ### Why six sessions of reading found causes and never a reproduction
+>
+> My first guess this time was that no scenario had the HOST press Reveal.
+> **That was wrong and took one grep to disprove** — `fullgame`, `bots`,
+> `social` and `playagain` all do, and all pass.
+>
+> The real gap: **every slowness knob in this harness slows the SERVER.**
+> `slowFunction`, `slowReads`, `failFunction` — all of them live on the store,
+> which every browser shares. So they slow the whole room equally, and a screen
+> that is queued behind a network call still arrives when everybody else's does.
+> It looks fine. **A real bad connection belongs to ONE PERSON**, and every word
+> of that report is about the asymmetry: one phone had the question and the other
+> did not.
+>
+> `robot.slowConnection(ms)` in `tests/harness/harness.js` is the missing
+> instrument. It delays that page's `__dbOp` bridge and its Realtime deliveries,
+> **half before the store runs and half after** — because a slow link is slow in
+> both directions, so the request takes a while to arrive, the server acts,
+> Realtime tells everyone else *at once*, and only the reply is still in flight.
+> An all-before delay means nothing has happened yet and the room waits with you;
+> an all-after delay is not a connection. The half-and-half is what makes the
+> room genuinely move on without you.
+>
+> **With 12 seconds of round trip on the host alone, every symptom appeared on
+> the first run:**
+>
+> | | before | after |
+> |---|---|---|
+> | the host sees the final question | **never** | 12.5s |
+> | the host is shown | *"Test question 1"* while the room asks 40 | the room's question |
+> | the room reaches the final question | 35.5s after the press | 29.5s |
+> | the press produces any feedback at all | **12s of nothing** | 35ms |
+> | the round's clock | **NULL** | stamped |
+>
+> ### The cause: the presser's own screen was last in a queue of network calls
+>
+> `handleRevealFinalQuestion` ran four things in series on the phone that pressed
+> the button, and the button's own screen came after all of them:
+>
+> 1. `fetchQuestionByDifficulty` — un-timed, and **in front of the animation**;
+> 2. the six-second slot machine;
+> 3. `updateGameState` (the question list, and a null clock);
+> 4. `setPhaseOnServer` — *the write every other phone acts on*;
+> 5. `_showQuestionScreen()`.
+>
+> Step 4 is what gives everybody else the question. So on a slow phone the room
+> moved and the presser did not — **"the player could answer but host couldn't
+> see the question"**, exactly. Step 1 is why the press appeared to do nothing
+> for a full round trip before that, and why everything then happened at once,
+> late: **"then it rerolled the difficulty"** is the animation arriving after the
+> timer rather than a second reveal. And the host stayed on the question it had
+> before, which is the desync.
+>
+> **The comment above step 5 said this was safe, and named the rule it was
+> breaking.** It read: *"the host's question screen waits on one ordinary phase
+> write… the 2026-08-30 rule is about an UNBOUNDED call gating the screen, and
+> this is not one."* A phase write over a network IS one. That comment was
+> written by me a day earlier, while fixing the clock-ordering bug, and it
+> reintroduced the 2026-08-30 fault by a different road.
+>
+> ### The fix keeps the ORDER and drops the WAIT
+>
+> The two room writes still go list-then-phase — that ordering is load-bearing
+> and is not what was wrong. They are chained in one promise instead of awaited
+> one at a time, and the screen no longer queues behind them.
+>
+> **One thing genuinely cannot go first: the clock stamp.** `op_start_clock`
+> checks the phase it is given against the ROOM's, so a stamp sent before the
+> phase lands is refused however long you wait. `state._roomWritePending` gates
+> that single call inside `showQuestionScreen`, and nothing else — the card, the
+> answer box, the wager and the bot are all already revealed above that line by
+> the 2026-08-30 fix. On any ordinary connection it resolves inside the existing
+> one-second buffer and nothing waits at all.
+>
+> **And the difficulty swap runs UNDER the animation instead of in front of it**
+> (`FINAL_QUESTION_SWAP_TIMEOUT_MS`, 6s). It has always been optional — the
+> pre-fetched question is the fallback and the code has read `if (q)` since it
+> was written — so a slow read now costs a difficulty match, which nobody outside
+> can detect, instead of costing the press its only feedback.
+>
+> ### Both halves break-tested, separately
+>
+> Reverted, `scenario-finalq` reports *"the host could not see the final question
+> until 5920ms after the player could — their own screen was queued behind a
+> network write"* and *"the host pressed Reveal Question and nothing happened on
+> screen for 12041ms — the slot machine was queued behind a read of the question
+> bank"*.
+>
+> The second check is the better one and is worth copying: it measures **the gap
+> between the tap and the first pixel that moves**, which cannot be flaky and
+> does not care how many round trips the fix happens to save.
+>
+> ### What is NOT fixed, and should be said plainly
+>
+> On a 12-second link the room still takes ~29 seconds to reach the final
+> question, because the list write and the phase write are two sequential round
+> trips and the second must follow the first. Closing that needs `op_set_phase`
+> to carry the question list so it is one call — a migration, and a real one.
+> **The bug reported was the host being locked out of their own round; that is
+> gone. The slowness is not.**
+>
+> ### The habit
+>
+> **When a report says one person saw something and another did not, no
+> server-side slowness can reproduce it.** That is a whole class of bug this
+> harness was blind to, and the final question is only where it happened to
+> surface. `robot.slowConnection` applies to every screen in the app; anything
+> that awaits a write before drawing is now testable.
+
+> ## 2026-09-05 (second playtest) — the final question, the swept host, and a row that could not shrink
+>
+> Six reports. Two game-breaking, and both were about something being allowed to
+> happen TWICE.
+>
+> ### The final question was revealed twice
+>
+> `handleRevealFinalQuestion` awaits a question fetch and then a **six-second
+> animation**, and the button that starts it stayed on screen, enabled, giving
+> no feedback for all of it. Two ways in, and both were live:
+>
+> - **a second tap** — six seconds of nothing happening on a phone is a person
+>   tapping again, and this is the button that picks the last question;
+> - **a second CONTROLLER** — it is gated on `canControlGame()`, so the host AND
+>   the co-host AND a deputy each have it.
+>
+> Either one runs the whole body again. `pickWeightedDifficulty` is **random**,
+> so the second run picks its own winner, fetches its own question over
+> `state.questions[totalQuestions]`, broadcasts a second reveal, and writes
+> `question_ids` again — racing the first. *"Difficulty randomizer ran twice, and
+> then advanced to differing questions for each person."*
+>
+> And `playDifficultyRevealAnimation` could not tell it was already running: two
+> chains of un-cancellable `setTimeout`s over one `position:fixed` overlay. The
+> first chain's ending hides the overlay while the second is still cycling; the
+> second chain's ending puts it back up over the question screen the first has
+> already moved to. That is *"my screen was half phased out between the question
+> and the difficulty selection screen"*, exactly.
+>
+> `_revealHeldBy` owns the reveal — this phone, or whoever's broadcast reached us
+> first, so a second controller stands down too. The animation returns its
+> in-flight promise rather than refusing, because the caller AWAITS it before
+> advancing the room.
+>
+> **THE FIRST BREAK TEST PASSED AND THE CHECK WAS THE PROBLEM.** Both
+> browser-side signals (the `--show` observer, the question on screen) can miss
+> it — CLAUDE.md already records that these two chains overlap too tightly for
+> an overlay observer to see both. Counting `question_ids` writes in
+> `store.log` is the fact: **each run writes the list once.** Reverted, it
+> reports three failures including *Bob and Carol asked "Test question 12?" while
+> the room asks "Test question 28?"*.
+>
+> ### A host who went AFK could not get back into their own lobby
+>
+> Migration 058's INSERT policy is `NOT is_host OR NOT
+> op_room_has_live_host(room_id)`. A host who is away long enough is swept and
+> somebody else promoted — while their own **sessionStorage still says isHost**.
+> Every return then asks for a crown the room has given away, is refused 42501,
+> and surfaces as *"Couldn't join the room — check your connection and try
+> again"*: wrong about the cause, wrong about the remedy, and repeating for as
+> long as they keep trying. *"It said I could not join a bunch of times but still
+> showed the lobby as active."*
+>
+> **058's own comment names the fix** — the client's `someoneElseIsHost` check —
+> and that check lived in `js/game/init.js` and NOWHERE ELSE. The lobby walked
+> straight into the refusal. It lives in **`claimSeat`** now, which every seat in
+> the app goes through, rather than being stated a fourth time and forgotten a
+> fifth. The lobby also believes the row it got back rather than sessionStorage:
+> asserting a crown the database refused is the dead button 062 was written to
+> end.
+>
+> **The fake store did not model that policy at all** — the #10 gap in its usual
+> direction. It does now, and reverted the lobby scenario reports Alice with
+> **0 rows and eight 42501s**.
+>
+> ### The player row: measured, not argued
+>
+> The owner asked *"should we just make everyone two lines? With title
+> underneath?"* — **it already was**, and that was not the problem. The problem
+> is horizontal, and more lines buy no horizontal room.
+>
+> Measured at 375px: the row is **327px and its contents needed 329px**, with
+> `.name-stack` pinned at exactly its **72px floor**. Nothing in the row can
+> yield — the badge strip is `flex: 0 0 auto` and the name box has a hard floor —
+> so the overflow was clipped by `overflow-x: hidden` and the title and "Not
+> Ready" were simply cut off.
+>
+> Two consumers, one fix each, and both are the same shape one level apart:
+>
+> - **The ready words cost the row everything it did not have.** "Not Ready" was
+>   81px on nearly every row (not-ready is where everybody starts) and "Ready"
+>   was 54px. It is **one dot in two states** now — grey, then green — which is
+>   the owner's design and took **three tries to arrive at**:
+>
+>   | | |
+>   |---|---|
+>   | a grey dot shown ONLY when not ready | reads as a small empty circle with nothing to decode it against. I shipped it **without reading the screenshot**, which this file requires in as many words |
+>   | nothing at all | fitted perfectly and said nothing at all |
+>   | **one dot, grey → green** | has what neither had: a COMPARISON. Grey beside green is legible with no caption, which is why a status light works anywhere |
+>
+>   **Passing every check is not the same as looking at it.** The measurement
+>   was clean for all three.
+> - **On line 2 the tier was `flex: 0 0 auto`**, so it held its ~62px and the
+>   TITLE truncated. Shrink order reversed — and the tier has since been
+>   removed from this row entirely (below), so the title's line-mate is now the
+>   co-host badge, which holds its width because a badge ellipsised to "Co-H…"
+>   is worse than a truncated title.
+>
+> **Moving the tier up beside the name was tried and MEASURED WORSE** — the name
+> truncated instead (74px of 98px), and the name is the one thing on the row
+> nobody can do without. It is recorded here because the reasoning looked right
+> and the measurement said otherwise.
+>
+> Result at 375px, measured at each step: with the dot 141/141px names; with
+> nothing 151/151px; **with the rank word gone and the co-host badge moved down,
+> 155/155px for the co-host (it was 84 of 97 — "TimeTravel…") and 0px overflow
+> on every row at both 375 and 430.** The two-line layout finally has the room
+> it always needed.
+>
+> ### The lobby row, finished (2026-09-05, later)
+>
+> Three more decisions from the owner, all of them removing something:
+>
+> - **THE RANK WORD IS GONE FROM THE LOBBY.** Their question was the right one:
+>   *"shouldn't the rank be something they can just incorporate into their
+>   title? I feel like one is enough?"* — and **they had already built that.**
+>   `apprentice`, `scholar`, `master` and `oracle` are slot-3 entries in
+>   `TITLE_WORDS`, unlocked by `{ type: 'mastery', anyCategory: X }`. So the
+>   coloured word beside every name was the same idea told twice, automatically,
+>   for ~62px. `_loadPlayerTiers` went with it — it was a `fetchPlayerStatsBatch`
+>   round trip on every lobby render feeding one label.
+> - **CO-HOST MOVED TO LINE 2.** Measured: the badge cost **71px of a 327px
+>   row**, and with three per-player buttons beside it the name box got 84px
+>   when it needed 97. The HOST badge stays in the strip — that row carries no
+>   buttons and has the width. Asymmetric on purpose.
+> - **NOBODY'S SECOND LINE IS BLANK, and a guest reads "Guest", not "Novice".**
+>   My first advice was Novice and the owner asked the better question. Novice
+>   is the bottom rung of a ladder a guest is not on: no profile, no stats, no
+>   titles, and not addable as a friend. **The profile card one tap away has
+>   said "Guest player" since it was written** — the lobby row was the one place
+>   staying quiet. A signed-in player who has chosen nothing already resolves to
+>   "Novice" through `buildDisplayTitle`, so only the guest case changed.
+>
+> **THE SWEEP CAUGHT THE ONE THING AN EYE WOULD NOT.** `.badge` carries 2px of
+> vertical padding, so the co-host's row stood 5px taller than the host's
+> directly above it — `#host-list stacked rows differ by 5px: [51, 56]`, in all
+> three themes at both widths. A list whose rows are different heights reads as
+> broken before anybody works out why.
+>
+> **ONE CO-HOST, AND THE SCREEN SAYS SO (asked 2026-09-05).** The owner asked
+> whether it should be limited to one — **and it always has been**, silently:
+> `handleCohostToggle` demotes any existing co-host before promoting, so the
+> room could never hold two, but tapping a second star stripped the first person
+> with nothing said except a chat line the host may never read. *A rule enforced
+> in code and invisible on screen is a rule players discover by being surprised
+> by it.* The OFFER (☆) is hidden while a co-host exists; the current co-host
+> keeps their own ★, because that is how you take it back. Moving it is two taps
+> now and both of them say what they do. **The demote-first guard STAYS** — it
+> is the only thing between two clients pressing at once and a room with two
+> co-hosts, and the button is a display rule rather than an enforcement.
+>
+> **Hiding the offer nearly deleted a check, which is this file's own trap
+> arriving on schedule.** `scenario-cohost`'s refused-promotion section looked
+> for Carol's star, found it gone, and printed *"skipping"* — a section that
+> silently stops running is worse than one that fails. It demotes Bob, makes the
+> refused attempt, and puts him back, so section 5 still tests a real demotion.
+> The new rule is checked in BOTH directions (the offer is gone from everybody
+> else AND the co-host still has a button), because hiding both would make the
+> role permanent for the life of the room and a one-sided check would pass on
+> that. Verified by restoring `else`: *"the room already has a co-host and the
+> host is still offered the star on somebody else"*.
+>
+> ### The host can remove a player now — eject and kick (migration 065)
+>
+> Asked for by the owner: *"if someone is bad they need to be removed right and
+> not rejoin"*. **The database refused this until now, deliberately** — 057
+> allows exactly four removals and its own comment says why the fifth was
+> missing: *"there is no kick feature in this game, and a host being able to
+> remove a live human is a product decision nobody has made."* It has been made.
+>
+> | | |
+> |---|---|
+> | **Eject** | out of the room; they can walk back in with the code |
+> | **Kick** | out, and that room refuses them for as long as it exists |
+>
+> **WHAT KICK HONESTLY IS, and no screen may say more.** The ban is keyed on
+> `auth.uid()` and scoped to ONE ROOM — and a room survives Play Again, so a
+> kick lasts the sitting rather than one game, which is the unit people mean.
+> It is not a ban from the game: somebody who clears their browser data is a new
+> person, and room codes are four letters. **It raises the cost of coming back;
+> it does not close the door.**
+>
+> **A player with no auth identity cannot be banned at all**, and that is
+> REPORTED (`removed_no_ban` → *"was removed, but could not be blocked from
+> rejoining"*) rather than silently succeeding. "We kicked them" and "we removed
+> them and could not keep them out" are different facts, and the host is
+> entitled to know which happened — #6 exactly.
+>
+> **RESTRICTIVE is the load-bearing word in the policy.** Permissive policies
+> are ORed, so a second permissive INSERT policy would ADD a way in rather than
+> take one away, and 058's policy has to keep working untouched. A restrictive
+> policy is ANDed with all of them. It checks `auth.uid()`, never the row's own
+> `user_id`, which a banned person would simply omit.
+>
+> **A REFUSED JOIN IS NOT ALWAYS A CONNECTION PROBLEM.** Two rules refuse a
+> `players` insert with 42501 — 058's crown claim and 065's ban — so `addPlayer`
+> now ASKS (`op_is_banned`) instead of guessing, and says *"You were removed from
+> this room"*. Telling a kicked player to check their connection is the exact
+> wrong message an AFK host saw over and over earlier the same day.
+>
+> **`kickPlayer` has NO fallback, and that is the opposite call from
+> `removePlayer`.** That one falls back to a direct delete because leaving must
+> work whether or not the SQL is applied. This has never worked before 065:
+> there is no old path, and inventing one would be a direct delete that RLS
+> refuses silently — the button does nothing and nothing says so. `unavailable`
+> reaches the caller and the screen tells the truth.
+>
+> **14 new rules in `tests/sql/game-rules.sql`, run against a real Postgres**
+> (203 total). Both halves of everything: the removal happens AND the refusal
+> holds; a kick is scoped to its room AND does not follow them elsewhere; NULL
+> is not banned. Verified by breaking the host guard (2 rules fail) and by
+> dropping the room scope from `op_is_banned` (1 fails, `got "banned", want
+> "free"`).
+>
+> `scenario-cohost` presses both and checks the pair that makes them different
+> words: an ejected player rejoins, a kicked one is refused 42501, and a
+> bystander still gets in. Verified by making Kick pass `ban=false`: *"a KICKED
+> player walked straight back into the room — the ban does nothing"*.
+>
+> ### A crown for the role, and one small row for the controls (2026-09-05)
+>
+> **The owner's two ideas, and both were right.** *"The host could be indicated
+> by a gold crown and co host by a silver crown?"* and *"a small row/tray of
+> icons instead of giant buttons"*.
+>
+> | | |
+> |---|---|
+> | the lobby list | 👑 gold for the host, a SMALLER desaturated crown for the co-host, replacing the words. **71px back** on the two rows that had least to spare |
+> | the card | four controls in ONE ROW — icon above, word below — instead of four full-width buttons. **The card drops 644px → 498px and fits the smallest phone with no scrolling** |
+>
+> **COLOUR IS NOT THE ONLY DIFFERENCE, and that was mine to solve rather than
+> theirs.** Gold against silver is invisible to a colour-blind player and faint
+> on the light theme, so the co-host's crown is also smaller and desaturated,
+> and both carry a label for screen readers and a long-press.
+>
+> **AND EVERY COLUMN IS RESERVED, WHICH THE OWNER CAUGHT BEFORE ANY CHECK DID.**
+> *"I don't like that the cohost's quack and ready sign aren't aligned with
+> everyone underneath."* The crown had gone into the badge strip, so it sat
+> BETWEEN the honk button and the ready dot and pushed the co-host's duck **48px
+> left of every duck below it**. The list stopped reading as columns.
+>
+> The crown has its own slot now, reserved on every row, and so do the honk and
+> status columns — the host's own row carries none of the three (no honking at
+> yourself, no ready state when you hold the Start button) and its crown floated
+> 52px right of the co-host's directly beneath it. Measured after: crown, duck
+> and dot at **one x on every human row, at 375px and 430px, in both the waiting
+> and away states**.
+>
+> **Collapsing an empty slot saves width on the one row that has most to spare,
+> which is the wrong trade.** A column that only exists on some rows is not a
+> column, it is a shove. The bot's row stays 31px out because its BOT badge is
+> four times a dot's width — a differently shaped row, with nothing in the
+> columns to misalign.
+>
+> **The crown was only free to mean this because the controls had left the
+> row.** 👑 was the "make host" BUTTON until that change — one glyph meaning two
+> things is the ☆/★ confusion this file records two sections above.
+>
+> **And the icons only work because a WORD sits under each one.** These controls
+> were bare glyphs on the lobby row, and that is precisely why they were moved.
+> A small button with a caption is compact; a small button without one is a
+> guess.
+>
+> **THE OWNER FOUND A REAL INCONSISTENCY BY ASKING ABOUT A DOT.** *"The co-host
+> doesn't have a ready up button, is that intentional?"* — they DO have one;
+> only the host gets Start Game. But the ready dot was suppressed for host and
+> co-host alike, so a co-host could mark themselves ready and nobody, the host
+> included, could see it. The rule is the plain one now: **if you have a Ready
+> Up button you have a dot**, and only the host has neither, because readiness
+> is a message TO them.
+>
+> **A co-host still gets none of the host's controls**, on the owner's decision:
+> a co-host helps run the GAME once it starts; who is in the room stays the
+> host's alone.
+>
+> **`scenario-cohost` failed on the rename, which is the check working.**
+> `.badge--cohost` no longer exists and it reported *"Carol cannot see that
+> anyone is co-host"* — a control that only moved is a control that was deleted,
+> and this time something was watching. Verified again by deleting the co-host
+> crown: two failures by name. `.badge--host` STAYS — the scoreboard, reveal and
+> results still use it; only the lobby changed.
+>
+> **FIVE BUTTONS DID NOT FIT, and only measuring the full host case found it.**
+> The card mock had three — which is what a NON-host sees — so the tallest card
+> the app can build had never been rendered. Measured with all five: **715px on
+> a 375x812 phone, with the last button below the fold on both sizes.**
+>
+> | | |
+> |---|---|
+> | `.modal` padding | **48px top AND bottom** — affordable on a two-button dialog, not here. 24px now |
+> | `.profile-card .btn` | 53px → **44px**, and 44 is the floor rather than a number picked to fit: under it, a real problem is traded for a worse one. Scoped to this card — the global 53px is calibrated on a real device for Start Game |
+>
+> After: 644px at 375x812 and 702px at 430x932, **no scrolling**; the 667px SE
+> still scrolls, with the fifth button peeking at the edge, which is the right
+> affordance rather than a hidden control.
+>
+> **And the labels stopped repeating the name.** "Remove QuizMasterMax" /
+> "Kick QuizMasterMax out" spent width on a name the card states twice at the
+> top — the gallery's *"the subject repeated in every requirement under a
+> heading that already named it"*, again. What a person genuinely cannot know is
+> what the two do DIFFERENTLY, so that is the label now: **"Remove — they can
+> rejoin"** and **"Kick out — cannot rejoin"**.
+>
+> **The confirm dialog nearly made that check meaningless.** Playwright
+> DISMISSES dialogs by default, so the kick was being cancelled and every
+> assertion after it measured a button that was never really pressed.
+>
+> ### SETTLED: the host's controls moved into the player's card
+>
+> **Five rounds on one row, and the answer was to stop putting things on it.**
+> Every earlier attempt — moving the badge, stacking it, deleting the rank word
+> — bought a few pixels and cost something else, because the row was carrying
+> more than 327px holds. `roleActionsFor` in `js/lobby.js` hands the host's
+> controls to the profile card that already opens when you tap somebody.
+>
+> | | |
+> |---|---|
+> | the row keeps | avatar, name, title, honk, one badge — **one compact line, for everybody** |
+> | the card gains | "Make co-host" / "Remove as co-host" / "Make host", in WORDS |
+> | the bot keeps its ✕ | that row has no name pressure, and removing a bot is not handing anybody power |
+>
+> Measured: hosts `[52, 51]`, players `[51]` — **uniform, and the host's view is
+> now the same shape as everybody else's.** Every name whole at 375px and 430px.
+>
+> **It is the same call the report button made in August**, and the reasoning
+> transfers exactly: rare and consequential belongs behind a deliberate tap
+> rather than on a row you scroll past. Words are a gain on their own — ☆
+> against ★ was a distinction nobody could read.
+>
+> **`data-profile-player-id` is why this is safe.** The card was keyed on
+> `data-profile-user-id`, which is ABSENT whenever anonymous sign-in did not
+> land — so with the controls in here, that player would have been silently
+> unpromotable, with nothing on screen saying why. A seat always has an id.
+>
+> **`pressPlayerCardAction` in `harness.js` is the other half.** Three scenarios
+> reached for `.cohost-btn[data-cohost-id=…]`, and a check that reaches for a
+> control by its old selector reports "gone" for one that merely moved. Worse,
+> `scenario-bots` asserted those selectors were ABSENT on a bot — which now
+> passes for a bot, a human, and a build with the feature deleted. It asks the
+> CARD now, and asserts a real player IS still offered them, or the bot half
+> proves nothing. Verified by making `roleActionsFor` return null: three
+> failures by name.
+>
+> **THE PROFICIENCY CHART IS ON THE CARD TOO (asked 2026-09-05).** The owner
+> asked whether the web chart could be seen from the lobby, and it costs
+> nothing: the card already fetched `stats` for its four figures, so the chart
+> is drawn from data in hand — no second request. It uses the SAME
+> `buildRadarAxes` and `renderRadarSvg` as the profile page; a second
+> implementation of "twelve axes, one per category" would be this project's
+> signature fault with a quiet failure (two charts disagreeing about one
+> player). "An unplayed category is not a zero" comes along for free, and
+> `anyData` false draws nothing at all.
+>
+> **AND IT PUSHED THE CARD OFF THE TOP OF A SMALL PHONE.** Measured at
+> 375x667: the card stood **728px tall with its top at -30px**, and
+> `overflow: visible` — so the player's name ran off the screen with nothing to
+> scroll back to. That is the profile page's 571px bug in a sheet. The card has
+> `max-height: 88vh` and its own scroll now, which is a backstop for anything
+> added later rather than a patch for the chart.
+>
+> **The first attempt to shrink the chart did nothing, and only measuring said
+> so.** `.profile-card__radar svg` and `.radar svg` have EQUAL specificity, so
+> it lost to whichever came later in the file and the chart drew at its full
+> 300px. `.radar.profile-card__radar svg` outranks it and cannot be undone by
+> ordering. **Equal specificity is decided by file order, which is not a
+> decision anybody made.**
+>
+> **A FLAKE WORTH KNOWING ABOUT, not chased here:** `layout-sweep --stress`
+> reported `.category-grid items side by side differ by 2px: [158, 156]` at
+> 430px on OLED once, then passed twice in a row on the same commit. **RECURRED in
+> CI 2026-10-28 (light theme, `b0de629`), green on every later run: the
+> tolerance is now 2px for `.category-grid` only.** Nothing in
+> that change touched the category grid. Sub-pixel rounding is the likely cause
+> and the check already tolerates 1px. Recorded rather than silenced — if it
+> recurs, the fix is the tolerance, not the grid.
+>
+> **THE FIRST MOCK OF THAT CARD RENDERED LESS THAN THE APP DOES**, and the
+> owner reasonably read the screenshot as "why is so little on it?" The real
+> card carries four stats and the host rating; the mock had name, title and
+> buttons. **A mock that renders LESS than the app is the same fault as one that
+> renders more** — this file has recorded the second direction three times and
+> had not thought about the first.
+>
+> **And the button spacing was wrong, which the owner saw and no check did.**
+> Measured: 8px between the two role buttons and **0px** between the last of
+> them and "Add Friend", because each block set its own gap and
+> `.profile-card__actions` had no top margin. The sweep measures overflow,
+> contrast and row heights — not rhythm. One value everywhere now, verified at
+> 8px/8px.
+>
+> **`module-integrity` earned its keep.** A botched edit left a stray `}` and
+> `node --check` passed it — that check parses as a SCRIPT, where a top-level
+> return is legal. Only the module parse caught it.
+>
+> ### The four rounds before it, kept because each was measured
+>
+> **THE HOSTS LIST STACKED, THE PLAYERS LIST DID NOT — and the owner's
+> idea is what made it work.** Four rounds of this, and the answer was neither
+> of the two things I kept measuring against each other.
+>
+> Their words: *"can host and co host just be squeezed above the clickable
+> buttons?"* — a right-hand block two lines deep, mirroring the name and title
+> on the left. I built it for EVERY row first and it was wrong: rows went 51px
+> to 65px, the chat was pushed off the bottom of the screen, and the lone ready
+> dot floated in the top-right corner of every player row with nothing to
+> anchor it. *"Compact is much much better. The second is botched."*
+>
+> **Then they named the thing I had missed: do it for the hosts only.** And
+> `#host-list` and `#player-list` are SEPARATE LISTS, which changes everything:
+>
+> | | |
+> |---|---|
+> | the ragged-row check | compares rows within one list, so two tall host rows cannot make the players list uneven |
+> | the height cost | 2 rows, not 7 — the chat stays on screen |
+> | the floating dot | **disappears rather than being fixed**: host and co-host have no ready state, so that list's badge line only ever holds a role or Away |
+>
+> Measured at 375px, every lobby state, both widths: **0px overflow and not one
+> truncated name anywhere** — the co-host goes from 84 of 97 ("TimeTravel…") to
+> 163/163, and 145/145 even when away and carrying both badges. Host rows 66px,
+> player rows 51px, unchanged.
+>
+> **The stacking is a CSS rule on the LIST, not a shape the JS decides.**
+> `_renderPlayerItem` emits one `.player-item__right` for everybody and
+> `.lobby-hosts` turns it into a column. The mock emits the same markup, so the
+> two cannot disagree about it — which is the drift this file records more than
+> any other.
+>
+> `order: 2` keeps the badge on the OUTER EDGE in the players list. Wrapping the
+> two in one block put it before the buttons in source order, and a status dot
+> sandwiched between the duck and the crown stops being a column you can scan.
+>
+> ### The two rounds before that, kept because the reasoning moved
+>
+> **CO-HOST BESIDE HOST, and the owner chose it knowing the cost.** I
+> measured it, argued against it, and they asked a third time — *"I also still
+> see co host in the same spot? Not where host is. It displaces the title
+> currently."* Their reading is the one that matters and it is right: beside an
+> italic title, a role badge does not look like a role, it looks like the title
+> has been shoved aside. **A layout that is misread is not a layout that works,
+> whatever the pixels say.**
+>
+> The cost, measured at 375px, and it is real:
+>
+> | name | badge in the strip | badge on line 2 |
+> |---|---|---|
+> | TimeTraveler42 | 84 of 97 — **cut** | 155/155 |
+> | ArchaeologistAnna | 84 of 118 — **cut** | 155/155 |
+> | MaximilianTheGreat99 | 84 of 141 — **cut** | 155/155 |
+>
+> The name box gets **84px whatever the name is**, because that row carries
+> buttons the host row does not and a 71px badge takes everything left. So the
+> co-host — and ONLY the co-host — truncates above about 11 characters at 375px
+> and 15 at 430px. Every other row is unaffected.
+>
+> **AND IT BROUGHT BACK THE OVERFLOW, which is why this is written down.** An
+> away co-host carries BOTH badges — Co-Host 71px and Away 39px, 110px of a
+> 327px row — and the row **overflowed by 31px at 375px and 9px at 430px**: the
+> exact fault that made the whole page draggable sideways in a real playtest,
+> reintroduced by a layout preference. The sweep caught it; an eye would not
+> have, because `overflow-x: hidden` clips it into looking fine.
+>
+> The fix is a rule that stands on its own: **the crown is not offered for
+> somebody who is away.** Handing the game to a sleeping phone is the stall four
+> migrations were written to end, and `determineNextHost` already prefers
+> present candidates — so offering it was the dead button 062 exists to stop. It
+> also happens to be the 30px that makes the row fit, and that is the only
+> reason it was found. **Shipping the layout without noticing this would have
+> been the 71px bug for the third time.**
+>
+> **And two mock states were describing things they did not draw.**
+> `lobby-away`'s own comment says it exists for "specifically an away CO-HOST"
+> — and its loop read `#player-list` only, while the co-host lives in
+> `#host-list`. It had **never once rendered one**. `lobby-ready` had been
+> rewritten twice in one day and was wrong both times (converting a badge that
+> no longer existed, then appending one the app does not build); it flips a
+> class on an element the base state emits now, which is the shape that cannot
+> drift.
+>
+> **AND THE MEASUREMENT LIED ONCE MORE ON THE WAY.** The title reported
+> `105/105` — not truncated — while the screenshot plainly showed "Student of
+> the Ag…". `.name-substack` carries `overflow: hidden`, so a child's
+> `scrollWidth` equals its `clientWidth` while the PARENT does the clipping.
+> Measuring the child answers a question about the child. **When a number and a
+> screenshot disagree, the screenshot is what a person sees.**
+>
+> **The mock had drifted again** — `mock-states.js` builds its own row HTML, so
+> it was previewing markup the app no longer produced and my own measurement
+> script was injecting the OLD shape into row 0 and reporting it as fact. Both
+> corrected in the same commit, which is the rule this file already states.
+>
+> ### The host rating worked, and nobody could reach it
+>
+> *"Is the host rating even working? I don't think my friend even encountered
+> that option."* It works — but **nothing anywhere checked that it ever
+> appears.** Every existing check asks that the row stay HIDDEN mid-game (059
+> moved the thumbs to the final round), which is the *"a control that only moved
+> out of somewhere is a control that was deleted"* trap with nothing watching the
+> half that matters.
+>
+> `scenario-fullgame` samples the final round's reveal now, and both non-host
+> players get it. So the mechanism is sound and the report is still true: it
+> appeared **only on the final round's reveal**, a screen that lasts exactly as
+> long as it takes the host to tap on.
+>
+> **AND THE LABEL WAS MISREAD, which is the same fault one level along.**
+> "Play with this host again?" states the question the vote actually asks, and
+> that framing is deliberate (below). But on the results screen it sits a few
+> pixels above a button reading "Back to Lobby" / "Play Again", and the owner
+> took it for the rematch prompt: *"the wording might be confused for play again
+> instead of a host review no?"* Two "agains" stacked read as one control. It is
+> **"Rate your host"** now — 👍/👎 under that is not ambiguous about what a
+> thumb means, and a label that is misread is worse than a shorter one.
+>
+> **Measured while placing it: on a six-player reveal at 375px the thumbs sit
+> UNDER the "Next Question" button**, with the label sliced in half. That is the
+> whole of *"my friend didn't see it"* — not a bug in the mechanism, which
+> works, but a row below the fold on the one screen it appeared on. The layout
+> sweep's COVERED check reports it by name.
+>
+> It is on the **results screen** too now — where people stop, and where the
+> owner chose to put it: *"below feels less intrusive and yet is visible"*,
+> under the scoreboard rather than above it. The row is **MOVED, not copied**: two copies would mean two sets of buttons and two
+> listener bindings for one vote, which is the worst possible place to introduce
+> the duplication fault this file records more than any other. `hostReviewOnScreen()`
+> replaced two `state.onRevealScreen` tests that would have gone quiet exactly
+> where the row now lives.
+>
+> ### Understood and NOT changed
+>
+> *"One time my timer ran out and it looked stuck for a couple seconds but still
+> proceeded properly."* That is `TIMER_GRACE_MS` (500ms) plus the host's
+> round-ending chain — re-fetch answers, fill blanks, write the phase. It is the
+> system working, and it says nothing while it does. Left alone deliberately:
+> nothing was reported as broken, and adding a line to a screen that is about to
+> change was not asked for.
+
+> ## 2026-09-05 — a playtest, and one trapdoor behind three of the four reports
+>
+> The owner played a game and reported four things. **Three of them are one
+> bug**, and it is in a shortcut nine words long.
+>
+> ### "He said time's up but he could still type"
+>
+> `handleRoomChange` had a fast path for one moment — a non-host sitting on a
+> question screen with the card still hidden, waiting for the host's clock stamp
+> to reveal it:
+>
+> ```js
+> if (!isHost && question_started_at && state.gamePhase === 'question'
+>     && !state.hasSubmitted && !state.timerId) {
+>   revealQuestionAndStartTimer();
+>   return;                       // ← everything below is skipped
+> }
+> ```
+>
+> `return` skips `current_question`, a swapped question list, and
+> **handlePhaseTransition**. And the conditions cannot tell that moment from a
+> round that has ALREADY ENDED, because **`startTimer` sets `state.timerId` to
+> null the instant the clock runs out**.
+>
+> So from expiry onwards, a player who had not submitted matched this on EVERY
+> room update — the host's `game_phase = 'reveal'` included. The timer restarted
+> against the same expired stamp, re-expired, nulled `timerId` again, and the
+> next update was swallowed the same way. **Stuck on a dead question for the
+> rest of the game**, which is exactly what was reported.
+>
+> The window is not only the 500ms grace before the auto-submit. `doSubmitAnswer`
+> puts `hasSubmitted` BACK to false when a deliberate submit is refused — and a
+> submit into a closed round is refused — so trying to answer is what makes it
+> permanent. The player typing is the thing that keeps them trapped.
+>
+> **AND IT EXPLAINS "I BET 5 AND IT SAID I BET 1".** Everything typed into that
+> dead round is refused as late, so the row that stands is the blank the host
+> already filled in — carrying that player's **lowest unused wager**, which
+> early in a game is 1. Not a wager bug at all; a symptom.
+>
+> ### "Question 4 started with only 4 seconds left"
+>
+> Same area, separate cause, and it is about what Realtime actually delivers:
+> **the whole `rooms` row on every update**. Announcing a round and stamping its
+> clock are two writes a second apart (`WAGER_AUTO_SKIP_MS`), so in between, the
+> row names the new round and still holds the LAST one's stamp. The handler took
+> it unconditionally. Any write landing in that gap — the scoreboard, the
+> question list, a settings change — handed somebody the previous round's clock.
+>
+> Two fixes, because either alone leaves a hole:
+>
+> - **At source.** `handleNextQuestion` and `handleRevealFinalQuestion` now
+>   write `question_started_at: null` BEFORE the phase. Data first, phase second
+>   — this project's own rule, applied to the one column it had been left off.
+>   Absent is not wrong: a phone with no stamp runs a FULL clock until the real
+>   one lands, which is the harmless direction.
+> - **On arrival.** `isStampForCurrentRound` in `timer-helpers.js` — pure, 9
+>   unit tests — refuses a stamp whose round number is not ours, or that predates
+>   the moment we entered this round. `state._roundEnteredAt` is what makes the
+>   second question answerable at all, and `beginRoundClock()` in `state.js` is
+>   the one place that sets it: **five sites begin a round**, and "the same rule
+>   stated N times and followed N-1" is this file's most repeated fault.
+>
+> **A dead guard found on the way.** The `final_question` case tested
+> `state.gamePhase !== 'loading'` — but the switch overwrites `state.gamePhase`
+> with the new phase *before* the cases run, so it could never be false and the
+> reconnect it protected was never protected. It uses `prevPhase` now, which the
+> `final_wager` case two above had right all along.
+>
+> ### The check, and what makes it a check
+>
+> `scenario-nasty` closes a round under a player and requires them to follow the
+> room. Reverting the guard fails it by name, twice: *"the room moved to reveal
+> and Bob never heard it"* and *"the round is over and Bob can still type into
+> it"*, with `{"screen":"question-screen","phase":"question","canType":true}` —
+> the reported bug, reproduced.
+>
+> **The state is SET, not waited for**, and that is deliberate: reaching it by
+> playing needs the reveal write to land inside a 500ms window, and a flaky
+> check is one people learn to re-run. Every field is one the app writes itself.
+>
+> ### "When I type I can't see the question"
+>
+> Every screen is `position: fixed; inset: 0; height: 100dvh`, and that is the
+> shape a phone keyboard breaks. iOS does not shrink the layout viewport, so
+> `100dvh` stays the whole phone; the browser PANS the visible window up to reach
+> the answer box, a fixed element pans with the layout viewport rather than the
+> visible one, and the question goes off the top with `overflow: hidden` leaving
+> nothing to scroll back to.
+>
+> `js/keyboard-inset.js` (no imports, 7 unit tests) measures `visualViewport` and
+> publishes `--kb-visible-height` / `--kb-offset-top` plus a `kb-open` class; the
+> question screen is resized and re-anchored to the window that is actually
+> visible, so there is nothing left to pan. The answer box becomes sticky and the
+> question card keeps its own scroll, so the thing that gives way is never the
+> thing you are looking at. `game.html` also gains
+> `interactive-widget=resizes-content`, which fixes it outright on Android
+> without any of the JS running.
+>
+> **EVERY RULE IS BEHIND `.kb-open`.** With no keyboard — which is every state
+> the layout sweep and the robots can produce — not one applies, and the sweep
+> confirms the layout is unchanged. **This is the one fix here that a real phone
+> still has to confirm**, because nothing in this repo can open a keyboard.
+> Measuring the arithmetic is not measuring the result; say it that way.
+>
+> ### The habit
+>
+> Three of four reports were one bug, and the bug was a `return`. **A shortcut
+> that skips the main path is a trapdoor the moment its conditions drift** — and
+> `timerId` did not drift, it was never a test for "is this round live" in the
+> first place. When a guard uses a variable to mean something it does not mean,
+> the failure is not a wrong answer, it is a right answer to the wrong question.
+
+> ## 2026-09-03 — reading the whole shift, hunk by hunk
+>
+> The owner's question was the right one: *"it had been working well before the
+> shift I mentioned."* So the game engine was diffed against the last commit
+> before it — `a5d6843`, the point Slice 7 begins — and every hunk read. 1,025
+> lines across `js/game/` and `js/lobby.js`. Two findings, and the first is the
+> purest example of the shift's whole failure mode.
+>
+> ### The button that moves the game on said nothing when it failed
+>
+> Before the lockdown, every phase change was `updateGameState`, which goes
+> through `reportWriteFailure` and toasts *"Couldn't move the game on — check
+> your connection"*. Migration 060 routed all fourteen call sites through
+> `setPhaseOnServer`, which on a genuine error logged and returned `true`.
+> **The shift kept the write and dropped the message.**
+>
+> No fallback runs, and that is CORRECT — 061 revoked the column, so a direct
+> write matches zero rows and reports success. Which is exactly why the message
+> is the whole of the fix: with nothing said and nothing retried, a transient
+> failure is a button that does nothing and a game that silently stops. Reveal
+> Results, Next Question, Show Results, Final Wager, Play Again, Return to
+> Lobby, Start Game — every one of them.
+>
+> This is the pattern to expect from every slice of the rebuild, stated once
+> more: **what was harmlessly redundant a moment ago is now the only path**, and
+> the guard written for the old world is silently wrong in the new one.
+>
+> `scenario-cohost` fails the round by name with the toast removed — *"the host
+> pressed advance, the server failed, and nothing was said"* — and requires the
+> room NOT to have moved, so it cannot pass on a fallback quietly working.
+> `store.failFunction` is what makes it reachable at all; `hideFunction` models
+> "not installed", which takes the fallback and is the branch that was always
+> right.
+>
+> ### promoteToHost reported success for a fallback it never checked
+>
+> Three of the four role functions return `{ ok: !error }` from their direct-write
+> fallback. `promoteToHost` returned `{ ok: true }` unconditionally, having
+> logged both errors and discarded them. **The same rule stated four times and
+> followed three** — the shape this file records more than any other. Insurance
+> rather than a live fault (it needs 058 applied AND the function missing), but
+> every caller announces the change in chat on the strength of that `ok`.
+>
+> ### What the read RULED OUT, which is worth as much
+>
+> - **Every `rooms` column the client writes is in 061's grant list.** Enumerated
+>   both dynamic `columnMap`s as well as the literal writes. No refused UPDATE.
+> - **Every `players` column the client writes is in 058's list** — or goes
+>   through `op_set_host_role`.
+> - **`op_submit_answer` accepts an answer when `question_started_at` is NULL**
+>   (`IF r.question_started_at IS NOT NULL THEN`), so moving the clock stamp
+>   behind the UI reveal cannot refuse a fast submitter.
+> - **All four `attachProfileCardHandler` call sites** pass the new fourth
+>   argument.
+> - **`handleLeave`, `handleBackButton` and `handleQuitGame`** all route through
+>   `leaveRoomOnServer` and only reach `deleteRoom` on `unavailable`.
+>
+> ### The habit, restated
+>
+> Diffing against the last known-good commit found in one pass what six sessions
+> of symptom-chasing had not. When a report is *"it worked before X"*, read X.
+
+> ## 2026-08-31 — a playtest list, worked one at a time
+>
+> Nine things the owner reported after a real game. Written the way the section
+> above asks for: each says how it was established, and the ones that are
+> inference say so.
+>
+> ### The game-breaker: a co-host revealing the final question
+>
+> **REPRODUCED in the harness, fixed, and the fix break-tested.** The owner's
+> words: *"gamebreakingly glitched after difficulty selection. I couldnt see the
+> clue, it kept rerolling the difficulty, the question appeared phased on the
+> wager selection screen, i couldnt even type, my friend saw a different
+> question."*
+>
+> "Reveal Question" is gated on `canControlGame()`, so a **co-host or a deputy**
+> can press it — and `handleRevealFinalQuestion` swaps the final question and
+> writes a new `question_ids`. Two guards were written as *"am I the host"* when
+> they meant *"am I the one who did this"*, and both broke:
+>
+> | | |
+> |---|---|
+> | `handleRoomChange` | `questionIdsChanged` was gated on `!state.room.isHost` — correct when only the host could change the list, and since co-hosts can, **the host was the one client structurally unable to hear about it**. Measured: room and co-host on q15, host still showing q21. Migration 046 judges against the ROOM's question, so the host answers one nobody asked. |
+> | the `reveal` broadcast | skipped the animation on `state.room.isHost`, so the host got **no slot machine at all** when a co-host revealed. The channel is `broadcast:{self:true}`, so the presser also hears itself — reading the code, it runs the animation twice, two six-second chains of uncancellable `setTimeout`s over a `position:fixed; z-index:10000` overlay. |
+>
+> **The double-run is READ, not measured** — say it that way. Both chains
+> overlap so tightly that neither a `hidden` observer nor a `--show` observer
+> sees two transitions. What WAS measured is the host getting zero animations
+> and the two phones being asked different questions.
+>
+> A third fault sat underneath: `syncToCurrentState`'s repair called
+> `handlePhaseTransition`, which **refuses a phase it is already on** — the
+> `question` branch bails on `_lastProcessedQuestion === currentQuestion` and
+> everything else on `phase === state.gamePhase`, and both are true by
+> construction in the only case this repair exists for. So the list was
+> corrected in state and the screen kept the old question. It calls
+> `showQuestionScreen()` directly now.
+>
+> `scenario-cohost` covers it: the co-host drives to the final wager and
+> reveals, and every phone must be asked the room's question AND must have run
+> the reveal. Verified by reverting all three — it names *"Alice is being asked
+> 'Test question 30?' while the room asks 'Test question 9?'"*. **Its bank had
+> to be re-seeded with mixed difficulties first**, or `fetchQuestionByDifficulty`
+> finds nothing, the swap never happens, and the check agrees with itself
+> whatever the code does — the same trap that cost `scenario-fullgame` its
+> coverage.
+>
+> ### The rest of the list
+>
+> | Reported | Cause | How established |
+> |---|---|---|
+> | collapsible panels do nothing | `.title-rows { display: flex }` is an AUTHOR rule and beats the UA's `[hidden] { display: none }` whatever the specificity. Three other places in the stylesheet already carry the `[hidden]` line; the newest forgot | screenshot, break-tested |
+> | admin Title Words slow / broken | `measureTopicSizes()` awaited `fetchQuestionCount` **64 times sequentially** — 12 subjects + 52 topics — before drawing anything. 15-30s on a phone. Batched 8 at a time | counted from `CATEGORY_META` |
+> | players cannot see placeholders | the **Fill placeholders button lives inside that panel**, so it was unreachable. One slow loop, three complaints | inference, and it follows |
+> | friend cannot accept a request | `parseInt(dataset.accept, 10)` on `friend_requests.id`. Migration 003 declares BIGINT, but #10 measured the live `friendships.id` as a **uuid** and the live `friend_requests` as missing 003's UNIQUE — so those tables were not made by 003. `parseInt("3f25…")` is `3`; `parseInt("a3f2…")` is `NaN` | strong inference, NOT measured — the fix is type-agnostic so it does not depend on which |
+> | "it said I sent one as well?" | the profile card ignored `autoAccepted` and flattened every error to "Already Sent". You became friends and it said "Request Sent" | read |
+> | the bot says "Waiting..." | an empty answer before the reveal reads as WAITING because a human's real answer may be in flight. **A bot has nothing in flight, and a blank IS its answer** for the ~20% of the bank with no stored distractor | read |
+> | shown away too eagerly | presence flips the instant a phone backgrounds. `awayTimestamps` has always recorded WHEN, for exactly this, and nothing read it. `AWAY_GRACE_MS` (10s), display only | break-tested both ways |
+>
+> **`AWAY_GRACE_MS` IS DISPLAY ONLY.** Deputising (`HOST_HANDOVER_MS`) and
+> releasing a seat (`STALE_TIMEOUT_MS`) read `last_seen_at` and are untouched:
+> the game still stops waiting for an absent player at once. Only the label
+> waits. It has four readers, so it is one exported `isPlayerAway` in
+> `js/game/state.js` plus the lobby's own — not the grace written out five
+> times. Both scenarios check BOTH halves (quiet early, labelled late); either
+> alone is a check that cannot fail.
+>
+> ### The `picker.onclick` crash was already gone
+>
+> The reported `null is not an object (evaluating 'picker.onclick …')` exists in
+> **exactly one commit** — `7a9f9f6`, 16:06 UTC — and was removed by `fd769bb`
+> at 17:45 the same day, the Title Builder revert. `git log -S"picker.onclick"`
+> is the whole investigation. **Do not go looking for it in HEAD.**
+>
+> ### A hard dependency the app should not have had
+>
+> `fetchTitleWords` named `is_placeholder` in its `select`. That column arrives
+> in **migration 064**, migrations here are applied by hand, and PostgREST
+> answers `42703` for the WHOLE select — so if 064 is not applied, **every
+> owner-written word disappears from every screen**, with nothing but a console
+> warning. It retries without the column now and reads every row as written,
+> which is the harmless direction. This project's own rule is that the
+> JavaScript must be safe to deploy before the SQL is run; that select broke it.
+>
+> ### "Not installed" and "failed" are DIFFERENT ANSWERS (2026-09-01)
+>
+> Found during grounding, not surfaced, and the owner asked why. Three wrappers
+> in `js/db/` returned the same value for both, and their callers respond by
+> writing DIRECTLY to a table a migration has since locked — where the write
+> matches zero rows and returns no error.
+>
+> | Wrapper | Fallback | What a real failure did |
+> |---|---|---|
+> | `setJudgementOnServer` | direct UPDATE on `answers` (revoked by 049) | the host's override vanished for everybody while their own toggle stayed flipped — **and `amendQuestionHistory` still rewrote the player's permanent record** for a correction that never landed |
+> | `disqualifyRoundOnServer` | a loop of the same | a thrown-out round went on paying points |
+> | `leaveRoomOnServer` | `deleteRoom` (revoked by 048) | leaving as the last player removed NOTHING — not even your own row — so you stayed listed in your own lobby until the stale sweep |
+>
+> `setPhaseOnServer` and `botAnswerOnServer` in the same codebase already draw
+> the distinction. All three now report `unavailable`, and **only that** takes
+> the old path; a real failure reverts the optimistic change, says so, and
+> returns before anything writes it onward.
+>
+> **THE HARNESS COULD ONLY PRODUCE THE BRANCH THAT WAS CORRECT.** `hideFunction`
+> models "not installed" (PGRST202) and `slowFunction` models "not back yet";
+> there was no way to make an installed RPC FAIL, so every one of these
+> fallbacks was unreachable from a scenario. `store.failFunction(name, error)`
+> is the third shape, and it is what makes any of this testable.
+>
+> `scenario-social` fails by name on all three halves — the stored answer, the
+> screen, and whether the host is told. Verified by restoring the old fallback.
+>
+> **THE JUDGEMENT RULE HAD THREE READERS AND I FIXED ONE.** `reveal.js`, the
+> Edit Scores sheet and the results review overlay all call
+> `setJudgementOnServer`; the scenario caught the two I had missed, which is the
+> fourth time this file records that exact shape.
+>
+> ### A role change that was refused was announced anyway (2026-09-01)
+>
+> Found by the same sweep, one shape along: **an optimistic change that is never
+> reverted.** `promoteToHost`, `demoteHost`, `promoteToCohost` and `demoteCohost`
+> returned NOTHING at all, so no caller could tell success from refusal — and
+> `op_set_host_role` DECLINES whenever the room's own state does not allow it,
+> which is the guard working rather than a fault.
+>
+> | Caller | What a decline did |
+> |---|---|
+> | the lobby's co-host toggle | marked them co-host locally AND posted *"X is now co-host"* to the chat. The host saw a badge nobody else had; the co-host got none of the powers |
+> | the lobby's host TRANSFER | promoted the target, then **demoted itself regardless** — so a refused promotion left the room with **no host at all**, recoverable only by a stale sweep |
+> | both game-side promotions | the client took the crown, showed host controls and announced itself, while the row said otherwise — so every advance it tried was refused by `op_may_advance`. The dead button 062 was written to end |
+>
+> All four report `{ ok }` now, and every caller checks it before mutating,
+> announcing, or demoting anything. The transfer stops if the promotion did not
+> land; a declined self-promotion re-fetches instead of claiming.
+>
+> `scenario-cohost` uses `store.failFunction('op_set_host_role')` and requires
+> the stored row, the badge, the chat and the toast to agree. Verified by
+> restoring the old code: *"the promotion was refused and the room was told it
+> happened"*.
+>
+> **CLAUDE.md already recorded co-host "silently doing nothing, for months."**
+> This was a fresh route to the same place, and the sweep that found it was the
+> plainest possible one: list every direct write to a table a migration
+> narrowed, then ask of each what the screen says when it is refused.
+>
+> ### Two things deliberately NOT done
+>
+> - **The Title Builder wheel is not coloured by rarity.** Only the gallery
+>   rows are. The owner asked for "each title word" in a conversation about the
+>   gallery, and this file records the wheel being rebuilt unasked once and
+>   reverted in full. Ask before touching it.
+> - **Four dead locals remain** — `fromPhase` (reveal.js), `fromPhaseFW` /
+>   `fromPhaseFQ` (scores.js), `questionAtExpiry` (question.js). Each is
+>   assigned once, read never, and carries a paragraph explaining machinery that
+>   is switched off (`expectedPhase` is `null` at every call site). They are
+>   debris from the compare-and-set retreat, they change nothing, and removing
+>   them was not asked for. **The comments lie about what is running** — that is
+>   the reason to delete them, when somebody decides to.
+>
+> ### CI had been RED on the deploy branch for three days
+>
+> **Measured 2026-08-31, and the guard was right.** `scripts/verify-sql.mjs`
+> applies a hand-written list of migrations and refuses to run if anything from
+> 045 on is missing from it. 063 and 064 shipped on 2026-08-30 and were never
+> added — so from that commit onward the `sql-parity` job exited 2 on every
+> push to `claude/setup-oracle-party-PHRgj`, the branch GitHub Pages serves.
+>
+> Three days in which the judging-parity cases and the game-rule table did not
+> run at all. The guard printed exactly what was wrong, by filename, on every
+> single push. **Nobody was reading it**, which is the same fault as the probe
+> printing its alarm and exiting 0 — one notch further out: a check that fails
+> loudly is still useless if no one looks.
+>
+> With both added, the suite passes in full: **2,661 judging cases agree
+> between the SQL and the screen, 1,695 normalisations, 400 edit distances, and
+> 189 game rules hold.** So the lockdown SQL is sound and was never the cause —
+> another negative result worth having, and one that cost one command.
+>
+> **Check the Actions tab after any push that adds a migration.** Everything in
+> this file about SQL being verified is only true while that job is green.
+>
+> ### Also corrected in this pass
+>
+> - **The room code is FOUR LETTERS, not six digits.** `generateRoomCode()` in
+>   `js/db/rooms.js` picks 4 from A-Z. This file said "6-digit" in four places,
+>   including two security arguments about how easily a room is found.
+> - `cleanup()` cleared the countdown backstop **inside `if (state._advancePollId)`**,
+>   and `_advancePollId` is only set during a QUESTION while that timer only runs
+>   during a COUNTDOWN — so the clear was unreachable exactly when it applied.
+>   (`state._advancePollId = null` also appeared twice: an edit that landed in
+>   the wrong place, in `60f40d8`.) The leak lint reads `cleanup()` for the
+>   CLEAR and cannot see that it sits behind an unrelated condition.
+> - `docs/BOTS.md` still says the bot's final wager is 10; `constants.js` says
+>   20, on the owner's instruction. The doc is stale, not the code.
+>
+> ### What this pass did NOT establish
+>
+> Nothing here explains a stall or a refusal on the **live database**. The CI
+> probe on `18d199f` (2026-08-30 15:48) reports every `op_*` function and every
+> watched column installed, and `answers -> players: no relationship`, so 052 is
+> applied.
+>
+> ### The role blind spot is CLOSED — measured 2026-08-31
+>
+> The probe runs as `anon` while every real player is now `authenticated`, which
+> is the exact gap that stopped anybody creating a room in slice 8c. That repair
+> was run by hand and is in no migration file, so the question could only be
+> answered from the SQL Editor. **The owner ran it, and the answer is that only
+> two policies in the whole schema are role-restricted:**
+>
+> ```
+> schemaname | tablename | policyname                                 | cmd    | roles
+> public     | duels     | Users can update duels                     | UPDATE | {authenticated}
+> public     | profiles  | Enable insert for authenticated users only | INSERT | {authenticated}
+> ```
+>
+> **`rooms` and `players` are not on that list**, so the `{anon}`-scoped
+> policies slice 8c found have genuinely been replaced with `{public}` ones.
+> Every gameplay policy applies to `anon` and `authenticated` alike, and turning
+> anonymous sign-in on cannot be silently refusing anything.
+>
+> `profiles` INSERT `{authenticated}` is correct and was already known. **DO NOT
+> re-investigate this** — it is the strongest single piece of evidence this repo
+> has about the live policy surface, and it rules out the leading systemic
+> explanation for the 2026-08-30 breakage rather than confirming it. The cause
+> was in the client, and this pass found it.
+>
+> **`duels` IS NOT A TABLE THIS APP HAS EVER HEARD OF.** It is in no migration,
+> no probe watch list and no query in `js/`. Harmless, and worth knowing for
+> what it says about the project: the live database carries objects this repo
+> has no record of, which is #10's whole theme. Do not write code against it,
+> and do not drop it without asking — it may belong to something else the owner
+> is running.
+>
+> The query, for the next time somebody changes who a user IS:
+>
+> ```sql
+> SELECT schemaname, tablename, policyname, cmd, roles
+>   FROM pg_policies WHERE schemaname = 'public' AND roles <> '{public}';
+> ```
+>
+> **THE LOCKDOWN IS APPLIED. Migrations 048 through 064 are all live —
+> measured on the live database from the owner's SQL Editor, each by its own
+> verification report, between 2026-08-28 and 2026-08-30.** 062 (the deputy
+> window), 063 (title words as content, plus a follow-up REVOKE the first
+> version needed) and 064 (the placeholder flag) are the newest. 061's eight rules came
+> back ok: nobody can write `rooms.game_phase` or `current_question` directly,
+> and every other room write a client legitimately makes still works. See
+> fact #2 for the table of what is closed and the two nuisances left open
+> deliberately.
+>
+> The live database was verified directly on 2026-08-18 via
+> `scripts/probe-db.mjs`. Do not trust `migrations/` as a record of what is
+> applied — several were never run.
+>
+> **A probe result is only as good as the probe.** Three sections of that
+> script have been caught reporting confident nonsense; see #6. Facts below
+> that came from it have been re-measured since each fix.
+>
+> `player_stats_computed` was missing from the live database until
+> 2026-08-19, which silently killed the leaderboard, tier badges, profile
+> stats and every title unlock. Migration 031 was run and the probe confirms
+> it. Kept as #8 because of how it hid, not because it is open.
+>
+> **Migrations 053, 054 and 055 are APPLIED — measured on the live database on
+> 2026-08-28**, from the owner's SQL Editor, by a report that looks at
+> `pg_proc`, `pg_policies` and `to_regclass` rather than asserting a count.
+> Every one of its eight rules came back ok: `get_leaderboard` and
+> `op_rate_host` installed, `host_ratings` and `host_reputation` present, no
+> policy exposing who voted, no policy letting a client forge a rating, no
+> policy letting a player write their own `question_history`, reading still
+> open so question selection does not revert to a plain shuffle, and all three
+> SECURITY DEFINER writers of history intact. **`friendships` holds 2 rows** —
+> so the friends leaderboard has something to show, which was the open question
+> when it shipped.
+
+## What This Is
+
+A mobile-only browser trivia party game. Players join a room with a 4-letter
+code, answer typed trivia questions, and wager points on their own confidence.
+Built for playing with friends in the same room or over chat.
+
+- **Live site:** https://oracleparty.github.io
+- **Deployment branch:** `claude/setup-oracle-party-PHRgj` — GitHub Pages serves
+  this branch. There is **no `main` or `master` branch** in this repo.
+- **Supabase project:** `zzpqymehapwbjupphxec.supabase.co`
+- **Questions in database:** ~4,859 across 12 categories with subcategories
+
+## Tech Stack
+
+- **Frontend:** Vanilla HTML / CSS / JavaScript ES modules. No frameworks.
+- **Backend:** Supabase (Postgres + Realtime + Auth). Supabase JS client is the
+  only runtime dependency, loaded from `esm.sh`.
+- **Hosting:** GitHub Pages, with a service worker (`sw.js`) for offline caching.
+- **Mobile only:** designed for 375px–430px width, viewport-locked (100dvh).
+  **One exception: `admin.html`**, which is a workbench rather than a game and is
+  built for a computer (sidebar shell at 900px+). A phone keeps the emergency
+  half of it. See "the admin page is a workbench".
+
+---
+
+## ⚠️ Critical Architectural Facts
+
+Read these before proposing any change to gameplay.
+
+### 1. There is no game logic on the server
+
+**Partly false since migration 056 — see "Slice 7" below.** The TIME-BASED
+transitions (`countdown -> question`, `question -> reveal`, and repairing a
+question whose clock never started) are decided by the database now, and any
+player in the room can ask for them. Everything a person decides — the host
+pressing "Reveal Results", "Next Question", Play Again — is still a write from
+one phone, and that is what the rest of this section describes.
+
+The host's browser writes `game_phase`, `current_question` and
+`question_started_at` into the `rooms` row. Every other client reacts to those
+writes over Realtime. **Answer judging, scoring and timers all run
+independently in each player's browser.** The host's phone is the only referee.
+
+Consequences that show up as "random" bugs:
+- If the host's phone sleeps, loses signal or quits, the game can stall.
+- Clients can disagree about scores, because each computes its own.
+- Any player can edit any score directly (see #2).
+
+**Migrating this to server authority (Postgres functions owning phase, timer,
+judging and scoring) is the main open work item.**
+
+### 2. Database permissions WERE effectively wide open
+
+**Substantially closed as of 2026-08-29.** This section's history is kept below
+because the reasoning still applies to what is left, but the headline has
+changed. Seven doors were shut, each measured against a real Postgres, each
+verified by breaking it, **and every one of them applied to the live database
+and confirmed there by its own report**:
+
+| Was open to anyone | Closed by |
+|---|---|
+| delete any room mid-game | 048 |
+| mark any answer right or wrong, or delete them | 049 / 051 |
+| write your own stats for the whole question bank | 055 |
+| forge or read a host rating | 054 |
+| remove any player from any live game | 057 |
+| make yourself host of any live game | 058 |
+| end, rewind or skip a live game | **061** |
+
+**What is still open, deliberately:** `players.last_seen_at` (so somebody could
+make you look absent and have you swept — narrowed from any column to one), and
+`rooms.question_started_at` (a round's clock can be reset). Both are nuisances
+rather than takeovers, and both need their own enumeration rather than being
+tacked onto a slice that was about something else.
+
+### 2b. The original entry, kept for its reasoning
+
+RLS is *enabled*, which makes the Supabase dashboard look secure — but the
+gameplay policies are `USING (true)` / `WITH CHECK (true)`. See
+`migrations/022_atomic_increment_and_rls.sql`. With the publishable key (public
+by necessity, in `js/db/client.js`), anyone can read, write **and delete**
+`rooms`, `players`, `answers`, `chat_messages` and `chat_archive`. Anyone can
+therefore delete a room out from under a game in progress, or edit any score.
+
+Measured on 2026-08-18, not inferred from migrations:
+
+| Open to any visitor | Locked |
+|---|---|
+| `rooms`, `players`, `chat_messages`, `chat_archive`, `question_feedback`, `game_plays` | `questions`, `question_history`, `game_history`, `profiles`, `player_stats`, `site_settings`, `question_stats` |
+
+`answers` was empty at probe time and could not be tested without writing to
+it; migration 022 makes it permissive and nothing since has changed that.
+`question_stats` is locked deliberately — every write goes through the
+`record_question_outcome` SECURITY DEFINER function (migration 025), so a
+player cannot forge question performance.
+
+**The upsert conflict targets are sound.** `question_feedback
+(question_id, voter_id)`, `game_plays (room_id, player_id)` and `answers
+(room_id, player_id, question_number)` each have the unique index their
+`onConflict` needs. This was checked because a missing one raises 42P10 and
+kills *every* write through that path, which would have looked exactly like
+the schema-drift bugs in #3 — it is not what is happening, so don't
+re-investigate it.
+
+**The question bank is safe.** 4,859 questions, and a visitor can neither edit
+nor delete one. That is worth stating plainly, because an earlier version of
+the probe claimed the opposite (#6), and because the bank is the one asset here
+that could not be rebuilt.
+
+Locking the rest is deliberately deferred: with judging and scoring running in
+the players' browsers, the clients *need* those write rights. The lockdown
+comes free with server authority (#1), and is wasted effort before it.
+
+**`question_history` was the exception, and it is closed — migration 055.** See
+"Nobody can write down their own score" below. Every number the app shows about
+a player derived from a table any signed-in person could write directly, so a
+leaderboard position, a tier badge and every title could be set to anything in
+one request, without playing. It could be shut ahead of the rest for the same
+reason `chat_messages` could: the app had already stopped needing the right.
+
+**But rights the app never uses are not deferred, they are just wrong.**
+Migration 036 removes DELETE from `chat_messages` and `chat_archive`, and
+UPDATE from `chat_archive`, having checked `js/db/chat.js` rather than assumed:
+chat is inserted, read, and hearted, and never deleted by anything. Messages
+disappear when their room does, by cascade, which runs as the table owner and
+is unaffected by policies. Before this, any visitor could have wiped every chat
+message and every archive in the game.
+
+**What that does NOT fix, and the privacy policy now says so outright:** a
+person can still READ a room's chat they were never in. Permissions decide by
+identity and a guest has none — every guest is the same anonymous key. The only
+real fixes are requiring sign-in, which ends guest play, or putting a server
+between players and the database. That is #1, and chat privacy arrives with it.
+`privacy.html` tells players to treat chat as public, which is the honest
+position and better than a lock that only looks like one.
+
+**The owner's idea, and it is a good one: you arrive to an empty room.** A
+player now reads chat from the moment they first entered a room, not everything
+said before it (`rememberChatCutoff` in `auth.js`, `fetchMessages(roomId,
+since)`).
+
+**Be precise about what this is.** It is NOT a permission and does not close
+the paragraph above — anyone crafting requests by hand still reads everything.
+What it closes is the realistic leak: room codes are four letters and public
+games are listed, so anybody can walk in, and until now they arrived to the
+whole transcript. That is how a private conversation actually escaped.
+
+Two decisions inside it, both of which the obvious implementation gets wrong:
+
+- **SET ONCE, never moved forward.** The literal reading of "fresh on entry" is
+  per page load, which is worse than the problem — refresh your phone mid-lobby
+  and the conversation you were part of vanishes. A rejoin also deletes the
+  player row and writes a new one stamped later, so anything recomputing the
+  cut-off from `joined_at` would hide what was said while the player was
+  sitting there. `scenario-join` proves this by restamping the seat forward,
+  which is the only way to make the two behaviours differ inside a test that
+  runs in seconds while the rule is written in minutes.
+- **Biased EARLY by `CHAT_HISTORY_GRACE_MS` (2 min).** `joined_at` is written
+  by the phone; `chat_messages.created_at` is written by the database. The two
+  are only as aligned as that phone's clock, which is why this project already
+  keeps a `getServerTimeOffset()`. A cut-off landing too late hides messages
+  meant for the player and reads as chat being broken; too early shows a couple
+  of minutes of what came before, which costs nothing because this was never a
+  lock. The scenario seeds one old message AND one recent one — without the
+  recent one it would pass just as happily with the feature reverted to "hide
+  everything".
+
+`archiveChatMessages` deliberately passes no cut-off: the archive is the room's
+record, not one player's view of it.
+
+### 3. Schema drift is the single biggest source of "impossible" bugs
+
+Migrations are hand-applied, and several were never run. Every bug of this
+shape presented as something else entirely:
+
+| Missing thing | How it looked |
+|---|---|
+| `players.last_seen_at` | Players kicked from the lobby seconds after joining |
+| `players.is_cohost` | Co-host silently did nothing, for months |
+| `game_plays.subcategory` | Play counts "mysteriously" stopped recording |
+| `get_category_play_counts()` | Every category showed 0 plays |
+| `questions.acceptable_answers` | Correct answers judged wrong |
+| `rooms.auto_proceed` | Host setting silently ignored |
+
+Postgres rejects an **entire INSERT** for one unknown column, and the app only
+logs the failure. So one missing column silently kills a whole feature.
+
+**Every column in that table now exists** — migrations 024–027 were run, and
+the probe confirms all 18 tables have every column `js/` writes. Treat the
+table above as a catalogue of how this failure *presents*, not as an open bug
+list, and as of 2026-08-23 the probe reports **nothing on the watch list
+missing** — every RPC and view the app reads is installed.
+
+**`migrations/030_bot_players.sql` adds `players.is_bot` and is the newest
+hand-applied one.** Until it is run, pressing "+ Practice Bot" in the lobby
+inserts an unknown column, Postgres rejects the whole INSERT, and no bot
+appears — but it shows as a toast rather than silence, because `addBot` goes
+through `reportWriteFailure` (#4). Check the db-probe output before concluding
+the bot feature is broken.
+
+**Run `scripts/probe-db.mjs` before believing anything about the schema.** It
+runs on GitHub Actions (dev sessions are firewalled from Supabase), needs no
+secret, and reports which columns exist and what any visitor is permitted to
+do. `.github/workflows/db-probe.yml` triggers it on push.
+
+**Before adding a column to any INSERT, confirm it exists.** Writing
+`last_seen_at` in `addPlayer` before the column existed would have stopped
+anyone joining at all.
+
+### 4. Failures are logged, not shown
+
+The deepest recurring fault in this codebase. On 2026-08-13 there were **94
+places that log a Supabase error and 14 that tell the player anything**. Every
+bug found that day was invisible for that reason: a player vanished from a
+lobby, co-host did nothing, play counts stopped, the admin page reported
+"Saved!" while saving nothing. All of them reached a log and stopped there.
+
+`reportWriteFailure(where, error, playerMessage)` in `js/logger.js` logs AND
+surfaces a toast; `writeSucceeded(where, result, playerMessage)` also catches
+the zero-rows case, because **an RLS refusal returns no error** — it updates
+nothing and reports success.
+
+Use them for writes whose failure changes what the player experiences
+(submitting an answer, joining, starting, changing a role). Do **not** use them
+for background chatter like heartbeats: a toast on every dropped heartbeat is
+noise, and noise is how real warnings get ignored.
+
+### 5. Admin question edits silently do nothing
+
+`js/admin.js` updates `questions` in three places: marking a flagged question
+`removed`, editing text and answers, and editing `acceptable_answers` inline.
+All three were discarded by RLS, which returns **no error and zero rows**, and
+all three reported success.
+
+Two separate faults, fixed separately:
+
+**The reporting** is fixed. All three paths now `.select()` and check the row
+count, so a refusal shows as "Permission denied" instead of "Saved!". This is
+what `writeSucceeded()` in `js/logger.js` exists for (#4).
+
+**The permission** needed migration 028, and this is worth reading closely,
+because the first attempt to fix it looked like it worked and did not.
+Migration 024 added an admin UPDATE policy whose predicate was
+`profiles.id = auth.uid()`. `profiles` has **both** an `id` and a `user_id`,
+and it is `user_id` that holds the auth user's id — every other policy in the
+repo and every query in `js/` uses `user_id`. So the policy matched no row, for
+anybody. It was created successfully, the dashboard listed it, and it granted
+nothing. `migrations/028_fix_admin_question_policy.sql` repairs it; 024 is
+corrected in place so a replay from zero is right.
+
+`tests/migration-policies.test.js` now fails on any migration comparing
+`auth.uid()` to `profiles.id`. Nothing else could have caught this: the unit
+tests never touch SQL, and the live probe runs as an anonymous visitor, who is
+correctly denied either way.
+
+Player-side feedback (thumbs up/down/flag) **does** write correctly. Only the
+admin's response to it was broken.
+
+**The same shape was in the profile page.** Five of its six saves — avatar,
+bio, favourite category, online visibility, title — discarded the result and
+updated the screen anyway, so a refused write left the player looking at a
+change that did not exist until they reloaded. A switch that shows the value
+the database rejected is worse than one that refuses to move. All five now
+check, surface a toast, and put the control back. `scenario-account.mjs`
+proves it with `store.denyWrites('profiles')`.
+
+**When you write a save handler, the question is not "did it error" but "is
+the screen now telling the truth".**
+
+**A THIRD ONE ON THE SAME PAGE, found 2026-08-29: the error log's "Clear 7d+".**
+A bare `delete()` whose result was thrown away, followed by a redraw. Found by
+listing every write in `js/admin.js` and asking of each one what the screen says
+when it is refused — the same sweep that found the End button, which had shipped
+broken and stayed that way because nothing had ever pressed it.
+
+**AND `writeSucceeded()` IS THE WRONG TOOL HERE, which is worth knowing before
+reaching for it.** Its rule is *zero rows means refused*, and that only holds
+when the write is aimed at something known to exist. This delete is filtered
+`WHERE timestamp < cutoff`, so zero rows is genuinely ambiguous: a refusal and
+"there is nothing older than seven days" are the same silence. Wrapping it in
+`writeSucceeded` would report a permission error every time the window happened
+to be empty — a confident lie in the other direction.
+
+Counting the old rows FIRST is what separates them, and it costs one query:
+`0 old` is "nothing to do", `N old and 0 deleted` is a refusal, anything else
+worked. **When a write's filter can legitimately match nothing, establish
+whether there was anything to write before reading zero as failure.**
+
+Nothing has established that the delete IS refused — migration 019 grants it and
+its predicate is right (`profiles.user_id`, not the `.id` mistake above), but
+migrations here are hand-applied and nothing records which ran. **This is a
+diagnostic, not a diagnosis**, the same call as `upsertQuestionFeedback`: what
+was wrong is that nobody could tell either way, and now one press says so.
+
+### 6. A measurement can lie, and a confident one lies hardest
+
+`scripts/probe-db.mjs` is the tool this file tells you to trust over
+`migrations/`. On 2026-08-18 two of its sections were found to be reporting
+confident nonsense, and both had been quoted as fact.
+
+**Write permissions.** It aimed an UPDATE and a DELETE at an id that cannot
+exist and read the HTTP status. That can never work: Postgres applies a
+policy's `USING` clause as an extra `WHERE` condition, so a statement matching
+zero rows succeeds whether or not the policy would have allowed it. Every table
+came back `*** ALLOWED ***`, including `questions`, which no visitor can write
+to at all. The one section describing the security posture described its
+opposite.
+
+It now posts an **existing primary key**. RLS's `WITH CHECK` is evaluated in
+`ExecInsert` *before* `ExecConstraints`, so a refusal arrives as `42501` and
+permission arrives as the duplicate-key violation the existing key guarantees.
+Different answers, and neither writes a row. UPDATE sets one real row's key to
+another real row's: hidden by `USING` means zero rows back, visible means the
+statement aborts on the duplicate. DELETE is reported as **not probed**, because
+establishing it means deleting something real — an honest gap beats a guess.
+
+**RPC functions.** POSTing `{}` to a function that takes arguments returns the
+same 404 as one that was never created, so `increment_questions_answered` was
+reported NOT INSTALLED without that ever having been established. Reading the
+OpenAPI description instead was worse: it lists no functions at all, and the
+empty result was read as an empty database — so *all four* came back missing,
+including one that had answered HTTP 200 five days earlier.
+
+Each is now called with the exact argument names `js/` uses and an unparseable
+uuid. PostgREST resolves and casts before the body runs, so 404 means missing,
+`22P02` means present, and `record_question_outcome` never gets to write. The
+real argument names also test the **signature** — a function that exists under
+a different one answers 404 too, and is just as dead to the app.
+
+Truth as of 2026-08-18: `get_category_play_counts`, `record_question_outcome`
+and `increment_questions_answered` are installed. `get_mastery_counts` was not,
+and `fetchMasteryCounts` has always fallen back to a client-side query, so the
+mastery tree worked — slowly — and nobody noticed. **It is installed as of
+2026-08-23** (migration 032 was run at some point without being recorded here,
+which is #7 in miniature: the file was stale in the reassuring direction).
+
+**Row counts in the probe are rows a *visitor* can see.** A restrictive SELECT
+policy filters rows out rather than refusing the request, so `error_logs` reads
+as empty no matter how much it holds.
+
+**A third fault, found 2026-08-19, and it had been hiding a dead feature.**
+The probe said two contradictory things about `player_stats_computed` in the
+same run: the row-count section could not read it, and the columns section
+reported `all present`. The confident half was wrong. The columns check counted
+a column as missing only on HTTP 400 "does not exist" — and a relation that is
+not there answers **404** to every request, so no column was ever recorded
+missing and the table came out clean. The most reassuring possible output for
+the most broken possible state.
+
+It now refuses to report on any table the read section could not reach, and it
+distinguishes **missing** from **not permitted**: PostgREST answers `PGRST205`
+for an unknown relation and `42501` for a refused one. Reporting a missing
+GRANT as a missing table would send the next session to write a migration for
+something that already exists.
+
+What it uncovered is in #8.
+
+**One claim in this file was not supported by the probe.** It said
+`question_feedback` was "confirmed working, 3 flags and 2 thumbs-down". Every
+probe run reads that table as `rows=0`, including the run on the day the claim
+was written, so whatever established it, it was not this tool. The rows may
+well exist and be invisible to a visitor — that is what the paragraph above
+describes — but "confirmed" was too strong, and a later session would have
+treated it as measured. **Say where a number came from, or do not write it
+down.**
+
+**A fourth and a fifth, found 2026-08-25, and both are the same shape as the
+third: the probe could not tell "nothing there" from "I looked in the wrong
+place".**
+
+- **`question_health` was listed under the wrong key column.** The `PK` map said
+  `question_id`; migration 025 builds the view as `SELECT q.id, ...`, so the key
+  is `id`. `samplePks` asked for a column that does not exist, PostgREST answered
+  42703, the sample came back empty — and the write section reported
+  `no rows to probe with` **for a view holding 4,859 rows**. Fixed, and
+  `samplePks` now returns WHY it could not sample, so a wrong column name reads
+  as `NOT PROBED — could not sample "x" (HTTP 400 / 42703)` instead of as an
+  empty table.
+- **`player_totals_computed` was not on the watch list at all.** The GLOBAL
+  leaderboard reads it (migration 032). Its absence is quieter than
+  `player_stats_computed`'s, which is exactly why it needs watching:
+  `fetchPlayerTotalsForLeaderboard` falls back to summing the per-category
+  rollups, so **the board still draws — with a question filed under two
+  categories counted twice.** 11% of the bank carries more than one, so the
+  people who play the broadest categories rank highest and nothing anywhere
+  says why. It is on the list and in WHAT THIS MEANS FOR A PLAYER now.
+
+**A SIXTH, found 2026-08-29, and it is the mirror image of the other five.**
+Those all reported an ABSENCE that was really a bad question. This one reported
+**HEALTH for a thing it had never looked at.**
+
+The probe ends with a WHAT THIS MEANS FOR A PLAYER section that maps a missing
+database object to the features it takes down. `op_advance_phase` had an entry
+there from the day migration 056 shipped — and was never added to the list of
+functions the script actually calls. The consequence list is filtered against
+the functions that came back missing, so an unprobed name **can never appear in
+it**. Every run printed `Nothing on the watch list is missing` about a function
+nobody had asked after.
+
+**Nine of them, not one.** `op_leave_room`, `op_set_judgement`,
+`op_disqualify_round`, `op_advance_phase`, `op_remove_player`,
+`op_set_host_role`, `op_set_phase`, `op_sweep_rooms` and `delete_my_account`
+were all called by `js/` and watched by nothing.
+
+**And the lockdown made that far worse than it was when it started.** The
+045-047 block in the probe says these functions "fall back" when missing, which
+was true then. Since 048-061 revoked the matching client rights, a missing
+function is not a slower path but a REFUSED one — and for `op_set_phase` the
+refusal is a hard `permission denied for column game_phase`, so **no game
+starts or advances at all**. That is the 055 lesson arriving a second time: a
+dependency that was a fallback becomes load-bearing the moment you shut the
+door beside it, and the monitoring has to be re-read in that light or it goes
+on describing the old world confidently.
+
+The fix that matters is not the nine entries, it is the **guard**: the script
+now fails if any object named in the consequence list is not actually probed,
+or is named twice. Verified by breaking both — un-probing `op_advance_phase`
+reports it by name and exits 1, and the duplicate check caught a duplicate
+entry **I introduced while writing it**.
+
+**Two functions are deliberately NOT probed and say so on every run.**
+`op_sweep_rooms` and `delete_my_account` take no arguments, so there is no
+unparseable uuid to stop the body running — the trick every other entry
+depends on — and calling them would sweep real rooms and delete a real account.
+They print `NOT PROBED — takes no arguments and its body deletes …`, which is
+the same honest gap this script already leaves for DELETE permissions.
+
+`scripts/check-rpc-args.mjs` now reads the probe's argument names too, because
+PostgREST resolves by name and a typo there makes an installed function answer
+404 — printed as `*** NOT INSTALLED ***` and turned into a confident paragraph
+about a broken game. **A measurement lying in the alarming direction is still a
+lying measurement.** Verified by misspelling `p_caller_id`: it names the file,
+the line and the real signature.
+
+The lesson generalises past this script: **when a check reports that everything
+is fine, or that everything is broken, suspect the check.** Both are shapes a
+broken measurement makes far more readily than a real system does. And the
+particular way this script keeps failing is worth naming on its own: **every
+one of these five reported an ABSENCE that was really a bad question.** A probe
+that cannot reach something must say so; returning the same answer as "there is
+nothing here" is how a dead feature reads as a healthy one.
+
+### 7. Migrations are applied by hand
+
+`migrations/*.sql` are pasted into the Supabase SQL Editor manually. Nothing
+records which ones were actually run, so **the live schema is not known with
+certainty from this repo alone.** Run `scripts/inspect-db.sql` in the SQL Editor
+to get the real picture before relying on any table or policy.
+
+### 10. The live database enforces rules this repo has never heard of
+
+Every earlier instance of schema drift here was the live database MISSING
+something `migrations/` declared. On 2026-08-23 it went the other way, and that
+direction is worse, because reading every migration in the repo cannot reveal
+it.
+
+`friendships` carries a constraint in no migration file:
+
+```
+friendships_source_check  CHECK (source = ANY (ARRAY['lobby', 'search']))
+```
+
+`acceptFriendRequest` is the only caller of `createFriendship` anywhere in
+`js/`, and it passes `'request'`. **So every accept of a friend request died on
+a 23514, for everybody, for as long as that constraint has existed.** The error
+reached `logger` and the button said "Error". Nobody could become anybody's
+friend.
+
+The column is also **NOT NULL with no usable default**, which matters because
+the obvious workaround — omit `source` and let the default apply — fails with
+`23502` instead. That was tried, in a migration the owner ran, and the database
+refused it. **Both halves are measured, and the second only because the first
+fix was wrong and said so out loud.**
+
+`migrations/044` widens the constraint to allow `'request'`, which is a real
+third source worth recording. `createFriendship` also falls back to `'search'`
+on any 23514, so the app is correct before that is run as well as after.
+
+`friendships.id` is a **uuid** on the live table; migration 003 declares
+`BIGINT GENERATED ALWAYS AS IDENTITY`. Nothing depends on it today. Do not
+assume any column's type from `migrations/`.
+
+**`friend_requests` has no unique constraint either**, though migration 003
+declares `UNIQUE(sender_id, receiver_id)` — proven by three rows for one pair
+in the live table. Both `sendFriendRequest` guards used `.maybeSingle()`, which
+ERRORS on more than one row, and both discarded the error — so once two rows
+existed for a pair every guard on it failed open, including the auto-accept.
+Two people who each sent the other a request in March were never made friends
+and were never told anything. The client no longer depends on the constraint;
+044 adds it.
+
+**THE SAME FAULT WAS ONE TABLE ALONG, and fixing only `friend_requests` left
+it (found 2026-08-24).** `friendships` has no unique constraint either until
+044, and `isFriend` used `.maybeSingle()`. Two people who each accepted the
+other produce two rows for one pair, and from that moment `isFriend` returned
+**false for people who really are friends**:
+
+| Consequence | |
+|---|---|
+| `sendFriendRequest`'s "Already friends" guard | falls straight through |
+| the profile | offers "Add Friend" to an existing friend |
+| the friends list | shows that person twice, with two Remove buttons |
+
+`isFriend` uses `.limit(1)` now, so the answer is the same for one row or five;
+`fetchFriends` de-duplicates on the friend's user id; and `createFriendship`
+returns success when the pair is already friends rather than relying on the
+23505 that only exists once 044 has run.
+
+**When a lookup breaks on duplicates, go and find every OTHER lookup keyed on
+the same pair.** One table was fixed and the identical shape sat one join away
+for weeks.
+
+**AND THAT INSTRUCTION WAS NOT FOLLOWED FAR ENOUGH — two more, found
+2026-08-25.** Both are read-then-write on a pair, both used `.maybeSingle()`,
+and both **discarded the read error**, which is what turns a lookup fault into a
+ratchet: `maybeSingle()` errors on more than one row, the error was thrown away,
+`existing` came back undefined, and the code took the "no row yet" branch and
+**inserted another one**.
+
+| | keyed on | what one duplicate then does |
+|---|---|---|
+| `upsertQuestionHistory` | `(user_id, question_id)` | every reveal of that question adds another row — and accuracy is `SUM(times_correct)/SUM(times_seen)` across them, so each one is a permanent extra attempt the player never made |
+| `upsertTitleUnlock` | `(user_id, word_id)` | `evaluateUnlocks` runs at the end of EVERY game, so the ratchet turns once per game — and the level check goes with it, since a fresh row is written at whatever level was passed instead of being compared to the level already held |
+
+`title_unlocks` **declares** `UNIQUE(user_id, word_id)` in migration 007. So did
+`friend_requests` in migration 003, and the live table did not have it. A
+declared constraint is not a measured one, and the client should not need it.
+
+Both now use `.limit(1)` and **stop on a read error rather than inserting**. A
+FAILED READ IS NOT AN ABSENT ROW: inserting when you cannot tell is the step
+that creates the duplicate. Losing one attempt or one unlock is recoverable —
+Proficiency reads the most recent verdict, and the unlock check runs again after
+the next game — while a duplicate cannot be undone from inside the app at all.
+`upsertTitleUnlock` also orders by level so that if duplicates already exist it
+compares against the HIGHEST one held, not an arbitrary row.
+
+**Nothing has established that duplicates exist on the live database**, and this
+is a hardening, not a diagnosis. Both tables are locked to visitors, so the
+probe cannot count them; the owner can, from the SQL Editor:
+
+```sql
+SELECT 'question_history' AS tbl, count(*) AS duplicate_pairs FROM (
+  SELECT user_id, question_id FROM question_history
+   GROUP BY 1,2 HAVING count(*) > 1) d
+UNION ALL
+SELECT 'title_unlocks', count(*) FROM (
+  SELECT user_id, word_id FROM title_unlocks
+   GROUP BY 1,2 HAVING count(*) > 1) d;
+```
+
+Two zeroes means the client fix is pure insurance. Anything else needs a merge
+migration written deliberately — for `question_history` the counters must be
+SUMMED, never deduplicated by deletion, or real attempts are thrown away.
+
+**When something works in the harness and fails live, ask what the real
+database REFUSES that the fake one allows.** Two faithfulness gaps were found
+in one evening this way — `maybeSingle` returning a row where PostgREST errors,
+and the store accepting any row at all — and each had been hiding a live bug
+for months. `store.addCheck()` now simulates a CHECK constraint, and
+`maybeSingle` errors on multiple rows.
+
+### 9. Play counts were deleted the instant they were earned
+
+**Needs `migrations/033_play_counts_survive_the_room.sql` run by the owner.**
+
+Measured from the SQL Editor on 2026-08-19, after the automated probe honestly
+reported it could not tell (this project's OpenAPI output carries no
+foreign-key annotations):
+
+```
+game_plays_room_id_fkey   -> rooms   ON DELETE CASCADE
+game_plays_player_id_fkey -> players ON DELETE CASCADE
+```
+
+A room is deleted when the last player leaves, and a player's row is deleted
+when they leave. Both happen at the end of **every** game, so every play record
+was destroyed within seconds of being written. `game_plays` held **0 rows**,
+and `get_category_play_counts()` returned nothing at all.
+
+**Everything in the counting path was correct.** The RPC was installed, its
+body counts every row, and `fetchCategoryPlayCounts` maps the result onto the
+category cards properly. The symptom — every category showing 0 plays — is
+listed in #3 as a signature of a missing RPC, and this time the RPC was fine
+and the data was being deleted underneath it. **The same symptom has two very
+different causes; check the row count before checking the function.**
+
+Migration 033 drops both keys rather than softening them to `SET NULL`.
+`game_plays` is a historical record — a game in this category was played, by
+someone, at a time — and once it is over there is nothing left to point at. A
+key that has to be nulled at the end of every game is not describing a real
+relationship. The columns stay and remain useful while the game runs, since
+`completeGamePlay` and `increment_questions_answered` both find a row by
+`room_id + player_id`.
+
+`answers` keeps its cascade deliberately: it really is scratch data for one
+room, which is exactly why `question_stats` and `answer_tally` exist.
+
+**Every play before 2026-08-19 is gone for good** — deleted, not hidden.
+
+**A second counting fault sat behind the first.** The record is keyed on
+`(room_id, player_id)` and a room survives Play Again, so a group playing six
+rounds together wrote to one record six times and counted as **one play each**
+— under-counting exactly the people who play most. Migration 034 keeps the
+one-record-per-person-per-room shape and counts rounds on it via
+`record_game_play`, because `completeGamePlay` and
+`increment_questions_answered` both find a record by `room_id + player_id` and
+nothing else: allowing several rows per room would have made a counting fix
+quietly corrupt two other things.
+
+The counter advances only when `p_game_key` — the room's countdown timestamp,
+rewritten per game and identical on every phone — **changes**, so the caller
+can fire as often as it likes. That matters: it is called from a phase
+transition, which is not guaranteed to happen exactly once.
+
+**A play is one person, one round.** The owner chose per-person over per-game.
+A rejoin does not double count, because the record is written only at question
+0 and now survives the player row being deleted.
+
+**The scenario check for this was measuring nothing at first**, and it is worth
+knowing how. It asserted that there were more RPC calls than counted rounds,
+reading the gap as proof the idempotency guard worked — but each player calls
+once per round, so 2 players x 2 rounds is 4 calls with nothing deduplicated.
+Deleting the guard entirely changed the result not at all. It now checks the
+property the harness can actually establish: the round key is stable within a
+round and different between rounds. Verified by forcing the key to null, which
+makes `games_played` stay at 1 and reports both faults by name.
+
+### 8. `player_stats_computed` was missing, and took four features with it
+
+**RESOLVED 2026-08-19** — migration 031 was run, and the probe now reads the
+view as present. Kept here because of how long it hid and what hid it.
+Migration 032 — `player_totals_computed` (honest global totals) and
+`get_mastery_counts` — **is applied**, confirmed by the probe on 2026-08-23.
+
+Measured earlier that day: the live database answered **`PGRST205`** for
+`player_stats_computed` — "could not find the table in the schema cache". Not
+`42501`, so it was absent rather than locked. Migration 017 created it and was
+apparently never run (#7).
+
+Four reads in `js/db/social.js` go to that view. While it was missing, each
+logged and returned `[]`:
+
+| Read | What the player sees |
+|---|---|
+| `fetchAllPlayerStatsForLeaderboard` | nothing — **DEAD CODE as of 2026-08-26**, see below |
+| `fetchCategoryLeaderboard` | every category leaderboard empty (superseded by `get_leaderboard`, migration 053) |
+| `fetchPlayerStats` | profile shows no stats — **and no title ever unlocks** |
+| `fetchPlayerStatsBatch` | no tier badge in any lobby |
+
+The title system was the worst of them, and the most instructive. It did not
+fail visibly: after every game `evaluateUnlocks()` was handed an empty array,
+found nothing to award, and reported success. There is no error state for
+"nobody ever earns anything".
+
+**Titles unlocked before this date do not exist.** Anyone who played while the
+view was missing earned nothing, and nothing backfills it — the unlock check
+only runs at the end of a game. That is not a bug to fix, it is a fact about
+the history.
+
+**Do not conclude tiers work because a tier badge appeared in a playtest.**
+`computeCategoryTiers([])` returns `{}`, so an empty read renders no badge at
+all. The 71px lobby overflow was reproduced in the harness with a *seeded*
+tier, which is not evidence about the live database.
+
+This sat unnoticed because the probe reported the view as `all present` — see
+#6. It is the strongest example in this project of the rule that follows from
+it: a broken measurement does not report a broken system, it reports a
+healthy one.
+
+The probe now ends with a **WHAT THIS MEANS FOR A PLAYER** section that maps
+each missing object to the features it takes down, so the next one of these is
+one line of output rather than a chain of inference. As of 2026-08-19 that
+section is empty: as of 2026-08-23 nothing it watches is missing.
+
+**Restoring the view exposed a second bug underneath it, in the same hour.**
+`player_stats_computed` returns every number **twice**: for one player in one
+category it emits a row per subcategory AND a rollup row (`subcategory` null)
+that already contains their sum. Five places summed every row —
+
+| Site | Effect |
+|---|---|
+| `loadGlobalTab` in `leaderboard.js` | global ranking on doubled totals |
+| `loadFriendsTab` in `leaderboard.js` | same, for friends |
+| the profile card in `profile.js` | games, wins, questions all doubled |
+| the profile page summary in `profile.js` | same, plus Strongest/Weakest could name a category while reporting one subcategory's accuracy |
+| `computeAggregateStats` in `titles.js` | **play-count titles unlock at half the games they ask for** |
+
+The rule is now one exported function, `categoryRollupRows` in `titles.js`:
+**anything that adds rows up takes the rollups only; anything that reads a
+single row — a tier, a title, one category's accuracy — can use either.**
+`fetchAllPlayerStatsForLeaderboard` filters at the query instead, since it has
+no other caller. The per-category breakdown in `profile.js` was always right;
+it had `stats.filter(s => !s.subcategory)` inline, which is what established
+the intended meaning.
+
+Nothing caught this for months because **the sums had only ever run over an
+empty array.** A missing dependency does not just disable the feature that
+needs it — it makes every bug downstream of that feature untestable and
+invisible, and they all arrive at once on the day it is restored. Expect more
+of this from the leaderboard, the profile and the title system specifically:
+none of that code has ever processed a non-empty result on the live site.
+`tests/titles.test.js` now fails if the double count returns (verified by
+removing the fix), and `scenario-account.mjs` seeds subcategory rows so the
+two possible readings of the data give different answers — with rollups alone
+they are indistinguishable, which is why the scenario was blind to it.
+
+**A third counting question, and the owner settled it.** A combined total sums
+across *categories*, and a question filed under two topics produces a row under
+each. Measured: **105 of 1000 questions carry more than one category (11%),
+1.11 tags each**. For a per-topic proficiency that duplication is correct and
+stays — getting a History-and-Culture question right is evidence about both.
+For a single combined total it is not, so `player_totals_computed`
+(migration 032) counts each answered question once.
+
+**HISTORICAL FROM 2026-08-26.** The global board is gone and points with it —
+see "The leaderboard ranks what you know, among people you know". Migration 053
+does the same de-duplication with `COUNT(DISTINCT question_id)`, which cannot
+double count and needs no second view. The reasoning above is kept because the
+counting question outlives the board that raised it: **anything summing
+per-category rows still double counts a multi-category question**, and that
+applies to the profile, the titles and anything added later.
+
+**Points were correct answers, not game score, and that was deliberate.** The
+owner's reasoning, which still holds for any score-based measure: a game score
+depends on which wagers a player happened to hold and on which host was judging
+— including any judgement they overrode — so it is not comparable between two
+people who never played together. If a points measure is ever wanted again, do
+not build it on `game_history.score`.
+
+---
+
+## File Structure
+
+```
+├── index.html          Splash + Home + display-name entry
+├── host.html           Category browser + host settings
+├── join.html           Room code entry, friends' games, public games
+├── lobby.html          Lobby: chat, player list, ready state, start
+├── game.html           All in-game screens (see below)
+├── profile.html        Player profile, stats, mastery tree
+├── leaderboard.html    Friends only: mastery / proficiency, by category
+├── admin.html          Admin dashboard (requires profiles.is_admin) — DESKTOP
+├── sw.js               Service worker — CACHE_VERSION must be bumped on deploy
+├── css/style.css       All styles; CSS variables for theming
+├── js/
+│   ├── db/             Supabase access layer, split by domain
+│   │   ├── client.js       Shared client + credentials
+│   │   ├── rooms.js        Rooms, realtime channel factories
+│   │   ├── players.js      Players, answers, game_plays
+│   │   ├── questions.js    Questions, history, feedback
+│   │   ├── chat.js         Chat messages + archive
+│   │   └── social.js       Profiles, friends, stats, titles, settings
+│   ├── game/           Gameplay engine (the fragile part)
+│   │   ├── init.js         Boot, subscriptions, cleanup
+│   │   ├── phases.js       Phase router, room/player events, countdown
+│   │   ├── question.js     Question screen, wagers, submit, timer
+│   │   ├── reveal.js       Answer reveal, host judgment override, feedback UI
+│   │   ├── scores.js       Scores, final wager, results
+│   │   ├── podium.js       The end-of-game podium and its race replay
+│   │   ├── results-view.js Results rows + Favourite Answers carousel (no Supabase)
+│   │   ├── chat.js         In-game chat
+│   │   ├── host.js         Host settings panel
+│   │   ├── state.js        Shared mutable game state
+│   │   ├── bots.js         Practice bots — host answers on their behalf
+│   │   ├── bot-logic.js    Bot decisions, pure + unit tested (no imports)
+│   │   ├── scoring-helpers.js / timer-helpers.js / host-promotion.js
+│   ├── supabase.js     Re-export hub for all db/ modules
+│   ├── auth.js         Display name, optional accounts, session
+│   ├── host.js / join.js / lobby.js / profile.js / leaderboard.js / admin.js
+│   ├── categories.js   CATEGORY_META: icons, labels, subcategories
+│   ├── titles.js       Title unlock rules, the rarity ladder, the word overlay
+│   ├── title-content.js  Loads the owner's written words (the ONLY fetcher)
+│   ├── utils.js        Fuzzy answer matching, DOM helpers, escaping
+│   ├── admin-shell.js  The admin sidebar. A CLASSIC script, no imports, so the
+│   │                   mocks can call the same code the page does
+│   ├── honk.js / typing.js / presence.js / theme.js / logger.js
+│   ├── celebration.js  Unlock overlays (planCelebration lives in titles.js)
+│   ├── difficulty-band.js  "How hard was that?" on the reveal
+│   ├── NO-IMPORT modules — pure, unit-testable in Node, because everything
+│   │   else here pulls Supabase from esm.sh and the test runner cannot load it:
+│   │   ├── question-selection.js  bucketQuestionsByHistory — what to ask next
+│   │   ├── honeycomb.js          the Map's geometry
+│   │   ├── radar.js              the profile's twelve-axis chart
+│   │   ├── answer-health.js      which answer keys need a human (admin + probe)
+│   │   ├── presence-health.js    is the presence channel still joined
+│   │   ├── title-tiers.js        which tiers a topic offers, and at what count
+│   │   ├── game/phase-order.js  may a returning phone follow the room's phase
+│   │   ├── game/clap-logic.js    claps: counting, one-per-round, lifetime totals
+│   │   ├── game/podium-logic.js  podium ranking, step order, the replay curve
+│   │   └── game/bot-logic.js     bot decisions
+│   └── constants.js    All timing + threshold values
+├── migrations/         Hand-applied SQL (see #7 above)
+├── scripts/
+│   ├── screenshot.js       Playwright screenshots of mock states
+│   ├── mock-states.js      Fake data for visual review
+│   ├── layout-sweep.mjs    Measured layout/contrast/overlap check, all 3 themes
+│   ├── probe-db.mjs        What the LIVE database actually has (runs in CI)
+│   ├── verify-sql.mjs      SQL/JS judging parity + tests/sql/ rule tables
+│   ├── check-arity.mjs     Calls passing fewer arguments than required
+│   ├── check-rpc-args.mjs  .rpc() argument names vs the function's real ones
+│   ├── bump-version.js     Bumps ?v= on assets + sw.js cache key
+│   └── inspect-db.sql      Read-only live schema report
+└── tests/              Vitest unit tests + harness/ robot scenarios
+```
+
+## Screens
+
+**index.html** splash → home
+**host.html** `#category-screen` → `#settings-screen`
+**join.html** `#join-screen`
+**lobby.html** `#lobby-screen`
+**game.html** `#countdown-screen` → `#question-screen` → `#reveal-screen` →
+`#scores-screen` → (repeat) → `#final-wager-screen` → `#podium-screen` →
+`#results-screen`
+
+## Game Flow
+
+1. **Host** picks a category (and optionally a subcategory), sets who can join,
+   question count and timer, then creates the room.
+2. **Players** join by 4-letter code, from a friend's lobby, or from public games.
+3. **Lobby** — chat, player list, ready status. Host starts.
+4. **Countdown** — synced 3-2-1-GO from a shared server timestamp.
+5. **Each round** — assign a wager, read the question, type an answer, submit.
+   Timer is derived from `question_started_at`, not a local clock.
+6. **Reveal** — correct answer shown with every player's submission, auto-judged
+   green/red. Host can flip any judgment live. Players can rate the question
+   (thumbs up / thumbs down / flag with a reason).
+7. **Scores** — animated scoreboard between rounds.
+8. **Final wager** — bet 0, 10 or 20 points before the last question.
+9. **Podium** — gold, silver and bronze, with a replay of the race; tap on.
+10. **Results** — the full scoreboard, favourite answers, then back to the lobby
+    or home.
+
+## Scoring
+
+- Each regular question is worth a wager the player assigns.
+- With N questions, wager values 1..N are each used exactly once.
+- Correct = earn the wager. Incorrect = earn nothing. **Never negative.**
+- **Final wager is the exception:** 0, 10 or 20, and an incorrect answer
+  *loses* those points.
+- Speed does not affect scoring.
+- Auto-judging fuzzy-matches against the correct answer plus stored alternates
+  (`FUZZY_MATCH_THRESHOLD` in `constants.js`). Host override is final.
+
+## Fixed in the 2026-08-20 playtest
+
+Two real games with several people. Every one of these was invisible to the
+robots until a scenario was written for it, and several were invisible to the
+player too.
+
+**A single-letter answer could not be got wrong.** The Levenshtein threshold in
+`fuzzyMatch` carried a `Math.max(1, ...)` floor, so a one-character answer
+allowed one edit — and one edit turns any letter into any other. "cat" took
+"bat"; "US" took "up". The floor contradicted the rule it was documented as
+implementing (one typo per four characters), so it is gone: under four
+characters is exact after normalisation, four and up is unchanged. **415 tests
+passed before and after**, which is the part worth remembering — a whole class
+of answer was ungradeable and no existing test touched it.
+
+**Refreshing gave back a wager that had already been spent.**
+`buildUsedWagersMap` skipped blank answers. A missed round burns the player's
+lowest unused wager, so the rebuild handed it back and it could be spent twice.
+That skip was correct when the host wrote `wager=1` for every non-submitter;
+since `insertBlankAnswers` began giving each player their own lowest unused
+value it destroys real information. The unit test asserting the old behaviour
+was **encoding the bug** and has been replaced.
+
+**Refreshing zeroed the scoreboard, for the host only.** There are two
+reconnect paths — `initHostGame` and `applyGameState` — and only the second
+ever called `updateScores()`. The first set every score to 0 as a baseline and
+never hydrated. Two functions doing the same job, one of which forgot half of
+it; check both whenever you touch either.
+
+**An answer already sent could be erased by a re-render.**
+`showQuestionScreen` emptied the answer box and set `hasSubmitted = false`
+every time it ran, and Realtime re-calls it for the same question. The wager
+reset immediately below it had been guarded against exactly that for months,
+with a comment saying why; the answer text never was. The reveal's tidy-up pass
+then auto-submitted "whatever is currently typed" — an empty string — through
+an **upsert**, replacing the real answer. Two independent fixes: a re-render of
+the question already on screen leaves the box alone (`state._renderedQuestion`),
+and an auto-submitted BLANK now goes through `insertBlankAnswers`
+(`ON CONFLICT DO NOTHING`) so it cannot overwrite anything by any route. A
+deliberate submit, and an auto-submit carrying real text, still upsert.
+
+**The final wager had no timer at all**, so one person who had put their phone
+down held the last round open indefinitely. `FINAL_WAGER_TIMER_SECONDS` is 20,
+fixed rather than the room's question-timer setting — that setting is for
+reading and typing, not for choosing between three buttons. On expiry whatever
+they tapped stands; somebody who never touched the screen wagers **0**, not the
+`state.finalWager` default of 20. That default exists to punish indecision, and
+committing it on a timeout would punish absence instead, which no other round
+does.
+
+The clock runs off the room's `question_started_at`, and **the host must stamp
+it AFTER broadcasting the phase, as a separate write.** The first version
+stamped it inside `showFinalWagerScreen`, which runs before the broadcast, so
+every other client cleared the stamp when the phase arrived and no clock ever
+started. `scenario-fullgame` caught it: Carol ignored the screen and lost 20
+points.
+
+**A blank final answer wagers 0 whatever was locked in.** The final wager is
+the only round that subtracts. Needed a second pass at timer expiry, because
+everyone who locked a wager already has a `__WAGER_LOCKED__` row and
+`insertBlankAnswers` skips them as duplicates.
+
+**"No answer" appeared for players who were still typing.** Same placeholder:
+on the final question every player has a row the moment they lock a wager, and
+the reveal read that as a blank submission — so the host saw "No answer" and
+concluded everyone was ready. Before the reveal a placeholder means *waiting*;
+only afterwards does it mean they never answered. The same distinction fixes
+the countdown, which had been hiding itself on the final question because
+`answers.length === players.length` was true before anybody had typed a word.
+
+**THAT LAST SENTENCE WAS TRUE OF ONE SCREEN AND WRITTEN AS THOUGH IT WERE TRUE
+OF THE FEATURE.** The guard went into a private helper in `reveal.js` and two
+other readers of the same count — `updateRevealButtonText` and the Realtime
+answer handler in `phases.js` — never got it, so the countdown went on vanishing
+on the last round of every game until 2026-08-25. See "Dropping the key broke
+'has everybody answered'" for how it was found and what it now shares with the
+departed-player guard.
+
+**A disqualified round could still be marked correct**, in all three places a
+host can flip a judgement. Awarding points inside a round the host has just
+declared did not happen moves the score with no visible reason.
+
+**The profile had two percentages and neither said what it measured.** The
+section labelled "Categories" was always correct-over-answered — proficiency,
+never completion — but nothing said so, and the Mastery bar directly above it
+IS completion. Renamed to **Proficiency**, and both sections carry one line
+saying which question they answer. Mastery sitting near 1% is what 4,859
+questions looks like, not a bug. `scripts/mock-states.js` gained
+`profile-stats`, because the only profile mock filled the Account section and
+these three had never once been rendered by the sweep.
+
+**Room Scores now live on the room** (`rooms.room_scores`, migration 038).
+They were in each phone's sessionStorage, so they died with the tab — somebody
+who left and came back saw nothing — and every device kept its own tally built
+from whatever games that device happened to witness, so two people could read
+different numbers off the same lobby. **The host writes it, once per game**:
+every device computes the same scores from the same answers, so a per-device
+write multiplies the tally by the room size. `scenario-playagain` counts the
+writes and fails if there is more than one per game; removing the host guard
+doubles Bob's total, which is what it looks like in a two-player room.
+
+Keyed on **display name**, not player id: the row is deleted and recreated on
+the very rejoin this is meant to survive, and guests have no account to key on.
+
+**Feedback writes are now checked, not assumed.** A playtest reported flags not
+reaching the admin page, and `question_feedback` reads empty. Those two facts
+were impossible to act on: an RLS refusal returns no error, so a refused write
+and nobody-rated-anything are the same silence. `upsertQuestionFeedback`
+`.select()`s and goes through `writeSucceeded`, and the admin flagged queue
+counts every kind of feedback so "no flags" and "no ratings at all" are
+different sentences. **This is a diagnostic, not a diagnosis** — nothing has
+yet established which of the two it is.
+
+## Fixed in the 2026-08-18 playtest
+
+Five bugs from one real game with two people. Recorded because each explains a
+class of mistake, and because four of them were invisible to the robots.
+
+**The lobby row could not fit its own contents.** Promoting a signed-in player
+to co-host gave their row three badges — Co-Host, tier, Ready — totalling 195px
+of a 327px row, while the buttons took 116px and `.name-stack` had a hard 72px
+floor. Nothing could shrink, so the row overflowed by up to 71px and the whole
+page became draggable sideways. Tier and title now sit under the name where
+they truncate; ready state is suppressed for host and co-host, which the
+"Not Ready" branch already did; `.lobby-hosts/.lobby-players` carry
+`overflow-x: hidden` as a backstop. Measured at 375px and 430px across nine
+content combinations, all rows uniform. **The previous fix — icon buttons and
+the 72px floor — is what converted "the name disappears" into "the page
+overflows".** A floor that cannot yield has to overflow somewhere.
+
+That move had a cost of its own, found later by the contrast sweep: as badges
+the tier colours sat on a badge background, and as bare text they measured
+2.5:1 against the light theme. They come from CSS via `data-tier` now, with
+separate values per theme, because an inline colour cannot answer to three
+palettes. **Every fix is a change, and a change can break something the
+original never did** — measure the thing you just touched, not only the thing
+you set out to fix.
+
+**The host destroyed answers players had typed.** On timer expiry the host
+fills blank answers for anyone who has not submitted, and that fill merged on
+conflict. Both devices act on the same grace period, so a player's auto-submit
+and the host's blank race: from a snapshot taken microseconds earlier the host
+still saw them as missing and wrote a blank over their real answer. It is
+`insertBlankAnswers` now, with `ignoreDuplicates` — `ON CONFLICT DO NOTHING` —
+so neither order can lose. The blank also burns each player's own lowest unused
+wager instead of a hardcoded 1, which had let one player spend wager 1 twice.
+
+**Score corrections never left the host's phone.** `handleAnswerChange` bailed
+out early on the scores screen to keep the scoreboard animation from stuttering
+as the next round's answers arrived. Retroactive judgment flips are UPDATEs and
+were swallowed by the same guard, so the host saw their correction and nobody
+else did — the room finished disagreeing about the score. UPDATEs now
+re-render; INSERTs are still ignored.
+
+**Chat grew the page instead of scrolling.** `.lobby-chat__messages` had no
+height, and `scrollChatToBottom()` scrolled `.lobby-scroll` — the whole lobby.
+Every message dragged the room card, player list and Start button out of view,
+and returning from a game landed you at the bottom of the transcript. The pane
+is now `max-height: 34vh` with its own scroll, and scrolls itself.
+
+**The difficulty wheel teased options nobody picked.** It cycled all three
+levels regardless of votes. It was changed to cycle only voted ones, sent over
+the wire with the reveal so every client spins the same wheel.
+
+**THE WHEEL NOW ALWAYS VISITS ALL THREE, and this has flip-flopped twice — do
+not narrow it again without the owner.** It cycled all three originally, was
+narrowed to only outcomes that could actually win, and the owner's answer is
+that a slot machine showing symbols it will not land on is not lying, it is a
+slot machine: the reels are theatre, the landing is real.
+`allowedDifficulties` still governs what can HAPPEN, through
+`pickWeightedDifficulty`. Only the animation changed.
+
+The history below is kept because the reasoning at each step was sound and the
+conclusion still moved:
+
+**That fix was wrong in the other direction, and the next playtest found it.**
+The vote is a *floor*: an all-Easy room can still land on Medium or Hard, so
+all three were genuinely in play and cycling one pill was not honest, it was
+just still. In a small room that agrees — the commonest case — the wheel
+stopped spinning entirely and the owner reported "it doesn't cycle, it just
+chooses automatically". The wheel now visits every **possible outcome**:
+`allowedDifficulties(tally)` in `scoring-helpers.js`, which is the same set
+`pickWeightedDifficulty` draws from, so the two cannot drift apart. An
+all-Hard room still shows one pill, because Hard is then the only thing that
+can happen and a spin would be a lie. `tests/scoring.test.js` asserts both
+directions: nothing the picker can produce is missing from the wheel, and
+nothing on the wheel is unreachable.
+
+## Categories
+
+`history`, `science`, `nature`, `arts-literature`, `culture-society`,
+`pop-culture`, `world-geography`, `technology`, `sports`, `food`, `logic`,
+`wild-card` — each with subcategories, defined in `js/categories.js`
+(`CATEGORY_META`). Each has a hieroglyph icon and an emoji.
+
+## Other Features
+
+- **Favourite Answers** — 👏 one clap per person per round, on the reveal. The
+  game ends with a Favourite Answers card above the scoreboard, and the claps
+  accumulate into a lifetime total and a weighted rate on the profile and the
+  leaderboard. **Needs migration 071** — the owner says it is run (2026-10-19).
+- **Honks** — tap to blast a sound at everyone, throttled by `HONK_THROTTLE`.
+  The honker's avatar shakes on every client (`jiggleHonker` in `honk.js`), so
+  a quack has a face on it. `from_id` was in the broadcast payload from the
+  start and nothing read it. Works off `data-player-id`, which every
+  player-listing screen already sets, so no screen needs to know honks exist.
+- **Chat** — in lobby and in game, with typing indicators and message hearts
+- **Accounts** — optional; guests can play everything except friends and stats.
+  Email/password, or **Continue with Google** (`signInWithGoogle()` in
+  `auth.js`). **Google sign-in is live as of 2026-08-19** — the owner completed
+  the Google Cloud and Supabase setup in `docs/GOOGLE_SIGNIN_SETUP.md` and
+  signed in end to end. If it ever reports "Google sign-in isn't switched on
+  yet", that is Supabase answering *provider is not enabled* and means a
+  dashboard setting, not a code fault; anything else reports "Couldn't reach
+  Google". Email sign-up is unaffected either way. A Google user arrives with
+  no local display name, so profile creation falls back to the name Google
+  supplies; without that fallback they get no profile row and every
+  account-only feature silently does nothing for them.
+
+  **The Google screen says "Sign in to zzpqymehapwbjupphxec.supabase.co"**,
+  because the sign-in genuinely happens on Supabase's server and Google shows
+  the host that receives it. The owner is right that it reads as phishing to a
+  normal person. Two ways out, and **do not repeat the claim that only the paid
+  one works** — that was said here once and it was too strong:
+    * Free: complete the consent-screen branding and verify ownership of
+      `oracleparty.github.io` in Google Search Console, then pass Google's
+      brand review. **Ownership is verified as of 2026-08-19** — the
+      `google-site-verification` meta tag in `index.html` is what proves it,
+      and Google re-checks periodically, so removing that line un-verifies the
+      site. What remains is the brand review, which is deliberately parked
+      until there is a real logo: uploading one is what triggers the review,
+      so it is worth doing once with the finished artwork rather than twice.
+    * Paid: Supabase's custom-domain add-on, which changes the host itself.
+      Needs a domain the owner buys.
+  **Signing in does not make the database safer** — guests still play, so the
+  publishable key must still be accepted from anyone (#2).
+- **Titles** — unlockable ranks based on accuracy, volume and quirks (`titles.js`)
+- **Friends** — requests, accept/decline, see friends' active lobbies
+- **Leaderboard** — **friends only**, ranked on mastery, proficiency or CLAPS,
+  by category and subcategory, all-time or over a period. **The claps tab hides
+  the category and period controls**, because a clap has neither — see
+  "Favourite Answers, and what a clap is allowed to mean". See "The leaderboard
+  ranks what you know, among people you know". The per-player mastery tree and
+  the Map live on the profile.
+- **Host reputation** — "would you play with this host again?", read before you
+  join a stranger's game. See "Judging the host, not the ruling".
+- **Admin** — dashboard at `admin.html`, gated on `profiles.is_admin`.
+
+  **The page is four stat cards and eight collapsed panels**, one open at a
+  time, each opening on a tap. It used to be nine sections open at once, all
+  fetched before anything rendered — comprehensive and unreadable, which on a
+  375px phone is the same as unusable: the flag you came to read was 4,000px
+  down and the heaviest query on the page ran for an admin who never scrolled
+  to it. Each panel's data is now fetched the **first** time it is opened.
+
+  **The count on a closed row is what makes the collapse work.** "3 flags"
+  visible without opening anything is the whole point — a page that hides
+  everything behind identical doors is worse than a long one. `loadPanelCounts`
+  gets them with `head: true` counts, and a failed count renders **`?`, never
+  `0`**: an unreachable table and an empty one must not look alike (#4, #6, #8).
+  Only flags and errors go amber, and only when non-zero — colour everything
+  and it stops meaning anything. The chips take `--color-primary` as **text on
+  a surface**, not as a fill; inverting that drops the label to ~2.5:1 on the
+  light theme, which is exactly how the tier badges broke.
+
+  `scenario-admin` opens all eight and fails if two are open at once, if one
+  stays blank, or if a non-zero flag count is not highlighted. Verified by
+  breaking each: removing the close-the-other line reports seven panels open by
+  name. Ordered by how often an admin needs it, so Flagged Questions is first —
+  the question bank used to be at the bottom of the longest page in the app.
+
+  **A question can be refiled from the page.** The Question Bank editor now
+  carries category chips and a subcategory menu alongside text, answer,
+  alternates, format and difficulty — a language question stuck in Food and
+  Drink used to need the Supabase SQL editor. `categories` is an array (11% of
+  questions carry more than one, deliberately), so it is chips rather than a
+  menu; the subcategory list is rebuilt from whichever categories are ticked,
+  so it can never offer a filing that belongs to a category the question is not
+  in. A value stored under a category that gets unticked is offered back under
+  "Currently filed as" rather than vanishing, because vanishing from the menu
+  would mean silently cleared on save. **Saving with no category is refused** —
+  a question in none is drawable by nothing and findable by no filter, which is
+  worse than deleted because it still counts in the bank.
+
+  `flattenSubcategories` in `categories.js` is the single source for that menu,
+  and `tests/categories.test.js` pins two things about it: every key it offers
+  resolves back to a real node, and no key prefixes an unrelated one. The
+  second matters because selection matches with `LIKE 'key%'`, so a collision
+  between branches would silently drag one subcategory's questions into
+  another's — children like `human` → `human-countries` are meant to nest and
+  are exempted by descent, not by name.
+
+  The four stat cards open the list they were counted from; before that they
+  were the only figures on the page that could not be checked. **An account row opens**
+  to show who it actually is — email, sign-up method, whether the address was
+  ever confirmed, last sign-in — plus games, sessions, wins and what they play.
+  The identity half goes through `admin_account_details` (migration 042),
+  because all of it lives in `auth.users`, which PostgREST does not expose and
+  must not: every browser carries the same publishable key, so a readable
+  `auth.users` would be a public mailing list. One account per call, so an
+  email reaches the screen only after a deliberate tap. It degrades to the
+  computable half when the function is missing.
+
+  **Every row on that list is a real account.** Guests have no `profiles` row
+  at all, so nothing there is a guest — "New Player" means somebody signed up,
+  or arrived through Google, and never chose a name.
+
+  **Games and sessions are both shown, and they answer different questions.**
+  `game_history` holds one row per player per finished game, so counting rows
+  is games and counting distinct `room_id`s is sessions: six rounds with the
+  same group in one evening is six games and one session. Thirty games across
+  two sessions is a different player from thirty across twenty-five, and
+  neither number says that alone.
+
+  **Games Active says why a room looks active** — "2 of 3 still here", or
+  "4 players, all silent — abandoned". See the note on abandoned rooms below.
+
+  **Games Today is the local calendar day**, midnight-to-now where the reader
+  is, not UTC and not a rolling 24 hours. That matches the word "today"; the
+  rolling question is what Games Active answers. Two actions live there:
+  ending a stuck room, and deleting somebody's account via
+  `admin_delete_account` (migration 037). That function takes a user id, which
+  is a dangerous shape, so it carries three guards — the caller must be an
+  admin (checked on `profiles.user_id`, never `profiles.id`, see #5), it
+  refuses to delete the caller, and it refuses to delete another admin. Its
+  delete list is deliberately identical to `delete_my_account`'s: if one grows
+  a table the other does not, "I deleted my account" and "an admin deleted my
+  account" stop meaning the same thing.
+- **Bans are not built, and would not work yet.** Guests never signed in, so a
+  ban could only bind to an account, and the banned person played as a guest or
+  cleared their browser data. **Invisible accounts (Slice 8a) change the first
+  half of that**: a guest now has a durable id per device, so a ban has
+  something to bind to. Clearing browser data still mints a new one, so it
+  raises the cost rather than closing the door — do not describe it as solved.
+- **Co-host** — a second player can share host controls
+- **Presence + heartbeat** — `last_seen_at` drives stale-player cleanup
+- **Practice bot** — one per room, added by the host in the lobby. Makes solo
+  play possible. See below.
+
+### Wanted, not built
+
+- **Sound.** The honk is the only sound in the game, which the owner finds dry
+  in play. Candidates: countdown ticks, timer running out, correct/incorrect on
+  reveal, the scoreboard animation, the difficulty wheel. Must be mutable, and
+  must not fire on a phone whose ringer is off.
+- **A real logo.** `icons/icon-512.png` is an "OP" monogram whose origin the
+  owner does not recognise, and it is the app icon, the PWA icon and the only
+  candidate for the Google consent screen. Wanted eventually, not urgent.
+  Uploading any logo to that consent screen triggers Google's brand review, so
+  it is worth doing once, with the real thing.
+- **General UI polish.** Raised after the 2026-08-18 playtest without specific
+  targets. Ask for a screen before working on this — it is not a licence to
+  restyle working screens on a hunch.
+
+  One measured target existed: the question screen's content stops at 448px
+  whatever the phone, leaving **47% of an iPhone 14 empty below the answer
+  box** (33% on a smaller SE). The proposal was to fill it only AFTER the
+  player submits — avatars lighting up as others answer, and where you stand.
+  **The owner looked at it on a real phone on 2026-08-23 and does not see a
+  problem**, so it is parked. A measurement said the space was empty; a person
+  holding the device said the screen reads fine. **Do not reopen this on the
+  strength of the number alone** — it was never evidence that the screen looks
+  wrong, only that there is room in it.
+
+- **Bot characters.** The plumbing is built (below); the cast is not. Names,
+  per-category strengths, speed, wager habits, honking, and the leaderboard
+  yardstick band are all still open, and `docs/BOTS.md` marks which numbers
+  must come from the owner rather than from a model. Two earlier drafts of that
+  file invented skill tables and difficulty adjustments; both were deleted at
+  the owner's instruction. **Do not invent a number here.**
+
+## Practice Bots
+
+A bot is an ordinary row in `players` with `is_bot` set (migration 030), so it
+appears in the lobby, the reveal, the scoreboard and the results through code
+that already existed. The host's browser answers on its behalf — the same
+device that already owns phase, timer and judging (#1).
+
+Deliberately the plainest possible version, because none of it has been
+measured: **one bot per room, 50% accuracy flat, answering instantly.** The
+coin flip is the only number that makes no claim about how hard the questions
+are. `js/game/bot-logic.js` holds the decisions and is unit tested;
+`js/game/bots.js` holds the database side and is host-gated.
+
+**Wrong answers are never invented.** 80% of questions still carry their
+original multiple-choice distractors in `questions.incorrect_answers`, a column
+nothing else reads. A bot that misses picks one. A question with none stored
+gets a **blank** — the owner chose that over borrowing another question's
+answer, because borrowed text was never a wrong answer to *this* question.
+
+Four rules from the owner, and where each is enforced:
+
+| Rule | Enforced in |
+|---|---|
+| Only a human host adds or removes one, only in the lobby | `renderAddBotButton` / `handleAddBot` / `handleRemoveBot` in `js/lobby.js` |
+| Never host or co-host | `determineNextHost`, `handleHostPromotion`, and the row's buttons are not rendered at all |
+| Nothing it does shapes a QUESTION | `recordCurrentQuestionOutcomes` in `reveal.js`, and `getHumans()` for placement in `scores.js`. **Revised 2026-09-15**: the bot's own results ARE recorded now (migration 072, `bot_history`) on the owner's instruction — what this row still guarantees is that they never reach `question_stats` or `answer_tally`, which is the evidence a question's difficulty and answer key are judged from |
+| A bot never holds a room open | `humanPlayers()` in `js/lobby.js` |
+
+Two exemptions that are not optional: a bot **sends no heartbeat and joins no
+presence channel**, so it must be skipped by both stale sweeps and both away
+computations. Left in, the sweep removes it partway through the game it was
+added for, and the reveal shows it faded at 40% — the "do not wait for them"
+signal — for the one player that has always already answered.
+
+**The recording rule is the fragile one.** The guard has to come *before*
+`recordQuestionOutcome`, not between it and `recordAnswerText`. When it sat in
+the middle, the outcome was counted and only the text was skipped — the worse
+half to keep, and invisible without a check. `scenario-bots.mjs` catches it:
+break it and `question_stats` reads `asked=2` where a solo human is `asked=1`.
+
+## Database Tables
+
+`rooms`, `players`, `answers`, `chat_messages`, `chat_archive`, `questions`,
+`question_feedback`, `question_history`, `question_stats`, `answer_tally`,
+`game_plays`, `game_history`, `profiles`, `player_stats`, `friend_requests`,
+`friendships`, `title_unlocks`, `site_settings`, `error_logs`, `host_ratings`,
+`answer_claps`, `clap_history`, `bot_history`.
+
+**The last three arrive with migrations 071 and 072** — run by the owner on
+2026-10-19, on their word, with no verification rows pasted.
+`answer_claps` dies with its room; `clap_history` and `bot_history` deliberately
+have no foreign key to anything, for the reason 033 and 052 both record — a
+historical record that cascades is a historical record that gets deleted.
+
+---
+
+## One person, one seat
+
+**Reported from a live game: three copies of one player in the lobby, all
+flagged host.** It needs a leave whose unload beacon never fires — a locked
+phone, a dead battery, lost signal — which leaves the row behind. Two faults
+then stacked into a **ratchet**:
+
+- `join.html` called `addPlayer` unconditionally, with no check at all, so
+  coming back made a SECOND row.
+- `ensureCurrentPlayer` in the lobby adopted an existing row only when there was
+  **exactly one** match, and otherwise added another. So at two duplicates it
+  made a third, at three a fourth, **and it could never get back to the one case
+  it knew how to handle.** Every return from then on added another copy, for the
+  life of the room.
+
+The guard was written for a real reason — two guests both called "Alice" would
+be silently merged onto one id — but its failure mode was unbounded growth,
+which is worse than the thing it avoided.
+
+`claimSeat` in `js/db/players.js` is the single path now, used by both
+join.html and the lobby. **Who you are is a user id when signed in, which is
+exact, and a display name when not, which is not**, and that difference is the
+whole design:
+
+- **Signed in** — any row with your user id is yours. Take the newest, delete
+  the rest. One account, one seat.
+- **A guest** — a same-name row that is STILL ALIVE might genuinely be somebody
+  else who picked your name, so it is left alone and you get a new seat. Only
+  rows that have gone quiet are treated as yours, and those are cleaned up.
+  Being wrong here costs a stranger their seat mid-game, which is worse than an
+  extra row.
+
+Liveness falls back to `joined_at`, because `addPlayer` does not write
+`last_seen_at` and a row that never heartbeated would otherwise look ancient.
+
+`scenario-nasty` returns **twice**, because once is not enough to see it: the
+first duplicate is where the old code still behaved and the second is where it
+ran away. Verified by restoring both call sites.
+
+**A REMEMBERED SEAT ID BEATS EVERY GUESS ABOVE, and adding it closed the last
+duplicate path (2026-08-24).** The guest rule will not touch a same-name row
+that is STILL ALIVE, because it might be a stranger who picked the same name —
+which left the commonest rejoin of all wide open. A guest who **closes the tab**
+loses sessionStorage but keeps localStorage, comes back through the join screen
+inside the stale window, and finds their own row still warm: skipped as
+possibly-somebody-else, and handed a new seat beside it. Two of them, instantly,
+with nothing abandoned anywhere.
+
+`claimSeat` now takes `priorPlayerId` and adopts that row outright when it is
+still in the room. That is not a heuristic about who somebody is — it is the
+seat they were sitting in.
+
+**`rememberSeat` had to start running in the LOBBY for that to help.** It only
+ever ran on the game page, so anybody who sat in a lobby and closed the tab had
+no record at all. The lobby is where people wait.
+
+**And it must NOT run in `join.js`, which is where the obvious version of this
+went.** Writing the new seat id at the moment of joining overwrites the OLD one
+— and the old one is exactly what `game.html` needs a moment later to move a
+returning player's answers onto their new row. It cost a passing test to find:
+`scenario-nasty` reported "rejoin lost history: 1 answers before, 0 after". The
+lobby and the game page both write it **after** any reclaim has run, which is
+the only safe moment.
+
+`scenario-nasty` covers this as its own case, deliberately NOT backdating the
+row: the point is that nothing has gone quiet.
+
+## A ghost cannot be the host
+
+**Reported from a live game, with a photograph: two abandoned copies of one
+player both flagged HOST, while the only person actually in the lobby was shown
+"Ready Up" and could not start the game.** Four faults compounding, and the
+combination is a room that can never recover on its own.
+
+- **`promoteToHost` set the flag on the new host and never cleared it on the
+  old one.** Every promotion ADDED a host. It clears the room first now, then
+  sets — that order, because a failure between the two leaves no host, which
+  promotion fixes on its next pass, while the other order leaves two, which
+  nothing was looking for.
+- **"Is there a host?" was `players.some(p => p.is_host)`, which a dead row
+  satisfies perfectly.** So the room believed it had one and promotion never
+  ran. `liveHosts()` requires the row to have been heard from.
+- The promotion **race guard** used the same test, so it bailed for a ghost too.
+- **The stale sweep for non-hosts only ran on the HOST's client** — and the host
+  was the thing that had gone, so nobody left had the authority to tidy up.
+  `iAmTheCaretaker()` — earliest joiner still present — does it when no host is
+  reachable, chosen that way so every client picks the same person without
+  having to agree first.
+
+**A missing timestamp still means "cannot tell", and cannot-tell counts as
+HERE.** Same rule as everywhere else: treating absence of evidence as evidence
+of absence once had hosts kicking every player seconds after they joined.
+
+Promotion also prefers candidates who are PRESENT, falling back to any human if
+nobody looks it — a room with no host at all is worse than one whose host may
+be about to come back.
+
+`scenario-nasty` builds the photographed state — an abandoned host row plus a
+duplicate of it — and requires exactly one host, that it is the person actually
+there, and that they can start the game. Verified by reverting all four: the
+room reports **four hosts, three of them ghosts.**
+
+## A room is only ever cleaned up from inside it
+
+A player row goes either by a beacon on unload or by another client in the room
+running the stale sweep. **When everybody's phone dies at once, nobody sweeps**,
+the rows persist, and `cleanupOrphanedRooms` — which asks only "are there
+player rows" — never fires. The room reads as a game in progress forever. This
+is what "two active games nobody was in" was.
+
+`cleanupAbandonedRooms` uses the evidence that already exists: `last_seen_at`,
+refreshed by the heartbeat every 15 seconds. A room where every HUMAN has been
+silent for `ABANDONED_ROOM_MS` (20 minutes) is deleted. Three guards, and none
+is optional:
+
+- **20 minutes, not the 2-minute in-game stale timeout.** This deletes a whole
+  room rather than one seat, and deleting a live room out from under a game is
+  far worse than leaving a dead one listed.
+- **No `last_seen_at` at all means "cannot tell"** and protects the room. This
+  is the same rule as `checkStalePresence`, and ignoring it once had hosts
+  kicking every player seconds after they joined.
+- **Bots are ignored when asking whether anyone is alive**, because a bot never
+  heartbeats. A room of only bots is abandoned by definition.
+
+It runs from the Join page's existing sweep and from the admin dashboard before
+it counts, so the number an admin sees and the list a player sees agree.
+
+**The public games list was never showing these**, contrary to a claim made
+once in this session: `fetchPublicRooms` requires `who_can_join = 'anyone'` AND
+`created_at` within two hours, so an invite-only or older ghost was never
+offered to anyone. Only a young public one could have been.
+
+## Presence, Away and Host Handover
+
+The agreed model — implemented except where marked:
+
+- **Away** is shown as soon as presence reports it: the player fades to 40%
+  opacity in lobby, reveal, scores, results and final wager. The game never
+  waits on an away player.
+- **A missed question scores 0 and burns the player's lowest unused wager**
+  (`findNextAvailableWager`). This is deliberately identical to being present,
+  wagering 1 and getting it wrong — so vanishing is neither rewarded nor
+  punished beyond the loss itself.
+- **`HOST_HANDOVER_MS` (30s)** — the game must not stall behind one phone.
+- **`STALE_TIMEOUT_MS`** — the seat is released. Rejoining reassigns previous
+  answers to the new player row, so score and history survive. **This needs
+  migration 052 run; before it, the answers died with the seat and this was
+  simply untrue.** See "Rejoin keeps your history" below.
+- **Succession order: co-host first** (designated heir, can already advance),
+  then longest-present. Absent players can neither hold nor inherit the role,
+  and **neither can a bot** — a room whose host is a bot is a room nobody can
+  start, advance or judge. If only bots are left there is no next host, which
+  is correct: nobody is there to play.
+
+**Deputising, not replacement.** At `HOST_HANDOVER_MS` the host *keeps the
+crown* and the next in line is granted advance rights via `state.isDeputy`
+(`canControlGame()` honours it). Taking the role outright meant a host who
+glanced at a notification returned to find they no longer ran their own game.
+The role moves permanently only on real departure, which arrives as a DELETE.
+
+**Rejoin keeps your history.** The seat is recorded in `localStorage`
+(`rememberSeat` / `recallSeat` in `auth.js`) and reclaimed on arrival by any
+route. sessionStorage was used before, which dies with the tab: history
+survived a refresh but not an actual return. Reclaiming also has to run
+outside the missing-row branch, because a player returning through the join
+screen arrives with a freshly created row and would skip it.
+
+**AND UNTIL MIGRATION 052 THAT WHOLE PARAGRAPH WAS FALSE.** Measured on
+2026-08-25, by the CI probe:
+
+```
+--- CAN A REJOINING PLAYER RECOVER THEIR ANSWERS? ---
+  answers -> players: RELATED
+```
+
+PostgREST resolves an embedded `answers?select=id,players(id)` only when a
+foreign key exists between the two tables, so that is a fact about the live
+database rather than another inference from `migrations/`. **The probe could
+not see this before and honestly said so** — the OpenAPI description carries no
+foreign-key annotations, which is why #9 had to be measured by hand. Embedding
+sees the relationship; it just cannot see the ON DELETE action.
+
+**MEASURED: it was `CASCADE`.** 052 captures `confdeltype` before dropping,
+because that is the only moment the answer is knowable, and the live database
+reported `CASCADE — answers were DELETED with the seat`. So a released seat
+really did destroy the score, and the alternative below is ruled out — which
+also confirms the ghost rows this project chased were the code faults already
+fixed, not a failing delete.
+
+**The migration did not need to know, and an earlier draft of this section
+pretended to.** It asserted the action had to be CASCADE or SET NULL, reasoning
+that NO ACTION would make the stale sweep fail and somebody would have noticed.
+That was an inference dressed as a measurement. All three are broken and all
+three are fixed by dropping the key:
+
+| ON DELETE | What it did |
+|---|---|
+| `CASCADE` | the answers were deleted with the seat |
+| `SET NULL` | the rows survived having forgotten whose they were |
+| `NO ACTION` / `RESTRICT` | removing the player RAISED 23503 instead, so `removePlayer` failed for anybody who had answered — logged, never shown, and leaving a seat that cannot be swept for **every player who actually played** |
+
+That last one would have been an alternative explanation for the ghost rows
+this project has been chasing, and it would have been invisible for the same
+reason as everything else here — the failure only reaches a log. It is not what
+happened, but only the measurement says so. Verified against a real Postgres in
+all three shapes: each is dropped, each is named, and `rooms` keeps its cascade
+every time.
+
+**DROPPING THE KEY BROKE "has everybody answered", and that is worth reading as
+a pattern rather than a detail.** `state.currentAnswers.length >=
+state.players.length` was correct only by accident: while answers died with the
+seat, both sides of the comparison shrank together. Now an answer outlives the
+seat, so three players where Alice answers and leaves and Bob answers gives two
+answers against two remaining players — the room decides everybody is done
+while Carol is still typing, the host is shown "Reveal Results", and the
+countdown hides itself. `countAnswersFrom` counts only answers whose player is
+still in the room (and de-duplicates by player id, closing the same gap from
+the other side). **A fix that changes what a row's lifetime means changes every
+count taken over those rows** — so the rest of them were gone through too:
+
+| Reads answers | Verdict |
+|---|---|
+| `computeScoresFromAnswers` | safe — keys by player id, and a departed player's total is rendered nowhere |
+| `buildDisqualifiedSet` | safe — an extra wrong-and-worth-nothing row cannot flip a set that already contains a correct one |
+| `renderRevealAnswers` | safe — iterates `state.players` and looks each answer up |
+| `addRoomScores`, results placement | safe — both iterate `state.players` |
+| `recordCurrentQuestionOutcomes` | **NOT safe**, below |
+| `submittedCount` in `reveal.js` | **NOT safe** — missed entirely, found 2026-08-25 |
+| the host's review overlay in `scores.js` | **NOT safe** — same, found 2026-08-25 |
+
+**THAT TABLE MISSED TWO, AND ONE OF THEM ALREADY HELD THE OTHER HALF OF THE
+RULE.** `reveal.js` had its own private `submittedCount`, written months earlier
+for a different fault: on the final question every player holds a
+`__WAGER_LOCKED__` row the moment they pick 0/10/20, so counting rows said the
+round was complete before anybody had typed. So there were **two half-rules in
+two files** —
+
+| | skips a departed player | skips `__WAGER_LOCKED__` |
+|---|---|---|
+| `countAnswersFrom` | yes | **no** |
+| `submittedCount` | **no** | yes |
+
+— and each was blind to exactly what the other guarded. `countAnswersFrom` is
+used by `updateRevealButtonText` and the Realtime answer handler, so **on the
+last round of every game the reveal countdown still vanished and the host was
+still told "Reveal Results" while people were answering**, which is the bug the
+2026-08-20 playtest recorded as fixed. It was fixed on the reveal screen and
+nowhere else.
+
+One function holds both rules now and `submittedCount` is a thin wrapper over
+it. `tests/scoring.test.js` fails by name when either guard is removed, and
+keeps a case for a **deliberately blank** answer, which IS a real submission —
+somebody the fill has already closed out must not hold the round open.
+
+The review overlay is the smaller one: since 052 it grew a row labelled
+"Unknown" for everybody who had left, each with a live toggle offering to
+re-judge a player whose score is rendered nowhere. It filters to the room now.
+
+**The bot guard went soft, and that is the one that mattered.** It identifies a
+bot by looking the answer's player up in the room — and an orphan has no player,
+so `player?.is_bot` became quietly `false` and a departed bot's answer would
+have gone into `question_stats` and `answer_tally`, the two tables the rule
+"nothing a bot does is recorded" exists to protect. It skips an answer it cannot
+attribute now. Losing one human's answer from an aggregate over thousands of
+plays costs nothing; putting an invented percentage into the evidence used to
+judge a question does.
+
+**And `state.currentAnswers` needed the same structural filter as the score
+paths.** It comes from `fetchAnswersForQuestion(room, N)`, which returns every
+answer in the room at round N — including the PREVIOUS game's, whenever the
+clear-out did not run. `currentGameAnswers` in `state.js` wraps
+`answersForCurrentGame` so all ten fetch sites are filtered identically without
+each one having to remember `state.questions`.
+
+**A player whose phone died for two minutes mid-game has always come back to
+nothing**, and nothing said so: the reassignment reported success having moved
+zero rows, which is indistinguishable from having had nothing to move. Every
+scenario passed, because the fake store has never had this key at all — it was
+asserting the world we wanted rather than the one we had.
+
+Migration 052 drops the key, exactly as 033 did for `game_plays` and for the
+same reason: an answer records that a round was played, and the seat is how
+that person was reached at the time, not what the record is ABOUT. **The key to
+`rooms` stays** — answers really are scratch data for one room, and that
+cascade is now the only thing stopping orphans accumulating.
+
+**The lesson is about the shape of the promise, not the key.** This one was
+written down, believed, quoted into three other sections, and load-bearing for
+`op_reassign_answers` in migration 051 — a function built to move rows that
+were never there. Nothing failed, because the failure mode of "recover what is
+gone" is silence. **When a feature's success and its total absence look
+identical, go and measure the thing it depends on.**
+
+`checkStalePresence` re-fetches players on **every** call. It used to do so
+every third call, leaving the local view of `last_seen_at` up to 90s stale, so
+absence was noticed three times slower than intended.
+
+## Who is allowed to write a statistic
+
+**Measured from the live database on 2026-08-20, via the CI probe.**
+
+**A visitor CAN save a rating.** `question_feedback` answered
+`ALLOWED (died on a NOT NULL column, as intended)` to a deliberately invalid
+insert — RLS let it through and a constraint stopped it. So the empty table is
+**not** a permissions problem, and nobody should write a migration for one.
+What remains is the client: a write that never fires, or a value the database
+rejects. Both are now visible to the player (`writeSucceeded`), so the next
+rating produces evidence instead of silence.
+
+**A host CANNOT write another player's `question_history`.** Migration 011
+grants `INSERT WITH CHECK (user_id = auth.uid())` and
+`UPDATE USING (user_id = auth.uid())`, and **no DELETE policy at all**. Three
+consequences, none of which error:
+
+| Call | For yourself | For anybody else |
+|---|---|---|
+| `upsertQuestionHistory` from `doReveal` | works | never attempted |
+| `amendQuestionHistory` (host override) | works | **silently refused** |
+| `revokeQuestionHistory` (disqualify) | update branch works, **delete branch refused** | **silently refused** |
+
+So a host's correction lands on their own row and quietly does nothing for
+everyone else. The scenario passes because the fake store has no RLS.
+
+**FIXED for the corrections, by migration 041, which the probe confirms is
+applied as of 2026-08-23.** `amend_question_history` and
+`revoke_question_history` are SECURITY DEFINER, so the table stays shut to
+clients and a host's correction reaches the player it is about. The guard could
+not be "the caller must be the host" — a host is very often a guest, and a
+guest has no `auth.uid()` — so it is about the CLAIM instead: the correction is
+applied only if that player really answered that question in that room. You
+cannot reach into a stranger's history from nowhere. Somebody already in the
+room could misuse it, but they can already edit the scoreboard, so it opens
+nothing that was closed. **Both calls now require a `roomId`** and do nothing
+without one; `scenario-accuracy` fails by name if a call site drops it.
+
+**FIXED for the RECORDING of a round too, by migration 043.** `doReveal` used
+to write the player's own row from the player's own browser, so a phone asleep
+at the reveal recorded nothing and a phone awake recorded a miss — the same
+event, two outcomes, decided by hardware, which meant a worse connection could
+buy a better accuracy.
+
+**The owner settled the question this waited on: A MISS IS A MISS.** It already
+scores 0 and burns a wager exactly as being present and wrong does, so it
+counts in accuracy the same way. It is not permanent: Proficiency reads the
+most recent verdict (migration 040), so getting the question right next time
+erases it.
+
+`record_round_history(p_room_id, p_question_id)` records every signed-in
+player in one statement. Three things about it are load-bearing:
+
+- **Every device calls it, not just the host** — `recordRoundHistory` in
+  `doReveal`. The first call does the work and the rest are no-ops. Host-gating
+  it would have reintroduced the exact failure it fixes: a host whose phone
+  died would take the whole room's record with them. **Contrast `room_scores`,
+  which IS host-gated** — that write is not idempotent, so a per-device call
+  there multiplies the tally by the room size. Whether a write may be repeated
+  is the thing to establish before choosing.
+- **The marker is `answers.history_recorded`, not anything on
+  `question_history`.** `revoke_question_history` DELETES that row when it was
+  the player's only sighting, which would take a marker with it and let a
+  re-render re-add the attempt the host had just thrown out. `answers` is
+  untouched by the corrections and dies with the room, which is exactly how
+  long the marker is needed.
+- **The UPDATE that claims the marker comes FIRST in the statement**, so it
+  takes the row locks and a second caller blocks, wakes, re-tests
+  `history_recorded = false`, matches nothing and inserts nothing. With the
+  marker last, two callers would read the same unmarked rows and both count
+  the round.
+
+It is update-then-insert rather than `ON CONFLICT`, deliberately:
+`upsertQuestionHistory` in `js/` is a read-then-write, so nothing guarantees a
+unique index on `(user_id, question_id)` — and `ON CONFLICT` without one raises
+42P10 and kills the whole statement every time, for everyone.
+
+`scenario-accuracy` proves exactly-once and whole-room-in-one-call. Verified by
+removing the marker: it reports four failures by name, including "Alice 4,
+Bob 4, both should still be 1".
+
+## Proficiency counts questions; volume counts attempts
+
+**Migration 040.** Proficiency is `questions_mastered / questions_met` —
+distinct questions you currently get right, over distinct questions you have
+met — and the most recent sighting decides, in both directions. Get it wrong
+then right and the miss is gone; get it right then wrong and the mastery is.
+
+It replaced `SUM(times_correct) / SUM(times_seen)`, a lifetime hit rate over
+attempts, in which **a miss was permanent**: playing more could dilute it, and
+nothing could undo it, not even learning the answer. That made the number
+partly a record of how often somebody's phone had been awake at the reveal.
+
+**This is only as good as the resurfacing rule**, and that rule was reading
+the wrong signal. `bucketQuestionsByHistory` in `js/question-selection.js` is
+now the single definition of "this player knows this question", and it is
+`last_correct` — the same verdict Proficiency uses.
+
+Before that, the two selection paths had two different rules and neither
+matched the profile:
+
+| | knows it = |
+|---|---|
+| `fetchQuestionsByCategory` | got it right EVERY time |
+| `fetchAllOpenQuestions` | got it right AT LEAST ONCE |
+| Proficiency (040) | got it right LAST time |
+
+The category rule is the one that bit. A question missed once and since
+learned reads `times_seen=2, times_correct=1` — not right every time, so it
+could never be filed as mastered, and wrong at least once, so it stayed in the
+redemption pool **forever**. The pool only ever grew, and the same old
+questions kept resurfacing long after they were known. **The ~5% draw rate was
+never the problem; the pool it drew from could not shrink.** Now it is
+self-cleaning both ways: learn one and it leaves, forget one and it returns.
+
+`fetchQuestionHistoryForUsers` **must** select `last_correct`. It did not, and
+the fallback (`times_correct > 0` when the column is null) means omitting it
+does not error — it silently reverts every player to the old rule.
+
+`question_history.next_eligible_at` still exists on the live table and is read
+by nothing. A scheduled interval was considered and set aside: the owner's
+judgement is that a flat ~5% per player per slot keeps repeats feeling
+incidental rather than assigned, which is right for a party game. Revisit it
+only with a measurement, not a hunch.
+
+**Guests do not shape selection**, deliberately. `playerUserIds` holds
+signed-in players only, so a room of guests gets a plain shuffle. Tracking what
+a guest has met means keeping a durable record of somebody who did not sign up,
+and smart selection is one of the things an account is for. A guest in a mixed
+room still gets a well-chosen set, because the signed-in players shape it.
+
+`questions_answered` and `correct_answers` are unchanged and still count
+attempts. They are the VOLUME measure, and the leaderboard's points are built
+on them deliberately (see the note on points below). Only percentages moved.
+The new columns are appended, because `CREATE OR REPLACE VIEW` cannot reorder
+or retype existing ones — which is also the safest shape.
+
+`rowProficiency` / `sumProficiency` in `titles.js` are the single rule, and
+both **fall back to the attempt counters when the new columns are absent**, so
+the app behaves exactly as before until 040 is applied rather than showing
+everybody 0%. `calculateTitle` in `utils.js` duplicates the rule inline because
+`titles.js` imports `utils.js` and the reverse would be a cycle;
+`tests/titles.test.js` pins the two together with a case whose attempt counters
+are identical and whose question verdicts are not.
+
+**`MIN_QUESTIONS_FOR_TITLE` now counts distinct questions, not attempts**, so
+it is marginally harder to reach. That is deliberate and more honest.
+
+## Ranks were invisible, and Wild Card was counted three times
+
+Four faults on the profile, all reported from one playtest.
+
+**Wild Card appeared three times under Proficiency.** `player_stats_computed`
+is meant to emit one rollup per category — the row where `subcategory` is null
+— and it emitted three the app could not tell apart, because the filter is
+`!s.subcategory` and `null`, `''` and `undefined` all land in that bucket while
+staying separate rows. `mergedCategoryRows` in `titles.js` sums them, which
+cannot under-report and is the identity when there is only one. **The profile's
+totals ran over the same rows**, so games, wins and questions were inflated
+too, not just the list.
+
+**AND `computeCategoryTiers` WAS NEVER CONVERTED WITH IT (found 2026-08-25).**
+`mergedCategoryRows` was written for the profile and applied to the profile.
+The function that decides a TIER kept iterating raw rows, and a tier is not a
+display detail — it gates every title unlock, the tier badge in every lobby, and
+`hasReachedApprentice`, which is what opens the Title Builder at all.
+
+Reading one fragment of a split category understates it twice over. The fragment
+carries a slice of the questions, **and `MIN_QUESTIONS_FOR_TITLE` is applied to
+that slice** — so somebody with 36 questions met, split 12/12/12, gets **no tier
+whatsoever** rather than a lower one, and nothing is wrong on screen except an
+absence. Where the volume gate was cleared, which of the three rollups won was
+simply whichever the view returned last.
+
+Category rollups are merged; **subcategory rows are not** — each one is its own
+tier under its own key, which is the whole point of them. `tests/titles.test.js`
+pins both directions and fails by name when the merge is removed.
+
+**One bug, one fix, three call sites, two converted.** That is the same shape as
+"the seat ratchet had a third copy" and as the answer-count rule below. When a
+fix is written as a shared helper, grep for every reader of the thing it
+replaces before calling it done.
+
+**Subcategory rows had no icons.** One line held two mistakes: it read
+`subNode.icon`, the HIEROGLYPH, while the category row above it reads the
+emoji — so the two halves of one list disagreed about what an icon is — and it
+rendered nothing at all when the node was not found, which is every wild-card
+subcategory (they live under `wildCardOptions`) and every value the tree does
+not know. `resolveSubcategoryIcon` handles both and falls back to the
+category's own icon, so a row can never come out blank.
+
+**Nothing was sorted.** Mastery and Proficiency both rendered in whatever order
+the query returned. Mastery is now most-mastered first, and its subcategory
+rows are sorted **per level by the whole branch's total**, so a child still
+sits under its own parent and a parent whose own count is 0 but whose children
+hold 40 is near the top. Proficiency sorts by accuracy, ties to the bigger
+sample — 100% from two questions must not outrank 92% from sixty.
+
+**A rank is `accuracy × log2(questions met)`** against fixed thresholds
+(Apprentice 3.0, Scholar 4.5, Master 5.5, Oracle 6.5), with no rank at all
+below `MIN_QUESTIONS_FOR_TITLE` distinct questions whatever the accuracy. That
+is a defensible rule and completely unguessable from outside, and **the app
+said nothing about it anywhere** — the owner asked where their ranks were and
+how to improve them and neither question had an answer on screen.
+
+`tierProgress(row)` returns the rank held, the one above, and how many more
+questions getting them right would take. **The count is simulated, not
+solved**: answering one more correctly moves both halves of the fraction, so
+there is no clean closed form and an approximation would be a number the player
+answers and fails to hit. `tests/titles.test.js` pins that the count actually
+reaches the next rank and that one fewer does not.
+
+It renders as a second line under the category name, never a badge beside it.
+The lobby taught that expensively: anything added alongside a name takes width
+that is not there at 375px. Below the volume gate it says how many more
+QUESTIONS are needed rather than anything about accuracy, because accuracy
+cannot buy a rank there and saying so would be a promise that cannot be cashed.
+
+## Nobody can write down their own score
+
+Migration 055, built 2026-08-28. **This is the counter-argument recorded in the
+section below, finally acted on.** It does not change the owner's decision that
+the leaderboard is friends-only; it closes the hole that made that decision an
+argument about incentive rather than about data.
+
+Every number this app shows about a player — accuracy, proficiency, mastery, the
+tier badge in every lobby, every title unlock, and the whole leaderboard —
+derives from `question_history`. Migration 011 gave clients:
+
+```
+INSERT WITH CHECK (user_id = auth.uid())
+UPDATE USING      (user_id = auth.uid())
+```
+
+Every browser carries the publishable key by necessity, because guests play. So
+any signed-in person could set their own `times_correct` and `last_correct` for
+the entire bank **in one request**. Not by cheating at a game — by writing the
+number down. 055 drops both policies. SELECT stays public: the host's browser
+reads every player's history to shape question selection, and a restrictive read
+policy would revert every room to a plain shuffle with nothing on screen saying
+so.
+
+**WHAT THIS DOES NOT DO, and must not be claimed to.** A host may override the
+machine's verdict — that is a feature, and it is how a real answer the fuzzy
+matcher rejected gets counted. So somebody hosting a solo game can still mark
+themselves right every round, and their history is then honestly recorded. This
+turns "one request sets any number" into "you have to sit through the game",
+which is a real cost and not an impossibility. The owner named that ceiling
+first and accepted it. **Do not write this up as making the stats
+un-fakeable.**
+
+**It was written the opposite way round from 049, deliberately.** 049 was
+written about the writes that were *dangerous* and broke three that were not —
+Play Again, rejoining and practice bots — silently, with every test passing. So
+here `js/` was grepped for the TABLE first and every writer enumerated before a
+line of SQL was written:
+
+| Writer | Route | After 055 |
+|---|---|---|
+| `recordRoundHistory` | `record_round_history` (043) | unaffected |
+| `amendQuestionHistory` | `amend_question_history` (041) | unaffected |
+| `revokeQuestionHistory` | `revoke_question_history` (041) | unaffected |
+| `upsertQuestionHistory` | **direct INSERT/UPDATE** | refused |
+
+All three survivors are SECURITY DEFINER and run with the table owner's rights,
+the same arrangement `question_health` and `host_reputation` already use — and
+that is **asserted in `tests/sql/game-rules.sql`, not assumed**. Six rules pin
+both halves: a signed-in player is refused an insert AND an update, the forged
+count is unchanged, reading still works, and all three server writers still get
+through. A check for only the refusal would go green on a change that stopped
+anybody's history being recorded at all.
+
+Verified by reverting the drop loop: **5 of 105 rules fail, including `got
+"9999", want "1"`** — the forged number landing exactly as it would have live.
+
+**`upsertQuestionHistory` stays in the client, and now says which of two things
+happened.** It is the last resort for a room where `record_round_history` is
+unreachable. But the two refusal shapes differ and code has to tell them apart:
+an INSERT is refused by `WITH CHECK` and **raises 42501**, while an UPDATE is
+filtered by `USING` and **matches nothing and reports success**. The update
+branch therefore `.select()`s and checks the row count — without it, this would
+go on reporting that it had recorded the round. Both log at **warn** and name
+055, so the next session reading a 42501 in a console does not hunt for a bug
+that is a permission working. Neither toasts: this is background stat recording,
+the round is already scored on screen, and a toast per player per round is the
+noise that teaches people to ignore real warnings.
+
+**The probe's consequence line changed with it, and that mattered more than the
+migration.** `record_round_history` was already watched, described as a
+degradation — "a round is recorded only by the phones that were awake". Since
+055 it is **total**: with that function gone, nothing records a round at all and
+every number in the app silently stops moving. A dependency that was a fallback
+becomes load-bearing the moment you shut the door beside it, and the monitoring
+has to be re-read in that light or it will describe the old world confidently.
+
+The fake store shuts the same door (`_shutDoors`), including the plain-INSERT
+42501 shape it had never modelled. The three RPCs mutate the table array
+directly rather than going through `_execute`, which is how definer rights are
+modelled there — structurally, not by a flag.
+
+## The leaderboard ranks what you know, among people you know
+
+Rebuilt 2026-08-26, on the owner's decision, after a long argument in which they
+were right and I was arguing past them. Migration 053.
+
+**IT IS FRIENDS ONLY. Do not put a global board back without the owner.** Their
+reasoning, which is better than the counter I offered:
+
+- Anyone can play solo and mark themselves right every round, so a global
+  ranking is a prize with no honest route to the top and no way to police it.
+  **Removing the prize removes most of the reason to fake anything.**
+- Among friends there is a remedy a global board has no equivalent of: if
+  somebody's numbers look wrong, unfriend them. In a shared game it is obvious
+  anyway — an Oracle who cannot answer anything is visible to everybody in the
+  room, and can be kicked.
+- A global board **discourages**. A top score with no visible route to it is a
+  wall, not an invitation.
+
+**My counter, recorded because it is the strongest one and it did not win.**
+Cheating does not HAPPEN on the leaderboard — every number comes from
+`question_history`, which any signed-in person could write directly with the key
+every browser carries — so deleting the board hides fake numbers rather than
+preventing them: they still show on the profile, the ranks, the titles and the
+tier badge in every lobby. That is true, and it does not answer the owner's
+point, which is about INCENTIVE rather than about data.
+
+**That write hole is closed as of 2026-08-28 — migration 055, "Nobody can write
+down their own score" above.** It was always independent of this decision, and
+acting on it does not reopen the question: the board stays friends-only, on the
+owner's reasoning, which was never about the mechanism.
+
+**THREE EXPORTED READERS ARE NOW DEAD, and this file said otherwise until
+2026-08-28.** `fetchAllPlayerStatsForLeaderboard`, `fetchPlayerTotalsForLeaderboard`
+and `fetchCategoryLeaderboard` have **zero call sites** anywhere in `js/` —
+measured by grep, not assumed. The live path is `fetchLeaderboard`, whose
+fallback is `_leaderboardFallback`, and that one correctly uses `select('*')`.
+They are left in place rather than deleted on a hunch, but **do not wire one up
+without reading its comment first**: `fetchCategoryLeaderboard` carries a long
+note about why it must select `*`, and the other two rank on ATTEMPT counters,
+which is the measure the 2026-08-26 rebuild set out to remove.
+
+**Points are gone.** The old global board ranked on `correct_answers`, a count
+of ATTEMPTS: answer the same question ten times and it counted ten times, so the
+measure rewarded re-grinding a handful of questions over learning new ones, and
+it disagreed with every other number in the app. It was also unbounded, which is
+what made a top score look unreachable and a faked one impossible to spot.
+Mastery is capped by the size of the bank: a leader at 6% reads as an invitation
+and one at 100% reads as a liar.
+
+**Mastery AND proficiency, because they answer different questions** — how much
+of the bank you have claimed, and how well you know what you have met. Neither
+alone is a ranking, so it is a toggle rather than two boards.
+
+**The time window is the owner's design and it is better than mine.** Define it
+as *questions you currently get right, last seen inside the window*, and
+all-time collapses to plain mastery with no special case. I proposed a
+`first_correct_at` column to express the same idea and it was not needed. The
+honest limitation, which will otherwise look like a bug: something learned a
+year ago and not seen since does not appear in a 30-day view, so a window
+measures recent ACTIVITY that stuck rather than new learning.
+
+**The period control is hidden when the server cannot honour it.** Migrations
+are hand-applied, so "the JavaScript is live and the SQL is not" is a real
+state; `fetchLeaderboard` falls back to `player_stats_computed`, which is
+lifetime-only, and returns `windowed: false`. Offering a period beside numbers
+that ignore it is a lie the screen tells confidently, which is the fault this
+codebase is made of.
+
+**The proficiency floor counts QUESTIONS MET, and the old one did not.** The
+category board required 20 `questions_answered` — ATTEMPTS — while ranking on
+questions, so replaying three questions twenty times qualified you. Same word,
+two meanings. It also scales with the period, because a week cannot hold as many
+questions as a lifetime and a fixed floor would show an empty board for every
+window.
+
+`COUNT(DISTINCT question_id)` in 053 also fixes something for free:
+`player_totals_computed` exists only because summing per-category rollups counts
+a question filed under two categories twice. Counting distinct ids cannot.
+
+**THE EMPTY STATE SAYS WHAT ACTUALLY HAPPENS.** "Tap a player to add them" was
+half the story and would have read as a broken board: the button sends a
+REQUEST, the other person accepts it from their own profile, and it is only
+offered for players who have an account at all. Somebody who taps once, sees
+"Request Sent", and comes back to an empty leaderboard would reasonably conclude
+the feature does not work. `leaderboard-no-friends` is a mock state because that
+screen is the first thing a new player sees and carries the longest string on
+the page.
+
+**A friends board needs friends, and this project has three players.** Accepting
+a friend request was completely broken until migration 044 — a constraint in no
+migration file rejected every accept, silently — so anyone who tried before that
+never became friends. Worth counting before assuming the board has anything to
+show: `SELECT count(*) FROM friendships;`
+
+`scenario-account` seeds Bob with MORE mastered questions than Alice and Alice
+with a HIGHER share of what she has met, so the two measures give opposite
+orders — without that inversion any check on the toggle passes whatever the page
+does. Verified by ignoring the toggle (it reports the ranking by name) and by
+widening the id list to everybody (it reports a non-friend on the board).
+`store.hideFunction('get_leaderboard')` proves the fallback, which was
+unreachable from a scenario before: an unimplemented RPC used to answer null
+with NO error, which is what an installed function returning nothing looks like.
+
+## Judging the host, not the ruling
+
+Migration 054, built 2026-08-26 at the owner's request: "before joining a random
+lobby someone would know if the host is reliable or not, as opposed to after
+being negatively affected." Public games are listed, so joining a stranger is a
+real thing people do, and a host still holds one power over everybody in the
+room — overriding the server's verdict, which amends the permanent
+`question_history` of every player it touches (041).
+
+**IT IS NOT "WAS THE HOST CORRECT", AND THE DIFFERENCE IS THE WHOLE DESIGN.**
+Nobody can answer that about a ruling on their own answer. A board that asked
+would reward lenient hosts and punish accurate ones — mark everything right, get
+100% — which damages everyone's stats more than a bad host does. The question is
+**would you play with them again**, which is a thing a player can honestly
+answer and which lets somebody prefer a strict host who is fair.
+
+The owner pushed back on my objection and was partly right: over-generosity IS
+visible, since the reveal shows every answer and verdict, and other players lose
+position by it. The bias is not in the LEVEL — everyone collects some
+thumbs-down — it is in the comparison, because a stricter host collects more of
+them. Milder than I first said. The owner's call was to build it, and their
+framing is the one implemented.
+
+**One vote per player per game, cast from the reveal screen.** Per round was the
+original idea and the owner spotted its flaw first — it skews toward short
+games. It has a worse one: one person in a ten-round game would outweigh four
+people in a five-round one.
+
+**THE TWO ACTIONS NOW LIVE IN DIFFERENT PLACES, and that is the real fix for a
+confusion this file only ever mitigated.** They used to be one row of three
+icons under the question feedback, wearing the same glyphs and meaning something
+completely different — labelled and ruled off, with separate listeners, which
+helped but did not remove the hazard. Migration 059 made it worse: with the
+thumbs moved to the final round only, that row would have been a lone flag for
+most of a game, reading as neither thing.
+
+| | Where | When | Why |
+|---|---|---|---|
+| 👍👎 | the reveal, final round | once per game | routine, so make it easy — a score that is rare AND hidden is a feature nobody uses |
+| 🚩 report | the profile card, behind a tap on the host | any time | rare and serious, so make it deliberate — and it sits directly under the standing you are judging them by |
+
+The card opens from the lobby, the reveal, the scoreboard and the results, so a
+report can be made at ANY point rather than during one screen. It is an outlined
+button, not a red one: a control that shouts invites the tap it is trying to
+make considered.
+
+**Two bugs in one, caught by the check written for the move.** The report block
+referenced `profile`, which is scoped inside `if (userId)`, so it threw
+`profile is not defined` and the control never rendered at all — and the
+scenario reported both the missing control and the console error. The lesson is
+the one this file keeps recording: **a control that only moved OUT of somewhere
+is a control that was deleted**, so the check asserts it is reachable where it
+went, not merely absent from where it was.
+
+**A GUEST HOST CANNOT HAVE A REPUTATION**, and this is a real limitation to
+state rather than work around. It attaches to a user id and a guest has none.
+The row hides itself entirely for a guest host, and their game shows "new host",
+which is honest and is itself a signal. It also gives an account a purpose.
+
+**THE WHOLE GAME IS REQUIRED FOR A RATING — REVERSED 2026-08-28, migration
+059.** This section previously argued the opposite and the reasoning is kept
+below, because the owner answered it rather than overruling it.
+
+The rule now: **the thumbs need every round; the FLAG needs one.** A drive-by
+cannot score a host on a single round, and somebody who walks out because the
+host was improper still reports them.
+
+My objections, and what happened to each:
+
+- *"A bad host is the commonest reason somebody leaves early, so this silences
+  the strongest complaint."* — **Answered.** The flag is a separate tool and
+  keeps the old rule. Thumbs mean "would you play with them again"; a flag means
+  "this was improper". Those want different evidence, and only the second is
+  urgent enough to come from somebody who left.
+- *"It locks out anyone who joins a game in progress."* — **Answered:** they can
+  play the next game. Hot-joining is a way IN, not a claim on a vote.
+- *"An away phone and a leaver look identical."* — **This was simply WRONG and I
+  said so.** Being away costs nothing: you keep your seat, and the blank fill
+  writes you a row every round while your screen is off. Only after ~2 minutes
+  of silence is the seat released. So "kept your seat throughout" is exactly the
+  line the owner drew, and it is precisely measurable.
+
+**HOW IT IS MEASURED, with no inference in between.** Every round ends with
+`op_fill_blank_answers` writing a row for EVERY player in the room, so a seated
+player accumulates one per round whether they answered or not. A latecomer never
+has the earlier ones; a swept seat stops getting them. `op_played_whole_game`
+counts distinct rounds and compares against `op_room_total_questions` — which is
+`GREATEST(1, length - 1)`, so **even a one-question room reports two rounds**.
+Reading that as one is how the rule table was mis-seeded on the first attempt.
+
+**AND IT IS ONLY TRUE AT THE END**, so the room must be on its final round.
+Otherwise somebody rates at round one, leaves, and has technically been present
+for everything so far.
+
+**The thumbs are HIDDEN until then rather than shown and refused** — three
+buttons that light up and record nothing is the shape #4 is about. The flag
+stays on screen every round. A refusal that does reach a player ("you did not
+play the whole game") changes the label rather than being swallowed.
+
+One answer in the room is still the guard for the FLAG: it cannot be satisfied
+by occupying a seat, so a drive-by who joins and reports on arrival is refused.
+A BLANK answer counts — running out of time is still having been in the round.
+
+**Verified by breaking both halves.** Removing the whole-game requirement fails
+four rules; gating the FLAG on it too fails four, including *"but they can still
+FLAG the host"* — which is the mistake that would silence the leaver and undo
+the whole justification. `scenario-feedback` fails by name if the thumbs appear
+mid-game.
+
+**Three attempts at that scenario broke other sections, and the trail was
+long.** Seeding rows for rounds the game had not played made three later checks
+report *"record_answer_text was never called"*; then jumping the live room to its
+final round did the same, because `syncToCurrentState` polls the room and the
+host's client skipped the rest of the game. The vote mechanics now run against a
+SEPARATE synthetic room and the live one is never touched. **When a change to
+one section breaks a check three sections away, suspect what you seeded, not
+what you changed.**
+
+**Short and long games both produce one vote, and that is right.** The unit of
+"would you play with them again" is a game, not a round. Length changes how fast
+a host accumulates SAMPLE, not the value of the percentage, and the sample is
+printed beside it.
+
+**AND THE SAMPLE IS LABELLED "RATINGS", NOT "GAMES", because a room survives
+Play Again.** The key is `(host, ROOM, voter)`, so a group playing six rounds
+together in one evening produces one rating each, not six. That IS the right
+unit — one considered opinion per person per sitting rather than six taps, and
+it stops a host farming votes with quick rematches. But it means the number is
+not a count of games, and calling it that would be the same mistake this file is
+full of: **a label describing a different measurement from the one shown**. The
+admin page already draws exactly this distinction — six rounds with one group is
+six games and ONE session. `scenario-join` fails if the row ever says "games"
+again.
+
+**WHO VOTED WHICH WAY IS NOT PUBLIC, and that is a privacy fix rather than
+tidiness.** The rows carry `voter_id` and `voter_name`. With a public SELECT a
+host could look up exactly who thumbs-downed them and retaliate in the next game
+they share — which makes an honest rating unsafe to give, and **a rating that is
+unsafe to give is worse than none**. The policy admits admins only; the
+AGGREGATE is what the app needs public, and `host_reputation` provides it.
+
+The view keeps working for everybody because it is an ordinary (definer-rights)
+view, so it reads the locked table with its owner's rights rather than the
+caller's — the same arrangement `question_health` already uses over the locked
+`question_stats`. That precedent is why this was safe to do rather than a guess,
+and all four cases were measured against a real Postgres: a visitor and a
+signed-in non-admin see nothing, the aggregate still answers, an admin sees the
+reporter and their note. `tests/sql/game-rules.sql` pins all four, and reopening
+the policy to `USING (true)` fails two of them by name.
+
+**`host_ratings` therefore reads as `rows=0` in the CI probe, and that is
+correct output.** An RLS filter returns zero rows rather than an error, so a
+future session must not read it as a table to investigate — the probe says so
+inline.
+
+**Every write goes through `op_rate_host`, which checks the voter really has a
+player row in that room.** The table has no INSERT policy at all. Without that
+guard anybody holding the publishable key — which every browser carries, because
+guests play — could bury a stranger whose game they were never in, and a
+reputation nobody can trust is worse than none. A flag is never withdrawn by a
+later thumbs-up: changing your mind about a rating is ordinary, retracting a
+report of misconduct is not something a tap should do.
+
+**A FLAG THAT REACHES NOWHERE IS THEATRE**, so the admin page has a **Flagged
+Hosts** panel, second, next to Flagged Questions — the two things on that page
+anybody is meant to act on. It groups by host, names them rather than printing a
+uuid, shows their current standing beside the report count (one report against a
+well-liked host reads differently from three against a badly-liked one), and
+prints the free text somebody typed. It reuses the flagged-QUESTION row's
+classes rather than inventing a parallel set: half of that row shipped unstyled
+for months because nothing rendered it, and a new set of class names is how that
+happens again. The count chip goes amber only when non-zero, and renders `?`
+rather than `0` when the count fails.
+
+**The join list's reputation is ACCUMULATED, not replaced.** That list refreshes
+every ten seconds, and a transient failure returns an empty map — which would
+flip every host on screen to "new host" and back, telling somebody deciding
+whether to join that a host with fifty games has none. Merging into what is
+already known means a dropped request shows the last good answer rather than a
+wrong one, and a host who genuinely has no ratings was never in the map anyway.
+
+`scenario-join` seeds three thumbs-up and one down and asserts the row reads
+**75% AND "4 games"** — the sample is half the claim, so both halves are checked
+and both fail when the column list is narrowed back. That surface had no
+coverage at all until then, and it is the one the whole feature exists for.
+
+`scenario-admin` opens it with the rest and then checks it actually SHOWS the
+report — "it opened" is not "it works", and a loader that renders nothing opens
+exactly as happily as one that renders what an admin came to read. Verified by
+dropping the note line: it reports that by name.
+
+**The sample is always printed** — `MIN_HOST_RATINGS` (3) is the point below
+which the count is shown on its own instead of a percentage, the same call and
+the same number as the difficulty band.
+
+**A VOTE BELONGS TO A HOST, NOT TO A GAME.** The role can move mid-game — a
+host who leaves is replaced by promotion — and without a guard the buttons would
+show your verdict on the OLD host as already cast for the new one, who you have
+never rated. Each vote is its own row, so nothing is lost; what was wrong was
+the screen. **Inspection-verified only**, like the final-wager guards: making a
+host change mid-reveal happen in the harness was not worth a check that could
+not be trusted to fail, and saying so beats a check that agrees with you.
+
+**THE ROW IS NOT DRAWN UNTIL THE FEATURE IS KNOWN TO BE INSTALLED**, and
+"show it, then hide it when the failure comes back" was not good enough. In the
+window where this JavaScript is live and 054 is not, an optimistic row puts
+three buttons on screen that light up when tapped and record nothing — a player
+believing they rated somebody when they did not. Hiding on the failure leaves
+exactly that window open for however long the round trip takes.
+
+**The first version of that check could not fail, and I nearly shipped it.**
+With the async hide in place, removing the synchronous gate changed nothing the
+scenario could see: by the time it looked, the failure had arrived and the row
+was gone either way. The fix was to the DESIGN, not the check — hide by default,
+ask once per game, draw only on a positive answer. Then the check fails by name
+when the gate is removed. **A check that agrees with you whatever you do is the
+thing this project keeps deleting.**
+
+**Shown on the join list and on the profile card, NOT on the lobby row.** The
+lobby row is the most fragile layout in the app: adding a badge beside a name
+there is exactly what overflowed it by 71px and made the page draggable
+sideways. Tapping a player in the lobby opens the profile card anyway, so it is
+one tap from where it is needed.
+
+**Adding it to the join list overflowed a 430px phone by 33px**, and the sweep
+caught it. `.public-game-row__info` already had `min-width: 0` and the name was
+already ellipsised — but the ROW is itself a flex item, and a flex item defaults
+to `min-width: auto`. **A child can only shrink if the parent lets it.** Same
+shape as the `repeat(N, minmax(0, 1fr))` fix on the profile.
+
+**A pre-existing flaky check surfaced while doing this, and it is worth knowing
+how.** `scenario-feedback` proves a bot's answer is never recorded by flagging a
+real player as a bot in the HOST's `window.__state` — which a player re-fetch
+replaces, and `checkStalePresence` re-fetches on every call. So whether the
+check could see the guard at all depended on how long the run happened to take;
+adding a section before it made it fail. It sets `is_bot` in the store now, and
+only after both players have submitted, because a row with `is_bot` set is one
+the host's browser answers FOR.
+
+## The shape of what you know
+
+A radar at the top of the profile, twelve axes, one per category. The owner
+asked for it: "those spider web charts that display strengths and weaknesses".
+
+**Labelled with emoji, because every category already has one.** Twelve text
+labels around a circle at 375px is unreadable; twelve emoji are not, and they
+carry a `<title>` so the exact figure is still available.
+
+**Proficiency, not mastery.** Mastery would be near zero for everybody — the
+bank holds 4,859 questions — and a chart that is a dot for every player is not
+a chart.
+
+**AN UNPLAYED CATEGORY IS NOT A ZERO,** and this is the whole reason
+`buildRadarAxes` exists rather than a one-line map. "Never tried Sports" and
+"bad at Sports" are different facts, and a radar that draws both at the origin
+says the second about somebody who has done the first.
+
+The first version still drew untried axes at the centre and joined them up,
+distinguishing them only by dimming the emoji. **It looked broken** — three
+zeroes among twelve pull three vertices to the middle and the outline crosses
+itself into a jagged star. The shape now spans only the axes with data, which
+is both the honest outline and the better-looking one. Under three such axes
+there is no polygon at all, just dots.
+
+`radarExtremes` needs at least 5 questions met before it will call a category
+your strongest or weakest, and never names the same one as both.
+
+**This paragraph used to say the opposite and it was wrong.** A throwaway
+Playwright script rendered profile.html 571px wide with text clipped; the sweep
+said clean; I concluded the script was broken, told the owner so, and wrote it
+down here. The owner then sent a photograph of their phone with the page cut
+off. **The overflow was real, and the sweep could not see it** — two faults, and
+both had been silencing it across nearly the whole app:
+
+- it treated an ancestor with `overflow: auto` or `scroll` as excusing an
+  overflow, and **`overflow-y: auto` computes `overflow-x: auto`**, so almost
+  every scrollable pane in the app was a blanket exemption;
+- `.screen` sets `overflow-x: hidden`, and the sweep read "clipped" as "fine".
+  Clipped is not fine. It is text nobody can reach.
+
+Anything wider than the viewport is now reported whether it is clipped or not.
+Verified by reintroducing the cause — a `white-space: nowrap` rank line inside
+`grid-template-columns: repeat(2, 1fr)`, which cannot shrink below its
+min-content — and the sweep names 40 elements. All eight fixed-count grids in
+the stylesheet are `repeat(N, minmax(0, 1fr))` now.
+
+**When a measurement and a person disagree about what is on the screen, the
+person is looking at the screen.**
+
+## Moving the game off the host's phone
+
+The rebuild in #1, started 2026-08-23 at the owner's instruction. Done in
+slices that can each be felt in a real game, because a rebuild nobody can test
+until the end is a rebuild nobody can test.
+
+**AUTHORITY IS NOT INITIATIVE, and that distinction is what makes this
+possible at all.** There is no application server here — Supabase is Postgres,
+Realtime and Auth — and Postgres cannot wake itself up on a timer. So a client
+still has to ask. What changes is that the ANSWER no longer comes from the
+asker: the database decides, in a SECURITY DEFINER function, and every client
+gets the same decision. It also means *any* client may ask, which is the fix
+for the stalled game: a host whose phone sleeps stops being the only device
+that can move things along.
+
+**What this cannot do, and must not be claimed to.** These functions do not
+know who is calling. A guest has no `auth.uid()` — that is what guest play
+means — so somebody with the room code can still act as another player in that
+room. This stops a score being conjured from nothing; it does not stop a person
+already in your game meddling. Closing that needs sign-in, which ends guest
+play, and the owner has not asked for it.
+
+### Slice 1 — the server judges (migration 045)
+
+`op_answer_matches(submitted, correct, alternates)` is a port of `fuzzyMatch`
+in `js/utils.js`, with `op_normalize`, `op_levenshtein` and `op_digits_match`
+under it.
+
+**This creates the most dangerous shape in the codebase: one rule, two
+implementations.** The player watches the JavaScript decide green or red; the
+score comes from the SQL. If they ever disagree, the screen and the scoreboard
+say different things about the same answer — worse than the bug being fixed.
+
+So they are not maintained as two things that ought to agree.
+`scripts/verify-sql.mjs` runs **1,621 cases through both** and fails on any
+disagreement, plus every normalisation and a sample of edit distances. It
+stands up a throwaway Postgres (or takes `PGURL`), applies the migration, and
+never has the Supabase credentials. It runs in CI on every push.
+
+Verified by breaking the SQL three ways: restoring the `Math.max(1, …)`
+Levenshtein floor reports 102 disagreements, writing the word boundary as `\b`
+instead of `\y` reports 13, and removing the accent fold reports 7.
+
+Two things that cost real time and will again:
+
+- **`\b` is a BACKSPACE in Postgres regexes.** Word boundary is `\y`. Written
+  the JavaScript way, the numeric-abbreviation rules ("2 bil" → "2 billion")
+  match nothing and fail silently.
+- **The generated cases are the ones that earn their keep.** Removing the
+  accent fold does *not* break the hand-written `Sao Paulo` / `São Paulo`
+  case — unfolded, "so paulo" and "sao paulo" are one edit apart and the fuzzy
+  tolerance covers it, so it passes for the wrong reason. A mutated
+  `"Se Pauo."` is what caught it. **A rule can be broken in a way that every
+  case written to describe it still passes.**
+
+**No extensions.** `unaccent` and `fuzzystrmatch` would both be tidier and both
+are a bet on what is installed on the live project — the commonest source of
+"worked in the harness, dead in production" in this repo (#3, #7, #10).
+
+**The accent fold cost two more rounds of this same lesson.** It is a
+`translate()`, which maps by POSITION, and the first version was typed by hand
+with a corrupted byte two thirds along — after which `ž` and `ź` folded to `s`,
+`đ` and `ď` to `z`, `ģ` and `ğ` to `d`, and so on for the whole tail. **Every
+case in the parity check still passed**, because none used a letter past the
+shift. It is generated from Unicode data now, and the two strings are asserted
+equal in length with every pair matching NFD.
+
+Then the generated version was *too good*: it folded `ł`, `æ`, `ß`, `ø`, `þ`,
+`đ` — letters NFD does not decompose, which JavaScript therefore STRIPS. So
+"Łódź" was `odz` on the screen and `lodz` on the server, and 34 answers were
+judged differently. **Parity with what the player sees is the requirement, not
+linguistic correctness**; if those should fold, change both.
+
+The map now contains exactly what NFD decomposes, across Latin-1 Supplement
+through Latin Extended Additional (Vietnamese included — `ẵ` was the last
+holdout). And the check no longer relies on somebody thinking to add an
+accented answer: **`verify-sql.mjs` normalises every lowercase letter in those
+blocks through both implementations**, so a missing pair fails by name.
+Verified by deleting one pair from the middle.
+
+That check passes its case list through a **file, never `-c`** — argv has a
+kernel limit and the list blew past it the moment the accented answers went in,
+dying with `E2BIG`, which reads like a database failure rather than a command
+that was too long.
+
+**There is a local Postgres in the dev container** (`/usr/lib/postgresql/16`).
+SQL in this project no longer has to be written blind and pasted hopefully —
+run it, prove it, then hand it over.
+
+**`scripts/probe-db.mjs` watches all four functions**, and they are the entries
+on that list that matter most, for a reason peculiar to them: **every one fails
+SILENTLY.** The app falls back to the old client-side path, a player sees a
+working game, and the only symptom is the thing the rebuild exists to stop —
+two phones disagreeing about a score. Everything else the probe watches
+announces itself by breaking a screen. These announce themselves by working.
+
+### Slice 2 — the server records the answer (migration 046)
+
+`op_submit_answer` writes the row: verdict, wager and points, computed once.
+`op_fill_blank_answers` gives a zero to everyone who never answered, and **any
+client may call it**, which is what stops a sleeping host leaving a round
+hanging. `op_next_wager` ports `findNextAvailableWager` + `buildUsedWagersMap`;
+`op_room_total_questions` reads `array_length(question_ids) - 1`, because the
+room holds N+1 questions and **the final wager round is number N** — off by one
+there silently turns the only round that subtracts into one that does not.
+
+Three things become impossible that were reachable by anyone willing to edit a
+request: answering a question that is not on screen, answering after the timer,
+and spending a wager twice.
+
+`tests/sql/game-rules.sql` states 172 rules as `check | got | want` data and
+`verify-sql.mjs` fails on any row where the two differ, naming the rule — and
+on any line that is not exactly three fields, because a line the script cannot
+read counted as a rule whose `got` and `want` were both `undefined` and
+therefore passed. That is how the total read 26: psql echoes a command tag per
+statement unless given `-q`, and two of them were being counted as rules.
+`tests/sql/scratch-schema.sql` is an **approximation** of `rooms`, `players` and
+`answers` — those predate the migrations folder, so their real definitions are
+not in this repo (#7) and the live database enforces things no migration
+declares (#10). It proves the LOGIC. Only running the migration proves it
+applies.
+
+**Writing that test found a real bug and then found a worse one in itself.**
+
+- `ON CONFLICT DO NOTHING` was wrong for the blank fill: somebody who LOCKED a
+  final wager and never typed anything already holds a row on that key, so the
+  insert bounced and they never got their zero. The client had hit this and
+  needed a second pass; the SQL now converts a placeholder in one statement.
+- Then, breaking the guard that stops a blank overwriting a real answer changed
+  **nothing any check could see**. The loop pre-filtered to players who had not
+  answered, so the guard sat behind a condition that already excluded the only
+  case it defends. The same rule stated twice, with the test only ever reaching
+  the first statement of it. The loop now runs over every player and the
+  `ON CONFLICT ... WHERE` is the sole protection — removing it fails three rules
+  by name. **A guard behind a guard is not twice as safe; it is untestable.**
+
+### Slice 3 — the client asks the server (wired 2026-08-23)
+
+`submitAnswerViaServer` and `fillBlankAnswersViaServer` in `js/db/players.js`.
+`doSubmitAnswer` takes the verdict, the points and the wager from the returned
+row; the host's timer-expiry fill is one RPC instead of a loop plus a
+final-round second pass.
+
+**Both fall back to the old client-side path, and the order matters**: the
+JavaScript is safe to deploy before the SQL is run, which is the direction this
+project has repeatedly got wrong (#3). `functionMissing()` treats only
+`PGRST202` as absent — a function that exists under different argument names
+answers the same way and is just as dead (#6) — and an installed function
+returning **no rows is reported as an error, not as absence**, because
+conflating those is how a dead feature reads as a healthy fallback for months
+(#8).
+
+**A REJECTION ALSO FALLS BACK, deliberately and temporarily.** If the server's
+idea of "the current question" ever disagreed with a client's, every submission
+in every game would be refused and the game would be unplayable — far worse
+than a client-judged answer. It costs nothing today: the lockdown is RLS, in a
+later slice, and an attacker is not running our JavaScript anyway. Tighten it
+once real games log no rejections.
+
+**The fake store implements both** (`_rpc` in `tests/harness/store.js`),
+importing `fuzzyMatch` rather than reimplementing it, so a fake judge cannot
+report bugs that do not exist. It enforces the timer too — leaving that out
+would let a scenario pass on an answer the live server refuses, which is the
+shape of every "worked in the harness" bug in this file.
+
+**And the full-game scenario had never scored a point.** It typed
+`Answer ${roundHint + 1}`, where `roundHint` is a loop counter with no relation
+to the question a given phone is showing, so Alice was wrong every round and
+all three boards read 0-0-0 — in perfect agreement, which is what the scenario
+checked. **Three clients showing zero agree perfectly.** It reads the question
+off the screen now, the boards read 15/1/0, and it fails if nobody scores at
+all. Verified by making the fake server pay nothing: it reports "nobody scored
+a single point all game".
+
+### Slice 4 — the server owns the clock (migration 047)
+
+`question_started_at` is what every timer derives from, and the host's browser
+used to compute it as `Date.now() + serverTimeOffset` — an **estimate** of
+server time. Harmless while only browsers read it, since every phone reads the
+same stamp and a skewed estimate skewed everybody equally.
+
+**Migration 046 ended that, and this is a hazard 046 introduced.**
+`op_submit_answer` compares the stamp against the database's own `now()`, so a
+host whose estimate ran slow would have every answer in the room refused as
+late, and one whose estimate ran fast would stop the timer expiring at all.
+`op_start_clock` stamps from `now()` — the same clock the check uses — so the
+two cannot disagree by construction. It replaces a write the client already
+made, so it costs no round trip, and it stays host-gated exactly as before: who
+may start a round is a different question from whose clock is used.
+
+**The final round's phase is `final_question`, not `question`, and the first
+version of the client passed `'question'` for both.** `op_start_clock` checks
+the phase it is given against the room's, so it correctly refused, and the
+client then took the PREVIOUS round's stamp as this one's start — **the last
+question of every game would have opened with the final-wager screen's
+20-second clock already run down.** It shipped, and was caught reading the code
+after the owner applied the SQL, not by any test.
+
+`scenario-fullgame` now compares the two stamps as VALUES. A first attempt
+measured how OLD the stamp was on each pass of the round loop and never caught
+it: the re-stamp lands a second into the round, which is inside a turn, and by
+the next sample the phase had moved on. Sampling now runs on its own 100ms
+timer, and **two stamps being equal is true whenever you look at them** —
+unlike an age, which is only wrong during a window you have to be lucky to hit.
+Verified by putting the bug back.
+
+Four things went wrong writing this, and all of them are about measurement.
+
+- **`now()` IS TRANSACTION TIME in Postgres**, frozen for a whole `DO` block.
+  Two versions of the stale-caller check compared stamps taken before and after
+  a call and could not tell a refusal from a re-stamp, because both produced the
+  identical value — deleting the guard changed nothing either could see. The
+  check uses an ancient marker now: either it is still there or it is not.
+- Before that, the check asked whether the stamp was **recent**, which is true
+  both when a stale call is refused and when it re-stamps.
+- **The fake store mutated rows inside an RPC without broadcasting.** An UPDATE
+  inside a Postgres function reaches Realtime like any other — it is in the WAL
+  either way — so the fake left every other phone unaware. `scenario-nasty`
+  reported "the room is stuck"; the app was right and the harness was wrong.
+  **My first diagnosis blamed the new guard and was wrong** — removing the guard
+  did not fix it, which is what forced the real cause out. `_broadcast` is now
+  called by every RPC that touches `rooms` or `answers`, and any new one must do
+  the same or the app will look like it has stopped listening.
+
+### Slice 5 — only the rules delete a room (migration 048)
+
+**The hole:** `rooms` had `FOR DELETE USING (true)`, and every browser carries
+the publishable key by necessity, because guests play without signing in. So
+anyone who could reach the site could delete any room — including one with a
+game in progress. Everybody in it thrown out mid-round, scores gone. One
+request. `DROP POLICY "Rooms: anyone can delete"` closes it; `op_leave_room`
+and `op_sweep_rooms` are how the app still does the things it legitimately did.
+
+**Why this one could be closed while the rest of #2 cannot.** Every legitimate
+room deletion in `js/` reduces to a single rule — *nobody is left in the room*.
+`handleLeave`, `handleQuit`, `handleBackButton` and both Realtime DELETE
+handlers all ask "am I the last one" and then delete; the sweeps add "a lobby
+nobody started" and "everybody went silent". **Not one depends on who is
+asking**, which is exactly what a guest cannot prove.
+
+`players` is not like that: "remove me" and "remove them" are the same request
+from somebody with no identity. `rooms` UPDATE is not either — the phase
+machine still runs in the browser. Both wait for later slices. **Do not lock
+them on the strength of this one working.**
+
+**It also fixes a real race, not just a permission.** Every caller counted the
+players it could see, concluded it was the last, and deleted. Two people
+quitting at once both see two players, both conclude somebody else is staying,
+and the room survives with nobody in it — one of the ways "two active games
+nobody was in" happened. `op_leave_room` removes the row and decides in one
+statement.
+
+Three guards ported and each verified by breaking it: a bot never keeps a room
+alive, a player with no `last_seen_at` means *cannot tell* and PROTECTS the
+room, and the two-hour age sweep touches `lobby` only — a real game can easily
+run longer.
+
+**`serverFunctionsMissing()` in `js/db/client.js`** exists because the unload
+path cannot await. The ordinary awaited calls record what they learn; the
+beacon reads it. **Unknown counts as PRESENT**, deliberately: guessing wrong
+that way leaves a player row for the stale sweep, guessing wrong the other way
+puts a phone back to deleting rooms on its own local count, which is the race
+this removes. One is untidy; the other loses a game.
+
+### Slice 6 — only a host changes a verdict (migration 049)
+
+**The hole:** `answers` had `FOR UPDATE USING (true)` and
+`FOR DELETE USING (true)`. Scores are computed from `answers.score_earned`, so
+anyone who could reach the site could mark any answer in any live game right or
+wrong, set any score, or delete the lot — and the scoreboard changed on every
+phone in the room. `op_set_judgement` and `op_disqualify_round` replace the two
+writes the app legitimately made; both UPDATE and DELETE policies are dropped.
+
+**`op_set_judgement` takes no score.** The old call passed a verdict AND a
+number, so anything could set anything. The points are recomputed from the
+answer's own wager, with the final round the only one that subtracts.
+`auto_correct` is deliberately untouched — it holds the machine's original
+verdict, and the gap between the two is `times_overridden`, the column this
+project trusts most for finding a bad answer key.
+
+**INSERT stays open, deliberately.** The client still falls back to writing an
+answer directly when `op_submit_answer` is unreachable, and an RLS refusal
+returns no error — revoking INSERT would turn a bad connection into a silently
+lost answer. It goes when the fallback does.
+
+**Porting the disqualification heuristic into the permission layer was wrong,
+and the rule check caught it.** The client spots a thrown-out round by asking
+whether every answer scored nothing and nobody was right — which is also what a
+round everybody simply got WRONG looks like (CLAUDE.md already records the
+flaw). In a two-player game that is the common case, so the guard refused the
+commonest override there is: the host saying "actually that was right". The
+client keeps that check, where the disqualification arrives as a message every
+phone has seen rather than as an inference from scores. **A rule that is only
+"good enough" for refunding a wager is not good enough to refuse a host.**
+
+Disqualifying is now ONE call rather than a loop of per-answer writes: a loop
+can half-succeed and leave a round that was thrown out still paying points to
+whoever's write landed.
+
+### Slice 7 — a round ends without the host (migration 056)
+
+Built 2026-08-28, at the owner's instruction, as the piece that actually ends
+the stalls. **This is the one a player can feel.**
+
+**The stall, precisely.** Every phase change in this game is a write from one
+phone, and `handleTimerExpired` in `js/game/question.js` — which fills the
+blanks and sets `game_phase = 'reveal'` — is entirely behind
+`canControlGame()`. So when the host's screen locks mid-round, the timer runs
+out on every phone in the room and **nothing happens at all**. The deputy
+mechanism (`HOST_HANDOVER_MS`, 30s) softens it, but it needs presence to
+notice, needs somebody else to be there, and needs *their* phone awake. It is a
+mitigation, not a fix — and the break test below shows a deputy being granted
+while the round still never ended.
+
+`op_advance_phase(room, caller)` decides from the database's own clock, so
+**any player in the room may call it** and everyone gets the same answer. The
+only guard on who may ask is that you are sitting in the room: it cannot be
+"you are the host", because the host is the one who has gone, and it cannot be
+an identity check, because a guest has no `auth.uid()`. Somebody already in the
+room gains nothing by asking early — the clock still has to have run out.
+
+**ONLY THE TIME-BASED TRANSITIONS MOVED, and that boundary is the design.**
+`countdown -> question` and `question -> reveal` need no human judgement; the
+clock already decided and every phone is merely reporting it. The host pressing
+"Reveal Results" or "Next Question" is a person deciding the room is ready, and
+putting that on a timer would change the game rather than repair it.
+
+**The server is a BACKSTOP, and the deadline says so.** `op_submit_answer`
+accepts an answer until `started + timer + 3s`, deliberately generous because
+that clock belongs to a person on a phone with a bad connection. If the advance
+fired at the same instant, an answer the same database would have accepted
+becomes a blank, and no screen anywhere says so. So it waits `timer + 8s`:
+
+| | ends the round at |
+|---|---|
+| host present | `timer + 0.5s`, exactly as before |
+| host absent | `timer + 8s`, from any phone |
+
+The rule for that is stated **behaviourally**, not as arithmetic:
+`tests/sql/game-rules.sql` picks a moment, submits an answer and requires it to
+land, then requires the advance to refuse at that same moment. Asserting
+`advance_deadline > started + timer + 3s` would pass just as happily if 046
+changed its own allowance — a check that cannot fail.
+
+**THE SCENARIO FOUND A WORSE STALL THAN THE ONE IT WAS WRITTEN FOR.**
+Announcing the question and stamping its clock are two separate writes from the
+host's phone: `handlePhaseTransition` broadcasts the phase, and the stamp is
+written afterwards from inside `showQuestionScreen`. Die in the few hundred
+milliseconds between — which is exactly where `scenario-nasty`'s kill landed —
+and `question_started_at` stays null. `getServerTimeLeft` **returns the full
+duration for a null stamp**, so the bar never moves on any phone and nothing
+ever expires. The room hangs on a live question forever, and waiting cannot
+help, because no clock is running to wait on.
+
+**The repair is to START it, never to end it.** A round with no stamp has not
+begun, so ending it takes a question away from people who never saw the timer
+move; stamping hands everybody a full, fair round from now, which is what the
+host would have done had it lived. It cannot shorten anyone's time, which is
+what makes it safe for any phone to ask for. Both halves are pinned, and the
+"not ended" half is the one that matters.
+
+**The client side is a POLL, and two separate debugging rounds say why.**
+The first version armed a single timer at expiry. It fired once, landed a few
+milliseconds early, got a correct `not due` — and **nothing ever asked again**:
+the stall, reintroduced by its own fix. And a one-shot armed at expiry can
+never cover the no-clock case at all, because a timer that never starts never
+fires anything. `startPhaseBackstop` in `question.js` runs every
+`PHASE_BACKSTOP_POLL_MS` (3s) while a question is on screen, and is deliberately
+**not** started for the controller: a second path racing the first is how a fix
+for a stall becomes a fix that ends rounds early.
+
+Verified by disabling `startPhaseBackstop`: `scenario-nasty` reports both by
+name — *"a question announced without a clock never started one — every phone
+shows a full timer that never moves, forever"* and *"the round never ended after
+the host's phone died"*. Both checks report whether anybody had been deputised
+by the time they looked, and say **INCONCLUSIVE** rather than passing if so — a
+scenario that cannot tell which of two mechanisms saved it is not evidence about
+either.
+
+**Still open after this:** `rooms` UPDATE stays wide open, because the rest of
+the phase machine is still browser-side. Locking it is the next slice and must
+wait for that.
+
+### Slice 8a — a guest has an identity now (invisible accounts)
+
+Built 2026-08-28 on the owner's decision, after they pushed back — correctly —
+on my claim that locking `players` was impossible.
+
+**What was impossible, and why it no longer is.** The database can only tell
+people apart if they have an account. A guest had none, so every guest was the
+same anonymous key — like unsigned letters. "Remove me" and "remove them"
+arrive looking identical, with no way to tell which is which, and that is why
+CLAUDE.md #2 says `players` cannot be locked. Supabase's **anonymous sign-in**
+issues a real auth user id with no email, no password and no sign-up screen.
+The player types their name and plays exactly as before, and never knows.
+
+**Conversion is the part that makes it worth doing.** When somebody later makes
+a real account, Supabase **keeps the same user id**, so everything built as a
+guest carries over untouched — nothing to migrate. Signing up stops meaning
+"unlock a reputation you do not have" and starts meaning "keep what you have
+already built", which is a far stronger reason.
+
+**The downsides, measured rather than asserted.** Anonymous users count toward
+Supabase's MONTHLY ACTIVE user billing — so a dormant pile costs nothing, only
+people who actually played that month. Free covers 50,000/month; Pro is
+100,000, then about a third of a cent each. A returning guest keeps the same id
+per device, so it is one per person, not one per game. An earlier version of
+this section implied the accumulated ROWS were the cost; that was wrong and is
+corrected here.
+
+**THIS SLICE ACQUIRES THE IDENTITY AND CHANGES NOTHING ELSE.** That separation
+is the whole design, and it is the lesson of migration 049 applied in advance.
+About thirty places in `js/` ask "do they have a user id?" and mean **"are they
+a real member"** — whether to record stats, shape question selection, offer
+friends, show a tier badge, list somebody as an account. Hand guests an id
+through the same door and every one of those switches on silently, for people
+who never signed up, with every test still passing.
+
+So `_currentUser` and `_anonUserId` are **separate variables in `auth.js`**, and
+the two questions are separated with them:
+
+| Function | Answers |
+|---|---|
+| `getCurrentUser()` | do they have an ACCOUNT — unchanged meaning, every existing call site untouched |
+| `getAuthUserId()` | does the database know who is asking — real or invisible |
+| `isAnonymousSession()` | is this an invisible account |
+
+An invisible session returns early from `initAuth`: no profile loaded, no title
+computed, nothing cached.
+
+**NEVER FATAL.** If anonymous sign-ins are switched off in the dashboard, or the
+call fails, or the network is down, `getAuthUserId()` is null and the app
+behaves exactly as it did before this existed. A hiccup at Supabase's end must
+not stop somebody playing — that is the one way this change could be worse than
+the problem it solves. `window.__fakeAnonDisabled` in the harness reproduces
+that state, because it is real.
+
+`scenario-lobby` checks the identity is PRESENT and everything downstream
+UNCHANGED — a check for only the first would go green on the version that
+quietly turns a guest into a member. Verified by letting the anonymous session
+through `getCurrentUser()`: three guests instantly became **three accounts with
+three profiles and three seats carrying user ids**, and it reports all four by
+name.
+
+**Needs the owner to switch anonymous sign-ins on** in the Supabase dashboard.
+Until then this is inert, by design.
+
+### Slice 8b — the id goes on the seat
+
+**Anonymous sign-ins were switched on by the owner on 2026-08-28**, so 8a is
+live and this is the behaviour change that follows it. The enumeration came
+FIRST, which is 049's lesson applied rather than learned again.
+
+**The owner's decision: a guest's play IS remembered.** It reverses their
+earlier call, and the premise is what changed — that decision was made when a
+guest had no durable identity, so tracking them meant "keeping a record of
+somebody who did not sign up". An invisible account IS a durable identity, and
+Supabase keeps the same id through conversion, so the record is theirs the day
+they sign up. Their words: someone should be able to play solo and progress.
+
+| Reader of `players.user_id` | What changes for a guest |
+|---|---|
+| `claimSeat` | **exact** instead of a heuristic — the big win, below |
+| `record_round_history` (043) | their play is remembered; selection stops re-asking what they know |
+| `op_rate_host` (054) | a guest HOST can now be rated |
+| `playerUserIds` (`init.js`) | their history shapes question selection, which is the point of the above |
+| tier badge (`lobby.js`) | no stats, so no badge — unchanged |
+| `data-profile-user-id` | **THE ONE REGRESSION**, guarded below |
+
+**`claimSeat` stops guessing.** Its guest rule is a heuristic — *a same-name row
+that is still alive might genuinely be somebody else* — and CLAUDE.md records
+the duplicate seats, ghost hosts and photographed "three copies of one player"
+that came of it. An id is not a guess about who somebody is. The old heuristic
+stays as the fallback for when anonymous sign-in is unavailable.
+
+**THE REGRESSION, and it is the reason the enumeration mattered.**
+`showProfileCard` branched on `if (userId)`, which meant "real member" only
+because nobody else had one. A guest has an id now, so tapping them in a lobby
+would have shown a stats card of zeros, "No host ratings yet", and an **ADD
+FRIEND button** — a request to an account with no profile page, accepted by the
+database, never seen by anybody, pending forever. It branches on the PROFILE ROW
+now, which is what actually defines a real account. Verified by reverting it:
+`scenario-lobby` reports both the button and the fake stats card by name.
+
+**A FOURTH seat-creation site existed, and it is the same one that was missed
+before.** `join.js`, `host.js` and `lobby.js` were the obvious three;
+`js/game/init.js` also calls `claimSeat`, and CLAUDE.md already records that
+page being missed when the seat ratchet was fixed — two of three call sites
+converted, for months. Grepping for every caller before changing anything is
+what found it this time.
+
+**Still to come:** the `players` and `rooms` lockdowns, which are what all of
+this was for. The server can tell an invisible account from a real one via
+`auth.users.is_anonymous`, so that distinction survives into SQL rather than
+depending on anyone remembering it.
+
+### Slice 8c — turning it on stopped anybody creating a room
+
+**Reported from a live game on 2026-08-29: `new row violates row-level security
+policy for table "rooms"`. Nobody could start a game at all.** It had been that
+way since the owner flipped the switch the day before, and was found only
+because somebody finally tried to host.
+
+**Measured, after two wrong guesses:**
+
+```
+tablename | cmd    | policyname                  | roles
+rooms     | INSERT | Allow anon insert on rooms   | {anon}
+rooms     | SELECT | Allow anon select on rooms   | {anon}
+rooms     | UPDATE | Allow anon update on rooms   | {anon}
+players   | ...    | ...                          | {public}
+```
+
+**A Postgres policy can be restricted to a ROLE, and `rooms` was — to `anon`.**
+Supabase gives a signed-out visitor the `anon` role and everybody else
+`authenticated`. **An anonymous sign-in issues a real session, so every guest
+became `authenticated`** — and the rules admitting `anon` stopped matching
+anyone at all. Nothing about `rooms` changed; the meaning of "visitor" changed
+underneath it.
+
+**THE ENUMERATION MISSED A WHOLE LANGUAGE.** Slice 8a says it changed nothing
+else and lists roughly thirty places in `js/` that ask "do they have a user id".
+Every one of those was checked. **Not one database policy was**, and the policies
+are where the assumption actually lived. A sweep of the code cannot see a role
+written in SQL.
+
+`WHERE roles <> '{public}'` over `pg_policies` is the whole audit, and it takes
+one query. **Run it before changing anything about who a user IS.** It also
+found `profiles` INSERT restricted to `{authenticated}`, which is correct and
+harmless, so the query distinguishes fine.
+
+**MY FIRST FIX DID NOT FIX IT, and the reason is worth more than the bug.** It
+asked whether an INSERT policy EXISTED and created one only if not. A policy
+existed — it simply admitted nobody. **Existence is not applicability**, and a
+guard that checks the first while meaning the second reports success and changes
+nothing. That is the same shape as #6's whole catalogue, arriving in a repair
+rather than in a measurement.
+
+It did repair something real by accident: `players` SELECT and UPDATE were also
+missing, and the report shows them created under this fix's own names. 058's drop
+loop takes `cmd IN ('INSERT','ALL')`, and **a `FOR ALL` policy covers every
+command**, so closing the host hole took reading the lobby and heartbeating with
+it. 051 had guarded against exactly this for `rooms` by recreating before
+dropping; 058 did not, for `players`.
+
+### Slice 8d — an auth call that never answers freezes everything behind it
+
+**Two game-breaking reports the same evening, one cause.** A player stuck on
+"Signing in..." for ever, and another stuck on "Loading game..." while the room
+started without them — appearing AFK to everybody else, because `init()` never
+finished so their heartbeat never started.
+
+`js/game/init.js` opens with `await Promise.all([ensureDisplayName(), initAuth()])`,
+and `initAuth` awaits Supabase auth. Every caller of `signIn` / `signUp` /
+`signInWithGoogle` checks `result.error` and restores its button, so an error is
+handled everywhere — **and none of that code can be reached by a promise that
+never settles.** A `try/catch` was not enough and never could be: a promise that
+hangs does not throw.
+
+The screen is then left asserting the one thing that is certainly false: that it
+is still working on it. **That is #4 in the loudest place in the app**, and it is
+why the cause could not be established from outside — the failure produced no
+error to read, on a device nobody could inspect.
+
+`withAuthTimeout` converts both a hang and a rejection into the ordinary
+`{ error }` shape every call site already handles, so all of them are fixed
+without touching one of them. **Two windows, deliberately different:**
+
+| | | |
+|---|---|---|
+| a deliberate press of Sign In | `AUTH_TIMEOUT_MS`, 20s | a false timeout is the worse outcome |
+| page load | `AUTH_BOOT_TIMEOUT_MS`, 8s | nobody chose to wait, and playing as a guest is recoverable where a frozen page is not |
+
+A timed-out session lookup deliberately does NOT fall through to an invisible
+sign-in — asking auth a second question when it has just failed to answer only
+doubles the wait.
+
+**WHAT FIXED IT IS NOT ESTABLISHED.** Sign-in worked afterwards; whether that was
+the boot timeout, the version refresh, or something transient at Supabase is
+unknown, and this file is not going to claim otherwise. What IS established is
+that the freeze was real, and that it is now impossible: the button ends up
+either gone or pressable, always.
+
+**AND THE REASON IT TOOK ALL EVENING IS ITS OWN FAULT.** `logger.error(...)` only
+ever reached the console. **Only `window.onerror` and `unhandledrejection` were
+written to `error_logs`** — so every deliberately handled failure in the app was
+invisible to the admin page, which showed a confident empty list while somebody
+on another phone could not sign in. Handled failures are precisely the ones you
+cannot see over somebody's shoulder. `recordFault()` in `logger.js` logs AND
+persists, sharing the crash handlers' ten-per-minute limit so it cannot crowd out
+a real one, and is wired to the three auth faults that name a cause — including
+Supabase's own message when it refuses a sign-in.
+
+### Slice 9 — only the rules remove a player (migration 057)
+
+**The hole:** `players` had `FOR DELETE USING (true)`, and every browser carries
+the publishable key because guests play. So anyone who could reach the site
+could remove any player from any live game — mid-round, with their score, in one
+request. Room codes are four letters and public games are listed, so finding a
+room to do it to was not a barrier.
+
+**Why this could be closed while CLAUDE.md #2 says `players` cannot be.** That
+entry is about "remove me" and "remove them" being the same request from
+somebody with no identity, and that is still true — the server cannot always
+tell WHO is asking. What it CAN do is ask whether the removal is one the rules
+allow at all, and every legitimate delete in `js/` reduces to a rule about the
+room's own state:
+
+| Rule | |
+|---|---|
+| you are leaving | target IS the caller |
+| the host removes a bot | `is_bot` AND caller is host — there is no kick feature, and "the host removes a live human" is a product decision nobody has made |
+| the stale sweep | the target has genuinely gone quiet, measured on the DATABASE's clock rather than taken on the caller's word |
+| a duplicate seat | target carries the caller's own `user_id` |
+
+**Two guards that look like details and are not.** A BOT IS NEVER SWEPT — it
+sends no heartbeat, so by the timestamp rule it is stale the moment it is added,
+and without that guard anybody in the room could delete the host's bot mid-game.
+And **two null `user_id`s are not a match**: written as `IS NOT DISTINCT FROM`,
+every guest would have been "the same person" as every other guest and the
+migration would have closed nothing. Verified by breaking each — the second
+fails three rules including *"a stranger cannot remove anybody"*.
+
+**WHAT THIS DOES NOT DO.** `players` UPDATE stays open — the ready flag, the
+heartbeat and host promotion are all still browser writes. So somebody
+determined can still backdate another player's `last_seen_at` and have them
+swept. That is two deliberate steps instead of one request: a real reduction,
+not a closed door. Say it that way.
+
+**Every delete was enumerated first** (`phases.js` and `lobby.js` sweeps,
+`lobby.js` bot removal, two leave paths, the unload beacon, `claimSeat`'s
+duplicate clear), because 049 was written about the writes that were dangerous
+and broke three that were not.
+
+**The beacons needed no change, and the reason is worth keeping.** Both unload
+paths reach `removePlayerBeacon` only when `serverFunctionsMissing()` is TRUE —
+and in that world 057 is not applied either, so the direct delete still works.
+The fallback and the policy are tied to the same condition by construction.
+
+`removePlayer` takes `roomId` and `callerId` as **required** parameters, not
+optional ones: an optional parameter a call site forgets fails silently, which
+is exactly how `amendQuestionHistory` stopped correcting anybody's history.
+`scripts/check-arity.mjs` fails the build on a caller that drops either.
+
+**MY OWN FIRST BREAK TEST PASSED, and I nearly read that as "no coverage".**
+Forcing the old direct delete changed nothing in `scenario-nasty` or
+`scenario-lobby` — but I had simply run the wrong scenarios. `scenario-bots`
+fails by name: *"the host pressed remove on the bot and it stayed."* Then the
+leave check I added to `scenario-lobby` passed even with EVERY removal refused,
+because leaving goes through `op_leave_room` (048) and never reaches
+`op_remove_player` at all. It is kept — it pins that shutting the door did not
+break the commonest seat removal in the game, which is precisely what 049 failed
+to check — but its comment now says which of the two it tests. **A check that
+passes for a reason you did not intend is not coverage.**
+
+### Slice 10 — only the rules make you host (migration 058)
+
+**The biggest hole left, and it was not about phases.** `players` had
+`FOR UPDATE USING (true)`, so anyone reaching the site could set
+`is_host = true` on their own row in any live game. A host is not a badge here:
+they override the machine's verdict on any answer, and **migration 041 makes
+that override amend the PERMANENT `question_history` of every player it
+touches**. One request took over somebody's game AND let the taker rewrite other
+people's records. It also reopened 057 in two steps — with UPDATE open you could
+backdate another player's `last_seen_at` and have the sweep remove them for you.
+
+**THE MECHANISM IS COLUMN-LEVEL GRANTS, not a function per write, and this is
+the only slice that works that way.** Postgres enforces column privileges
+independently of RLS. Measured against a real Postgres BEFORE the migration was
+written:
+
+```
+UPDATE players SET last_seen_at = now()   granted column     -> allowed
+UPDATE players SET is_host = true         ungranted column   -> refused
+```
+
+That matters more than tidiness. Wrapping the heartbeat in an RPC would change a
+write that runs every 15 seconds on every phone, and wrapping `disconnected_at`
+is not even possible — it is a keepalive fetch during page unload, which cannot
+await. Column grants leave both untouched and still make the role unwritable.
+Clients keep `last_seen_at`, `disconnected_at` and `is_ready`; **the UPDATE
+policy is still `USING (true)`, and asserting the policy would prove nothing** —
+the rule check asserts `has_column_privilege` instead.
+
+**INSERT had to be narrowed with it**, or the lock would be pointless: you could
+simply insert yourself into somebody's room with `is_host = true`. Refused only
+when the room already has a LIVE host, so the room's creator and a returning
+host whose seat was swept both still work. The policy calls
+`op_room_has_live_host`, which is SECURITY DEFINER so RLS does not recurse into
+`players` from a policy on `players`.
+
+**WHAT THIS DOES NOT DO.** `last_seen_at` is still writable by anybody FOR
+anybody, so the two-step sweep is narrowed to one column rather than closed.
+Restricting it to your own row needs `user_id = auth.uid()`, which is only safe
+once invisible accounts are known reliable in production — a guest whose
+anonymous sign-in failed would otherwise be unable to heartbeat and would be
+swept out of their own game. Its own slice, deliberately.
+
+**`check-rpc-args.mjs` earned its keep here.** An inline comment between two
+parameters in the `CREATE FUNCTION` list made the script stop reading, and it
+reported `p_value` as undeclared — which is precisely the fault it exists to
+catch, because PostgREST answers 404 to an unknown argument name and
+`functionMissing()` reads that as "not installed" and silently falls back. The
+comment moved above the list; **the tool was right and the SQL was ambiguous.**
+
+Verified by breaking both halves: leaving the table-wide grant in place fails
+*"is_host is not a column a client may write"*, and removing the promotion guard
+fails three rules including *"a player cannot make themselves host"*. And by
+forcing the old direct writes, which `scenario-cohost` reports as *"promoting to
+co-host did not persist"* and `scenario-nasty` as *"the only person in the lobby
+was never made host, because abandoned rows still held the crown"* — the
+photographed ghost-host bug, caught by the conversion's own coverage.
+
+### Slice 11 — the server moves the game on (migration 060)
+
+Slice 7 (056) moved the TIME-BASED transitions: a round ends on the clock, and a
+countdown finishes, whether or not the host's phone is awake. **This is the
+other half — the transitions a PERSON decides**, by pressing Reveal Results,
+Next Question, Play Again, Return to Lobby, Start Game.
+
+**It buys nothing on its own, and that is worth saying plainly.** `rooms` still
+has `FOR UPDATE USING (true)`, so every one of these is still writable directly
+by anybody. This is GROUNDWORK: the phase cannot be locked while the phase
+machine is a browser write, which is exactly why 048, 051, 057 and 058 all left
+`rooms` alone.
+
+`op_set_phase(room, caller, expected, to, question)` enforces three things:
+
+1. **`op_may_advance`** — the caller is in the room and is the host, the
+   co-host, or is present in a room with no live host. That third case is
+   deputising, and without it a room whose host has gone is frozen forever.
+   A **bot never drives**: it cannot press anything, but it is a row in
+   `players` like any other and would otherwise satisfy "present".
+2. **Compare-and-set** on the phase the caller believes the room is on.
+3. The destination is a phase this game actually has.
+
+**DELIBERATELY NOT A TRANSITION WHITELIST.** The obvious design is a table of
+allowed from→to pairs, and I am not confident enough in the full graph to write
+one — a wrong entry does not fail loudly, it makes a game unplayable at one
+specific moment. This project has been burned exactly that way twice (049's
+three broken writes; the disqualification heuristic ported into a permission).
+The graph can be tightened later against real games rather than guessed at now.
+
+**EVERY CALLER PASSES `null` FOR THE EXPECTED PHASE, AND I GOT THAT WRONG THREE
+TIMES BEFORE ADMITTING IT.** Compare-and-set works — the rule table proves a
+stale click cannot rewind a game — but the CLIENT cannot supply the fact it
+needs. Every call site applies the change locally BEFORE writing, so
+`state.gamePhase` is already the DESTINATION; and at the start of a game the
+client's phase is `loading` while the room's is `lobby`. Each mistake failed the
+same silent way: the server answered `already moved`, the client treated that as
+handled, and the room never advanced. It surfaced as **a game that would not
+start** and **a final wager that never committed** — never as an error.
+
+So the guard that does the security work is on, and the one that needs a fact
+the client does not have is off until a caller can supply the ROOM's phase
+rather than its own. That is no worse than before this existed: two phones could
+always double-advance, and the app already tolerates Realtime re-delivery.
+
+**DATA FIRST, PHASE SECOND**, everywhere a transition also writes other columns.
+Clients act on the phase — they re-read the question list when it arrives — so
+the list, the countdown stamp and the room clear-out all land before the phase
+that announces them. Getting that backwards is the bug "the screen must show the
+question the room is asking" records, which 046 made far worse by judging
+against the ROOM's question rather than the one on screen.
+
+Verified by breaking `op_may_advance`: 11 SQL rules fail, and `scenario-fullgame`
+reports *"game never reached results (stuck on phase null, question 0)"*.
+Verified by breaking compare-and-set: a stale click sends a room from the
+scoreboard back to results.
+
+**Still open, and the next slice:** locking `rooms` itself. Every phase write in
+`js/` now goes through this function with a direct-write fallback, which is what
+that lock needs — and the fallbacks are what it will have to remove, so
+enumerate them rather than rediscovering them (049's lesson, stated in advance
+for once).
+
+### The probe printed the alarm and exited 0
+
+Found 2026-08-30 while answering "is it fixed?" — by checking whether the CI
+probe's green tick meant anything.
+
+**It did not.** The only thing that set a non-zero exit was the script's own
+self-check: the guard that fires when a consequence entry names an object the
+script never probes. A live database genuinely MISSING something the app
+depends on printed the whole WHAT THIS MEANS FOR A PLAYER section and **exited
+0**, so the run went green and nobody had any reason to open the log.
+
+That is this file's own catalogue committed by the tool the file says to trust:
+**a check that reports health for something it asked about and then ignored.**
+It is the sixth entry in #6 wearing yet another disguise — not a bad question
+this time, but a good question whose answer was thrown away.
+
+**And the lockdown made it far worse than when it was written.** Before 048-062
+a missing function meant a slower fallback path, which is a degradation. Now it
+means a REFUSED one — and for `op_set_phase` a hard `permission denied for
+column game_phase`, so no game starts or advances at all. A green tick over
+that is worse than having no check.
+
+The consequence section sets `process.exitCode = 1` now. Verified by running the
+script from the dev container, which is firewalled from Supabase: everything
+reads as missing and it exits 1 by the new path. **That proves the guard, not
+the database** — the live answer only ever comes from CI.
+
+### A round that nobody was allowed to rescue (2026-08-30 playtest)
+
+**Reported from a live game, and the owner was right that it was broken:** a
+friend could not submit at times, the bot did not show its answer immediately,
+and the timer ran out with nothing auto-submitted while "Reveal early" sat on
+screen. **Two independent faults, both single points of failure on the HOST's
+phone, and both invisible to twelve passing scenarios.**
+
+**Neither was new code.** The game engine had not changed in either respect for
+weeks. What changed was the DATABASE underneath it — the 048-062 lockdown — and
+before that these were merely fragile rather than fatal. That is the pattern
+this file keeps recording: *what was harmlessly redundant a moment ago is now
+the only path.*
+
+#### 1. The one phone that most needed the backstop was exempt from it
+
+The host ends a round in `handleTimerExpired`: a chain of network calls, no
+timeout, no retry, fired **once** from a `setTimeout` half a second after the
+clock stops. One failed or hanging request anywhere in it and the round never
+ends.
+
+`startPhaseBackstop` exists to catch exactly that — and its first line was
+`if (canControlGame()) return;`. So the host and co-host never ran it.
+
+**In a solo game with a bot the host is the ONLY human, so there was no backstop
+at all.** A bot does not run a browser. Measured, by hanging the answers read
+that `handleTimerExpired` waits on: `round ended after never (phase now
+question)`. With the exemption removed: `round ended after 39s` — 30s clock plus
+the 8s grace.
+
+**The exemption was guarding a race the database already prevents.**
+`op_advance_phase` refuses before `started + timer + 8s`, so a second caller
+cannot end a round early however eager it is, and the two paths are 7.5 seconds
+apart in any case (`TIMER_GRACE_MS` 500ms against `PHASE_ADVANCE_GRACE_MS` 8s).
+When the host's own path works the room is on `reveal` long before the backstop
+fires and the phase check stops it.
+
+**This also explains the other two symptoms**, because `op_advance_phase` fills
+blank answers server-side before moving the phase (056). A round stuck past the
+server's deadline means every later submission is refused as *time is up*, falls
+back to a direct write, and — since 049 revoked UPDATE on `answers` — is refused
+again if a blank already exists. **The player is told their answer did not
+save.** That is "my friend couldn't submit".
+
+#### 2. The host's whole round was hidden behind a network call
+
+`showQuestionScreen`'s normal path stamped the clock FIRST and revealed
+everything after it:
+
+```js
+if (state.room.isHost) { await startClockOnServer(...); }   // ← only the host
+$('.question-card').style.visibility = '';                   // card
+$('#answer-form').style.visibility = '';                     // answer box
+startTimer();                                                // timer + backstop
+answerForBots();                                             // the bot
+```
+
+Only the host stamps, so only the host waited. A slow request left the host
+looking at a blank question screen — no card, no wager grid, no answer box, no
+timer — while every other player already had theirs, **and the bot had not
+answered, because `answerForBots` was last in that queue.** That is the reported
+"the bot didn't show its answer immediately".
+
+And `startPhaseBackstop` lives inside `startTimer`, so a host stuck here had no
+rescue either — fault 2 disabled the fix for fault 1.
+
+The UI and the bot now go first, and the stamp is bounded by
+`CLOCK_STAMP_TIMEOUT_MS` (4s), landing on the local estimate exactly as a
+missing `op_start_clock` already does: a slightly worse clock, never a stopped
+game.
+
+#### The same fault in the countdown — held back, then fixed
+
+The COUNTDOWN's self-heal (`phases.js`) was a one-shot `setTimeout` at 3s. It is
+not host-gated, so several clients each attempt it — but **in a solo game with a
+bot there is exactly one browser**, and the only other way out is the host's own
+fire-and-forget write. Two single attempts, and if both miss the room sits on
+`countdown` and the game never starts. Same fault class as the two above, in the
+screen every game passes through.
+
+It was deliberately NOT changed in the same commit as those two — nothing had
+reported it and shipping a speculative third change beside two proven ones is
+how a fix commit introduces a regression. It is a poll now, asking
+`op_advance_phase`, which owns that transition and refuses until the countdown
+has genuinely run out, so polling cannot start a game early.
+
+**THE FIRST VERSION OF THE CHECK COULD NOT FAIL, and it took reverting the fix to
+see it.** It hung the host's phase write for 12s and watched for 30s. With the
+fix reverted the countdown still escaped — at 16s — because *the hung write
+itself landed at 12s* and rescued the room. Two mechanisms, one observation, and
+the check called it a pass either way. The hang has to OUTLAST the window: 25s
+against 18s, where the backstop's 10s rescue is the only thing that can explain
+a pass. Verified in both directions.
+
+**A late injected call is not inert, either.** The first attempt hung
+`op_set_phase` for 60s; it landed mid-game, reset the room to question 0, and
+broke three checks in later sections that looked like product faults. That is
+CLAUDE.md's own warning arriving on schedule: *when a change to one section
+breaks a check three sections away, suspect what you seeded.*
+
+#### What let both of these through
+
+**The fake store could not see column grants.** 058 and 061 revoked UPDATE on
+`players` and `rooms` and re-granted a named column list, so a client update
+touching anything else is refused outright with 42501. The harness allowed every
+one of them — CLAUDE.md #10 in its usual direction. `_columnGrants` in
+`tests/harness/store.js` now models it, and every scenario still passes, which is
+the useful half of that result: **the client code really is routed correctly, so
+the lockdown was not the cause and could be ruled out by measurement rather than
+by argument.**
+
+**`store.slowFunction(name, ms)` is new and is the knob that mattered.**
+`hideFunction` models "not installed", which answers instantly and takes the
+fallback — a completely different failure from the one being reported. A request
+that has not come back YET is the thing no `try/catch` can rescue, and nothing
+in the harness could produce it.
+
+**A scenario that plays a healthy game proves nothing about a sick one.** Both
+faults need a slow or failed request to appear at all, and every scenario ran
+against an instant in-memory store. The fix for that is not more scenarios, it
+is the two knobs above.
+
+### Slice 11a — the deputy could not actually advance (migration 062)
+
+**Found 2026-08-29, and it made the whole deputy mechanism dead for exactly the
+window it exists for.** This app asks two different questions about an absent
+host and gives them two deliberately different answers:
+
+| Question | Window | Why |
+|---|---|---|
+| may I take the crown? | `STALE_TIMEOUT_MS`, 120s | hard to undo |
+| may I move the game on? | `HOST_HANDOVER_MS`, 30s | the game must not stall |
+
+"Presence, Away and Host Handover" has stated that for months, under
+**Deputising, not replacement**. `op_may_advance` (060) reached for the only
+liveness function that existed — `op_room_has_live_host`, written for the crown
+— and silently inherited **120 seconds**.
+
+What a player saw:
+
+| | |
+|---|---|
+| 0s | the host's screen locks |
+| 30s | every phone deputises the next in line, **activates their buttons**, and posts *"X can advance while the host is away"* into the chat |
+| 30–120s | they press Reveal Results. The server refuses. `setPhaseOnServer` counts `'not allowed'` as *the server was reached*, so no fallback runs and **nothing is shown anywhere**. Ninety seconds of a live, announced, useless button |
+| 120s | the seat is swept, promotion runs properly, and it starts working |
+
+**It was invisible until slice 12 shipped.** Until 061 the client's fallback
+direct write to `rooms` still worked, so the refusal cost nothing. **Revoking
+the column is what turned a redundant guard into a dead button** — the same
+shape as 055 making `record_round_history` load-bearing, and worth expecting
+every time a door is shut: *what was harmlessly redundant a moment ago is now
+the only path.*
+
+**The fix splits the question rather than picking a winning number.** Lowering
+`op_room_has_live_host` to 30s would let somebody take the crown from a host
+whose phone blipped, which is worse than the bug; raising the client to 120s
+would delete deputising. `op_room_host_seen_within(room, interval)` is the one
+implementation and **both callers name their own window at the call site**,
+which is the point — the next person to read either cannot mistake it for the
+other.
+
+**25 seconds, not 30, and the five seconds are load-bearing.** The invariant is
+*the server must never refuse a deputy the client has already deputised*, so the
+server's window has to be strictly SHORTER than `HOST_HANDOVER_MS`; equal puts
+the two on a boundary that clock skew decides. Nobody can ask earlier anyway —
+the button is not enabled until the client deputises.
+
+**A declined advance now reaches the player.** `'not allowed'` was logged and
+swallowed, which is #4 exactly. It is rare by design after 062 (a deputy whose
+view of the host is stale, or a host whose seat was swept), so a toast is
+appropriate rather than noise — *the fix was the window, not the wording.*
+
+**THE SCENARIO ONLY EVER CHECKED THAT A BUTTON WAS VISIBLE.**
+`scenario-nasty` confirmed the deputy had controls on screen and never pressed
+one. Same lesson as `scenario-admin`'s panels: **"it opened" is not "it works"**,
+and a control that renders perfectly and does nothing renders exactly as
+happily. It presses one now and requires the room's phase or question number to
+actually move.
+
+**The rules state the BEHAVIOUR, never the number.** Asserting "the window is
+25 seconds" would pass just as happily if `HOST_HANDOVER_MS` moved and the two
+drifted apart again, which is the whole fault. `tests/sql/game-rules.sql` uses a
+**45-second** host instead — every earlier rule about a leaderless room compared
+"10 minutes ago" against "now", so both sides sat far outside the window and the
+gap between them was never tested at all.
+
+**Two guards found by the same sweep, both cheap and both structural:**
+
+- `scripts/verify-sql.mjs` applies a **hand-written list** of migrations, so a
+  new one is untested by default with nothing saying so. 062's rules were
+  written, run, and reported a failure that was really *"the fix was never
+  applied"* — indistinguishable from the bug still being there. It now refuses
+  to run if any migration from 045 on is missing from the list.
+- The fake store had the 120-second number **copied into both** of its
+  liveness checks, so the harness agreed with the bug. One helper now, two
+  windows, mirroring the migration. It also rejected a NULL destination phase
+  that 061 explicitly allows, so the lobby's pre-start reset silently did
+  nothing there and the harness ran a subtly different game from the live site.
+
+**Every SQL interval in `migrations/` was compared against `js/constants.js`
+before writing any of this**, and that is the reusable part: six pairs, five
+matching (20 minutes, 2 hours, 8 seconds, 3 seconds deliberately generous, 10
+seconds documented), one wrong. **When the same quantity is written down in two
+languages, go and diff them — the mismatch will not announce itself.**
+
+### Shutting a door shut three things nobody was watching (migration 051)
+
+**Slice 6 broke Play Again, rejoining, and practice bots, and every check in
+this repo went on passing.** Found 2026-08-24 by reading every write to
+`answers`, which is a thing that should have been done before 049 was written.
+
+`answers` carried three writes that were neither a judgement nor an attack, and
+all three went through UPDATE or DELETE:
+
+| Call | What a player saw |
+|---|---|
+| `deleteAnswersByRoom` | Play Again keeps the LAST game's answers — the next game's scoreboard is computed over a finished one |
+| `reassignPlayerAnswers` | rejoining loses your score and your used wagers |
+| `upsertAnswers` (bots) | a bot never answers the final question |
+
+Migration 051 restores each as a SECURITY DEFINER function with the rule that
+made it legitimate stated where a request cannot edit it out: `op_reset_answers`
+(host only), `op_reassign_answers` (**the old seat must be GONE** — you can
+never take answers off somebody still in the room), and `op_bot_answer` (the
+target must be `is_bot`, which is far tighter than "the caller is the host":
+nothing a person plays can be written through it at all).
+
+**The lesson is not "be careful with RLS".** It is that closing a door is a
+change like any other, and the thing to enumerate is not what the door stops —
+it is everything that was walking through it. `js/` had eight writes to
+`answers`; 049 was written about the two that were dangerous.
+
+**Three refusal shapes, and they are NOT the same. Measured against a real
+Postgres with the UPDATE policy removed, not assumed:**
+
+| Statement | Result |
+|---|---|
+| `UPDATE` / `DELETE` | 0 rows, **no error** — silent |
+| `INSERT … ON CONFLICT DO UPDATE`, **conflicting** | **hard error 42501** — loud, nothing written |
+| `INSERT … ON CONFLICT DO UPDATE`, **no conflict** | **OK, the row is written** |
+| `INSERT … ON CONFLICT DO NOTHING` | fine, 0 rows inserted |
+| plain `INSERT` onto an existing key | 23505, as it always was |
+
+So `insertBlankAnswers` (DO NOTHING) survived 049 untouched, `upsertAnswers`
+started throwing where anyone could see it, and the two plain statements died
+in silence — which is why those were the two that stayed broken.
+
+**That table had four rows on 2026-08-25 and one of them was too broad.** It
+said `ON CONFLICT DO UPDATE` was simply a hard 42501, and a session reading it
+concluded the client's whole fallback submit path was dead — that a first answer
+could no longer be written at all. Re-measured against a scratch Postgres in
+exactly the 049 shape, that is wrong: **the UPDATE arm is only reached when
+there is a conflict**, so a first answer still inserts and only an EDIT is
+refused. Which is the behaviour the fallback wants.
+
+**A measurement summarised one notch too confidently is a measurement that will
+be believed and acted on.** The original was taken on a conflicting statement
+and written down without the condition; nothing in the repo could tell the two
+apart, and the fake store — which had it right — read as the thing that was
+wrong. Re-measure before you widen a claim, and state what the case WAS.
+
+**The fake store also cascades what the room cascades** (`_deleteRoomCascade`),
+because deleting a room really does take its players, answers and chat with it
+— `answers.room_id -> rooms ON DELETE CASCADE` is measured, from migration 052's
+own output. `game_plays` deliberately does not, since 033 dropped its keys, and
+since 052 a PLAYER deletion takes nothing at all. The store used to leave every
+one of those rows behind: the #10 gap in its usual direction, the harness
+allowing what the real database would already have swept away.
+
+**The fake store now shuts the same doors** (`_shutDoors` in
+`tests/harness/store.js`), with all three shapes reproduced. It is seeded from
+the migrations and is not a scenario knob: it is the schema. Before this the
+harness allowed everything the live database had just forbidden, which is
+exactly the faithfulness gap CLAUDE.md #10 was written about — and it had
+`scenario-playagain` asserting "no answers survive into the next game", passing,
+while that was false on the live site.
+
+Verified by putting each old path back:
+
+| Reverted | What the harness now says |
+|---|---|
+| Play Again's direct DELETE | `12 answers from the previous game were not cleared — they will be counted again` |
+| the bot's direct upsert | `answerFinalQuestionForBots failed … code: 42501` |
+| the host guard on `op_reset_answers` | 3 SQL rules, incl. `a player who is not the host cannot wipe a game` |
+| the theft guard on `op_reassign_answers` | `answers cannot be taken off a player who is still in the room` |
+| the `is_bot` guard on `op_bot_answer` | `nobody can write an answer for a real player` |
+
+**`scenario-admin` now presses the End button**, which nothing had ever done —
+which is how it shipped broken and stayed that way. A control with no test is a
+control nobody is checking, the same lesson as a page with no mock.
+
+**SETTLED 2026-08-25, and the answer was the bad one.** `answers.player_id`
+DID carry a key to `players` on the live database, so a released seat took its
+answers with it and `op_reassign_answers` was moving rows that were not there.
+Migration 052 drops it. The measurement, the reasoning and what it means for a
+player are under "Rejoin keeps your history"; the probe now reports it on every
+run, so it can never go unmeasured again.
+
+**Slice 5 had done the same thing to `rooms`, and that was found only by going
+looking for it.** 048 revoked DELETE on `rooms`, and two more things went with
+it:
+
+- **The admin's "End" button on a stuck room.** A plain delete, silently
+  refused, and the dashboard redrew as though the room had ended.
+  `op_admin_end_room` (051) replaces it. `op_leave_room` could not: that
+  deletes a room only when nobody is left, and this button is for rooms that
+  still have people in them. It is the **one function in the rebuild that
+  checks who is calling** — an admin is signed in by definition, where a host
+  very often is a guest with no `auth.uid()` at all.
+- **The Join page's sweep.** `cleanupOrphanedRooms` is called from there and
+  nowhere else, and every delete inside it was refused, so abandoned rooms
+  went back to being offered to real players — the "two active games nobody
+  was in" this project has already fixed once. It calls `sweepRoomsOnServer()`
+  first now. `sweepRoomsOnServer` was already imported into `js/lobby.js` and
+  **never called**, which is its own small lesson: an import is not a wiring.
+
+The two Realtime "the room is empty now" handlers (`js/lobby.js`,
+`js/game/phases.js`) go through the sweep too. Those were backstops rather than
+the main path — the leaver's own `op_leave_room` already takes an emptied room
+— so nothing visibly broke, which is exactly why they would have stayed dead.
+
+**`handleBackButton` in the lobby was still firing `deleteRoomBeacon`.** Slice 5
+converted the game page's unload path to `leaveRoomBeacon` and left the lobby's
+back button on the revoked delete, so backing out as the last player left the
+room behind until a sweep found it. It reads `serverFunctionsMissing()` now,
+with the same rule: **unknown counts as PRESENT**, because guessing wrong that
+way leaves a row for the sweep while guessing wrong the other way puts a phone
+back to deleting rooms on its own local count.
+
+**Four of these five were found by grepping every write to the two tables the
+migrations had touched, and none by a failing test.** After revoking a
+permission, that grep is the work — not an afterthought.
+
+**AND THE GREP MISSED ONE — the sixth, found 2026-08-25, and it was the worst
+of them.** `lockInFinalWager` in `js/game/scores.js` writes the
+`__WAGER_LOCKED__` placeholder so the rest of the room can see the number, and
+it did so through `submitAnswer` — an UPSERT. Measured: a conflicting
+`ON CONFLICT DO UPDATE` raises 42501 under 049 and writes nothing.
+
+So **the moment any row already existed at the final question, locking a wager
+failed.** One does exist whenever the 20-second wager clock has expired, because
+the blank fill writes a row for every player. The placeholder never landed,
+nobody else in the room saw the number, and the player was told:
+
+> Your answer didn't save — check your connection and try again
+
+for a wager they had just chosen. That is the "I bet 20 and it wagered 0"
+family, coming back through the door 049 shut.
+
+It is `insertAnswersIfAbsent` now — `ON CONFLICT DO NOTHING` — and **that is the
+correct rule, not a workaround**: `op_submit_answer` keeps `existing.wager` on
+the final round because LOCKED IS LOCKED, and a placeholder must never overwrite
+a real answer or a blank. A write that can only ever ADD is exactly what this
+needs.
+
+**Why the grep missed it, which is the part worth keeping.** The grep was for
+writes to `answers`, and this one does not look like one: it is called
+`submitAnswer`, in `scores.js`, on the final-wager screen, and it reads as a
+player submitting. Its table is three files away. **Grep for the TABLE and you
+find the writes you already think of as writes.**
+
+**What did find it was a flaky test, and I nearly dismissed it.**
+`scenario-social` failed about one run in five with a console error nobody had
+put there. The temptation with a one-in-five failure is to re-run it; the run
+that passes tells you nothing, and this one had been failing for as long as 049
+had been live. Two wrong guesses at the cause were eliminated only by tracing
+the actual call, and both were plausible enough to have been written down as
+the answer. **A flaky failure is a real failure with a timing condition
+attached.** `scenario-feedback` now drives it directly so it fails every time,
+with a negative half that makes the same call the old way and fails if it is
+NOT refused.
+
+That scenario also prints **every** console error now, not just the first. It
+was the first that was truncated to 140 characters, which is what made two
+rounds of guessing necessary.
+
+**A ROOM OUTLIVES A GAME, so the clear-out is now belt AND braces.**
+`answersForCurrentGame` in `scoring-helpers.js` filters every answer fetch
+against the room's current `question_ids`, using the `question_id` each row
+already carries. A stale row is then recognised structurally rather than
+trusted to have been deleted — which matters beyond migration 051, because the
+clear-out is **host-gated**, so a room that returns to the lobby without its
+host never runs it at all. Everybody would start the next game holding the
+points they won in the last one, silently.
+
+It keeps a row whenever it cannot tell — no question list loaded yet, a round
+number the list does not reach, a row with no `question_id` — on the same rule
+as a missing `last_seen_at` meaning "here": dropping a real answer costs
+somebody their score.
+
+**Unit tests only, and that is an admission.** A scenario check was written and
+deleted: it passed just as happily with the filter stubbed out, because the
+seeded stale row did not survive to the moment the scoreboard is computed and
+no RPC removed it. It was measuring nothing. Same call as the final-wager
+guards — a check that cannot fail looks like coverage and is worse than none.
+
+**048's own verification could not have caught 049's bug happening to it.** It
+closed the door with `DROP POLICY IF EXISTS "Rooms: anyone can delete"` — by
+name — and checked `cmd = 'DELETE'`. Both are exactly the weaknesses that made
+049 fail silently live:
+
+- the live policy names are **not** the ones migration 022 declares, which is
+  why 049's drops did nothing, and `IF EXISTS` makes that a NOTICE rather than
+  an error;
+- a policy written `FOR ALL` has `cmd = 'ALL'` and grants DELETE as a side
+  effect, so the check reads **ok** with the door wide open.
+
+049 was caught only because its verification block happened to be run and
+reported FAIL. 048's would have said ok either way. Migration 051 redoes it by
+LOOKING, the way 036 and 050 do, and verifies `cmd IN ('DELETE','ALL')`.
+**Never drop a policy by name in this project, and never verify one by a single
+`cmd` value.**
+
+**And always qualify the schema — my own check got this wrong.** 051's first
+verification asked `WHERE tablename = 'answers'` with no `schemaname`, while
+every DROP loop is correctly confined to `public`. `pg_policies` spans the whole
+database, so the check could report FAIL for a policy the fix was never going to
+touch. **A verification must ask exactly the question its fix answers**, which
+is the same lesson as 048's single `cmd` value wearing different clothes.
+
+**050's DROP LOOP NEVER TOOK EFFECT ON THE LIVE DATABASE, and only looking
+established it.** 051 came back with `door_still_shut` FAIL and everything else
+ok. Two explanations fitted — a policy in `public` that 050's block never
+removed, or one on an `answers` table in another schema, which would not be the
+game's table at all — and the ok/FAIL cell could not tell them apart. Listing
+every policy on any table named `answers`, in every schema, settled it in one
+run: nothing outside `public`, so the offending policy was the app's and had
+survived 050. Why is not known; the likeliest is that the paste errored partway
+and the SQL editor stopped.
+
+**So a check that can fail now prints what it saw.** 051's verification is one
+result set: the verdicts, then every policy on `answers` and `rooms` with its
+schema, on every run whether it passes or not. Settling this cost a round trip
+to the owner that the evidence would have saved. **When a check and a fix
+disagree, the thing to do is look, not reason.**
+
+`rooms` UPDATE deliberately stays open — the phase machine still runs in the
+browser — and 051 asserts that too, because a lockdown that stops a game
+advancing is worse than the hole it closes.
+
+### The seat ratchet had a third copy
+
+`js/game/init.js` still held the `sameName.length === 1` logic that "One person,
+one seat" (below) describes fixing. join.html and the lobby were routed through
+`claimSeat`; the GAME page was missed, so refreshing there still ratcheted —
+two duplicates made a third, three made a fourth, for the life of the room.
+
+It also passed `state.room.isHost` straight from sessionStorage into a fresh
+row, so a host whose seat had been swept — after somebody else was promoted —
+came back and added a SECOND row flagged host. That is the other half of the
+photographed "two hosts in the lobby": `promoteToHost` adding one, and this
+adding another. It now returns as an ordinary player if a live host is already
+there, and cannot-tell still counts as HERE.
+
+**When a fix is described as "the single path now", check that it is.** Three
+call sites, two converted, and the sentence in this file said the job was done.
+
+## The screen must show the question the room is asking
+
+**Reported from a live game: a player received a completely different final
+question from everybody else.**
+
+The host swaps the final question for one matching the difficulty vote and
+broadcasts the new `question_ids` in a single room update. Lose that one event
+— a real connection does, occasionally — and the player kept their own
+pre-fetched question. **Nothing ever re-checked the list.** `syncToCurrentState`
+is the safety net for a missed Realtime event and it caught up the phase and the
+question NUMBER, never the question LIST.
+
+It became far worse with migration 046, because the verdict now comes from the
+ROOM's question, not the one on the screen. So the player answered a question
+nobody else was asked and was marked wrong on one they never saw.
+
+The poll compares `question_ids` against `state.questions` now, refetches, and
+forces a re-render even when the round number has not moved — the question on
+screen is the thing that is wrong.
+
+**No scenario could see it, for two separate reasons.** Every seeded question
+was `difficulty: 'medium'`, so `fetchQuestionByDifficulty` never found a
+different one and the swap silently never happened. And nothing had ever
+dropped a Realtime event, so the safety net had never been asked to catch
+anything. `store.dropEvents(table, n)` swallows events the way a connection
+does; `scenario-fullgame` seeds mixed difficulties, drops the update carrying
+the swap, and fails if the players' answers name more than one question id.
+Verified by removing the fix: **"players were asked 2 DIFFERENT final
+questions".**
+
+## A submit refused after the round closed is the system working
+
+Found 2026-08-25, from an **intermittent** scenario failure —
+`scenario-social` failed roughly one run in five with a console error nobody
+had put there: `Submit answer failed … code: 42501`.
+
+Once a round is closed the player already holds a row: the blank fill wrote one,
+or on the final round the `__WAGER_LOCKED__` placeholder did. If they press
+Submit now, `op_submit_answer` refuses with *time is up*, and the client falls
+back to a direct upsert — which HITS that row, and 049 revoked UPDATE.
+
+**Nothing is wrong with what happens.** The row already there is the one that
+should stand, and it does. What was wrong was what the player was told:
+
+> Your answer didn't save — check your connection and try again
+
+Wrong three times in one sentence. It is not the connection, trying again cannot
+help, and something IS saved. The screen was already showing the true thing —
+"Time's up — your last answer stands" — directly underneath it. It also logged
+at ERROR, so the system working filled the console with a fault.
+
+`submitAnswer` takes `afterServerRefusal` now. With it, a **42501 and only a
+42501** is a warn with no toast; every other error, and every error without that
+context, reports exactly as before. Widening that would put #4 — the deepest
+fault in this codebase — back into its loudest path.
+
+**The check for it lives in `scenario-feedback`, driven directly rather than
+waited for**, because whether a submit lands before or after expiry is a matter
+of timing and a flaky check is one people learn to re-run. It has a NEGATIVE
+half that makes the same call without the flag and fails if the player is told
+nothing — without it, the quiet assertion passes just as happily when nothing
+ever toasts. Verified by disabling the branch: it reports the lie by name.
+
+**A related one in the same sweep: the host's final-round tidy-up used
+`submitAnswer` too.** When `op_fill_blank_answers` cannot be reached, the host
+converts everyone's leftover `__WAGER_LOCKED__` rows into blanks — writing on
+OTHER PEOPLE'S behalf — and `submitAnswer` toasts *the host* "Your answer didn't
+save", once per absent player. It is `upsertAnswers` now, which logs and does
+not toast. **Deliberately still loud in the log**: if that branch is ever
+reached the locked wager stays attached to a question nobody answered, and the
+final round is the only one that SUBTRACTS.
+
+## The third blank-fill site, and it had missed two fixes
+
+Found 2026-08-26, by tracing an intermittent `scenario-social` failure to its
+call site instead of guessing at it again. **A SEVENTH thing migration 049 shut,
+and the one with the worst consequence.**
+
+`handleRevealResults` — the host pressing "Reveal Results" before everybody has
+answered — closed the round for the missing players with `submitAnswer` and a
+hardcoded `wager: 1`. Both halves were wrong, and each is a fix that had already
+been made TWICE somewhere else:
+
+- **It is an upsert.** On the final round every player who has locked a wager
+  already holds a `__WAGER_LOCKED__` row, so the statement conflicted, 049
+  refused it with 42501, and **nothing was written**. Their locked wager stayed
+  attached to a question they never answered — and the final round is the only
+  one that SUBTRACTS, so that is the difference between scoring nothing and
+  losing 20 for being away. It also toasted the HOST "your answer didn't save",
+  once per absent player.
+- **`wager: 1` is the exact fault the 2026-08-18 playtest fixed** in the other
+  two fill paths: it hands somebody a second answer at a wager they have already
+  spent, breaking the rule that 1..N are each used exactly once.
+
+It uses `insertBlankAnswers` now — ON CONFLICT DO NOTHING, which survives 049
+— with each player burning their OWN lowest unused wager.
+
+**NOT `op_fill_blank_answers`, and reaching for it changed the feature.** The
+two paths mean different things: the CLOCK running out closes everybody out,
+including converting a `__WAGER_LOCKED__` placeholder into a blank; the host
+revealing EARLY should only close out people with no row at all. Somebody who
+has locked a final wager and is still typing HAS a row, and the server call
+turned their 20 into a blank. `scenario-fullgame` caught it by name — "Bob
+tapped 20 on the final wager and was committed to 0" — which is the bug the
+2026-08-20 playtest is named after, reintroduced by a fix for something else.
+DO NOTHING makes it safe by construction rather than by remembering.
+
+**Three sites, and the two earlier fixes each reached two of them.** That is the
+fourth time this file has recorded the same shape. The habit that finds it is
+not a test: it is grepping for every OTHER caller of the thing you just changed.
+
+**The check for this is probabilistic and that is stated rather than dressed
+up.** `scenario-social` failed roughly one run in three before and passes
+consistently after, which is evidence but not a named assertion. The SQL rule
+table pins the SERVER path (`op_fill_blank_answers`) exactly; what has no
+deterministic check is the client fallback, because reaching it requires the RPC
+to be unavailable at the moment a host reveals early with somebody absent.
+
+**And the way it was found is the reusable part.** Two earlier attempts guessed
+at the call site from the symptom and were both wrong — one of them twice. What
+settled it in a single run was printing the STACK from inside the failing
+function. When an error names a function with several callers, make it say which
+one; reasoning about which is most likely has now cost three rounds.
+
+## You could not find a friend by their exact tag
+
+Found 2026-08-28 by going through every `.maybeSingle()` in `js/` looking for
+the read-then-write ratchet CLAUDE.md #10 records four times. These two are a
+different fault in the same family — **a lookup that cannot survive more than
+one match** — and they sit in the friend-adding path, which is the path the
+friends-only leaderboard depends on entirely.
+
+`fetchProfileByTag` was `.ilike('display_name', name).eq('discriminator', d)
+.maybeSingle()`. **Measured against a real Postgres, not assumed:**
+
+```
+ILIKE 'Bob_1'  -> 2 rows   (Bob_1 AND Bob01)
+ILIKE 'Alice'  -> 2 rows   (Alice AND alice)
+ILIKE 'Bob\_1' -> 1 row
+```
+
+Two independent hazards in one call:
+
+- **`_` and `%` are wildcards and display names have no character
+  restriction.** `setDisplayName` trims and stores whatever was typed, up to 20
+  characters. So looking somebody up by tag could match a DIFFERENT PERSON —
+  and with `.limit(1)` instead of `maybeSingle()` it would have returned them
+  silently, and the friend request would have gone to a stranger.
+- **Uniqueness was checked case-SENSITIVELY and looked up
+  case-INSENSITIVELY.** `generateDiscriminator` filtered
+  `.eq('display_name', displayName)`, so "Alice" and "alice" could each be
+  handed `#1234` without either uniqueness check seeing the other. From that
+  moment **neither of them could be found by tag again, ever.**
+
+`maybeSingle()` ERRORS on more than one row, so either collision returned null,
+which `js/profile.js` renders as **"No results found"** for a person who plainly
+exists. And the search box's OTHER branch — a partial "Name#" — goes through
+`searchProfiles`, which uses a wildcard LIKE and finds them perfectly well. So
+the full tag failed while the shorter query worked, which is an inconsistency
+nobody could report usefully.
+
+**A third fault underneath both.** `generateDiscriminator` destructured `data`
+only and threw the error away, so ANY failed read — a blip, a refusal, a
+multi-row error — left `data` undefined and it returned that discriminator as
+free. **A failed read is not an absent row**, the same rule as
+`upsertQuestionHistory`: trying another is free, handing out a duplicate is
+permanent.
+
+**The fix removes the hazard rather than escaping around it.** Both queries are
+keyed on the discriminator with `.eq` — no pattern language in the query at all
+— and the name is matched in JS by `pickProfileByTag` in `utils.js`, which
+prefers an EXACT-case match so that when two people really do share a tag, the
+one you typed is the one you get. Escaping the backslash would have worked in
+Postgres (measured above) but depends on how PostgREST passes it through to
+ILIKE, and betting on unverified middleware behaviour is exactly what #10 is
+about.
+
+**The exact-tag branch had NO robot coverage at all** — every scenario searched
+by plain name, which takes the other branch. `scenario-account` now seeds a
+case-variant impostor on the same discriminator and searches the full tag.
+Verified by restoring the old query: it reports **"searching a player's exact
+tag Bob#1001 reported No results found for somebody who exists"**. The fake
+store was already faithful here (it translates `%` to `.*` and `_` to `.`, and
+`ilike` is case-insensitive), so a check would have caught this the day it
+shipped had one existed.
+
+`tests/utils.test.js` pins `pickProfileByTag` and fails four ways when it is
+reduced to "first match", which is what `.limit(1)` on the old query would have
+done.
+
+## A failed rename tried to save its own error message as your name
+
+Found 2026-08-28, and the way it was found is the reusable part: I read
+`saveName` in `js/profile.js` looking for a DIFFERENT fault (a save that updates
+the screen without checking the write landed, the shape #5 is about) and was
+wrong about that one — `updateProfile` uses `.single()`, which turns the
+zero-row RLS refusal into a real error, so checking `error` really is enough.
+**Checking before claiming is what turned up the real bug next to it.**
+
+The name editor puts its own error text into the input's VALUE —
+`"Could not update name"`, or `"Name taken with your #tag"` — and restores the
+real name two seconds later. `saveName` reads `input.value` and saves it, and it
+runs on blur. The error branch cleared the re-entry guard immediately and
+re-enabled the field, so tapping back into it and away again inside those two
+seconds sent the app's own error message as the player's display name.
+
+**It was unreachable by a plain blur, which is why it survived.**
+`input.disabled = true` runs before the write, and disabling a focused input
+blurs it — so by the time the error is shown the field is not focused and no
+blur event is coming. It needs a deliberate re-focus, which is an ordinary tap.
+
+**The first version of the check could not fail, and said so.** It called
+`el.blur()` on an element that was already blurred: a no-op that fires no event,
+so it passed whatever the code did. Re-focusing first is what made it real —
+`scenario-account` then reported `["Renamed","Could not update name"]` as the
+values the app tried to save. Same rule as everywhere else here: **a check that
+agrees with you whatever you do is worse than none.**
+
+The fix keeps the guard CLOSED and the field DISABLED for the whole window the
+message is on screen, so there is nothing to type over and nothing to submit
+until the real name is back.
+
+## Three timers outlived cleanup(), and one could restart a game the host had ended
+
+Found 2026-08-28 by listing every `state.<name> = setInterval(...)` in
+`js/game/` and diffing it against what `cleanup()` clears. Three were missing:
+`autoProceedTimerId`, `finalWagerTimerId` and `feedbackFadeTimer`.
+
+**Why it did not matter until it did.** Every `cleanup()` call site navigates
+immediately, so a leaked timer dies with the page — which is why this survived.
+**`executeReturnToLobby` is the exception**: the host ending the game from the
+settings gear calls `cleanup()` and then **awaits three database round trips**
+(`deleteAnswersByRoom`, `updateGameState`, `updateRoomStatus`) before
+navigating. That is seconds on a phone, and a leaked timer is live for all of
+it.
+
+| Leaked | What it does in that window |
+|---|---|
+| `autoProceedTimerId` | fires `actionFn()` and ADVANCES THE GAME — writing `game_phase='question'` after the same function has written `'lobby'` and emptied `question_ids`. Every phone in the room lands on a question screen with no questions in it. |
+| `finalWagerTimerId` | fires `lockInFinalWager()`, which WRITES AN ANSWER — into the room whose answers that same function is in the middle of deleting |
+| `feedbackFadeTimer` | touches the DOM only; tidiness, not a fault |
+
+The auto-proceed one is the reachable one: the gear is available on the scores
+screen, which is exactly where the between-rounds countdown runs, and ending a
+game takes two taps well inside it.
+
+**The fix is a lint, not just three more lines.** `tests/phase-guards.test.js`
+now reads every timer assignment in `js/game/` and fails naming any that
+`cleanup()` does not clear — because "a rule stated twice and fixed once" is the
+single most repeated failure in this file, and spotting an ABSENCE by reading a
+function is exactly what people do not do. It carries a guard on itself as well:
+if the pattern ever stops matching, the check would pass over an empty set and
+report a clean bill of health for any amount of leakage, so it asserts it found
+the timers it is meant to be checking. Verified by deleting one clear: it
+reports `timers started but never cleared in cleanup(): autoProceedTimerId`.
+
+## Chat showed the FIRST hundred messages, not the last
+
+`fetchMessages` ordered `created_at` ASCENDING and limited to
+`CHAT_MESSAGES_LIMIT` (100). That asks Postgres for the OLDEST hundred rows —
+so the moment a room passed the limit, anybody reloading, returning from a game,
+or opening the in-game chat pane saw the first hundred things ever said and
+nothing since.
+
+Realtime still delivered live messages, so **the hole healed itself the instant
+somebody typed**, which is about as hard to report as a bug gets: by the time
+you look, it is gone.
+
+Descending-then-reversed returns the identical set under the limit and the right
+one over it. `archiveChatMessages` gains by the same argument — a truncated
+archive should hold the conversation, not the opening hellos.
+
+`scenario-social` seeds **120** messages, because under 100 both orderings agree
+and the check could not fail. Verified by restoring the old ordering: it reports
+the newest message missing and names the cause.
+
+## "I bet 20 and it wagered 0"
+
+Two independent causes, both fixed.
+
+**The blank fill ate the locked wager.** `op_fill_blank_answers` converts a
+`__WAGER_LOCKED__` placeholder into a blank answer, and it was also setting the
+wager to 0. That is right for the SCORE — going quiet on the final round must
+cost nothing — but it destroyed the number the player chose, and an answer
+landing a moment later then inherited it, because a locked final wager cannot
+be revised. Migration 050 keeps the wager and expresses the cost where it
+belongs, in `score_earned`. Verified by putting `EXCLUDED.wager` back: three
+rules fail, `got "0", want "20"`.
+
+**A second, DEFENSIVE change, and it is not evidence-backed — say so.**
+`showFinalWagerScreen` reset `finalWagerSelected` and, worse, cleared
+`state.difficultyVotes` — every vote in the room, not just this player's, and
+votes are broadcast-only so nobody re-sends them. It also tore down and
+recreated the vote channel. All of that runs on every call, and the phase
+router calls it with no same-phase guard, so a re-render would wipe a player's
+choice and the room's votes. `state._renderedFinalWager` now guards all three.
+
+**But I could not make that re-render happen.** A hand-made room broadcast, a
+real room write through the store, and a synthetic backgrounding all failed to
+produce a second render — instrumented, the wager screen renders exactly ONCE
+per game in the harness, so any check written around it passes whatever is
+broken. Two such checks were written and then deleted: **a check that cannot
+fail is worse than none, because it looks like coverage.**
+
+So the guards stay as cheap insurance, and this paragraph is the honest record
+that they fix a fault seen by inspection rather than one reproduced. The
+REPORTED bug ("bet 20, wagered 0") has a different, proven cause — the blank
+fill above — and that one does have a test that fails when reverted. **Do not
+cite the guards as the explanation for it.**
+
+**An empty answer before the reveal now reads as WAITING**, not "No answer".
+The fill can beat a submission that is already in flight, so the row appears
+empty for a moment before the real answer overwrites it — reported as an answer
+"appearing as no answer for a split second". Before the reveal the two cases
+are indistinguishable, and guessing WAITING is the one that never shows
+somebody a verdict on an answer they did send. Same rule the
+`__WAGER_LOCKED__` placeholder already followed.
+
+## The Map
+
+A honeycomb of the question bank, above the Mastery list on the profile. The
+owner asked for it: "to have knowledge displayed in this manner… it'll make
+people want to complete it".
+
+**Twelve hexes, one per category, and every category is on it** whether or not
+the player has ever touched one. That is the entire reason it exists alongside
+the Mastery list, which is kept: the list only names what somebody has already
+started, so it can never show them what is left. **The empty cells are the
+invitation.** Tap one to open its subcategories; Wild Card has none, so it is
+not tappable and is not styled as though it were.
+
+**SETTLED 2026-08-24: the Mastery list stays.** Whether it was still earning
+its place beside the Map was an open question put to the owner, and the answer
+was "just leave mastery for now". Do not remove or merge it on a tidiness
+argument.
+
+`js/honeycomb.js` holds the geometry, has **no imports**, and is unit tested —
+same rule as `radar.js` and `bot-logic.js`, because everything around it pulls
+the Supabase client from `esm.sh` and the test runner cannot load that.
+
+- **Pointy-top hexes in offset rows**, which stack vertically with a half-width
+  stagger. Flat-top wants to grow sideways, and sideways is the one direction a
+  portrait phone has none to grow in.
+- **A short last row is centred** on the rows above it. Hard against the left
+  edge reads as a mistake.
+- **`hexFill` gives anything above zero a visible floor of 6%.** A real category
+  fraction against 4,859 questions is often 0.4%, which draws as nothing — and
+  then "I have started this" and "I have never touched this" look identical on
+  the one screen whose whole job is that difference. The printed count stays
+  exact; only the bar is floored, and only once there is something real.
+- **The fill rises from the bottom.** Filling downward from the top reads as
+  draining.
+- `hexLayout` reports a box, and `tests/honeycomb.test.js` asserts every cell
+  fits inside it. A cell outside the viewBox is silently clipped on the phone
+  and nothing in the code would say so.
+
+**A subcategory's mastered count sums its whole branch**, because
+`fetchQuestionCount` counts a whole branch (`LIKE 'human%'` picks up
+`human-countries`). Counting only the node itself would put a real numerator
+over a branch-sized denominator and report somebody as further behind than they
+are.
+
+Per-subcategory totals are in nothing already fetched, so they are counted on
+demand and cached. **The drilled view renders before they arrive as well as
+after** — the emoji, the label and what you have mastered are all meaningful
+without a denominator, and a blank pane while six head requests finish reads as
+a broken tap. A failed count leaves the cell with no denominator rather than a
+zero, which would claim the branch is empty.
+
+**`fetchCategories()` moved out of the "has mastered something" branch** in
+`js/profile.js`. The map needs bank totals for a player with no mastery at all,
+who is precisely the person the empty cells are addressed to.
+
+Two mock states, not one: `profile-stats` carries the top-level map and
+`mastery-map-drilled` carries the opened view — the back button and the
+category name exist only in the second, so without it nothing was checking that
+that row fits itself at 375px. The mock inlines the geometry because `inject()`
+is serialised into the browser and cannot import; **if `honeycomb.js` changes,
+the mock changes in the same commit** or the sweep is reviewing a shape that
+never ships.
+
+**The first render found a bug no test could have.** A short row was centred
+exactly, which put it a quarter of a cell off the half-step, and the hexes
+overlapped instead of tessellating — the comb rendered as a pile of blobs. Every
+number was correct. `tests/honeycomb.test.js` now pins the lattice (verified by
+putting the exact centring back), and the outline, which had been the same
+colour as the cell it outlined, is a contrasting stroke — without it a low fill
+read as a stray arrow floating under the cell rather than as that cell filling.
+
+`scenario-account` checks the property that distinguishes the map from the
+list: **twelve cells for a player who has played two categories**, some of them
+marked untouched. It then drills into History, checks the four subcategories and
+the way back. Verified by filtering the map to categories with mastery — it
+reports three failures by name.
+
+**`scripts/screenshot.js` takes `--scroll=<selector>`.** The screens are
+fixed-height flex containers that scroll internally, so `--full` cannot reach
+anything below the fold — on profile.html that is most of the page, and a
+section nobody can photograph is a section nobody is reviewing.
+
+## The agreed shape of titles (designed 2026-08-29, BUILT 2026-08-30)
+
+**This was a design the owner and I settled in conversation, and it is now in
+the code.** The reasoning is kept in full because it took a long argument to
+reach and because it explains numbers that would otherwise look arbitrary.
+
+What is built: `js/title-tiers.js` holds the rules (floors, shares, targets) with
+no imports and its own unit tests; `js/titles.js` carries `type: 'count'` unlocks
+and the overlay that merges owner-written words in; `migrations/063` stores the
+words; the admin page's Title Words panel writes them.
+
+**Still the owner's own work, and nothing can do it for them:** roughly 86 words
+to write, and about a dozen questions each to add to History's Ancient (58) and
+Medieval (52) topics so they clear the 60-question floor and can carry words at
+all. **Do not generate any of those words** — the owner has said the words must
+be theirs or approved by them, and two earlier drafts of model-written hints
+were deleted at their instruction.
+
+### Words are content, not code (migration 063)
+
+The rules live in code; the TEXT lives in the database and is edited from the
+admin page, the same as the question bank's answers and alternates. A trickle of
+two words a week must not need a deploy.
+
+**The TARGET is stored, and that is not the same as storing the rules.**
+`target_right` is frozen at the moment a word is saved. The rule ("a quarter of
+this topic") stays in `title-tiers.js`; the number it produced on the day lives
+in the row. That is the agreed design and not an optimisation — a share
+recomputed live means adding questions to the bank moves everybody's goal
+BACKWARDS, which is the worst thing a collection can do to the people filling
+it. The admin panel prints today's share beside the frozen one when they differ,
+so growth is visible and re-freezing is a deliberate act (saving the word again)
+rather than something that happens behind the owner.
+
+It also settles a real cost: recomputing shares in a player's browser needs a
+count per topic — about fifty requests on every profile load — for a number that
+is not allowed to change.
+
+**A SLOT WITH NO WORD DOES NOT EXIST FOR PLAYERS.** That is what makes "nobody
+ever sees a reward they cannot claim" true by construction rather than by care,
+and it is why the table can be completely empty and nothing breaks.
+
+**One loader, not three.** `loadTitleWords()` in `js/title-content.js` is the
+only place that fetches and merges. The profile, the leaderboard and both unlock
+paths (end of game, and sign-in) all call it. Three copies of "fetch and merge"
+would be this project's most repeated fault in new clothes, with the failure
+being a word that appears on one screen and not another. It carries its own
+6-second deadline: a promise that never settles cannot be caught by `try/catch`,
+and decorative content must never be able to hold a screen shut (slice 8d).
+
+**`fetchTitleWords` returns `null` on failure and `[]` when nothing is written**,
+and the two must not be conflated — the second is the ordinary state of a fresh
+install, the first means we do not know, and treating them alike would empty
+somebody's collection from the screen on one dropped request.
+
+**THE COLUMN LIST ALREADY BIT ONCE.** The fetch named its columns and omitted
+`target_right`, so `applyWordOverlay` skipped every row as having no target — no
+error, nothing on screen, the owner's whole collection simply absent. Same shape
+as the category leaderboard ranking on the wrong measure for weeks. It was
+caught in seconds only because the fake store returns just the columns you ask
+for; the probe now watches that column by name.
+
+`applyWordOverlay` MUTATES the exported `TITLE_WORDS` deliberately: about a
+dozen places import it synchronously, and turning all of them async to await a
+fetch would be far larger a change than this earns.
+
+### Placeholders — the owner reversed their own rule, and were right to
+
+**"No placeholder words, ever" was the owner's rule and it is now off**, at
+their request: *"there can be a placeholder right? Like 'epic science' … which I
+can edit on the admin page later and easily know it is a placeholder?"*
+
+The old rule's reasoning was sound and simply does not apply. It said a player
+must never hit a requirement and receive NOTHING, so a slot with no word did not
+exist for them. **A placeholder is not nothing** — "Epic Science" is a real word
+really earned. What it buys is a visible framework: eleven of twelve subjects
+were showing almost no slots at all, and the owner read that, reasonably, as the
+framework being missing.
+
+**THE UNLOCK SURVIVES THE RENAME, and that is what makes it safe.** A word's id
+is `w:<category>:<subcategory>:<tier>` and contains no text, so editing "Epic
+Science" into something better keeps it for everybody who already earned it.
+`tests/titles.test.js` has pinned that since the overlay shipped.
+
+**THE TEXT IS GENERATED BY RULE AND NEVER INVENTED** — `placeholderWord(tier,
+label)` in `title-tiers.js`, tier plus subject. That distinction is the whole
+reason this is allowed at all: the owner has twice had model-written title text
+deleted, and scaffolding must read as scaffolding rather than as somebody's idea
+of a good word. It caps at 24 characters (the table's own limit) and trims on a
+word boundary, so a long topic cannot silently turn "fill every empty slot" into
+"fill most of them".
+
+**The flag is a real column (migration 064), not inferred from the text.** The
+cheap alternative — call it a placeholder when the text matches what the
+generator would produce — needs no column and un-flags itself on edit, which is
+neat and is exactly the inference this project keeps getting burned by: change
+the naming rule once and every existing placeholder silently becomes "written".
+
+Filling is ONE button for all of them, because there are ~86 and a per-row
+control would never be used. Typing over one clears the flag: it is the owner's
+word now, and leaving it set would stop the count ever reaching zero. The admin
+page reads **"N written, N placeholder, N empty"**, and players are never told
+their title is temporary.
+
+### The collection collapses by subject
+
+Asked for by the owner after seeing the rows: *"under knowledge it could get
+long, is there a better display format?"* It will — the collection is designed
+for roughly a hundred words across twelve subjects.
+
+Each subject is a header button now, one open at a time, all closed on arrival.
+**THE COUNT ON THE CLOSED ROW IS WHAT MAKES IT WORK** — "2 / 9" visible without
+opening anything — which is the same reasoning the admin page's panels are built
+on: a page that hides everything behind identical doors is worse than a long one.
+
+It also answers the owner's other complaint in the same move. Eleven of twelve
+subjects hold a single word, so laid open they read as broken; closed, they are
+twelve tidy rows and you open the one you want.
+
+`scenario-account` requires twelve headers, none open on arrival, real rows after
+a tap, and exactly one open after a second tap. Verified by removing the
+close-the-others line: *"opening a second subject left 2 open"*.
+
+### The framework is there for every subject — players only see written words
+
+The owner asked twice whether the framework was actually being built or whether
+only History had one. **Measured: all twelve subjects carry three subject-level
+slots each (36 in total), plus 45 named topics, 26 of which clear the size
+floor.** The rules in `title-tiers.js` are complete and the admin page lists
+every slot, written or not.
+
+What players see is only the slots with a WORD written, which is the deliberate
+rule — a slot with no word does not exist for them, because hitting a
+requirement and receiving nothing is a promise broken. So the collection looks
+like History plus eleven near-empty subjects, and that is the collection, not a
+display fault. **Do not "fix" it by rendering empty slots.** The fix is the ~86
+words, and the admin page is where they go.
+
+### The slot machine stays — I replaced it without being asked
+
+**Reverted 2026-08-30, same day it shipped.** The owner asked about the "See all
+titles" screen. I rebuilt the TITLE BUILDER as well — the three-column wheel —
+into a "the title is the menu" picker, on my own initiative, off the back of
+them asking *"Oh I guess that's the builder? Is that why I'm confused?"*, which
+is a question and not an instruction.
+
+**They liked the slot machine.** It is a deliberate aesthetic — the file has
+said "Toontown-style 3-slot custom title builder" since the beginning — and it
+is working code calibrated on a real device. CLAUDE.md's own rules cover this
+exactly, twice over: *only change what was asked*, and *stop and ask before
+making decisions not covered here*. I did neither.
+
+Everything of mine is out: the markup, the renderer, the CSS, the mock and the
+scenario check. `renderTitleWheel` and `updateTitlePreview` are byte-for-byte
+what they were.
+
+**The gallery rebuild STAYS**, because that one was asked for — the owner called
+it clunky, uncompact and said only one title showed per category, and that is
+what the rows fix.
+
+**The design note under "The screen" above describes the picker I built and
+reverted.** It was settled in a prototype session, so it is not wrong as a
+design — but it is NOT a licence to replace the wheel. If it is ever built
+again, that is the owner's call to make in words, not an inference from a
+question they asked.
+
+### The gallery was correct and it was not good
+
+**Reported 2026-08-30, and the owner was right on every count:** clunky, not
+compact, not aesthetically good, no visible framework, and *"only one title
+under each category?"*
+
+**That last one is TRUE and is not a display bug.** Counted from the code: slot
+2 holds 20 words, and **History has 9 of them while every other subject has
+exactly 1.** The deep layer — a word per topic at increasing depth — was only
+ever written for History. The framework is real, in `title-tiers.js` and on the
+admin page; there is simply almost nothing written into it yet. A screen can
+only draw words that exist, so the emptiness IS the collection.
+
+**The screen itself was genuinely bad, and that was mine.** It rendered a
+~200px card per word, two across, with the tier spelled out as text inside every
+one and the subject repeated in every requirement under a heading that already
+named it — *"Get 82 questions right in Modern History"* beneath a heading
+reading HISTORY, in a section blurbed "earned by getting questions right in a
+subject". At roughly a hundred words that is a scroll nobody finishes, and the
+padding hid the only thing worth seeing.
+
+**It is rows now**, about a sixth the height, so a whole subject fits on screen
+and the ladder is the picture. The tier is a colour on a left edge and the word
+"Uncommon" is not repeated twenty times. `shortRequirement` trims the leading
+verb and the subject the heading already states, and **always keeps the topic**,
+which is the part that distinguishes one row from the next.
+
+**The settled design said rows and I built cards.** "Slot 2 is rows, not a
+honeycomb" is written above, from the prototype session, and the first
+implementation ignored it. Re-read the agreed design before building, not after
+the owner sees it.
+
+**Dead `.title-card` CSS is still in the stylesheet.** Nothing renders it — the
+grep is clean across `js/`, the mocks and the HTML — but the block interleaves
+with rules that are still live and a first attempt at deleting it would have
+taken 14KB of unrelated stylesheet with it. Its own assertion caught that. Left
+deliberately; delete it precisely or not at all.
+
+### A word appearing out of nowhere has to say what earned it
+
+**Reported 2026-08-30: the owner opened the FRONT PAGE and was told they had
+unlocked Science.** Their question was whether that is the right place for it.
+
+**It is, and the surprise was not the placement.** The sign-in path
+(`initAuth`) evaluates unlocks on arrival, deliberately — something earned while
+away, like a loyalty streak crossing a day boundary, has nowhere else to appear.
+And the rules had just changed underneath them: slot 2 moved from rank-based to
+COUNT-based, so words genuinely became newly earned. **Every existing player
+gets one retroactive batch on their next sign-in**, and `planCelebration` gives
+one celebration per batch rather than one per word, so it is a single card and
+not a queue.
+
+**What was actually wrong is that the card said only the word.** That is the
+complaint the owner has raised about this system more than any other — they
+could not tell what any word was for — and `describeRequirement` had been built
+for exactly it and wired only to the gallery. It bites hardest here, because the
+sign-in path fires with no game behind it: a word arriving on the front page is
+the least explicable moment in the app.
+
+**Two things must NOT get a reason, and widening the line breaks both.** A
+SECRET stays secret — `describeRequirement` returns null and spoiling it at the
+moment it lands removes the point of it. An UPGRADE gets nothing either, because
+that function states the LEVEL-1 condition and a level is a multiple of it, so a
+Level 2 card would read "Win 10 games in a row" about something the player
+passed a while ago. **Saying nothing beats saying something false**, and the
+kicker already reads "Level 2". Verified by widening it: two checks fail by name.
+
+`titleLabelFor` moved from `js/profile.js` into `categories.js` as `labelForKey`,
+because the celebration needed the same rule and a third copy is this project's
+signature fault. The failure would have been quiet — a raw key reads almost like
+a label, so "10 right in arts-literature" looks like a wording choice rather than
+a missing lookup.
+
+**Both celebration mocks were fiction and the screenshot showed it.** One
+rendered a reason line for Phantom, which is a secret and would never have one;
+the other quoted "Win 15 games in a row" for a word whose real requirement is 10.
+A mock that states things the code cannot produce reviews markup that never
+ships.
+
+### A new table arrives already granted to everybody
+
+Migration 063's own verification came back FAIL on its third rule the first time
+it was run live: *a visitor cannot write one* → **anyone could invent a title.**
+
+**Supabase carries `ALTER DEFAULT PRIVILEGES` granting new tables in `public` to
+`anon` and `authenticated`.** So the table was created with INSERT, UPDATE and
+DELETE already granted to a signed-out visitor, and the migration's careful
+`GRANT SELECT ON title_words TO anon` did nothing about it — **a GRANT adds and
+never subtracts.** Only `REVOKE ALL ... FROM anon` removes what nobody asked
+for.
+
+**NOTHING WAS EVER OPEN, and that had to be measured rather than assumed.**
+Against a real Postgres in exactly that state — the grant present, the policies
+as written — an anonymous visitor and a signed-in non-admin were both refused
+with 42501 and zero rows written. The policy was doing the work. Reporting this
+as "anybody could write a title" would have been a false alarm about a live
+game, and *"the privilege is there"* and *"anybody can use it"* are different
+claims. The revoke ships anyway: a privilege nothing needs is one more thing
+standing between a future policy mistake and a public table.
+
+**This is slice 8c's blind spot in a new place.** That one was a policy
+restricted to a ROLE; this is a privilege granted to a role by a project-wide
+default. Both are facts written in SQL that no sweep of `js/` can see, and both
+were found only because a verification block asked the question out loud.
+**Every new table needs `REVOKE ALL FROM anon` before its grants**, and the
+verification has to check the privilege rather than the policy — a policy that
+looks right sits happily on top of a privilege that should not exist.
+
+### The rarity ladder had four copies and three were stale
+
+Found 2026-08-30 while fixing the tests for the above. The rebuild added
+`uncommon`, `epic` and `mythic`; the celebration table, the gallery's sort and
+the Title Builder's sort still listed the old three. **A missing key reads as
+rank 0 rather than as an error**, so in the Builder a mythic word — the whole of
+a subject, twelve in the game — sorted level with a common, and a mythic unlock
+would have celebrated as a toast you can ignore.
+
+One exported `RARITY_ORDER` in `titles.js` now, and all four readers take it
+from there. **The test that should have caught it was asserting the bug**: it
+used `'mythic'` as its example of "a rarity the table does not know", which was
+true and should have been alarming. Two checks now pin every rarity a word uses
+against both the ladder and the celebration table, so the next growth names the
+reader left behind.
+
+### The problem it fixes
+
+A rank — Apprentice, Scholar, Master, Oracle — is
+`(questions you get right / questions met) x log2(questions met)` against fixed
+thresholds. **Measured, not estimated:** "Scholar in Ancient History" is anywhere
+between 23 questions and 512 depending on accuracy.
+
+| accuracy | Apprentice | Scholar | Master | Oracle |
+|---|---|---|---|---|
+| 100% | 20 | 23 | 46 | 91 |
+| 80% | 20 | 50 | 118 | 280 |
+| 60% | 32 | 182 | 575 | 1825 |
+| 50% | 64 | 512 | 2048 | 8192 |
+
+**No wording of that is honest**, which is why every attempt to label the Title
+Builder read as vague. The owner said repeatedly they could not understand their
+own system; the system was the problem, not the screen.
+
+**And the blend punishes curiosity.** 46 right of 46 met is a Master. Meet ONE
+new question, get it wrong — still 46 right — and you are demoted. Verified by
+computation, not asserted.
+
+### The rule
+
+**One measure everywhere: questions you currently get right.** A count, never a
+percentage. Proficiency unlocks nothing and stays a profile stat.
+
+| | Requirement | Topic must hold |
+|---|---|---|
+| ⬜ common | 10 right in a subject | — |
+| 🟩 uncommon | 25% of one topic | 60+ |
+| 🟦 rare | 25% of EVERY topic in a subject, and 100+ right in it | — |
+| 🟪 epic | 75% of one topic | 80+ |
+| 🟨 legendary | 100% of one topic | 100+ |
+| 🟥 mythic | 100% of an entire subject; plus secrets | — |
+
+**RE-MEASURED 2026-08-30, AND THE FIRST NUMBERS WERE WRONG.** An earlier count
+said 42 topics averaging 114, and it was taken two ways that both mislead:
+grouped by `subcategory` alone, so a key shared by several categories summed
+across all of them, and without the `format = 'open'` filter, so it counted
+questions the game can never ask.
+
+Counted the way the app actually asks — `fetchQuestionCount(category, sub)`,
+which is `contains(categories, [cat])` AND `format = 'open'` — there are **48
+legitimate (category, topic) pairs and 28 carry words of their own.** The spread
+is far wider than either of us assumed:
+
+| | askable |
+|---|---|
+| arts-literature / literature | 338 |
+| pop-culture / entertainment-movies | 332 |
+| history / modern | 327 |
+| history / early-modern | 239 |
+| …median around 80… | |
+| history / ancient | **58** |
+| history / medieval | **52** |
+| nature / environment | 10 |
+| sports / misc | 3 |
+
+**History's own eras are mostly too small**, which matters because the four words
+that already exist for Ancient and Medieval — Chronicles, Antiquity, Crusade,
+Dynasty — have no qualifying topic. They are 2 and 8 questions short. The owner's
+call was to leave the floors and grow those topics rather than lower the bar.
+
+**The floors turn out to do a second job nobody designed:** they show where the
+bank is thin. Sports/misc holding 3 askable questions is worth knowing whether or
+not titles exist.
+
+**MISC TOPICS CARRY NO WORDS**, on the owner's decision. Several qualify by size
+— science/misc has 148 — but a word meaning "you have mastered Miscellaneous"
+says nothing about what somebody knows, which is the whole job of that column.
+Their questions still count towards their subject's words.
+
+**I claimed twice that these floors "exclude almost nothing", inferring it from
+the average. The owner pushed back — an average says nothing about how many clear
+100 — and they were right.** 20/20/20/400 averages 115 and only one clears it.
+Do not reason about a distribution from its mean; and when you do count, count
+the way the app counts.
+
+### Why each piece is the way it is
+
+- **Counts, not proficiency.** Meeting a new question and failing it leaves a
+  count untouched but drops a percentage, so a percentage-based title is taken
+  away for exploring.
+- **Proficiency is forced anyway at the top, without being a rule.** A topic is
+  finite, so getting 75% of it right means being right about at least 75% of it;
+  100% is perfect accuracy by definition. This is why no second condition is
+  needed, and why adding one buys nothing.
+- **Once earned, kept forever.** Otherwise a legendary evaporates when you forget
+  one question.
+- **Targets are frozen** — computed once from the topic's size and stored as a
+  number. A percentage recomputed live means adding questions moves somebody's
+  goal backwards, which is the worst feeling in a collection.
+- **Fixed floors, not positional ones.** "The largest quarter of topics" was my
+  proposal and it is wrong: it shifts as the bank grows, so a topic could lose
+  its gold word because OTHER topics grew — breaking the freeze rule above.
+- **Rare needs its 100-right floor** or a subject with two small topics gives a
+  rare for 20 right, ranking it below uncommon and breaking the ladder.
+- **Six tiers is right at ~106 words**, though it would be silly at 37. I argued
+  against it from the wrong number.
+
+### What must be built alongside it
+
+- **The admin page must list every topic, its size, which tiers it qualifies for,
+  and which have no word written.** Targets are frozen, so nothing tells you when
+  a growing bank makes a topic newly eligible. Without this the collection
+  silently stops growing.
+- **No placeholder words, ever.** A player must never see a slot they cannot
+  fill: hitting a requirement and receiving nothing is a promise broken. A topic
+  with no word written simply offers none. The gaps are the owner's view, not the
+  player's.
+- **The words are the owner's to write.** All 34 existing hints were
+  model-written and are being dropped; the owner has said the words themselves
+  must be theirs or approved by them. **Do not generate them.**
+
+### What is built as of 2026-08-30
+
+The RULES and the SCREENS are in; the WORDS are not, and that is the owner's
+half. Do not generate them.
+
+| | |
+|---|---|
+| `js/title-tiers.js` | the floors, shares and subject rules, no imports, 18 unit tests |
+| `unlock: { type: 'count' }` | a word is earned at N questions right in a subject or topic |
+| `rightIn()` in `titles.js` | the one reader, and it takes the ROLLUP for a subject so nothing is counted twice |
+| `describeRequirement()` | turns any unlock into a sentence a player can act on |
+| admin → Title Words | every topic, its size, which tiers it offers, its target, and what is unwritten |
+| the probe | prints the same table on every CI run, so a growing bank cannot silently make a topic newly eligible without anybody noticing |
+
+**All 20 Knowledge words are converted to counts**, with targets frozen from the
+sizes measured on 2026-08-30. The four for Ancient and Medieval History were
+converted even though those topics are under the 60 floor: those words ALREADY
+EXIST, and leaving them on a rank rule nobody can read is worse than a target
+that is slightly cheap. **The floor governs which topics get NEW words**, not
+whether an existing one is earnable.
+
+**Still to do:** the remaining ~86 words, and Ancient and Medieval need about a
+dozen questions each before they properly clear the floor.
+
+### The screen
+
+Settled by prototype rather than argument, after two failed attempts — a static
+mockup the owner could not read, and a honeycomb that hid the words behind a tap.
+
+- **The title is the menu.** Three words at the top; tap one to change that part.
+- **An earned word says what you did** ("earned at 28 right in Ancient History").
+  A locked one says what to do ("you get 19 right, 9 more to go") and **hides the
+  word itself**. Only secrets stay mysterious.
+- **Slot 2 is rows, not a honeycomb.** A hexagon holds an emoji and a number; it
+  cannot hold a WORD, so the one column actually about words was the only one
+  unreadable without tapping. The Map keeps the honeycomb — showing question
+  progress at a glance is genuinely its job.
+- **Slot 3 splits** into "how far you have come" and "things you pulled off",
+  because four of its eight words are the rank ladder showing through.
+
+## The title system is 37 words, and one of them did not exist
+
+Counted 2026-08-29, from the code, because the owner asked what the system
+actually contains and could not tell from any screen — which is itself the
+finding. **Nothing in the app states the structure**, so the person who designed
+it could not remember it.
+
+| Slot | Shown as | Words | What it is |
+|---|---|---|---|
+| 1 | The Adjective | 10 | how you play — wins, streaks, loyalty, hosting, 2 secrets |
+| 2 | The Calling | 19 | what you know |
+| 3 | The Rank | 8 | 4 echoes of the profile ladder, 4 unrelated feats |
+
+**Slot 2 has two layers and only the first is finished.** Twelve words, one per
+category, earned at Apprentice — complete. Then a DEEP layer: a Scholar word and
+an Oracle word for each SUBCATEGORY (ancient history at Scholar is Chronicles, at
+Oracle it is Antiquity). **That layer exists for History and for nothing else.**
+Seven words where the pattern implies 84, across 42 subcategories.
+
+So "is it complete?" has a number: **37 of roughly 114**, and the missing part is
+exactly the part the owner described wanting — *if they are good at science, the
+title is science-related*. It was started once, for one category.
+
+**A LEGENDARY WORD DID NOT EXIST AT ALL.** `eternal` was defined twice in
+`TITLE_WORDS` — slot 2 (Oracle in modern history) and slot 3 (Oracle in three
+categories). It is a plain object literal, so **the second silently replaced the
+first**: no error, no warning, one fewer card in the gallery than the file
+describes, and the top reward for a whole branch unearnable by anybody. Every
+other era has both its Scholar and its Oracle word; modern had Atomic and then
+nothing, which is only visible once they are lined up.
+
+The key is `eternalModern` now and the word is unchanged — restoring the author's
+intent rather than inventing a rename. **It does mean a title could read
+"Eternal Eternal", which is the owner's call, not a decision to make quietly
+inside a bug fix.**
+
+**The check has to read the SOURCE.** By the time the module is imported the
+duplicate is gone — the object holds one entry and looks perfectly healthy — so
+nothing asserted against `TITLE_WORDS` could ever see it, which is why this
+survived. `tests/titles.test.js` parses the file, and carries a guard on itself:
+if the pattern stops matching it would pass over an empty list and report a clean
+bill of health. Verified by restoring the duplicate — three checks fail, the
+self-guard among them.
+
+**Two overloaded names, both raised by the owner and neither settled:**
+"The Calling" for a column that is really "what you know" (their instinct was
+Style / Mastery), and **"Rank"**, which is both a word in slot 3 and the
+Apprentice→Oracle ladder on the profile, measured per category. Those are the
+same four words meaning two different things on two different screens.
+
+## The forty titles nobody could see
+
+The Title Builder was a padlock reading "Reach Apprentice to unlock", and that
+was the entire surface of a 40-word collection. It named a rank the player had
+no way to locate and no way to price, and said nothing about what was behind
+it. The owner asked for something browsable that "conveys and piques interest".
+
+**Every word already carried a `hint`**, written long ago and rendered nowhere
+except a three-second toast inside the builder — which only opens once you are
+already in. Three words have `hint: null` deliberately; those are secrets, and
+the gallery says "secret" rather than leaving a blank that reads as a bug.
+
+The collection opens from the padlock itself, so the moment somebody wonders
+what is behind it they find out, and stays reachable from the builder
+afterwards. **Locked cards show the hint and the rarity, not the word** — the
+owner's call, and what the hints were plainly written for.
+
+Cards are two across at 375px: one column reads as homework, three squeezes a
+hint to two words a line. Rarity is a coloured LEFT EDGE, never a fill — a
+tinted card would put every label on a background the three themes disagree
+about, which is how the tier badges broke.
+
+**The padlock also says which category is closest and by how much**, from
+`tierProgress`. "Reach Apprentice" alone is true and useless.
+
+**Known and deliberate:** in Slot 2, twelve of the twenty words are the
+category names, so hiding those behind a riddle is thin — the player can see
+their own categories on the same page. The eight era words (Antiquity, Dynasty,
+Atomic…) are worth hiding. Raised with the owner; not changed without them.
+
+## Earning something was a console.debug line
+
+`RARITY_CELEBRATION` was written, exported, and wired to nothing. The unlock
+path ended:
+
+```js
+// (Phase 4 will add celebration display here)
+if (newUnlocks.length > 0) logger.debug('Titles', 'New unlocks', ...)
+```
+
+So every reward in this game was invisible at the exact moment it was earned.
+The gallery makes the collection browsable; this is what makes filling it feel
+like anything.
+
+**The table had no `epic` key**, though three words carry that rarity, so those
+lookups returned `undefined`. Nobody noticed because nothing read the table.
+
+`planCelebration` gives **one** celebration per batch, not one per word.
+Reaching Apprentice in a category can trip several commons at once, and six
+overlays in a row is a queue to dismiss rather than a reward. The rarest word
+leads, ties go to a brand-new word over an upgrade of one already held, and the
+rest are counted. Tier scales to rarity at the owner's instruction: common is a
+quiet card that ignores taps, legendary dims the screen for a beat.
+
+**Everything self-clears.** This fires between rounds, and a reward that must
+be dismissed before play continues stops being a reward on the second
+occurrence. The quiet tiers set `pointer-events: none` — they cover the whole
+viewport for three seconds, so without it a scoreboard button underneath would
+be dead for that whole time.
+
+**The scrim is a dark rgba, not a theme colour.** `--color-bg-deep` is nearly
+white on the light theme, so dimming with it dimmed nothing and the card looked
+like it was floating over a working screen. The card carries its own
+background, so its contrast is unaffected by what is behind it.
+
+It fires from two places: the end of a game, and sign-in — a loyalty streak
+crossing a day boundary earns something with nobody playing, and that would
+otherwise never be seen.
+
+## Accuracy: `question_history` holds counters, not a verdict
+
+Every accuracy in the app — profile, leaderboard, tier, title thresholds —
+comes from `player_stats_computed`, which is `SUM(times_correct) /
+SUM(times_seen)` over `question_history`. Those are **counters**, and
+`upsertQuestionHistory` **increments** them. One call means one attempt.
+
+Three call sites used it as if it set a verdict, and each extra call added an
+attempt the player never made. Found from a 2026-08-20 playtest, where the
+owner asked whether a disqualified round affects accuracy. It did — badly:
+
+| Action | What was recorded | Effect |
+|---|---|---|
+| Host flips a judgement | a second attempt | got it right, host agreed, **50%** |
+| Host disqualifies the round | a third attempt, marked wrong | **33%** for a round that did not count |
+
+The disqualify case is the sharp one: the single action whose entire meaning
+is *this round does not count* was the action that damaged accuracy most, and
+it did so silently. There is no error and nothing renders wrong; it surfaces
+weeks later as a number that is slightly too low.
+
+Three functions now, and the distinction is the point:
+
+- **`upsertQuestionHistory`** — one NEW attempt. Called once per player per
+  question per round, from `doReveal` only.
+- **`amendQuestionHistory`** — the host changed their mind. Moves
+  `times_correct` and `last_correct`; `times_seen` untouched. Used by all
+  three override paths (reveal screen, scores screen, review overlay).
+- **`revokeQuestionHistory`** — the round was disqualified. Steps the attempt
+  back out, deleting the row when it was the only sighting.
+
+`recordCurrentQuestionOutcomes` now returns early on a disqualified question.
+Disqualifying sets every answer to `is_correct = false` first, so recording it
+logged the question as asked-and-nobody-got-it — making a thrown-out question
+look impossibly hard — and counted every auto-correct player as
+`times_overridden`, the column this project trusts most for spotting a bad
+answer key. It also fed `answer_tally` text nobody was judged on.
+
+`scenario-accuracy.mjs` reads the rows directly, because nothing about this is
+visible through the UI. Verified by reverting all three fixes: it then reports
+`seen=2` after an override, `seen=3` after a disqualification, and
+`asked=2 correct=0 overridden=1` in `question_stats` — each by name.
+
+**Whenever you add a write to `question_history`, ask whether it is a new
+attempt or a correction to one.** A correction that increments is worse than
+no correction at all.
+
+## How hard was that? Stored now, measured later
+
+`#reveal-difficulty` had been in `game.html` since the beginning and the code
+only ever **hid** it. The slot existed and was never once filled.
+
+The owner asked for a difficulty band on the reveal and immediately asked the
+right question back: doesn't that need a minimum sample? It does. The last
+probe read `game_plays` at **9 rows** — there is essentially no play data, and
+a percentage from two plays is noise wearing a number's clothes.
+
+So `describeDifficulty` in `js/difficulty-band.js` has two sources and the
+switch between them is the whole design:
+
+- **Under `MIN_PLAYS_FOR_MEASURED_DIFFICULTY` (3)** — the question's stored
+  `difficulty`, which all 4,859 carry from the original import. Honest from the
+  first game, no migration, nothing to wait for.
+- **At or above it** — what actually happened, in four bands (Easy ≥75%,
+  Medium ≥50%, Hard ≥25%, Very Hard below), **with the sample attached**:
+  "18% get this right, from 124 plays". `12%` and `12% of 20 plays` are
+  different claims and must never look alike.
+
+**It was 20, and that was wrong.** The argument for it — a high threshold
+"costs nothing", because the stored value covers everything underneath —
+concealed the real cost: at 20 the measured half would not appear for anybody
+for months, so it could not be seen, judged, or tested by the person who has to
+decide whether it is any good. **A feature nobody can reach is not cautious, it
+is undeliverable**, and the owner said so. Three is the lowest number where a
+percentage is not simply binary, and it is reachable in about two games.
+
+What makes three safe is that **the sample is always printed beside the
+number**. "100% get this right, from 3 plays" is self-evidently thin to
+anybody reading it; "100%" alone would not be. Raise it once real games have
+been played and the only thing that changes is that the bands get steadier.
+
+**Counted over every play, repeats included.** The owner's call, and it is
+already what `question_stats` records, so the measure and the store agree
+without anything being reinterpreted.
+
+Read from **`question_health`, not `question_stats`**. The table is locked to
+visitors deliberately (#2) so a player cannot forge question performance; the
+view over it is readable, which is what makes this possible from a player's
+browser at all. A failed read falls back to the stored band — nobody loses a
+reveal because a stat did not load.
+
+**Colour only when measured.** An unmeasured band is the value the question
+shipped with, and painting that as evidence would be the same overclaim as
+printing a percentage from two plays.
+
+**Still parked, deliberately:** "what everyone typed" from `answer_tally`. It
+needs volume the game does not have, and the owner said so first. The data
+accrues either way, so it can be switched on the day it is worth reading.
+
+## Question Feedback and Health
+
+**The admin's ability to act on feedback was broken and is fixed — see #5.**
+`question_feedback` is **measured empty** as of 2026-08-19 — counted from the
+SQL Editor as the owner, so this is the real count and not a visitor's view of
+it. An earlier claim here that it held 3 flags and 2 thumbs-down cited no
+source and is withdrawn (#6).
+
+No defect has been found behind that zero. Migration 020's policies are
+`WITH CHECK (true)` for INSERT, UPDATE and DELETE, the unique index the upsert
+needs is present, and `scenario-feedback.mjs` exercises the write path. The
+plainest explanation is that nobody has rated a question since the table last
+held anything — the UI only appears after a reveal and needs a deliberate tap.
+**Do not "fix" this without first establishing a failed write**; rating one
+question and re-counting is the cheap test.
+
+- Feedback is keyed on **`voter_id`** — `user:<uuid>` signed in, otherwise
+  `device:<uuid>` from localStorage. One vote per person per question, ever.
+  Guests included: gating this behind sign-up would mean most questions are
+  never rated, which defeats the point.
+- **`question_stats`** records per-question performance for every player,
+  guests included. Neither `answers` (deleted with the room) nor
+  `question_history` (logged-in users only) could do this.
+- Feedback only appears **after the answer is revealed** — `showFeedbackUI()`
+  runs inside `doReveal()`. Rating a question you have not seen the answer to
+  would be meaningless.
+- **`answer_tally` records what people actually typed** (migration 029): the
+  text and a count, nothing else. Not who said it, and not whether it was
+  judged correct — that verdict depends on which host was judging and whether
+  they overrode it, which makes it noise. Counting is on lowercased, trimmed
+  text, so "JFK" and " jfk " are one row while "J.F.K." stays separate; a
+  near-miss spelling is exactly what is worth seeing.
+
+  The point is finding bad answer keys with nobody having to notice. Eleven
+  people typing "JFK" against a key of "Kennedy" is one missing acceptable
+  answer, not eleven wrong people. It appears inside the Question Health row,
+  next to the box for adding alternates, so the data sits where the action is
+  taken. It also supplies real wrong answers for bots, so none is invented.
+
+  **Nothing a bot types is ever counted** — a bot's answer comes from a
+  percentage somebody chose, so recording it would make this data partly that
+  invented number. `scenario-feedback.mjs` fails by name if the guard is
+  removed.
+
+- **Recording happens on ADVANCE, not on reveal.** `recordCurrentQuestionOutcomes()`
+  runs inside `handleNextQuestion`, which is wired to the SCORES screen's
+  button — the reveal screen's button only moves to the scoreboard. A host who
+  leaves at the results screen never records the final question. Worth knowing
+  before concluding from an empty `question_stats` that the RPC is broken.
+
+- **`times_overridden` is the most valuable column.** A host flipping a
+  judgement is a human stating a valid answer was rejected — better evidence
+  of a bad answer key than a flag, and it costs players no effort.
+- The admin **Question Health** section sorts on any of these and edits
+  `acceptable_answers` inline.
+- **Never auto-generate acceptable answers.** The question bank's value is
+  that it is not model-generated. The owner adds alternates by hand.
+
+## Robot Playtesting
+
+`tests/harness/` drives real browsers through the real UI with the Supabase
+library swapped for an in-memory stand-in. **No test data ever reaches the
+production database and no robot ever appears in a real lobby.**
+
+```bash
+node tests/harness/scenario-lobby.mjs      # host + 2 players see each other
+node tests/harness/scenario-fullgame.mjs   # full game, score agreement, channel cleanup
+node tests/harness/scenario-nasty.mjs      # host death, rejoin, simultaneous answers
+node tests/harness/scenario-playagain.mjs # second game, room reset, no leakage
+node tests/harness/scenario-social.mjs    # chat, honks, score editing, review
+node tests/harness/scenario-join.mjs      # public listing, host reputation, privacy, hot join
+node tests/harness/scenario-feedback.mjs  # votes, flags, host review, timer-expiry scoring
+node tests/harness/scenario-cohost.mjs    # promote, demote, gated controls
+node tests/harness/scenario-account.mjs  # profile, friends leaderboard, friends, signed-in lobby
+node tests/harness/scenario-admin.mjs    # admin gate, counts, flags, refused writes
+node tests/harness/scenario-bots.mjs     # solo game with a bot; never host, never recorded
+node tests/harness/scenario-accuracy.mjs # override is not a 2nd attempt; a disqualified round is none
+node tests/harness/scenario-finalq.mjs   # the host reveals the final question on a bad connection
+node tests/harness/scenario-finalq.mjs --old-server  # ...against a database without migration 073
+node tests/harness/scenario-latescreen.mjs # a slow scoreboard must not cover the next question
+node tests/harness/scenario-sitting.mjs --games=4        # SEVERAL games in ONE room — what grows between them
+node tests/harness/scenario-sitting.mjs --games=4 --lag=800 --on=Bob   # ...with one phone on a real link
+node tests/harness/scenario-badnetwork.mjs --lag=1500  # a WHOLE game on a bad link (NOT in CI — see below)
+node tests/harness/scenario-latency.mjs --lag=300      # tap-to-first-pixel on every control (NOT in CI)
+```
+
+**`robot.slowConnection(ms)` gives ONE phone a bad connection.** Every other
+slowness knob here lives on the store, which every browser shares, so it slows
+the whole room equally — and a screen queued behind a network call still arrives
+when everybody else's does. Real bad connections belong to one person. Half the
+delay lands before the store runs and half after, so the write really does reach
+the server and Realtime really does tell everybody else while the caller is still
+waiting; an all-before delay makes the room wait with you and reproduces nothing.
+**Reach for this whenever a report says one player saw something and another did
+not.** `store.slowFunctionReply(name, ms)` is the same idea for one RPC: it runs,
+it broadcasts, and only the answer is late.
+
+**Robots must never reach the real project.** Three beacons
+(`removePlayerBeacon`, `markDisconnectedBeacon`, `deleteRoomBeacon`) call
+`fetch()` against `SUPABASE_URL` directly rather than through the client, so
+swapping the library is not enough — the harness also routes every request to
+`*.supabase.co` to a local stub. Without that, robots on GitHub runners (which
+are not firewalled) would issue real DELETEs.
+
+They run automatically on every push via `.github/workflows/robots.yml`, kept
+separate from `ci.yml` because they need a browser download and take minutes
+rather than seconds.
+
+**What it cannot catch:** schema drift. The fake store accepts any column, so
+a missing column is invisible to it. That is what `probe-db.mjs` is for.
+
+**It also cannot catch a rule that is stated twice and fixed once.** Every fault
+found on 2026-08-25 — the two half-rules in `countAnswersFrom` / `submittedCount`,
+`computeCategoryTiers` never getting `mergedCategoryRows`, two more
+read-then-writes still on `.maybeSingle()` — was found by READING for the shape,
+not by anything failing. All twelve scenarios passed before and after, and would
+have gone on passing. The unit tests they now carry each fail when reverted, but
+only because somebody went looking first.
+
+**So after any fix that introduces a shared helper, grep for every OTHER reader
+of what it replaced.** That single habit would have caught four separate live
+bugs in this file: the seat ratchet's third copy, the writes Slice 6 shut,
+`computeCategoryTiers`, and the answer count.
+
+**Drive robots from whatever screen they are on, never a fixed click
+sequence.** Phases arrive over Realtime and never land in lockstep, so a
+scripted order desynchronises and then reports the script's own impatience as
+a bug.
+
+**The harness has misreported more often than the app has misbehaved.** Every
+one of these looked like a real finding:
+
+- seating a returning player in a fresh browser context — tests "same person,
+  different device", where nothing can be recovered, while claiming to test
+  rejoin. Carry `storageState` across the gap.
+- backdating an absent host past the removal threshold — exercises
+  removal-and-promotion while claiming to test deputising.
+- counting host rows after killing the host — a dead browser leaves its row
+  with the flag set, so "exactly one host" reads as success on a leaderless
+  room.
+
+**A scenario that passes proves nothing until you have watched it fail.** The
+regression test for the lost-answer race (below) passed on the first run — and
+passed just as happily with the fix removed, because the harness happened to
+schedule the player's write before the host's. It was measuring nothing. The
+race only became testable once the losing order was forced explicitly, by
+calling the host's blank-fill *after* the player's answer was already stored.
+Break the fix, watch the test go red, then put it back. Anything less and you
+have written a test that agrees with you.
+
+**A SESSION SURVIVES A RELOAD IN THE HARNESS, and until 2026-08-28 it did
+not.** `window.__fakeSession` was a plain window variable, destroyed on
+navigation, while the real supabase-js persists its session in localStorage by
+default. So every page load minted a BRAND NEW anonymous identity — the #10 gap
+in its most dangerous direction, the harness behaving differently from the live
+client with no scenario able to see it. It matters since invisible accounts: a
+guest's id is what `claimSeat` matches on, so an id that changed on every
+refresh meant the robots were silently exercising "different person, same name"
+— the case the guest heuristic exists for — instead of the ordinary refresh it
+looked like.
+
+**Found while chasing a flaky `page.reload` timeout — and TWO mitigations later
+that flake is still unexplained.** `scenario-join` times out at 30s on one of
+its two reloads, roughly one run in five under load and three times in CI. The
+session-persistence fix above and `waitUntil: 'domcontentloaded'` were each
+plausible and each shipped; **the next CI run after both failed in exactly the
+same place.** So neither was the cause, and the hypotheses were wrong.
+
+What is established: it does not reproduce here — six consecutive runs alone,
+plus a full replay of CI's sequence (lobby, fullgame, nasty, playagain, social,
+then join) — and CI is a 2-core runner running twelve browser scenarios back to
+back. Contention is the leading explanation and remains UNPROVEN.
+
+So the scenario stopped guessing and started reporting. `reloadAndReport` retries
+ONCE with a longer timeout and prints which happened: *"retry succeeded — the
+page was slow, not stuck"* is the evidence that it is contention, and a page that
+is genuinely stuck still fails both attempts and dumps its URL, ready state,
+active screen and console errors. **A retry that announces itself is a
+measurement; a silent one is a bug being hidden.** Verified by forcing the first
+attempt to fail with a 1ms timeout.
+
+**MEASURED 2026-10-29: SLOW, NOT STUCK.** A CI failure showed the first reload
+finishing on its own and aborting the retry (`ERR_ABORTED`, "frame was
+detached"), with every later check passing on the reloaded page. The retry now
+waits for the reload already under way before starting another.
+
+**Robots can sign in now** — `table.seatSignedIn(name, { tier, title, isAdmin })`.
+It writes a `profiles` row and injects a session the shim serves from
+`window.__fakeSession`, which is what `initAuth()` reads, so the app cannot tell
+it from a real login.
+
+This mattered because guests are not players. A guest has no tier, no title and
+no stats, and the lobby row overflow that made the whole page draggable
+sideways needed a tier badge to reproduce — so every scenario passed while a
+real signed-in game broke. `scenario-account.mjs` now plays a lobby of
+signed-in players and fails by 55px if that regression returns (verified by
+reintroducing it). Guests remain the default elsewhere: plenty of real players
+never sign in, and both kinds share a lobby.
+
+**When a bug is reported that the robots cannot see, ask what a real account
+has that a robot does not.**
+
+**`store.denyReads(table)` simulates a relation that is not there** — an error
+with code `PGRST205`, not an empty list. The difference is the whole point: an
+unseeded table in the fake store returns `[]` with no error, which is what a
+real *empty* table does, so any code that falls back when a relation is
+missing could never be reached and the fallback shipped untested. This is
+exactly the state `player_stats_computed` was in for months (#8).
+`scenario-account.mjs` uses it to prove the leaderboard falls back to the
+per-category rollups instead of going blank while migration 032 is unapplied.
+
+**THE FAKE STORE NOW RETURNS ONLY THE COLUMNS YOU ASKED FOR**, and until
+2026-08-25 it did not — the shim threw the column list away and handed back
+whole rows. So a query that FORGOT a column behaved exactly like one that did
+not, and that is not a small difference in this codebase: `rowProficiency` and
+`bucketQuestionsByHistory` both FALL BACK to older columns when the newer ones
+are absent, and absent is precisely what a short `select` produces live.
+
+It had already shipped a bug. `fetchCategoryLeaderboard` named a column list
+that omitted `questions_met` and `questions_mastered`, so the fallback fired on
+every row and the category boards ranked by the lifetime hit rate migration 040
+set out to replace — a question missed once and since learned counted against
+you forever. The row label said "N Qs met" while showing attempts. It disagreed
+with the profile and the global board, and nothing could say so, because falling
+back is not an error. It selects `*` now: naming the new columns explicitly
+would be better documentation and worse code, because if 040 were ever unapplied
+PostgREST answers 42703 and the whole board goes blank instead of degrading.
+
+`scenario-account` seeds `questions_met` / `questions_mastered` that DISAGREE
+with the attempt counters (Alice: 96/120 attempts, 30/60 questions) — without
+that the two readings are identical and any check on which measure a page uses
+passes whatever it does. Verified by restoring the old column list: it reports
+"ranking by the lifetime hit rate (80%), not Proficiency (50%)".
+
+Only a plain comma list is honoured; `*`, embedded resources and aliases return
+whole rows rather than being guessed at, because a projection that is wrong in
+the other direction hides bugs just as well.
+
+**Then the same pattern was hunted everywhere else, and found once more.**
+`fetchPublicRooms` omitted `subcategory`, and `join.js` renders each row with
+`resolveCategoryLabel(room.category, room.subcategory)` — so every public game
+advertised itself by CATEGORY alone. A room hosting Ancient History appeared as
+plain "History", and somebody browsing the list could not see what they were
+about to join. `scenario-join` now hosts its public room on a real subcategory,
+which is the only way the label can be exercised at all; hosting on "All" could
+never have shown it. Verified by dropping the column again.
+
+The other narrow selects were traced to their consumers and are sound: the
+admin's online drill uses only the two columns it asks for, and every
+`rowProficiency` caller is fed by `select('*')`. (The global board's deliberate
+`correct_answers` was in this list until 2026-08-26; that board is gone and the
+column list with it.)
+
+**And the same hunt found the same thing again on 2026-08-26**, in the OTHER
+direction: `fetchPublicRooms` selected only `room_id` from `players` when
+counting them, so when the join list started showing the host's reputation there
+was no host id to look one up with. The column list is part of what a screen can
+SAY, not merely part of what a query costs. **A query is only as
+right as what its one consumer reads** — check the consumer, not the query.
+
+**`store.denyWrites(table)` simulates an RLS refusal** — zero rows, no error,
+exactly as Postgres behaves when a policy denies a write. This is the most
+misleading thing the database does and the direct cause of #4 and #5, so it is
+now testable rather than only describable. `scenario-admin.mjs` uses it to prove
+the admin page says "Not saved — permission denied" instead of "Saved!";
+removing the zero-row check makes that test report the silent-failure bug by
+name. Use it on any new write path whose failure the player must notice.
+
+**An RPC the fake store does not implement answers `null` with no error**,
+which is exactly what an installed function returning nothing looks like. So
+`fetchMasteryCounts` never took its fallback, the mastery tree and the Map were
+empty in every scenario, and nothing was wrong with either. `get_mastery_counts`
+is implemented in `store.js` now — one row per (category, subcategory), no
+rollups, because `profile.js` adds each row to BOTH its category total and its
+subcategory and a rollup row would double every category. **Before concluding a
+profile feature is broken in the harness, check whether the RPC behind it is in
+`_rpc`.**
+
+**Writing that scenario produced four "bugs", and three were mine.** Worth
+reading, because each looked completely convincing:
+
+- an empty leaderboard — it reads `player_stats_computed`, a view, not the
+  `player_stats` table the scenario seeded;
+- accepting a friend request doing nothing — `friend_requests.id` is a BIGINT
+  and `profile.js` calls `parseInt` on it, while the fake store handed out a
+  uuid that `parseInt` turned into `NaN`. The store now issues integer ids for
+  integer-PK tables;
+- a signed-in player unable to host — `seatSignedIn` set no display name, so
+  the name modal opened and `ensureDisplayName()` never resolved, stopping
+  `init()` before it fetched anything. An empty grid with no error.
+
+Only the fourth was in the app. **Prove the mechanism before reporting a bug**;
+"the page is empty and there are no console errors" almost always means
+something upstream never resolved.
+
+**Most early failures were the harness misreading the app.** Quit is
+tap-again-to-confirm on one button, not a dialog. The final wager needs an
+amount chosen before it can lock. `.first()` on a multi-selector returns the
+first match in DOM order, usually a hidden button from another screen. Verify
+a failure is real before reporting it as one.
+
+## Development
+
+```bash
+npm install
+npm test                                   # vitest, all unit tests
+npx vitest run tests/module-integrity.test.js   # import-safety check
+node scripts/screenshot.js --state=<name>  # visual review
+node scripts/screenshot.js --all
+node scripts/bump-version.js               # REQUIRED before deploying
+# bump-version derives its tag from the date, so running it twice in one day
+# is a no-op. Pass an explicit suffix (e.g. 20260813b) for a same-day redeploy.
+```
+
+### Deploying
+
+1. `npm test` must pass.
+2. `node scripts/bump-version.js` — **without this the service worker keeps
+   serving the old JS and your change will appear to do nothing.**
+3. Push to `claude/setup-oracle-party-PHRgj`.
+
+### Tests
+
+`tests/module-integrity.test.js` runs `node --check` over every module and
+statically verifies that every project function
+a module calls is actually imported there. This exists because three such bugs
+reached production: a missing `fetchRoom` left the countdown self-heal dead
+(host quitting mid-countdown hung the room forever), and a missing
+`hideHostSettingsGear` made `cleanup()` throw before unsubscribing Realtime
+channels — leaking a full set of subscriptions on every game exit, which
+compounds the longer a session runs. Unit tests could not catch these, because
+a `ReferenceError` inside a function body only fires when that line runs.
+
+The syntax check exists because a stray brace left `phases.js` unparseable and
+`game.html` would not load at all, while 307 tests stayed green — nothing
+imports `phases.js`. Importing each module to catch this does **not** work:
+these files pull the Supabase client from `esm.sh`, and that resolution fails
+first, masking the syntax error behind an unrelated one.
+
+`scripts/check-arity.mjs` fails when a project function is CALLED with fewer
+arguments than it requires. JavaScript does not complain — the missing one is
+simply `undefined` — and that shipped once already: `amendQuestionHistory`
+gained a required `roomId` when migration 041 moved it behind a SECURITY
+DEFINER function, and a call site that forgot it silently stopped correcting
+anybody's history. Nothing else could see it: the unit tests never touch that
+module, and module-integrity only checks that a called name is IMPORTED.
+
+**It reads nothing it cannot read with certainty**, and prints how many calls it
+skipped for that reason (currently 144 of 571). Only exported `function`
+declarations with bracket-free parameter lists, only bare `name(` calls, only
+argument lists with no nested brackets, arrow functions or ternaries — and names
+a file declares locally are excluded, because `question.js` wraps
+`getServerTimeLeft` under an alias and every call to the wrapper otherwise reads
+as passing nothing.
+
+Two rounds of false positives were fixed before it was trusted: blanking string
+literals made `f('a')` read as `f()` (six findings), and local shadowing made
+the wrapper above read as two more. **Verified by reintroducing the original
+bug** — dropping `state.room.id` from the `amendQuestionHistory` call in
+`reveal.js` — which it names by file, line and signature.
+
+`scripts/check-rpc-args.mjs` compares every `.rpc('name', { ... })` against the
+parameter names the migrations declare. **PostgREST resolves a function by its
+ARGUMENT NAMES**, so one typo answers HTTP 404 — indistinguishable from a
+function that was never created — and `functionMissing()` reads that as absent
+and silently takes the fallback. #6 records the probe learning this the hard
+way; this says it before a deploy rather than after. It skips anything it cannot
+read and prints the count. Verified both ways: misnaming `p_answer_id` and
+omitting a defaultless parameter are each reported by file, line and signature.
+
+`tests/migration-policies.test.js` fails on any migration comparing
+`auth.uid()` to `profiles.id` instead of `profiles.user_id` — the mistake that
+made migration 024's admin policy grant nothing while looking installed (#5).
+It is a lint, not a SQL parser: it resolves the alias bound to `profiles` in
+each `FROM` clause and looks only for that alias comparing `.id` to
+`auth.uid()`, which is narrow enough to be provably sound.
+
+**Coverage is thin where it matters most.** Unit tests cover leaf helpers
+(scoring math, fuzzy matching, timer math). The multiplayer engine is largely
+untested. Multi-client behaviour cannot be verified by unit tests at all — it
+needs browsers driven in parallel.
+
+---
+
+## Rules for Claude Code
+
+### Process
+- **Read this entire file before doing anything.**
+- **STOP and ASK before making decisions not covered here.** Do not guess at
+  product intent. The owner is not a coder and prefers being asked over
+  receiving something built on a wrong assumption.
+- **Only change what was asked.** If asked to fix one thing, fix that one thing.
+  Working code calibrated on a real device must not be "improved" on a hunch.
+- **Never give up or suggest reverting.** Diagnose. Add logging. Reproduce.
+  Trace the logic. If one approach fails, try a different one.
+- Commit after each working milestone, with a message explaining *why*.
+- Update this file in the same commit as any architectural change.
+
+### Measuring, not guessing
+- **STOP EYEBALLING. MEASURE.** When something breaks repeatedly, you are
+  guessing. Write code that reports actual values — pixel bounds, element
+  dimensions, font metrics. Hieroglyph descent clipping was solved in five
+  minutes once ink bounds were measured on canvas, after hours of blind tweaks.
+- **Never guess CSS values.** Measure rendered dimensions with Playwright at
+  **both 375px and 430px** before setting any size or position.
+- **Use red overlay debugging** for positioning: render at high opacity in a
+  contrasting colour and screenshot at multiple widths.
+- **Measure both axes.** A fix to vertical clipping can break horizontal.
+- Regex is not a JavaScript parser. If you need to analyse code structure,
+  narrow the problem until a simple check is provably sound.
+
+### Visual review
+
+**`node scripts/layout-sweep.mjs` before any UI change.** It renders every mock
+state at 375px and 430px and reports what an eye misses: elements past the
+viewport, containers that can be dragged sideways, rows in one list that
+disagree about their height, and classes rendered with no CSS rule anywhere.
+`--stress` re-runs it with the longest plausible names and titles, on the
+principle that a layout which only fits its mock data is one real display name
+away from breaking. Both run in CI.
+
+Every state runs in **all three themes**, and reports text below 3:1 contrast
+against what it actually sits on. This project has always required checking
+light, dark and OLED and nothing enforced it — a colour survives on white and
+vanishes on black. It immediately found the tier labels at 2.5:1 (see below),
+the co-host button, the Ready badge and the first-place label.
+
+It exists because the co-host row overflowed by 71px in a live game while every
+existing check passed. Two reasons it got through, both worth remembering:
+
+1. **The robots sign in as nobody.** No tier badge, no title, no stats. The row
+   needed a tier badge to break, so no scenario could ever see it.
+2. **`scripts/mock-states.js` had drifted into fiction.** It rendered
+   `.player-row` and `.chat-row` for the lobby — classes in neither the app nor
+   the stylesheet — so `screenshot.js`, the tool this file tells you to trust,
+   was reviewing unstyled markup that has never shipped. The lobby previewed
+   perfectly because the preview was not a lobby.
+
+**If you change how a screen renders, change its mock in the same commit.** The
+sweep's unstyled-class check is what catches this now, but only if you read it.
+
+Known and deliberate, and reported every run: `.mastery-group`,
+`.mastery-sub-rows`, `.profile-category-group` and `.profile-subcategory-rows`
+are grouping wrappers the JS queries by (`closest`, `querySelector`) and shows
+or hides inline — there is nothing for CSS to say about them.
+`.feedback-btn--flag` has no rule (the flag button falls
+back to the shared `.feedback-btn` look), **`.admin-q-edit__text`** and
+**`.qh-status`** are JS query hooks on elements already styled by `.input` or
+carrying their colour inline (there were seven of the first family until the
+desktop Question Bank started placing the others by name), and
+`watermark-all` is excluded
+— it is a glyph-calibration state whose cards differ by design.
+
+**`overflow-x: hidden` IS A SEATBELT, NOT A FIX, and this script accepted it as
+one.** The profile page shipped 571px wide inside a 375px phone — text cut off
+on both sides, nothing to scroll to — and the sweep called it clean twice. A
+real phone found it.
+
+Two faults stacked:
+
+- The suppression treated **any** ancestor with `overflow-x` of `hidden`,
+  `clip`, `auto` or `scroll` as making overflow acceptable. A container with
+  `overflow-y: auto` computes `overflow-x: auto` per CSS, so **every
+  `screen--scrollable` page in the app was exempt from overflow reporting
+  entirely.** Only `hidden` and `clip` suppress now: being able to drag the
+  page sideways is the exact fault this script was written for, so a scrollable
+  ancestor is not an excuse.
+- Even then, clipping is only a reasonable backstop for something NARROWER
+  than the viewport that hangs over an edge — a decorative glyph. Anything
+  **wider than the viewport** cannot be read in full at any scroll position, so
+  it is now reported whether clipped or not.
+
+The cause was mine and worth knowing: `grid-template-columns: repeat(2, 1fr)`.
+`1fr` is `minmax(auto, 1fr)`, so a column cannot shrink below its content's
+min-content width — and a `white-space: nowrap` rank line forced each column to
+~250px and the whole profile column past the phone. **Every fixed-count grid in
+the stylesheet is `minmax(0, 1fr)` now**, which is the structural fix; use that
+form for any new one.
+
+**COVERED is reported, never failed on.** It asks the browser, via
+`elementFromPoint`, whether tapping the middle of a control would actually hit
+it — the one fault class every other check is blind to, because they all
+measure one element at a time. It exists because a Privacy link added to the
+home screen landed exactly on the dock's three buttons and passed everything:
+no overflow, no low contrast, no sideways scroll. A screenshot showed it in a
+second. Three versions were needed to get the noise down (rectangle
+intersection: 123 findings, nearly all legitimate; hit-testing: 48, mostly
+controls behind an open sheet; hit-testing ignoring covering elements larger
+than half the viewport: 8, all explicable). At 8 it needs a human to judge, so
+it is informational — a check that fails the build on legitimate layout is one
+people stop reading.
+
+**`admin.html`, `profile.html` and `privacy.html` had no mocks until
+2026-08-19**, so the sweep had never rendered them. Adding the first one
+immediately found `.page-header__back` with no CSS rule anywhere: the back
+arrow on Profile and Leaderboard had shipped as a bare browser button, no
+colour, no padding, no minimum tap target. **A page with no mock is a page
+nobody is checking.**
+
+It happened again on 2026-08-21. The first mock of the admin flagged queue
+(`admin-panels`) found `.admin-flag-row__answer` and `.admin-flag-row__reasons`
+with no rule at all — three items in a non-wrapping flex row, one of which is
+every distinct reason anybody gave, comma-joined. It fitted the two short
+strings a mock would have used and nothing longer. **The section had shipped
+months earlier.**
+
+**And a third time on 2026-08-25: `leaderboard.html` had no mock either.** (Its
+two mocks were replaced on 2026-08-26 when the board became friends-only —
+`leaderboard-mastered` and `leaderboard-proficiency`, because the two measures
+render different stats in the same slots.) Two
+were added (`leaderboard-global`, `leaderboard-category`) and the first sweep
+reported the first-place rank at **2.22:1 on the light theme** — the number "1"
+in medal gold `#d4a017`, effectively invisible against `#F8F7F4`. It measured
+7.18 on dark and 8.84 on OLED, which is why nobody looking at a phone at night
+would ever have seen it.
+
+The three medal colours are CSS variables now, with light values chosen by
+measurement (`#8a6508` / `#6b6b6b` / `#8a5a33`, at 4.97 / 4.97 / 5.46) and the
+originals kept under `[data-theme="dark"]` and `[data-theme="oled"]`. **Same
+lesson as the tier badges: a colour cannot answer to three palettes from one
+value.** The page has been live since the leaderboard existed.
+
+- **Always screenshot before pushing UI changes**, then read the screenshot and
+  assess it honestly.
+- **Zoom in.** Overview thumbnails hide clipping and misalignment.
+- **Test at real dimensions** — same grid, same padding, no `min-height`
+  overrides to "see more detail". Testing at fake dimensions and declaring
+  success is the single most costly recurring mistake in this project.
+- Check light, dark and OLED themes for any visual change.
+
+### Gameplay
+- Never show internal state markers (e.g. `__WAGER_LOCKED__`) to players.
+- Fully reset game state when returning to the lobby via Play Again.
+- Scores must never go negative on regular rounds — only the final wager.
+- Clear all previous round data before rendering a new question.
+- When fixing a bug, check whether the same pattern exists elsewhere.
+
+### Content
+- Date questions should ask for the **year** only, unless the exact date is
+  famous (1776, 9/11).
+- Number questions should accept ranges or rounded values — never demand exact
+  figures for obscure stats.
+- Flag any imported question that expects an exact date or a very specific
+  number.
+
+### Known cul-de-sacs
+- **Do not attempt to make a hieroglyph precisely encircle the emoji bubble.**
+  This failed after 20+ iterations; Chromium and Safari render the font at
+  different proportions. Keep hieroglyphs as simple centred watermarks.
+- `cqi` units are relative to the **content box**, excluding padding. Account
+  for padding, or use `transform: translateY(-N%)` which scales universally.
+- Use the live glyph tuner (`host.html?tune=𓂀`) for cross-browser calibration
+  when Chromium screenshots can't be trusted.
+- Do not change working glyphs to fix one broken glyph.
