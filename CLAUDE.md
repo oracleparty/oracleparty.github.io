@@ -71,7 +71,7 @@ them. Supabase cannot wake itself, so a phone always initiates.
 | round clock, timed phase changes | `op_start_clock`, `op_advance_phase`, `op_round_seconds` |
 | pressed phase changes | `op_set_phase`, `op_reveal_final_question` |
 | host verdicts | `op_set_judgement`, `op_disqualify_round`, `op_undisqualify_round` |
-| seats, roles, removal, bans | `op_leave_room`, `op_remove_player`, `op_set_host_role`, `op_is_banned` |
+| seats, roles, removal, bans | `op_leave_room`, `op_remove_player`, `op_kick_player`, `op_set_host_role`, `op_is_banned` |
 | rooms | `op_sweep_rooms`, `op_reset_answers`, `op_admin_end_room` |
 | history, ratings, claps, bots | `record_round_history`, `op_rate_host`, `op_clap_answer`, `op_bot_answer` |
 
@@ -190,7 +190,7 @@ node tests/harness/scenario-<name>.mjs      # robot playtests (list: tests/harne
 
 - **Robots** drive real browsers against an in-memory fake Supabase
   (`tests/harness/store.js`); nothing reaches production. CI: `ci.yml`,
-  `robots.yml` (two jobs), `db-probe.yml`.
+  `robots.yml` (three jobs: game, accounts-and-network, stress), `db-probe.yml`.
 - **The harness lies in the direction of permissiveness.** It cannot see
   schema drift, iOS Safari, a keyboard, or real latency. Knobs that make it
   honest: `robot.slowConnection(ms)` (one phone on a bad link; use whenever
@@ -228,8 +228,10 @@ node tests/harness/scenario-<name>.mjs      # robot playtests (list: tests/harne
 - **Measure, never eyeball.** Playwright at 320, 375 and 430 wide, real
   dimensions, all three themes (light, dark, OLED). Zoom in on screenshots.
 - **The owner's iPhone uses Display Zoom: 320px wide, ~523px visible.**
-- **Root font-size is 20px**, so `1rem` is 20px. Text scale token is
-  `--text-base` (`--text-md` does not exist; an undefined variable fails silently).
+- **Root font-size is `clamp(14px, 4.2667vw, 20px)`**: 14px at 320 wide, 16px
+  at 375, about 18px at 430, 20px on the desktop admin page. So `1rem` is never
+  a fixed number; measure the computed size. Text scale token is `--text-base`
+  (`--text-md` does not exist; an undefined variable fails silently).
 - Use `dvh`, not `vh`; a fixed element sits in a viewport the person may not
   see. Short-screen rules are `@container gamescreen`, not `@media (max-height)`.
 - Fixed-count grids are `repeat(N, minmax(0, 1fr))`. A flex child shrinks only
@@ -341,6 +343,12 @@ lists are in `docs/HISTORY.md`.
 answer"), `[SeatSwept]` / `[ResultsMissing]`, `[SlowRequest]` / `[SlowSubmit]`,
 "Script error." context. Also: the lobby honk with no tap, why the database
 ran slow on 2026-10-29, and supabase-js is unpinned (`@2`).
+
+## Saved commands
+
+`.claude/skills/` holds the project's routines; use them instead of
+re-deriving the steps: `/deploy`, `/sql-handover`, `/playtest-triage`,
+`/word-ladder`.
 
 ## Where things are
 
