@@ -6,6 +6,7 @@
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS, FINAL_WAGER_TIMER_SECONDS, FINAL_QUESTION_SWAP_TIMEOUT_MS } from '../constants.js';
+import { isDraftRoom, draftPlan } from '../draft-logic.js';
 import {
   supabase,
   updateGameState,
@@ -1042,7 +1043,8 @@ export async function handleRevealFinalQuestion() {
   // difficulty match and never the round.
   const usedIds = state.questions.map(q => q.id);
   const swap = fetchQuestionByDifficulty(
-    state.room.category, winner, usedIds, state.room.subcategory || null
+    state.room.category, winner, usedIds, state.room.subcategory || null,
+    isDraftRoom(state.room) ? draftPlan(state.players, state.totalQuestions).banned : []
   ).catch(() => null);
 
   // Broadcast the slot-machine reveal to all clients via the existing vote

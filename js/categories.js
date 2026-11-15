@@ -3,6 +3,8 @@
 // Single source of truth for all category/subcategory definitions
 // ============================================
 
+import { DRAFT_KEY, DRAFT_ICON, DRAFT_LABEL } from './draft-logic.js';
+
 export const CATEGORY_META = {
   // Hieroglyph key: Gardiner sign list reference
   // Top-level icons chosen for visual impact + thematic accuracy
@@ -122,6 +124,8 @@ export function resolveCategoryLabel(category, subcategoryKey) {
   const meta = CATEGORY_META[category];
   if (!meta) return category;
   if (!subcategoryKey) return meta.label;
+  // Draft is stored as a Wild Card option but is its own thing to a player.
+  if (subcategoryKey === DRAFT_KEY) return DRAFT_LABEL;
 
   // Wild-card special options
   if (meta.wildCardOptions) {
@@ -182,6 +186,7 @@ export function resolveSubcategoryIcon(category, subcategoryKey) {
   const meta = CATEGORY_META[category];
   if (!meta) return '?';
   if (!subcategoryKey) return meta.emoji || meta.icon;
+  if (subcategoryKey === DRAFT_KEY) return DRAFT_ICON;
   // Wild-card special options
   if (meta.wildCardOptions) {
     const opt = meta.wildCardOptions.find(o => o.key === subcategoryKey);

@@ -737,6 +737,84 @@ export const STATES = {
   // ==========================================
   // GAME.HTML — Question
   // ==========================================
+  // Category draft, host side: the Draft row above the category grid. The JS
+  // un-hides it once the database has somewhere to save a move (082).
+  'category-grid-draft': {
+    page: 'host',
+    screen: 'category-screen',
+    inherits: 'category-grid',
+    inject: () => {
+      document.getElementById('btn-draft')?.classList.remove('hidden');
+    },
+  },
+
+  // Category draft, lobby: everyone's moves as chips and this player's own.
+  // Markup mirrors renderDraft() in js/lobby.js — change both together.
+  'lobby-draft': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const face = (n, hue) => `<div class="avatar avatar--guest draft-face" style="background:hsl(${hue},45%,45%);">${n}</div>`;
+      const chip = (kind, emoji, title, faces, state) => `<span class="draft-chip draft-chip--${kind}" title="${title}">
+        <span class="draft-chip__emoji" aria-hidden="true">${emoji}</span>
+        <span class="draft-chip__faces">${faces}</span>
+        <span class="draft-chip__state">${state}</span></span>`;
+      document.getElementById('lobby-category-icon').textContent = '🗳️';
+      document.getElementById('lobby-category').textContent = 'Draft';
+      document.getElementById('draft-bar').classList.remove('hidden');
+      document.getElementById('draft-chips').innerHTML =
+        chip('ban', '⏳', 'History', face('D', 280), 'out') +
+        chip('want', '⚗️', 'Science', face('A', 10) + face('Q', 150), '+4') +
+        chip('even', '⚽', 'Sports', face('B', 210) + face('C', 130), 'even');
+      const btn = document.getElementById('btn-draft-move');
+      btn.textContent = '👍 ⚗️ Science';
+      btn.classList.add('draft-bar__btn--made');
+    },
+  },
+
+  // The same lobby before anybody has moved: the empty line and the gold button.
+  'lobby-draft-empty': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      document.getElementById('lobby-category-icon').textContent = '🗳️';
+      document.getElementById('lobby-category').textContent = 'Draft';
+      document.getElementById('draft-bar').classList.remove('hidden');
+      document.getElementById('draft-chips').innerHTML =
+        '<span class="draft-chips__empty">No moves yet. Want a category or ban one.</span>';
+    },
+  },
+
+  // The move sheet, with a category chosen. Mirrors renderDraftSheet().
+  'lobby-draft-sheet': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-draft',
+    inject: () => {
+      const face = (n, hue) => `<div class="avatar avatar--guest draft-face" style="background:hsl(${hue},45%,45%);">${n}</div>`;
+      const tiles = [
+        ['history', '⏳', 'History', 'ban', face('D', 280)], ['science', '⚗️', 'Science', 'want', face('A', 10) + face('Q', 150)],
+        ['nature', '🌿', 'Nature'], ['arts-literature', '📜', 'Arts & Lit'], ['culture-society', '🏛️', 'Culture'],
+        ['pop-culture', '🎬', 'Pop Culture'], ['world-geography', '🌍', 'Geography'], ['technology', '💻', 'Tech'],
+        ['sports', '⚽', 'Sports', 'even', face('B', 210) + face('C', 130)], ['food', '🍕', 'Food', null, '', true], ['logic', '🧩', 'Logic'],
+      ];
+      document.getElementById('draft-sheet-hint').textContent =
+        'One move each. Want: +2 questions. Ban: none.';
+      document.getElementById('draft-tiles').innerHTML = tiles.map(([key, emoji, label, status, faces, selected]) =>
+        `<button type="button" class="draft-tile${status ? ' draft-tile--' + status : ''}${selected ? ' draft-tile--selected' : ''}" data-draft-category="${key}">
+          <span class="draft-tile__emoji" aria-hidden="true">${emoji}</span>
+          <span class="draft-tile__label">${label}</span>
+          <span class="draft-tile__faces">${faces || ''}</span></button>`).join('');
+      document.getElementById('draft-actions').innerHTML = `
+        <button type="button" class="draft-act draft-act--want" data-draft-kind="want">👍 Want Food</button>
+        <button type="button" class="draft-act draft-act--ban" data-draft-kind="ban">🚫 Ban Food</button>
+        <button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear my move</button>`;
+      document.getElementById('draft-sheet').classList.add('active');
+    },
+  },
+
   'question-fresh': {
     page: 'game',
     screen: 'question-screen',

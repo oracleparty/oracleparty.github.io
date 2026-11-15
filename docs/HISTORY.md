@@ -1,5 +1,62 @@
 > **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
 
+> ## 2026-11-15 — the handover was rewritten; Category draft built (migration 082); Bluff round designed
+>
+> **The handover.** `CLAUDE.md` had reached 10,031 lines and every session read
+> all of it. It is now a ~380-line guide and this file is the record. The
+> rewrite was checked against the code: all 163 names it mentions exist; three
+> facts copied from this file were WRONG and are corrected there: the root
+> font-size is `clamp(14px, 4.2667vw, 20px)` (14px at 320 wide, not a fixed
+> 20px; the "20px" entry below was measured on the 1280px admin page), kicking
+> is `op_kick_player`, and `robots.yml` has three jobs. `.claude/skills/` holds
+> four routines: deploy, sql-handover, playtest-triage, word-ladder.
+>
+> **Category draft, the owner's design by interview.** Host picks a Draft row
+> on Choose Category. One move each in the lobby (want or ban; the owner cut
+> "one of each" to one move), live and public, cancel-out on conflict, a card
+> not a switch. Rules in `js/draft-logic.js` (16 unit tests). A Draft room is
+> `wild-card` + subcategory `__draft__`, so `rooms` needed nothing; the move
+> is `players.draft_move` (082: column, shape CHECK, column GRANT, because 058
+> grants players columns by name). `fetchDraftQuestions` builds the game from
+> the existing smart fetchers; the final-question swap skips banned subjects.
+> The question and reveal headers name the question's own subject, and
+> "· Alice's pick" on a wanted one.
+>
+> **Proven how.** `scenario-categorydraft` (in CI) drives three phones through
+> the real pages. Break-tested on copies, each failing by name: ban filter off
+> (*"History was banned and the game holds 2 history question(s)"*), guaranteed
+> slices ignored, the cancel rule off, and a refused move not taken back.
+> **That last check passed with the fix removed, twice**, before it was right:
+> a zero-row refusal re-reads the players and repairs the screen anyway, and a
+> later look is repaired by the seat's own heartbeat. It now fails the write
+> with a CHECK error and reads the screen the instant the toast appears. **The
+> fake store only applied simulated CHECKs to INSERTs; it applies them to
+> UPDATEs now.** SQL: 7 rules (323 total); replacing the CHECK with `true`
+> fails two by name. Layout sweep clean on four new mock states (320 to 430,
+> three themes); the move sheet first ran 90px past a 320x523 screen and was
+> tightened until the whole move fits without scrolling.
+>
+> **NOT established:** nothing here has run on a real phone or the live
+> database. 082 is NOT APPLIED as of this entry; until it is, `draftAvailable()`
+> hides the Draft row. The "082 missing" state is inspection-verified only: the
+> fake store accepts any column, so no scenario can hide one.
+>
+> **The same rule was in two places again:** the lobby builds its short
+> category label in `updateCategoryDisplay` AND `renderSettingsCategories`.
+> Both learned about Draft; a single helper would be better.
+>
+> **Bluff round, designed and not built** (owner's answers, in order): a host
+> switch; once, mid-game; a wager on the truth, placed while hunting; fooling
+> a friend pays THEIR bet (the owner asked "should it just be their bet?";
+> a floor of 2 was offered and left for after a real game); house lies from
+> the question's stored wrong answers top the list up to 4. Mock-ups of both
+> features were sent six at a time and the owner found them useless, possibly
+> for the volume. **Show one screen at a time.**
+>
+> **Ideas pitched and not taken up** (do not re-pitch as new): prophecies
+> (interested, unconvinced), friends round, rivalries, recap card, daily
+> solo game, TV mode.
+
 # Oracle Party
 
 > ## STATE OF PLAY — 2026-08-30, written as a handover

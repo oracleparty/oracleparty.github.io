@@ -3,7 +3,7 @@
 // Answer reveal, judgment overrides, feedback UI, honks.
 // ============================================
 
-import { state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
+import { state, canControlGame, canJudge, currentGameAnswers, isPlayerAway, getCategoryLabel, getQuestionCategoryLabel, getQuestionText, getCorrectAnswer, getFunFact,
          showScreen,
          _screenTransitioning, setScreenTransitioning,
          _flagMenuCloseHandler, setFlagMenuCloseHandler,
@@ -67,7 +67,7 @@ export async function showRevealScreen() {
   const q = state.questions[state.currentQuestion];
   if (!q) return;
 
-  $('#reveal-category').textContent = getCategoryLabel();
+  $('#reveal-category').textContent = getQuestionCategoryLabel(state.questions[state.currentQuestion]);
   $('#reveal-progress').textContent = state.isFinalWagerRound
     ? 'Final Question'
     : `Question ${state.currentQuestion + 1} of ${state.totalQuestions}`;

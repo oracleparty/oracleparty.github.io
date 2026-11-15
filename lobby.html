@@ -85,6 +85,15 @@
           </div>
         </div>
 
+        <!-- Category draft (only in a Draft room): everyone's move, and yours -->
+        <div id="draft-bar" class="draft-bar hidden">
+          <div class="draft-bar__row">
+            <span class="draft-bar__title"><span aria-hidden="true">🗳️</span> Draft</span>
+            <button id="btn-draft-move" class="draft-bar__btn" type="button">Make your move</button>
+          </div>
+          <div id="draft-chips" class="draft-chips"></div>
+        </div>
+
         <!-- Host / Co-hosts -->
         <div class="lobby-hosts">
           <div class="section-title">Host</div>
@@ -221,6 +230,18 @@
       <p id="removed-body" style="font-size: var(--text-sm); color: var(--color-text-dim); margin-bottom: var(--space-lg);"></p>
       <button class="btn btn-primary btn-block" id="removed-rejoin">Rejoin</button>
       <button class="btn btn-secondary btn-block" id="removed-leave" style="margin-top: var(--space-sm);">Leave</button>
+    </div>
+  </div>
+
+  <!-- Category draft: choose a category, then want it or ban it -->
+  <div id="draft-sheet" class="bottom-sheet">
+    <div class="bottom-sheet__backdrop"></div>
+    <div class="bottom-sheet__panel draft-sheet">
+      <div class="bottom-sheet__handle"></div>
+      <div class="bottom-sheet__title">Shape tonight's game</div>
+      <p id="draft-sheet-hint" class="draft-sheet__hint"></p>
+      <div id="draft-tiles" class="draft-tiles"></div>
+      <div id="draft-actions" class="draft-actions"></div>
     </div>
   </div>
 

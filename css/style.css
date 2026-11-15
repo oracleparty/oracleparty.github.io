@@ -9398,3 +9398,169 @@ body.kb-open #question-screen .question-card {
    overhang the row's own height instead, keeping their full tap size. */
 .game-progress .host-settings-gear,
 .game-progress .honk-sound-toggle--header { margin-block: -5px; }
+
+/* ============================================
+   Category draft
+   Host: one row above the category grid. Lobby: a bar of everyone's moves and
+   a sheet to make yours. State is never colour alone: a want shows "+N", a ban
+   shows "out" (and strikes the label), a cancelled pair shows "even".
+   ============================================ */
+.draft-entry {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-surface-light);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.draft-entry:active { background: var(--color-primary-glow); }
+.draft-entry__icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; }
+.draft-entry__text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.draft-entry__title { font-family: var(--font-heading); font-size: var(--text-base); font-weight: 700; }
+.draft-entry__hint { font-size: var(--text-xs); color: var(--color-text-muted); }
+.draft-entry__chev { color: var(--color-text-muted); font-size: var(--text-xl); flex-shrink: 0; }
+
+.draft-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-surface-light);
+  border-radius: var(--radius-lg);
+}
+.draft-bar__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+.draft-bar__title { font-family: var(--font-heading); font-size: var(--text-sm); font-weight: 700; color: var(--color-text); }
+.draft-bar__btn {
+  min-height: 36px;
+  max-width: 62%;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #FFFFFF;
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+[data-theme="dark"] .draft-bar__btn,
+[data-theme="oled"] .draft-bar__btn { color: #1C1917; }
+.draft-bar .draft-bar__btn--made {
+  background: transparent;
+  border-color: var(--color-surface-light);
+  color: var(--color-text);
+}
+.draft-chips { display: flex; flex-wrap: wrap; gap: 6px; cursor: pointer; }
+.draft-chips__empty { font-size: var(--text-xs); color: var(--color-text-muted); }
+.draft-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 6px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--color-surface-light);
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text);
+}
+.draft-chip__faces, .draft-tile__faces { display: inline-flex; align-items: center; }
+.avatar.draft-face {
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+  border: 1.5px solid var(--color-surface);
+  box-sizing: content-box;
+}
+.avatar.draft-face + .avatar.draft-face { margin-left: -5px; }
+.draft-chip--want { border-color: var(--color-success); }
+.draft-chip--ban { border-color: var(--color-danger); }
+.draft-chip--want .draft-chip__state { color: var(--color-success); }
+.draft-chip--ban .draft-chip__state { color: var(--color-danger); }
+.draft-chip--even .draft-chip__state { color: var(--color-text-muted); }
+
+/* Taller than the other sheets and tighter inside: at 320x523 the whole
+   move (11 categories and both buttons) has to be on screen without a scroll. */
+.bottom-sheet__panel.draft-sheet {
+  max-height: calc(92dvh - env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+}
+.draft-sheet .bottom-sheet__handle { margin-bottom: var(--space-sm); }
+.draft-sheet .bottom-sheet__title { margin-bottom: 2px; }
+.draft-sheet__hint {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+.draft-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.draft-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-height: 58px;
+  padding: 5px 2px 3px;
+  background: var(--color-bg-deep);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.draft-tile__emoji { font-size: 1.15rem; line-height: 1.15; }
+.draft-tile__label { font-family: var(--font-heading); font-size: var(--text-2xs); font-weight: 600; line-height: 1.15; text-align: center; }
+.draft-tile__faces { min-height: 19px; margin-top: auto; }
+.draft-chip__emoji { line-height: 1; }
+.draft-tile .avatar.draft-face { border-color: var(--color-bg-deep); }
+.draft-tile--want { border-color: var(--color-success); }
+.draft-tile--ban { border-color: var(--color-danger); }
+.draft-tile--ban .draft-tile__label { text-decoration: line-through; color: var(--color-text-muted); }
+.draft-tile--even { border-color: var(--color-surface-light); }
+.draft-tile--selected { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+.draft-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-sm); margin-top: var(--space-sm); min-height: 44px; }
+.draft-actions__prompt { width: 100%; margin: 0; align-self: center; text-align: center; font-size: var(--text-sm); color: var(--color-text-muted); }
+.draft-act {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-surface-light);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+.draft-act--want { border-color: var(--color-success); }
+.draft-act--ban { border-color: var(--color-danger); }
+.draft-act--on.draft-act--want { background: var(--color-success); color: #FFFFFF; }
+.draft-act--on.draft-act--ban { background: var(--color-danger); color: #FFFFFF; }
+.draft-act--clear { flex: 1 1 100%; min-height: 32px; font-size: var(--text-xs); border-color: transparent; color: var(--color-text-muted); font-weight: 500; }
+
+/* In a drafted game the header names the question's own subject and whose
+   pick it was; keep it to one line whatever the names are. */
+.game-progress__category--draft {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

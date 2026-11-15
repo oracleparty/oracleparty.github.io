@@ -1053,7 +1053,10 @@ const REQUIRED = {
   // every schema-drift bug in CLAUDE.md #3.
   players: ['id', 'room_id', 'display_name', 'is_host', 'is_cohost', 'score',
             'last_seen_at', 'disconnected_at', 'joined_at', 'user_id',
-            'avatar_color', 'avatar_emoji', 'title', 'is_ready', 'is_bot', 'score'],
+            'avatar_color', 'avatar_emoji', 'title', 'is_ready', 'is_bot', 'score',
+            // Migration 082 — Category draft. Missing reads as a missing feature,
+            // not a fault: draftAvailable() hides Draft from the host.
+            'draft_move'],
   rooms:   ['id', 'code', 'host_name', 'category', 'subcategory', 'status', 'used_question_ids',
             'game_phase', 'current_question', 'question_ids', 'question_started_at',
             'countdown_started_at', 'questions_per_game', 'question_timer',

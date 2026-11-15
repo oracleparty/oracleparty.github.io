@@ -110,7 +110,9 @@ export class FakeStore {
     // through _execute — the same way definer rights are modelled everywhere
     // else in this file, structurally rather than by a flag.
     this._columnGrants = new Map([
-      ['players', new Set(['last_seen_at', 'disconnected_at', 'is_ready'])],
+      ['players', new Set(['last_seen_at', 'disconnected_at', 'is_ready',
+        'draft_move',   // migration 082
+      ])],
       ['rooms', new Set([
         'question_ids', 'used_question_ids',
         'question_started_at', 'countdown_started_at',
@@ -819,6 +821,20 @@ export class FakeStore {
 
       if (action === 'update') {
         const targets = this._applyFilters(rows, filters);
+        // A CHECK constraint guards an UPDATE as well as an INSERT, and the
+        // whole statement fails on the first row that would break it. Until
+        // 2026-11-15 only inserts were checked here, so no scenario could make
+        // an update fail with an error (as opposed to matching nothing).
+        const updateChecks = this._checks.get(table) || [];
+        for (const row of targets) {
+          const failed = updateChecks.find(c => !c.predicate({ ...row, ...payload }));
+          if (failed) {
+            return { data: null, error: {
+              code: '23514',
+              message: `new row for relation "${table}" violates check constraint "${failed.name}"`,
+            } };
+          }
+        }
         const updated = [];
         for (const row of targets) {
           const before = { ...row };

@@ -615,6 +615,46 @@ export async function toggleReady(playerId, isReady) {
   return { error: null };
 }
 
+/**
+ * Does the live `players` table have the draft column yet (migration 082)?
+ *
+ * Asked once per page and cached, the same way as chaosAvailable(). Draft is
+ * offered only on a yes: a mode whose moves cannot be saved is a dead control.
+ * A failed read answers no, which hides it.
+ */
+let _draftAvailable = null;
+export function draftAvailable() {
+  if (!_draftAvailable) {
+    _draftAvailable = supabase.from('players').select('draft_move').limit(1)
+      .then(({ error }) => !error)
+      .catch(() => false);
+  }
+  return _draftAvailable;
+}
+
+/**
+ * Save this seat's draft move ("want:science", "ban:history") or clear it
+ * (null). Reports three answers, like toggleReady: ok, a real error (already
+ * shown to the player), or `missing` when the seat is not in the room.
+ */
+export async function setDraftMove(playerId, move) {
+  const { data, error } = await supabase
+    .from('players')
+    .update({ draft_move: move })
+    .eq('id', playerId)
+    .select('id');
+
+  if (error) {
+    reportWriteFailure('Draft move', error, "Couldn't save your draft move");
+    return { error };
+  }
+  if (!data || data.length === 0) {
+    logger.warn('Supabase', 'setDraftMove matched no row — this seat is not in the room', { playerId });
+    return { error: null, missing: true };
+  }
+  return { error: null };
+}
+
 // ============================================
 // Realtime Subscriptions
 // ============================================

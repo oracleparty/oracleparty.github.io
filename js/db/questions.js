@@ -6,6 +6,7 @@ import { supabase } from './client.js';
 import { logger, reportWriteFailure, writeSucceeded } from '../logger.js';
 import { CATEGORY_PAGE_SIZE, QUESTION_POOL_SIZE, WILDCARD_LIMIT, DIFFICULTY_QUESTION_LIMIT, TITLE_BATCH_SIZE } from '../constants.js';
 import { bucketQuestionsByHistory } from '../question-selection.js';
+import { DRAFT_KEY, inBannedCategory } from '../draft-logic.js';
 
 /**
  * Fetch distinct categories from the questions table with counts.
@@ -327,6 +328,66 @@ export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserId
 }
 
 /**
+ * Build a drafted game (see js/draft-logic.js for the rules).
+ *
+ * `plan` is draftPlan()'s answer: featured categories with a guaranteed count
+ * each, and banned categories. Returns `limit` questions; the LAST one is the
+ * final-wager question and always comes from the random mix, so a pick is
+ * never spent on the round whose question is swapped by the difficulty vote.
+ *
+ * Each featured slice goes through fetchQuestionsByCategory and the rest
+ * through fetchAllOpenQuestions, so drafted games get the same "what has this
+ * room already met" selection as every other game.
+ */
+export async function fetchDraftQuestions(plan, limit, excludeIds = [], playerUserIds = []) {
+  const banned = plan?.banned || [];
+  const featured = plan?.featured || [];
+  const regular = Math.max(0, limit - 1);
+  const allowed = q => q && !inBannedCategory(q, banned);
+
+  // Over-ask a little everywhere: a question filed under two categories can be
+  // dropped as banned, or claimed by another slice.
+  const [mix, ...slices] = await Promise.all([
+    fetchAllOpenQuestions(limit * 3 + 10, excludeIds, playerUserIds),
+    ...featured.map(f => fetchQuestionsByCategory(f.category, f.count + 4, excludeIds, playerUserIds))
+  ]);
+
+  const taken = new Set();
+  const picked = [];
+  featured.forEach((f, i) => {
+    let got = 0;
+    for (const q of slices[i] || []) {
+      if (got >= f.count || picked.length >= regular) break;
+      if (taken.has(q.id) || !allowed(q)) continue;
+      picked.push(q); taken.add(q.id); got++;
+    }
+    if (got < f.count) logger.warn('Supabase', `Draft: only ${got} of ${f.count} questions found for ${f.category}`);
+  });
+
+  const rest = [];
+  for (const q of mix || []) {
+    if (picked.length + rest.length >= limit) break;
+    if (taken.has(q.id) || !allowed(q)) continue;
+    rest.push(q); taken.add(q.id);
+  }
+  // Last resort, so a game is never short: anything not already chosen. A
+  // banned subject can only appear here, and only if the bank ran dry.
+  if (picked.length + rest.length < limit) {
+    logger.warn('Supabase', 'Draft: not enough unbanned questions, topping up from the whole mix');
+    for (const q of mix || []) {
+      if (picked.length + rest.length >= limit) break;
+      if (taken.has(q.id)) continue;
+      rest.push(q); taken.add(q.id);
+    }
+  }
+  if (rest.length === 0) return _shuffle(picked);
+
+  // Picks are spread through the game, not played in a block.
+  const finalQuestion = rest.pop();
+  return [..._shuffle([...picked, ...rest]), finalQuestion];
+}
+
+/**
  * Fetch questions that are EXCLUSIVELY in wild-card (no other categories).
  * These are the ~19 weird, uncategorizable questions.
  */
@@ -410,10 +471,10 @@ export async function fetchQuestionHistoryForUsers(userIds) {
  * Used for the final question after difficulty vote.
  * Excludes any questionIds already used in this game.
  */
-export async function fetchQuestionByDifficulty(category, difficulty, excludeIds = [], subcategory = null) {
+export async function fetchQuestionByDifficulty(category, difficulty, excludeIds = [], subcategory = null, bannedCategories = []) {
   let query;
 
-  if (subcategory === '__all_questions__') {
+  if (subcategory === '__all_questions__' || subcategory === DRAFT_KEY) {
     // All Questions wild-card: any category, just match difficulty
     query = supabase.from('questions').select('*')
       .eq('format', 'open')
@@ -445,6 +506,12 @@ export async function fetchQuestionByDifficulty(category, difficulty, excludeIds
   // True Wild Card: filter client-side to exclusively wild-card
   if (subcategory === '__true_wild_card__') {
     data = data.filter(q => Array.isArray(q.categories) && q.categories.length === 1);
+    if (data.length === 0) return null;
+  }
+
+  // A drafted game never swaps in a question from a subject the room banned.
+  if (subcategory === DRAFT_KEY && bannedCategories.length > 0) {
+    data = data.filter(q => !inBannedCategory(q, bannedCategories));
     if (data.length === 0) return null;
   }
 

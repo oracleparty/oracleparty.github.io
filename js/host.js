@@ -4,7 +4,8 @@
 // ============================================
 
 import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
-import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount, chaosAvailable } from './supabase.js';
+import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount, chaosAvailable, draftAvailable } from './supabase.js';
+import { DRAFT_KEY } from './draft-logic.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
@@ -145,6 +146,11 @@ async function init() {
   // Listeners go on NOW. They used to wait for every read below, so a card
   // tapped while the page was still loading did nothing at all.
   attachListeners();
+  // Draft needs migration 082 (a place to save each player's move); until
+  // then it is not offered.
+  draftAvailable().then(ok => {
+    if (ok) $('#btn-draft')?.classList.remove('hidden');
+  });
   // Chaos mode needs migration 075; until then the switch is not offered.
   chaosAvailable().then(ok => {
     if (ok) $$('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
@@ -548,6 +554,15 @@ function attachListeners() {
     renderCategories(filtered, categoryPlayCounts);
   });
 
+  // Draft: the players choose the subjects in the lobby. Stored as a Wild
+  // Card option, so the room needs nothing new.
+  $('#btn-draft')?.addEventListener('click', () => {
+    selectedCategory = categories.find(c => c.name === 'wild-card') || { name: 'wild-card', count: null };
+    selectedSubcategory = DRAFT_KEY;
+    navStack = [];
+    showSettings(selectedCategory);
+  });
+
   // Category card selection (event delegation)
   categoryGrid.addEventListener('click', (e) => {
     const card = e.target.closest('.category-card');
@@ -690,7 +705,9 @@ async function _updateSettingsBadge(cat) {
 
   // Show subcategory count if selected, otherwise parent count
   const countEl = $('.selected-category__count');
-  if (selectedSubcategory === '__all_questions__') {
+  if (selectedSubcategory === DRAFT_KEY) {
+    countEl.textContent = 'Players choose in the lobby';
+  } else if (selectedSubcategory === '__all_questions__') {
     countEl.textContent = '';
     const allCount = await fetchAllOpenQuestionCount();
     countEl.textContent = `${allCount} questions`;

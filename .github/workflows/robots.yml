@@ -180,6 +180,12 @@ jobs:
       - name: Chaos mode — honks while answering, and a player's own sound switch
         run: node tests/harness/scenario-chaos.mjs
 
+      # Category draft (082): the host picks Draft, every player wants or bans
+      # one category in the lobby, and the game is built from the moves. The
+      # bank is seeded history-first so a broken ban fills the game with it.
+      - name: Category draft — moves show live, cancel out, and build the game
+        run: node tests/harness/scenario-categorydraft.mjs
+
       # The clock runs out on somebody who did not answer and the host has not
       # pressed Reveal yet. Reported 2026-10-27: the host read "Waiting..." for
       # the friend every time, as though the round were waiting on them.

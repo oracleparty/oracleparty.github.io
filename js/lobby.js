@@ -35,6 +35,7 @@ import {
   deleteAnswersByRoom,
   demoteCohost,
   toggleReady,
+  setDraftMove,
   updateRoomStatus,
   updateGameState,
   setPhaseOnServer,
@@ -59,6 +60,10 @@ import { initThemeToggle } from './theme.js';
 import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcategoryNode } from './categories.js';
 import { titleWordsHtml, repaintTitleColours } from './titles.js';
 import { loadTitleWords } from './title-content.js';
+import {
+  DRAFT_KEY, DRAFT_LABEL, DRAFT_CATEGORIES, DRAFT_SHORT_LABELS, isDraftRoom,
+  encodeDraftMove, parseDraftMove, draftTally, draftStatus, draftShare
+} from './draft-logic.js';
 
 // --- State ---
 let room = null;
@@ -369,6 +374,7 @@ let _awaitingRoomReset = false;
 
 // --- Event Listeners ---
 function attachListeners() {
+  attachDraftListeners();
   // Copy code
   btnCopyCode.addEventListener('click', async () => {
     const joinUrl = `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, '')}join.html?code=${room.code}`;
@@ -923,6 +929,7 @@ function renderPlayers() {
   }
 
   renderAddBotButton();
+  renderDraft();
   // The player list is the source of chat avatars, so this is the moment any
   // message drawn before it arrived can get its face back.
   refreshChatAvatars();
@@ -2018,7 +2025,9 @@ function updateCategoryDisplay() {
 
   // Show short label: just subcategory leaf name, or category name if no sub
   let shortLabel = meta.label;
-  if (room.subcategory) {
+  if (room.subcategory === DRAFT_KEY) {
+    shortLabel = DRAFT_LABEL;
+  } else if (room.subcategory) {
     if (meta.wildCardOptions) {
       const opt = meta.wildCardOptions.find(o => o.key === room.subcategory);
       if (opt) shortLabel = opt.label;
@@ -2028,6 +2037,169 @@ function updateCategoryDisplay() {
     }
   }
   lobbyCategory.textContent = shortLabel;
+  renderDraft();
+}
+
+// ============================================
+// Category draft (see js/draft-logic.js for the rules)
+// ============================================
+
+let _draftSelected = null;   // the tile chosen in the open sheet
+let _draftSaving = false;
+
+function myDraftMove() {
+  const me = players.find(p => String(p.id) === String(room.playerId));
+  return parseDraftMove(me?.draft_move);
+}
+
+function draftAvatars(list) {
+  return list.map(p => renderAvatar({
+    displayName: p.display_name, avatarColor: p.avatar_color, avatarEmoji: p.avatar_emoji,
+    extraClass: 'draft-face'
+  })).join('');
+}
+
+function draftStateWord(status, entry, share) {
+  if (status === 'want') return `+${entry.net * share}`;
+  if (status === 'ban') return 'out';
+  return 'even';
+}
+
+/** The lobby's draft bar: everyone's moves as chips, and a button for yours. */
+function renderDraft() {
+  const bar = $('#draft-bar');
+  if (!bar || !room) return;
+  const on = isDraftRoom(room);
+  bar.classList.toggle('hidden', !on);
+  if (!on) { $('#draft-sheet')?.classList.remove('active'); return; }
+
+  const tally = draftTally(players);
+  const share = draftShare(room.settings?.questionsPerGame, humanPlayers().length);
+  const chips = DRAFT_CATEGORIES.filter(c => tally[c]).map(c => {
+    const entry = tally[c];
+    const status = draftStatus(entry);
+    const emoji = CATEGORY_META[c]?.emoji || '';
+    return `<span class="draft-chip draft-chip--${status}" title="${escapeHtml(CATEGORY_META[c]?.label || c)}">
+      <span class="draft-chip__emoji" aria-hidden="true">${emoji}</span>
+      <span class="draft-chip__faces">${draftAvatars([...entry.wants, ...entry.bans])}</span>
+      <span class="draft-chip__state">${draftStateWord(status, entry, share)}</span>
+    </span>`;
+  }).join('');
+  $('#draft-chips').innerHTML = chips
+    || '<span class="draft-chips__empty">No moves yet. Want a category or ban one.</span>';
+
+  const mine = myDraftMove();
+  const btn = $('#btn-draft-move');
+  if (mine) {
+    const emoji = CATEGORY_META[mine.category]?.emoji || '';
+    btn.textContent = `${mine.kind === 'want' ? '👍' : '🚫'} ${emoji} ${DRAFT_SHORT_LABELS[mine.category] || mine.category}`;
+    btn.classList.add('draft-bar__btn--made');
+  } else {
+    btn.textContent = 'Make your move';
+    btn.classList.remove('draft-bar__btn--made');
+  }
+  if ($('#draft-sheet')?.classList.contains('active')) renderDraftSheet();
+}
+
+function openDraftSheet() {
+  if (!isDraftRoom(room)) return;
+  _draftSelected = myDraftMove()?.category || null;
+  renderDraftSheet();
+  $('#draft-sheet').classList.add('active');
+}
+
+function closeDraftSheet() {
+  $('#draft-sheet')?.classList.remove('active');
+}
+
+function renderDraftSheet() {
+  const tally = draftTally(players);
+  const share = draftShare(room.settings?.questionsPerGame, humanPlayers().length);
+  const mine = myDraftMove();
+  $('#draft-sheet-hint').textContent =
+    `One move each. Want: +${share} question${share === 1 ? '' : 's'}. Ban: none.`;
+
+  $('#draft-tiles').innerHTML = DRAFT_CATEGORIES.map(c => {
+    const entry = tally[c];
+    const status = draftStatus(entry);
+    const cls = ['draft-tile'];
+    if (status) cls.push(`draft-tile--${status}`);
+    if (c === _draftSelected) cls.push('draft-tile--selected');
+    const faces = entry ? draftAvatars([...entry.wants, ...entry.bans]) : '';
+    return `<button type="button" class="${cls.join(' ')}" data-draft-category="${c}" aria-pressed="${c === _draftSelected}">
+      <span class="draft-tile__emoji" aria-hidden="true">${CATEGORY_META[c]?.emoji || ''}</span>
+      <span class="draft-tile__label">${DRAFT_SHORT_LABELS[c]}</span>
+      <span class="draft-tile__faces">${faces}</span>
+    </button>`;
+  }).join('');
+
+  const actions = $('#draft-actions');
+  if (!_draftSelected) {
+    actions.innerHTML = '<p class="draft-actions__prompt">Tap a category.</p>';
+    return;
+  }
+  const label = DRAFT_SHORT_LABELS[_draftSelected];
+  const isMine = mine && mine.category === _draftSelected;
+  actions.innerHTML = `
+    <button type="button" class="draft-act draft-act--want${isMine && mine.kind === 'want' ? ' draft-act--on' : ''}" data-draft-kind="want">👍 Want ${label}</button>
+    <button type="button" class="draft-act draft-act--ban${isMine && mine.kind === 'ban' ? ' draft-act--on' : ''}" data-draft-kind="ban">🚫 Ban ${label}</button>
+    ${mine ? '<button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear my move</button>' : ''}`;
+}
+
+/** Save a move at the tap, show it at once, and take it back if it did not land. */
+async function handleDraftMove(kind) {
+  if (_draftSaving || !isDraftRoom(room)) return;
+  const me = players.find(p => String(p.id) === String(room.playerId));
+  if (!me) return;
+  const next = kind === 'clear' ? null : encodeDraftMove(kind, _draftSelected);
+  if (kind !== 'clear' && !next) return;
+  const before = me.draft_move ?? null;
+  if (before === next) { closeDraftSheet(); return; }
+
+  _draftSaving = true;
+  me.draft_move = next;
+  closeDraftSheet();
+  renderDraft();
+  try {
+    const res = await setDraftMove(room.playerId, next);
+    if (res?.error || res?.missing) {
+      me.draft_move = before;
+      renderDraft();
+      if (res?.missing) {
+        await loadPlayers();
+        if (!players.some(p => String(p.id) === String(room.playerId))) {
+          _seatSeen = true;
+          showRemovedNotice();
+        }
+      }
+    }
+  } catch (err) {
+    logger.error('Lobby', 'setDraftMove failed', err);
+    me.draft_move = before;
+    renderDraft();
+    showToast("Couldn't save your draft move", 'error');
+  } finally {
+    _draftSaving = false;
+  }
+}
+
+function attachDraftListeners() {
+  $('#btn-draft-move')?.addEventListener('click', openDraftSheet);
+  $('#draft-chips')?.addEventListener('click', openDraftSheet);
+  const sheet = $('#draft-sheet');
+  if (!sheet) return;
+  sheet.querySelector('.bottom-sheet__backdrop')?.addEventListener('click', closeDraftSheet);
+  sheet.querySelector('.bottom-sheet__handle')?.addEventListener('click', closeDraftSheet);
+  $('#draft-tiles').addEventListener('click', (e) => {
+    const tile = e.target.closest('[data-draft-category]');
+    if (!tile) return;
+    _draftSelected = tile.dataset.draftCategory;
+    renderDraftSheet();
+  });
+  $('#draft-actions').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-draft-kind]');
+    if (btn) handleDraftMove(btn.dataset.draftKind);
+  });
 }
 
 function openSettingsModal() {
@@ -2079,7 +2251,9 @@ function renderSettingsCategories() {
   const icon = resolveSubcategoryIcon(room.category, room.subcategory);
   // Short label: just the leaf subcategory name
   let shortLabel = meta.label;
-  if (room.subcategory) {
+  if (room.subcategory === DRAFT_KEY) {
+    shortLabel = DRAFT_LABEL;
+  } else if (room.subcategory) {
     if (meta.wildCardOptions) {
       const opt = meta.wildCardOptions.find(o => o.key === room.subcategory);
       if (opt) shortLabel = opt.label;
@@ -2293,6 +2467,7 @@ function handleRoomChange(payload) {
     if (newRoom.questions_per_game && newRoom.questions_per_game !== room.settings.questionsPerGame) {
       room.settings.questionsPerGame = newRoom.questions_per_game;
       addSystemMessage(`Host changed to ${room.settings.questionsPerGame} questions`);
+      renderDraft(); // a want's share follows the question count
       changed = true;
     }
 

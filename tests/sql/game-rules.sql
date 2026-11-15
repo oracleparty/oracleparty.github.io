@@ -2760,4 +2760,52 @@ BEGIN
 END $$;
 
 
+-- ---------------------------------------------------------------------------
+-- 082 — category draft: a seat holds one move, and only a real one.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  rid uuid := gen_random_uuid();
+  pid uuid := gen_random_uuid();
+  verdict text;
+BEGIN
+  INSERT INTO rooms (id, code, status, created_at) VALUES (rid, 'DRFT', 'lobby', now());
+  INSERT INTO players (id, room_id, display_name) VALUES (pid, rid, 't82 mover');
+
+  UPDATE players SET draft_move = 'want:science' WHERE id = pid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('082: a want is stored on the seat', (SELECT draft_move FROM players WHERE id = pid), 'want:science');
+
+  UPDATE players SET draft_move = 'ban:arts-literature' WHERE id = pid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('082: a ban replaces it (one move each)', (SELECT draft_move FROM players WHERE id = pid), 'ban:arts-literature');
+
+  BEGIN
+    UPDATE players SET draft_move = 'steal:science' WHERE id = pid;
+    verdict := 'stored';
+  EXCEPTION WHEN check_violation THEN verdict := 'refused';
+  END;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('082: a move that is neither want nor ban is refused', verdict, 'refused');
+
+  BEGIN
+    UPDATE players SET draft_move = 'want:<script>' WHERE id = pid;
+    verdict := 'stored';
+  EXCEPTION WHEN check_violation THEN verdict := 'refused';
+  END;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('082: a move cannot carry markup', verdict, 'refused');
+
+  UPDATE players SET draft_move = NULL WHERE id = pid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('082: a move can be cleared', COALESCE((SELECT draft_move FROM players WHERE id = pid), 'none'), 'none'),
+    ('082: a client may write its move',
+     has_column_privilege('anon', 'players', 'draft_move', 'UPDATE')::text, 'true'),
+    ('082: and still may not write the host flag',
+     has_column_privilege('anon', 'players', 'is_host', 'UPDATE')::text, 'false');
+
+  DELETE FROM rooms WHERE id = rid;
+END $$;
+
+
 SELECT check_name, got, want FROM result ORDER BY ord;

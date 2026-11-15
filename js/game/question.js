@@ -3,7 +3,7 @@
 // Wager grid, timer, answer submission.
 // ============================================
 
-import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
+import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionCategoryLabel, getQuestionPickLabel, getQuestionText, getCorrectAnswer, getAlternates,
          showScreen, _isLeaving, noteRoundShown, noteAnswerSent } from './state.js';
 import { $, transitionScreens, fuzzyMatch, showToast } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
@@ -50,7 +50,11 @@ export function showQuestionScreen() {
     return;
   }
 
-  $('#question-category').textContent = getCategoryLabel();
+  // A drafted question names its own subject and whose pick it was.
+  const pick = getQuestionPickLabel(q);
+  const catEl = $('#question-category');
+  catEl.textContent = getQuestionCategoryLabel(q) + (pick ? ` · ${pick}` : '');
+  catEl.classList.toggle('game-progress__category--draft', !!pick);
 
   $('#question-text').textContent = getQuestionText(q);
 

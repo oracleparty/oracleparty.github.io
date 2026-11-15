@@ -23,7 +23,7 @@ export {
 export {
   addPlayer, claimSeat, addBot, isBannedFromRoom, promoteToHost, demoteHost, promoteToCohost, demoteCohost,
   removePlayer, kickPlayer, removePlayerBeacon, markDisconnectedBeacon, playerHeartbeat,
-  fetchPlayers, toggleReady,
+  fetchPlayers, toggleReady, draftAvailable, setDraftMove,
   subscribeToPlayers, insertGamePlay, incrementQuestionsAnswered, completeGamePlay,
   submitAnswer, fetchAnswersForQuestion, updateAnswerJudgment,
   fetchAllAnswers, insertBlankAnswers, insertAnswersIfAbsent, upsertAnswers, botAnswerOnServer,
@@ -36,7 +36,7 @@ export {
 // --- Questions ---
 export {
   fetchCategories, fetchQuestionCount, fetchQuestionsByCategory,
-  fetchAllOpenQuestions, fetchExclusiveWildCardQuestions,
+  fetchAllOpenQuestions, fetchExclusiveWildCardQuestions, fetchDraftQuestions,
   fetchAllOpenQuestionCount, fetchExclusiveWildCardCount,
   fetchQuestionHistoryForUsers, fetchQuestionByDifficulty, fetchQuestionsByIds,
   upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,

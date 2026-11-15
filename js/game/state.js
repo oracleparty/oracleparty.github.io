@@ -4,6 +4,7 @@
 // ============================================
 
 import { CATEGORY_META, resolveCategoryLabel } from '../categories.js';
+import { DRAFT_KEY, DRAFT_ICON, draftQuestionCategory, draftPickers, draftPickLabel } from '../draft-logic.js';
 import { answersForCurrentGame } from './scoring-helpers.js';
 import { AWAY_GRACE_MS, FINAL_QUESTION_EXTRA_SECONDS } from '../constants.js';
 import { transitionScreens } from '../utils.js';
@@ -430,7 +431,28 @@ export function getCategoryLabel() {
   if (!state.room) return '?';
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
   const label = resolveCategoryLabel(state.room.category, state.room.subcategory);
-  return `${meta.emoji || meta.icon} ${label}`;
+  // A subcategory can carry its own icon (Draft does); the subject's otherwise.
+  const icon = state.room.subcategory === DRAFT_KEY ? DRAFT_ICON : (meta.emoji || meta.icon);
+  return `${icon} ${label}`;
+}
+
+/**
+ * The header label for ONE question. In a drafted game that is the question's
+ * own subject ("⚗️ Science"), because "Draft" says nothing about what is being
+ * asked; everywhere else it is the room's category, as before.
+ */
+export function getQuestionCategoryLabel(question) {
+  if (!state.room || state.room.subcategory !== DRAFT_KEY || !question) return getCategoryLabel();
+  const category = draftQuestionCategory(state.players, question.categories);
+  const meta = CATEGORY_META[category] || { emoji: '', label: category };
+  return `${meta.emoji || meta.icon || ''} ${meta.label}`.trim();
+}
+
+/** "Alice's pick" for a drafted question somebody wanted; '' otherwise. */
+export function getQuestionPickLabel(question) {
+  if (!state.room || state.room.subcategory !== DRAFT_KEY || !question) return '';
+  const short = n => (n.length > 12 ? n.slice(0, 11) + '…' : n);
+  return draftPickLabel(draftPickers(state.players, question.categories).map(short));
 }
 
 // --- Feedback cache (shared between reveal + review) ---

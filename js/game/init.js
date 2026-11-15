@@ -40,8 +40,10 @@ import {
   appendUsedQuestionIds,
   fetchAllOpenQuestions,
   fetchExclusiveWildCardQuestions,
+  fetchDraftQuestions,
   fetchQuestionFeedback
 } from '../supabase.js';
+import { DRAFT_KEY, draftPlan } from '../draft-logic.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
 import { loadTitleWords } from '../title-content.js';
@@ -529,6 +531,10 @@ async function initHostGame(roomSnapshot = null) {
     questions = await fetchAllOpenQuestions(state.totalQuestions + 1, excludeIds, playerUserIds);
   } else if (subcategory === '__true_wild_card__') {
     questions = await fetchExclusiveWildCardQuestions(state.totalQuestions + 1, excludeIds);
+  } else if (subcategory === DRAFT_KEY) {
+    // The moves are on the seats (players.draft_move); they lock here, at Start.
+    const plan = draftPlan(state.players, state.totalQuestions);
+    questions = await fetchDraftQuestions(plan, state.totalQuestions + 1, excludeIds, playerUserIds);
   } else {
     questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, subcategory);
   }
