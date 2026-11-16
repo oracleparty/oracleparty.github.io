@@ -616,17 +616,20 @@ export async function toggleReady(playerId, isReady) {
 }
 
 /**
- * Does the live `players` table have the draft column yet (migration 082)?
+ * Does the live database have what Draft and Random need (migration 082)?
  *
- * Asked once per page and cached, the same way as chaosAvailable(). Draft is
- * offered only on a yes: a mode whose moves cannot be saved is a dead control.
- * A failed read answers no, which hides it.
+ * Asked once per page and cached, the same way as chaosAvailable(). Both are
+ * offered only on a yes: a mode whose moves or result cannot be saved is a
+ * dead control. A failed read answers no, which hides them.
  */
 let _draftAvailable = null;
 export function draftAvailable() {
   if (!_draftAvailable) {
-    _draftAvailable = supabase.from('players').select('draft_move').limit(1)
-      .then(({ error }) => !error)
+    // Two columns, one answer: the move on a seat and the spin's pick on the room.
+    _draftAvailable = Promise.all([
+      supabase.from('players').select('draft_move').limit(1),
+      supabase.from('rooms').select('draft_pick').limit(1),
+    ]).then(results => results.every(r => !r.error))
       .catch(() => false);
   }
   return _draftAvailable;

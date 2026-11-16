@@ -8,7 +8,7 @@ import { logger } from '../logger.js';
 import { presenceNeedsRebuild } from '../presence-health.js';
 import { shouldSyncPhase } from './phase-order.js';
 import { shouldAdoptRoomClock } from './timer-helpers.js';
-import { LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS, AWAY_GRACE_MS } from '../constants.js';
+import { CATEGORY_SPIN_MS, LOBBY_POLL_INTERVAL, STALE_CHECK_INTERVAL, STATE_SYNC_INTERVAL, HEARTBEAT_DB_INTERVAL_MS, PLAYER_INIT_WAIT_MS, PLAYER_READY_CONFIRM_MS, STALE_TIMEOUT_MS, AWAY_GRACE_MS } from '../constants.js';
 import {
   setPhaseOnServer,
   claimSeat,
@@ -40,10 +40,10 @@ import {
   appendUsedQuestionIds,
   fetchAllOpenQuestions,
   fetchExclusiveWildCardQuestions,
-  fetchDraftQuestions,
   fetchQuestionFeedback
 } from '../supabase.js';
-import { DRAFT_KEY, draftPlan } from '../draft-logic.js';
+import { isSpinRoom, spinWeights, pickWeighted } from '../draft-logic.js';
+import { cancelCategorySpin } from './category-spin.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
 import { loadTitleWords } from '../title-content.js';
@@ -61,6 +61,7 @@ import {
   _syncInFlight, setSyncInFlight,
   _qbFeedback,
   readMayPredateOwnAdvance,
+  noteDraftPick,
 } from './state.js';
 import { buildDisqualifiedSet, buildUsedWagersMap, answersForCurrentGame } from './scoring-helpers.js';
 import {
@@ -460,6 +461,7 @@ async function initHostGame(roomSnapshot = null) {
   // reading it again here, and a third time for the used question ids below,
   // was two round trips in front of every game's first question.
   const roomData = roomSnapshot || (await fetchRoom(state.room.id)).data;
+  noteDraftPick(roomData);
   if (roomData && roomData.question_ids && roomData.question_ids.length > 0 && roomData.game_phase && roomData.game_phase !== 'lobby') {
     // Reconnect to existing game
     // question_ids has N+1 entries (N regular + 1 final wager)
@@ -527,14 +529,17 @@ async function initHostGame(roomSnapshot = null) {
   // Fetch totalQuestions + 1 (extra for final wager round) with smart selection
   const subcategory = state.room.subcategory || null;
   let questions;
+  let spinPick = null;
   if (subcategory === '__all_questions__') {
     questions = await fetchAllOpenQuestions(state.totalQuestions + 1, excludeIds, playerUserIds);
   } else if (subcategory === '__true_wild_card__') {
     questions = await fetchExclusiveWildCardQuestions(state.totalQuestions + 1, excludeIds);
-  } else if (subcategory === DRAFT_KEY) {
-    // The moves are on the seats (players.draft_move); they lock here, at Start.
-    const plan = draftPlan(state.players, state.totalQuestions);
-    questions = await fetchDraftQuestions(plan, state.totalQuestions + 1, excludeIds, playerUserIds);
+  } else if (isSpinRoom(state.room)) {
+    // THE SPIN. Decided here, once, on the host's phone, from the moves on the
+    // seats (Draft) or evenly (Random); every other phone is told the result
+    // through rooms.draft_pick and only animates towards it.
+    spinPick = pickWeighted(spinWeights(state.room, state.players));
+    questions = await fetchQuestionsByCategory(spinPick, state.totalQuestions + 1, excludeIds, playerUserIds, null);
   } else {
     questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, subcategory);
   }
@@ -591,8 +596,13 @@ async function initHostGame(roomSnapshot = null) {
 
   // Track these question IDs as used (persists across Play Again — no repeats)
   appendUsedQuestionIds(state.room.id, questionIds);
-  const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset).toISOString();
+  // A spin room's countdown is stamped in the FUTURE by the length of the
+  // wheel, so the wheel plays in front of 3-2-1 and ends on one server moment
+  // for everybody. showCountdownScreen already waits out a stamp that has not
+  // arrived yet.
+  const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset + (spinPick ? CATEGORY_SPIN_MS : 0)).toISOString();
   state.countdownStartedAt = countdownStartedAt;
+  if (spinPick) state.room.draftPick = spinPick;
   // DATA FIRST, PHASE SECOND. Clients act on the phase — they re-read the
   // question list when it arrives — so the list and the countdown stamp have to
   // be there before anybody is told to start. The same ordering the final
@@ -602,7 +612,8 @@ async function initHostGame(roomSnapshot = null) {
   // it, and since migration 061 it is not a column a client may write at all.
   await updateGameState(state.room.id, {
     question_ids: questionIds,
-    countdown_started_at: countdownStartedAt
+    countdown_started_at: countdownStartedAt,
+    ...(spinPick ? { draft_pick: spinPick } : {})
   });
   if (!await setPhaseOnServer(state.room.id, state.room.playerId, null, 'countdown', 0)) {
     await updateGameState(state.room.id, { game_phase: 'countdown' });
@@ -720,6 +731,7 @@ async function applyGameState(roomData) {
   if (roomData.question_started_at) {
     state.questionStartedAt = roomData.question_started_at;
   }
+  noteDraftPick(roomData);
   if (roomData.countdown_started_at) {
     state.countdownStartedAt = roomData.countdown_started_at;
   }
@@ -1091,6 +1103,7 @@ async function syncToCurrentState() {
                                      serverTimeOffset: state.serverTimeOffset, timerSeconds: roundTimerSeconds(roomData.game_phase) })) {
             state.questionStartedAt = roomData.question_started_at;
           }
+          noteDraftPick(roomData);
           if (roomData.countdown_started_at) state.countdownStartedAt = roomData.countdown_started_at;
           if (['final_wager', 'final_question', 'difficulty_vote'].includes(roomData.game_phase)) {
             state.isFinalWagerRound = true;
@@ -1117,6 +1130,7 @@ async function syncToCurrentState() {
     } else {
       state.questionStartedAt = null;
     }
+    noteDraftPick(roomData);
     if (roomData.countdown_started_at) {
       state.countdownStartedAt = roomData.countdown_started_at;
     }
@@ -1171,6 +1185,7 @@ async function syncToCurrentState() {
 // ============================================
 
 function cleanup() {
+  cancelCategorySpin(document.getElementById('category-spin-overlay'));
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   // (ResizeObserver removed — chat is now inline flex, no positioning needed)

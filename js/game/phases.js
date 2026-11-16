@@ -7,6 +7,9 @@ import { $, transitionScreens, escapeHtml, navigateWithFadeReplace } from '../ut
 import { findNextAvailableWager, countAnswersFrom, answerScoreSig } from './scoring-helpers.js';
 import { isStaleRoomEvent } from './phase-order.js';
 import { getCountdownElapsed, isStampForCurrentRound } from './timer-helpers.js';
+import { CATEGORY_META } from '../categories.js';
+import { isSpinRoom, isDraftRoom, validPick, spinWeights } from '../draft-logic.js';
+import { playCategorySpin } from './category-spin.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
 import { logger, recordFault } from '../logger.js';
 import { COUNTDOWN_DELAY_MS, COUNTDOWN_STEP_MS, COUNTDOWN_TRANSITION_MS, COUNTDOWN_FINISH_MS, STALE_TIMEOUT_MS, DISCONNECTED_TIMEOUT_MS, HOST_HANDOVER_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TOLERANCE_MS } from '../constants.js';
@@ -39,6 +42,7 @@ import {
   beginRoundClock,
   staleJudgementEcho,
   getQuestionText, getCorrectAnswer,
+  noteDraftPick, playedCategory, playedSubcategory,
 } from './state.js';
 import { showChatBar, hideChatBar } from './chat.js';
 import { initHostSettingsPanel, showHostSettingsGear, hideHostSettingsGear, syncChaosDisplay } from './host.js';
@@ -355,6 +359,8 @@ export function handleRoomChange(payload) {
     state.questionStartedAt = question_started_at;
   }
 
+  noteDraftPick(payload.new);
+
   // Track countdown start timestamp
   if (countdown_started_at) {
     state.countdownStartedAt = countdown_started_at;
@@ -646,8 +652,8 @@ export async function handlePhaseTransition(phase) {
         roomId: state.room.id,
         playerId: state.room.playerId,
         playerName: getDisplayName(),
-        category: state.room.category,
-        subcategory: state.room.subcategory || null,
+        category: playedCategory(),
+        subcategory: playedSubcategory(),
         totalQuestions: state.totalQuestions,
         // Identifies WHICH round this is. The room is reused across Play
         // Again, so without it every round in a room is the same play.
@@ -872,6 +878,23 @@ export function showCountdownScreen() {
     countdownScreen.style.display = '';
     void countdownScreen.offsetHeight;
     countdownScreen.classList.add('active');
+  }
+
+  // A Draft or Random room spins its category wheel first. The host stamped
+  // the countdown that far in the future, so the wheel fills exactly the time
+  // before "3"; a phone that arrives late gets a shorter spin or none.
+  const pick = isSpinRoom(state.room) ? validPick(state.room.draftPick) : null;
+  const untilCountdown = -getCountdownElapsed(state.countdownStartedAt, state.serverTimeOffset);
+  if (pick && untilCountdown > 900) {
+    playCategorySpin({
+      overlay: $('#category-spin-overlay'),
+      weights: spinWeights(state.room, state.players),
+      players: isDraftRoom(state.room) ? state.players : [],
+      winner: pick,
+      emojiFor: c => CATEGORY_META[c]?.emoji || '',
+      labelFor: c => CATEGORY_META[c]?.label || c,
+      durationMs: untilCountdown,
+    });
   }
 
   const steps = ['3', '2', '1', 'GO!'];

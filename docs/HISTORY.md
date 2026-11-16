@@ -1,5 +1,53 @@
 > **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
 
+> ## 2026-11-16 — Draft became a wheel, and Random joined it (migration 082 revised)
+>
+> **The 11-15 build below was replaced the next day, before it was ever
+> deployed.** The owner asked whether Draft could "roll the options as voted,
+> like the difficulty selector", and chose "a spin that decides" over the
+> guaranteed-share game built first. Their answers, in order: build the single
+> spin now and a per-question spin later as a host setting; keep the ban as a
+> counter-vote (asked "what is the ban even doing?", then kept it); a 1-in-20
+> upset like the difficulty wheel; Random as its own choice. The mixed-game
+> builder (`fetchDraftQuestions`, shares, "Alice's pick") is deleted.
+>
+> **How it works.** `draftWeights` / `pickWeighted` in `js/draft-logic.js`.
+> The HOST's phone spins in `initHostGame`, fetches the game from that one
+> subject through the ordinary `fetchQuestionsByCategory`, and writes
+> `rooms.draft_pick` in the same update as the question list. The countdown is
+> stamped `CATEGORY_SPIN_MS` (4.8s) in the FUTURE; `showCountdownScreen`
+> already waited out a stamp that had not arrived, so the wheel
+> (`js/game/category-spin.js`) plays in that gap on every phone and ends on
+> one server moment. The wheel is theatre: phones may light different tiles on
+> the way and must stop on the room's pick. A phone that arrives with under
+> 0.9s left skips it.
+>
+> **Proven how.** 19 unit tests pin the odds exactly (sum to 1; 95% by blocks;
+> the upset is 5% over untouched categories; a banned category is 0, upset
+> included; no blocks means every unbanned category equally; 20,000 aimed
+> spins follow the weights). `scenario-categorydraft` covers what a unit test
+> cannot, for Draft and for Random: the pick reaching the room and every
+> phone, the wheel playing and stopping on it, every question coming from it,
+> the header naming it. Break-tested on copies, each failing by name: the pick
+> not written, questions from the wrong subject, the countdown not delayed
+> (*"Bob never saw the wheel"*), a refused move not taken back. SQL: 11 rules
+> (327 total).
+>
+> **The owner's rule on copy, from this build:** "Can we stop adding AI text
+> everywhere? It lowers the quality." The sheet title "Shape tonight's game",
+> two hint sentences, an empty-state sentence and a host-row tagline were all
+> mine and all removed. Labels and numbers only; it is in `CLAUDE.md`.
+>
+> **A copy-paste slip worth knowing:** the owner's first run of 082 failed
+> with `42601 syntax error at or near "Not"` because their own chat message
+> was on the clipboard. Nothing ran. 082 has changed since (it now also adds
+> `rooms.draft_pick`), so that was fortunate.
+>
+> **NOT established:** nothing has run on a real phone or the live database.
+> How the wheel FEELS (4.8 seconds, the deceleration) is a judgement only the
+> owner can make. A spin game whose host dies between Start and the question
+> list has no pick; the ordinary recovery paths apply and were not exercised.
+
 > ## 2026-11-15 — the handover was rewritten; Category draft built (migration 082); Bluff round designed
 >
 > **The handover.** `CLAUDE.md` had reached 10,031 lines and every session read

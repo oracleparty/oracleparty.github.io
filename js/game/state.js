@@ -4,7 +4,7 @@
 // ============================================
 
 import { CATEGORY_META, resolveCategoryLabel } from '../categories.js';
-import { DRAFT_KEY, DRAFT_ICON, draftQuestionCategory, draftPickers, draftPickLabel } from '../draft-logic.js';
+import { DRAFT_ICON, DRAFT_LABEL, RANDOM_ICON, RANDOM_LABEL, isSpinRoom, isDraftRoom, validPick } from '../draft-logic.js';
 import { answersForCurrentGame } from './scoring-helpers.js';
 import { AWAY_GRACE_MS, FINAL_QUESTION_EXTRA_SECONDS } from '../constants.js';
 import { transitionScreens } from '../utils.js';
@@ -430,29 +430,34 @@ export function canJudge() {
 export function getCategoryLabel() {
   if (!state.room) return '?';
   const meta = CATEGORY_META[state.room.category] || { icon: '?', label: state.room.category };
+  // A Draft or Random room plays the subject its spin landed on; before the
+  // spin it has only its own name.
+  if (isSpinRoom(state.room)) {
+    const pick = validPick(state.room.draftPick);
+    if (pick) return `${CATEGORY_META[pick].emoji || CATEGORY_META[pick].icon} ${CATEGORY_META[pick].label}`;
+    return isDraftRoom(state.room) ? `${DRAFT_ICON} ${DRAFT_LABEL}` : `${RANDOM_ICON} ${RANDOM_LABEL}`;
+  }
   const label = resolveCategoryLabel(state.room.category, state.room.subcategory);
-  // A subcategory can carry its own icon (Draft does); the subject's otherwise.
-  const icon = state.room.subcategory === DRAFT_KEY ? DRAFT_ICON : (meta.emoji || meta.icon);
-  return `${icon} ${label}`;
+  return `${meta.emoji || meta.icon} ${label}`;
 }
 
 /**
- * The header label for ONE question. In a drafted game that is the question's
- * own subject ("⚗️ Science"), because "Draft" says nothing about what is being
- * asked; everywhere else it is the room's category, as before.
+ * The subject this game is actually asking. A Draft or Random room is stored
+ * as Wild Card; what it PLAYS is the spin's pick, and that is what belongs in
+ * play counts, game history and the final-question swap.
  */
-export function getQuestionCategoryLabel(question) {
-  if (!state.room || state.room.subcategory !== DRAFT_KEY || !question) return getCategoryLabel();
-  const category = draftQuestionCategory(state.players, question.categories);
-  const meta = CATEGORY_META[category] || { emoji: '', label: category };
-  return `${meta.emoji || meta.icon || ''} ${meta.label}`.trim();
+export function playedCategory() {
+  if (!state.room) return null;
+  return (isSpinRoom(state.room) && validPick(state.room.draftPick)) || state.room.category;
+}
+export function playedSubcategory() {
+  if (!state.room || isSpinRoom(state.room)) return null;
+  return state.room.subcategory || null;
 }
 
-/** "Alice's pick" for a drafted question somebody wanted; '' otherwise. */
-export function getQuestionPickLabel(question) {
-  if (!state.room || state.room.subcategory !== DRAFT_KEY || !question) return '';
-  const short = n => (n.length > 12 ? n.slice(0, 11) + '…' : n);
-  return draftPickLabel(draftPickers(state.players, question.categories).map(short));
+/** Take the spin's result off a room row, wherever one is read. */
+export function noteDraftPick(row) {
+  if (state.room && row && row.draft_pick !== undefined) state.room.draftPick = row.draft_pick || null;
 }
 
 // --- Feedback cache (shared between reveal + review) ---

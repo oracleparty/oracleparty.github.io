@@ -5,7 +5,7 @@
 
 import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount, chaosAvailable, draftAvailable } from './supabase.js';
-import { DRAFT_KEY } from './draft-logic.js';
+import { DRAFT_KEY, RANDOM_KEY } from './draft-logic.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
@@ -149,7 +149,7 @@ async function init() {
   // Draft needs migration 082 (a place to save each player's move); until
   // then it is not offered.
   draftAvailable().then(ok => {
-    if (ok) $('#btn-draft')?.classList.remove('hidden');
+    if (ok) $('#spin-entries')?.classList.remove('hidden');
   });
   // Chaos mode needs migration 075; until then the switch is not offered.
   chaosAvailable().then(ok => {
@@ -556,12 +556,15 @@ function attachListeners() {
 
   // Draft: the players choose the subjects in the lobby. Stored as a Wild
   // Card option, so the room needs nothing new.
-  $('#btn-draft')?.addEventListener('click', () => {
-    selectedCategory = categories.find(c => c.name === 'wild-card') || { name: 'wild-card', count: null };
-    selectedSubcategory = DRAFT_KEY;
-    navStack = [];
-    showSettings(selectedCategory);
-  });
+  // Random: the same spin at Start with no lobby step.
+  for (const [id, key] of [['#btn-draft', DRAFT_KEY], ['#btn-random', RANDOM_KEY]]) {
+    $(id)?.addEventListener('click', () => {
+      selectedCategory = categories.find(c => c.name === 'wild-card') || { name: 'wild-card', count: null };
+      selectedSubcategory = key;
+      navStack = [];
+      showSettings(selectedCategory);
+    });
+  }
 
   // Category card selection (event delegation)
   categoryGrid.addEventListener('click', (e) => {
@@ -705,7 +708,7 @@ async function _updateSettingsBadge(cat) {
 
   // Show subcategory count if selected, otherwise parent count
   const countEl = $('.selected-category__count');
-  if (selectedSubcategory === DRAFT_KEY) {
+  if (selectedSubcategory === DRAFT_KEY || selectedSubcategory === RANDOM_KEY) {
     countEl.textContent = '';
   } else if (selectedSubcategory === '__all_questions__') {
     countEl.textContent = '';

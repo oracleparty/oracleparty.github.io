@@ -6,7 +6,6 @@
 import { $, transitionScreens, escapeHtml, renderAvatar, showToast, navigateWithFade, navigateWithFadeReplace } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { SCORE_ANIMATE_MS, SCORE_REORDER_DELAY_MS, SCORE_PRE_ANIMATE_DELAY_MS, AUTO_PROCEED_TICK_MS, FINAL_WAGER_TIMER_SECONDS, FINAL_QUESTION_SWAP_TIMEOUT_MS } from '../constants.js';
-import { isDraftRoom, draftPlan } from '../draft-logic.js';
 import {
   supabase,
   updateGameState,
@@ -62,6 +61,7 @@ import {
   beginRoundClock,
   judgementBusy, beginJudgement, endJudgement,
   trackOwnAdvance,
+  playedCategory, playedSubcategory,
 } from './state.js';
 import { repositionChatBar, showChatBar, hideChatBar, closeChatDrawer } from './chat.js';
 import { showHostSettingsGear } from './host.js';
@@ -1043,8 +1043,7 @@ export async function handleRevealFinalQuestion() {
   // difficulty match and never the round.
   const usedIds = state.questions.map(q => q.id);
   const swap = fetchQuestionByDifficulty(
-    state.room.category, winner, usedIds, state.room.subcategory || null,
-    isDraftRoom(state.room) ? draftPlan(state.players, state.totalQuestions).banned : []
+    playedCategory(), winner, usedIds, playedSubcategory()
   ).catch(() => null);
 
   // Broadcast the slot-machine reveal to all clients via the existing vote
@@ -1679,7 +1678,7 @@ async function recordFinishedGame(allAnswers) {
     const authUser = getCurrentUser();
     if (authUser) {
       const uid = authUser.user.id;
-      const cat = state.room.category;
+      const cat = playedCategory();
       const myAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
       // Exclude disqualified questions from stats
       const validAnswers = myAnswers.filter(a => !state.disqualifiedQuestions.has(a.question_number));
@@ -1692,7 +1691,7 @@ async function recordFinishedGame(allAnswers) {
       const humans = getHumans(state.players);
       const sortedForPlacement = [...humans].sort((a, b) => (state.scores[b.id] || 0) - (state.scores[a.id] || 0));
       const placement = sortedForPlacement.findIndex(p => String(p.id) === String(state.room.playerId)) + 1;
-      const sub = state.room.subcategory || null;
+      const sub = playedSubcategory();
       // Fire-and-forget — don't block results rendering
       insertGameHistoryEntry({
         userId: uid, roomId: state.room.id, category: cat,
@@ -1919,7 +1918,7 @@ export async function showResultsScreen() {
     const guestTotal = guestAnswers.length;
     const guestAccuracy = guestTotal > 0 ? Math.round((guestCorrect / guestTotal) * 100) : 0;
     const guestScore = state.scores[state.room.playerId] || 0;
-    const categoryLabel = CATEGORY_META[state.room.category]?.label || state.room.category;
+    const categoryLabel = CATEGORY_META[playedCategory()]?.label || playedCategory();
     const isWinner = sorted[0] && String(sorted[0].id) === String(state.room.playerId);
 
     // Rotating perks — pick a different benefit each nudge

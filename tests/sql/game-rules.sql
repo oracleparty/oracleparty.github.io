@@ -2761,7 +2761,7 @@ END $$;
 
 
 -- ---------------------------------------------------------------------------
--- 082 — category draft: a seat holds one move, and only a real one.
+-- 082 — Draft and Random: a seat holds one move, a room holds the spin's pick.
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -2803,6 +2803,22 @@ BEGIN
      has_column_privilege('anon', 'players', 'draft_move', 'UPDATE')::text, 'true'),
     ('082: and still may not write the host flag',
      has_column_privilege('anon', 'players', 'is_host', 'UPDATE')::text, 'false');
+
+  -- The spin's result lives on the room.
+  UPDATE rooms SET draft_pick = 'world-geography' WHERE id = rid;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('082: the spin''s pick is stored on the room', (SELECT draft_pick FROM rooms WHERE id = rid), 'world-geography');
+  BEGIN
+    UPDATE rooms SET draft_pick = 'Not A Subject!' WHERE id = rid;
+    verdict := 'stored';
+  EXCEPTION WHEN check_violation THEN verdict := 'refused';
+  END;
+  INSERT INTO result (check_name, got, want) VALUES
+    ('082: a pick that is not a category key is refused', verdict, 'refused'),
+    ('082: a client may write the pick',
+     has_column_privilege('anon', 'rooms', 'draft_pick', 'UPDATE')::text, 'true'),
+    ('082: and still may not write the phase',
+     has_column_privilege('anon', 'rooms', 'game_phase', 'UPDATE')::text, 'false');
 
   DELETE FROM rooms WHERE id = rid;
 END $$;

@@ -737,14 +737,14 @@ export const STATES = {
   // ==========================================
   // GAME.HTML — Question
   // ==========================================
-  // Category draft, host side: the Draft row above the category grid. The JS
-  // un-hides it once the database has somewhere to save a move (082).
+  // Host side: Draft and Random above the category grid. The JS un-hides them
+  // once the database can save a move and a spin (082).
   'category-grid-draft': {
     page: 'host',
     screen: 'category-screen',
     inherits: 'category-grid',
     inject: () => {
-      document.getElementById('btn-draft')?.classList.remove('hidden');
+      document.getElementById('spin-entries')?.classList.remove('hidden');
     },
   },
 
@@ -765,7 +765,7 @@ export const STATES = {
       document.getElementById('draft-bar').classList.remove('hidden');
       document.getElementById('draft-chips').innerHTML =
         chip('ban', '⏳', 'History', face('D', 280), 'out') +
-        chip('want', '⚗️', 'Science', face('A', 10) + face('Q', 150), '+4') +
+        chip('want', '⚗️', 'Science', face('A', 10) + face('Q', 150), '×2') +
         chip('even', '⚽', 'Sports', face('B', 210) + face('C', 130), 'even');
       const btn = document.getElementById('btn-draft-move');
       btn.textContent = '👍 ⚗️ Science';
@@ -805,10 +805,44 @@ export const STATES = {
           <span class="draft-tile__label">${label}</span>
           <span class="draft-tile__faces">${faces || ''}</span></button>`).join('');
       document.getElementById('draft-actions').innerHTML = `
-        <button type="button" class="draft-act draft-act--want" data-draft-kind="want">👍 Want Food +2</button>
+        <button type="button" class="draft-act draft-act--want" data-draft-kind="want">👍 Want Food</button>
         <button type="button" class="draft-act draft-act--ban" data-draft-kind="ban">🚫 Ban Food</button>
         <button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear</button>`;
       document.getElementById('draft-sheet').classList.add('active');
+    },
+  },
+
+  // The category wheel in front of the countdown, mid-spin and landed.
+  // Markup mirrors spinTilesHtml() in js/game/category-spin.js.
+  'category-spin': {
+    page: 'game',
+    screen: 'countdown-screen',
+    inject: () => {
+      const tiles = [
+        ['history', '⏳', 'History', 'ban'], ['science', '⚗️', 'Science', 'want', 2], ['nature', '🌿', 'Nature'],
+        ['arts-literature', '📜', 'Arts & Lit'], ['culture-society', '🏛️', 'Culture'], ['pop-culture', '🎬', 'Pop Culture', 'lit'],
+        ['world-geography', '🌍', 'Geography'], ['technology', '💻', 'Tech'], ['sports', '⚽', 'Sports', 'ban'],
+        ['food', '🍕', 'Food', 'want', 1], ['logic', '🧩', 'Logic'],
+      ];
+      const overlay = document.getElementById('category-spin-overlay');
+      overlay.querySelector('.category-spin__tiles').innerHTML = tiles.map(([key, emoji, label, status, blocks]) =>
+        `<div class="draft-tile${status === 'ban' ? ' draft-tile--ban' : ''}${status === 'want' ? ' draft-tile--want' : ''}${status === 'lit' ? ' draft-tile--lit' : ''}" data-spin-category="${key}">
+          <span class="draft-tile__emoji" aria-hidden="true">${emoji}</span>
+          <span class="draft-tile__label">${label}</span>
+          <span class="draft-tile__pips">${'<i></i>'.repeat(blocks || 0)}</span></div>`).join('');
+      overlay.classList.remove('hidden');
+    },
+  },
+  'category-spin-landed': {
+    page: 'game',
+    screen: 'countdown-screen',
+    inherits: 'category-spin',
+    inject: () => {
+      const overlay = document.getElementById('category-spin-overlay');
+      overlay.querySelectorAll('.draft-tile--lit').forEach(t => t.classList.remove('draft-tile--lit'));
+      overlay.querySelector('[data-spin-category="science"]').classList.add('draft-tile--won');
+      overlay.classList.add('category-spin--landed');
+      overlay.querySelector('.category-spin__final').textContent = '⚗️ Science';
     },
   },
 

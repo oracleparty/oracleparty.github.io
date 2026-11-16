@@ -123,8 +123,8 @@ podium (tap to continue) → results.
 - **Applied as of 2026-11-06: everything through 081.** Evidence varies
   (pasted rows, CI probe, or the owner's word); see `docs/HISTORY.md` before
   relying on a specific one.
-- **PENDING: 082 (category draft).** Not run as of 2026-11-15. Until it is,
-  `draftAvailable()` hides Draft from the host and nothing else changes.
+- **PENDING: 082 (Draft and Random).** Not run as of 2026-11-16. Until it is,
+  `draftAvailable()` hides both from the host and nothing else changes.
 - **`scripts/probe-db.mjs` runs in CI** (`db-probe.yml`) and is the only
   automated view of the live database. It exits 1 when something the app
   needs is missing. It runs as `anon`; row counts are what a visitor can see.
@@ -274,14 +274,20 @@ node tests/harness/scenario-<name>.mjs      # robot playtests (list: tests/harne
   live on the profile card, opened by tapping the face. No rank word.
 - **Removal:** Eject (can rejoin) and Kick (banned from that room). A removed
   player sees a notice with Rejoin / Leave; no silent re-seat.
-- **Category draft** (built 2026-11-15, rules in `js/draft-logic.js`): the host
-  picks the Draft row on Choose Category instead of a subject. In the lobby
-  each person makes ONE move, want a category or ban one, live and public,
-  changeable until Start. A want and a ban on one category cancel out. Each
-  surviving want guarantees `floor(questions / people)` questions; a banned
-  category is left out; the rest is a random mix; the final question is always
-  from the mix. A wanted question's header says whose pick it was. Stored as
-  `wild-card` + subcategory `__draft__`, moves in `players.draft_move` (082).
+- **Draft and Random** (built 2026-11-16, rules in `js/draft-logic.js`): two
+  buttons above the grid on Choose Category, chosen instead of a subject. Both
+  end in ONE SPIN at Start that picks the subject for the whole game, like the
+  difficulty wheel. **Draft:** in the lobby each person makes one move, live
+  and public, changeable until Start. A want is a block on the wheel; a ban
+  takes one of that category's blocks off and keeps it out of the upset.
+  Wanted categories share 95% by blocks; untouched ones share a 1-in-20
+  upset; with no blocks every unbanned category is equally likely.
+  **Random:** no moves, every subject equally. The host's phone spins and
+  writes `rooms.draft_pick`; every phone plays the wheel in front of the
+  countdown (the countdown is stamped `CATEGORY_SPIN_MS` in the future).
+  Stored as `wild-card` + subcategory `__draft__` / `__random__`; moves in
+  `players.draft_move` (082). Play counts and history record the picked
+  subject (`playedCategory()`).
 - **Game options are independent host switches** (like Chaos), set at room
   creation and locked at Start; the classic game is the default.
 - **In game:** timer and Chaos lock at Start; Auto-Proceed stays changeable.
@@ -362,9 +368,11 @@ lists are in `docs/HISTORY.md`.
 - **Parked ideas** (owner interested, not convinced): Prophecies (secret
   predictions about the night, paid at the podium). Not chosen: rivalries, a
   recap card, a daily solo game, a TV mode, player-written questions.
-- **Draft, later:** the host cannot switch an existing room to or from Draft
-  in the lobby's category sheet; a rejoining player's move is lost with their
-  old seat; Draft games are counted under Wild Card in play counts.
+- **Draft and Random, next (owner chose the order):** a host setting "Spin:
+  once / every question"; the per-question spin is not built. Also not done:
+  the host cannot switch an existing room to or from Draft or Random in the
+  lobby's category sheet, and a rejoining player's move is lost with their
+  old seat.
 - **Polish list from the 2026-11-14 playtest:** minor aesthetics and
   smoothness; the owner is saving it for a later session.
 
@@ -393,7 +401,7 @@ js/game/              the engine: init, phases, question, reveal, scores,
 js/auth.js            names, accounts, invisible accounts, seat memory
 js/lobby.js host.js join.js profile.js leaderboard.js admin.js admin-shell.js
 js/titles.js title-tiers.js title-content.js     title rules, ladder, word loader
-js/draft-logic.js     category draft rules (pure)
+js/draft-logic.js     Draft and Random: moves, the wheel's odds, the spin (pure)
 js/constants.js       every timing and threshold
 migrations/           hand-applied SQL
 scripts/              probe, sweep, screenshot, mocks, SQL parity, lints

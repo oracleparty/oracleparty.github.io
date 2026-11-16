@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DRAFT_KEY, DRAFT_CATEGORIES, isDraftRoom, encodeDraftMove, parseDraftMove,
-  draftTally, draftStatus, draftShare, draftPlan, draftPickers, draftPickLabel,
-  inBannedCategory
+  DRAFT_KEY, RANDOM_KEY, DRAFT_CATEGORIES, DRAFT_UPSET_SHARE,
+  isDraftRoom, isRandomRoom, isSpinRoom, encodeDraftMove, parseDraftMove,
+  draftTally, draftStatus, draftWeights, randomWeights, spinWeights, pickWeighted, validPick
 } from '../js/draft-logic.js';
 import { CATEGORY_META } from '../js/categories.js';
 
 const P = (name, move, extra = {}) => ({ id: name, display_name: name, draft_move: move, ...extra });
+const sum = w => Object.values(w).reduce((a, b) => a + b, 0);
 
-describe('category draft: moves', () => {
+describe('draft: moves', () => {
   it('offers every real subject and never Wild Card', () => {
     const subjects = Object.keys(CATEGORY_META).filter(k => k !== 'wild-card').sort();
     expect([...DRAFT_CATEGORIES].sort()).toEqual(subjects);
@@ -24,95 +25,130 @@ describe('category draft: moves', () => {
     }
   });
 
-  it('knows a draft room by its subcategory', () => {
-    expect(isDraftRoom({ category: 'wild-card', subcategory: DRAFT_KEY })).toBe(true);
-    expect(isDraftRoom({ category: 'wild-card', subcategory: '__all_questions__' })).toBe(false);
-    expect(isDraftRoom(null)).toBe(false);
+  it('knows which rooms spin', () => {
+    const draft = { category: 'wild-card', subcategory: DRAFT_KEY };
+    const random = { category: 'wild-card', subcategory: RANDOM_KEY };
+    const plain = { category: 'wild-card', subcategory: '__all_questions__' };
+    expect([isDraftRoom(draft), isRandomRoom(draft), isSpinRoom(draft)]).toEqual([true, false, true]);
+    expect([isDraftRoom(random), isRandomRoom(random), isSpinRoom(random)]).toEqual([false, true, true]);
+    expect(isSpinRoom(plain)).toBe(false);
+    expect(isSpinRoom(null)).toBe(false);
+  });
+
+  it('only believes a stored pick that names a real subject', () => {
+    expect(validPick('science')).toBe('science');
+    for (const bad of ['wild-card', 'nonsense', '', null, undefined]) expect(validPick(bad)).toBeNull();
   });
 });
 
-describe('category draft: the tally', () => {
-  it('a want and a ban on one category cancel out', () => {
-    const tally = draftTally([P('Bob', 'want:sports'), P('Carol', 'ban:sports')]);
-    expect(tally.sports.net).toBe(0);
-    expect(draftStatus(tally.sports)).toBe('even');
+describe('draft: blocks on the wheel', () => {
+  it('each want is one block', () => {
+    const tally = draftTally([P('A', 'want:science'), P('C', 'want:science')]);
+    expect(tally.science.blocks).toBe(2);
+    expect(draftStatus(tally.science)).toBe('want');
   });
 
-  it('two wants against one ban still leaves one want', () => {
+  it('a ban takes one block off', () => {
     const tally = draftTally([P('A', 'want:food'), P('B', 'want:food'), P('C', 'ban:food')]);
-    expect(tally.food.net).toBe(1);
+    expect(tally.food.blocks).toBe(1);
     expect(draftStatus(tally.food)).toBe('want');
+  });
+
+  it('a want and a ban cancel, and blocks never go below none', () => {
+    const tally = draftTally([P('A', 'want:sports'), P('B', 'ban:sports'), P('C', 'ban:sports')]);
+    expect(tally.sports.blocks).toBe(0);
+    expect(draftStatus(tally.sports)).toBe('even');
+    expect(draftStatus(draftTally([P('D', 'ban:history')]).history)).toBe('ban');
   });
 
   it('a bot never moves, whatever its row says', () => {
     const tally = draftTally([P('Bot', 'ban:science', { is_bot: true }), P('A', 'want:science')]);
-    expect(tally.science.net).toBe(1);
+    expect(tally.science.blocks).toBe(1);
     expect(tally.science.bans).toHaveLength(0);
   });
+});
 
-  it('ignores a player who has not moved', () => {
-    expect(draftTally([P('A', null), P('B', undefined)])).toEqual({});
+describe('draft: the odds', () => {
+  it('always adds up to a whole wheel', () => {
+    const rooms = [
+      [],
+      [P('A', 'want:science')],
+      [P('A', 'want:science'), P('B', 'ban:science')],
+      [P('A', 'want:science'), P('B', 'want:food'), P('C', 'ban:history')],
+      DRAFT_CATEGORIES.map((c, i) => P('p' + i, 'ban:' + c)),
+      DRAFT_CATEGORIES.map((c, i) => P('p' + i, 'want:' + c)),
+    ];
+    for (const players of rooms) expect(sum(draftWeights(players))).toBeCloseTo(1, 10);
+    expect(sum(randomWeights())).toBeCloseTo(1, 10);
+  });
+
+  it('wanted categories share 95% by their blocks', () => {
+    const w = draftWeights([P('A', 'want:science'), P('C', 'want:science'), P('B', 'want:food')]);
+    expect(w.science).toBeCloseTo(0.95 * 2 / 3, 10);
+    expect(w.food).toBeCloseTo(0.95 * 1 / 3, 10);
+  });
+
+  it('the upset is 1 in 20, shared by the categories nobody touched', () => {
+    const w = draftWeights([P('A', 'want:science'), P('B', 'ban:history')]);
+    const untouched = DRAFT_CATEGORIES.filter(c => c !== 'science' && c !== 'history');
+    expect(DRAFT_UPSET_SHARE).toBe(0.05);
+    expect(untouched.reduce((s, c) => s + w[c], 0)).toBeCloseTo(0.05, 10);
+    for (const c of untouched) expect(w[c]).toBeCloseTo(0.05 / 9, 10);
+  });
+
+  it('a banned category cannot come up, not even as the upset', () => {
+    expect(draftWeights([P('A', 'want:science'), P('B', 'ban:history')]).history).toBe(0);
+    expect(draftWeights([P('B', 'ban:history')]).history).toBe(0);
+    // Wanted, then banned off: also out.
+    expect(draftWeights([P('A', 'want:sports'), P('B', 'ban:sports'), P('C', 'want:food')]).sports).toBe(0);
+  });
+
+  it('with no blocks, every unbanned category is equally likely', () => {
+    const none = draftWeights([P('A', null), P('B', null)]);
+    for (const c of DRAFT_CATEGORIES) expect(none[c]).toBeCloseTo(1 / 11, 10);
+    const oneBan = draftWeights([P('B', 'ban:history')]);
+    expect(oneBan.science).toBeCloseTo(1 / 10, 10);
+  });
+
+  it('when every category was touched there is no upset to give', () => {
+    const players = DRAFT_CATEGORIES.map((c, i) => P('p' + i, (i === 0 ? 'want:' : 'ban:') + c));
+    expect(draftWeights(players)[DRAFT_CATEGORIES[0]]).toBeCloseTo(1, 10);
+  });
+
+  it('random mode is every subject equally, whatever the seats say', () => {
+    const room = { subcategory: RANDOM_KEY };
+    const w = spinWeights(room, [P('A', 'want:science')]);
+    for (const c of DRAFT_CATEGORIES) expect(w[c]).toBeCloseTo(1 / 11, 10);
+    expect(spinWeights({ subcategory: DRAFT_KEY }, [P('A', 'want:science')]).science).toBeCloseTo(0.95, 10);
   });
 });
 
-describe('category draft: the plan', () => {
-  it('a want is worth an equal slice of the game', () => {
-    expect(draftShare(10, 4)).toBe(2);
-    expect(draftShare(10, 2)).toBe(5);
-    expect(draftShare(5, 8)).toBe(1);   // never worth nothing
-    expect(draftShare(10, 0)).toBe(10); // nobody counted is one person
+describe('draft: the spin', () => {
+  const weights = draftWeights([P('A', 'want:science'), P('B', 'ban:history')]);
+
+  it('lands on the wanted category for 19 rolls in 20', () => {
+    expect(pickWeighted(weights, 0)).not.toBe('history');
+    expect(pickWeighted(weights, 0.5)).toBe('science');
   });
 
-  it('builds the example from the design: 4 players, 10 questions', () => {
-    const players = [P('Alice', 'want:science'), P('Bob', 'want:sports'), P('Carol', 'ban:sports'), P('Dan', 'ban:history')];
-    const plan = draftPlan(players, 10);
-    expect(plan.share).toBe(2);
-    expect(plan.featured).toEqual([{ category: 'science', count: 2 }]);
-    expect(plan.banned).toEqual(['history']);
+  it('never lands on a category with no chance', () => {
+    for (let i = 0; i < 1000; i++) expect(pickWeighted(weights, i / 1000)).not.toBe('history');
+    expect(pickWeighted(weights, 0.999999)).not.toBe('history');
   });
 
-  it('bots do not shrink a person\'s share', () => {
-    const plan = draftPlan([P('Alice', 'want:logic'), P('Bot', null, { is_bot: true })], 10);
-    expect(plan.share).toBe(10);
-    expect(plan.featured).toEqual([{ category: 'logic', count: 10 }]);
+  it('follows the odds over many spins', () => {
+    const w = draftWeights([P('A', 'want:science'), P('C', 'want:science'), P('B', 'want:food')]);
+    const hits = {};
+    const N = 20000;
+    for (let i = 0; i < N; i++) { const c = pickWeighted(w, (i + 0.5) / N); hits[c] = (hits[c] || 0) + 1; }
+    expect(hits.science / N).toBeCloseTo(0.95 * 2 / 3, 2);
+    expect(hits.food / N).toBeCloseTo(0.95 / 3, 2);
+    const upsets = N - hits.science - hits.food;
+    expect(upsets / N).toBeCloseTo(0.05, 2);
   });
 
-  it('never promises more questions than the game holds', () => {
-    // 3 people, 5 questions: share 1. Stack wants so the total would exceed 5.
-    const players = [P('A', 'want:food'), P('B', 'want:food'), P('C', 'want:food')];
-    const stacked = draftPlan(players, 2); // share = max(1, floor(2/3)) = 1, 3 wanted, only 2 exist
-    const promised = stacked.featured.reduce((s, f) => s + f.count, 0);
-    expect(promised).toBe(2);
-  });
-
-  it('with no moves the game is a plain mix', () => {
-    expect(draftPlan([P('A', null), P('B', null)], 10)).toEqual({ featured: [], banned: [], share: 5 });
-  });
-});
-
-describe('category draft: whose pick', () => {
-  const players = [P('Alice', 'want:science'), P('Bob', 'want:sports'), P('Carol', 'ban:sports'), P('Dan', 'want:science')];
-
-  it('names everyone whose surviving want a question answers', () => {
-    expect(draftPickers(players, ['science'])).toEqual(['Alice', 'Dan']);
-    expect(draftPickers(players, ['history', 'science'])).toEqual(['Alice', 'Dan']);
-  });
-
-  it('a cancelled want is nobody\'s pick', () => {
-    expect(draftPickers(players, ['sports'])).toEqual([]);
-  });
-
-  it('labels one, two and many', () => {
-    expect(draftPickLabel([])).toBe('');
-    expect(draftPickLabel(['Alice'])).toBe("Alice's pick");
-    expect(draftPickLabel(['Alice', 'Dan'])).toBe("Alice & Dan's pick");
-    expect(draftPickLabel(['A', 'B', 'C'])).toBe("3 players' pick");
-  });
-
-  it('spots a question filed under a banned category', () => {
-    expect(inBannedCategory({ categories: ['history', 'science'] }, ['history'])).toBe(true);
-    expect(inBannedCategory({ categories: ['science'] }, ['history'])).toBe(false);
-    expect(inBannedCategory({ categories: ['science'] }, [])).toBe(false);
-    expect(inBannedCategory({}, ['history'])).toBe(false);
+  it('still answers when handed nothing', () => {
+    expect(DRAFT_CATEGORIES).toContain(pickWeighted({}, 0.3));
+    expect(DRAFT_CATEGORIES).toContain(pickWeighted(null, 0.99));
   });
 });

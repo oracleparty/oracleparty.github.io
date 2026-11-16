@@ -120,6 +120,7 @@ export class FakeStore {
         'category', 'subcategory', 'who_can_join',
         'questions_per_game', 'question_timer', 'auto_proceed',
         'chaos',   // migration 075
+        'draft_pick',   // migration 082
       ])],
     ]);
     this._shutDoors = new Map([

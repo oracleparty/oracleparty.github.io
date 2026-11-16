@@ -61,8 +61,8 @@ import { CATEGORY_META, resolveCategoryLabel, resolveSubcategoryIcon, findSubcat
 import { titleWordsHtml, repaintTitleColours } from './titles.js';
 import { loadTitleWords } from './title-content.js';
 import {
-  DRAFT_KEY, DRAFT_LABEL, DRAFT_CATEGORIES, DRAFT_SHORT_LABELS, isDraftRoom,
-  encodeDraftMove, parseDraftMove, draftTally, draftStatus, draftShare
+  DRAFT_CATEGORIES, DRAFT_SHORT_LABELS, isDraftRoom, isSpinRoom,
+  encodeDraftMove, parseDraftMove, draftTally, draftStatus
 } from './draft-logic.js';
 
 // --- State ---
@@ -2025,8 +2025,8 @@ function updateCategoryDisplay() {
 
   // Show short label: just subcategory leaf name, or category name if no sub
   let shortLabel = meta.label;
-  if (room.subcategory === DRAFT_KEY) {
-    shortLabel = DRAFT_LABEL;
+  if (isSpinRoom(room)) {
+    shortLabel = resolveCategoryLabel(room.category, room.subcategory);
   } else if (room.subcategory) {
     if (meta.wildCardOptions) {
       const opt = meta.wildCardOptions.find(o => o.key === room.subcategory);
@@ -2059,8 +2059,9 @@ function draftAvatars(list) {
   })).join('');
 }
 
-function draftStateWord(status, entry, share) {
-  if (status === 'want') return `+${entry.net * share}`;
+/** What a chip says: blocks on the wheel, or why there are none. */
+function draftStateWord(status, entry) {
+  if (status === 'want') return `×${entry.blocks}`;
   if (status === 'ban') return 'out';
   return 'even';
 }
@@ -2074,7 +2075,6 @@ function renderDraft() {
   if (!on) { $('#draft-sheet')?.classList.remove('active'); return; }
 
   const tally = draftTally(players);
-  const share = draftShare(room.settings?.questionsPerGame, humanPlayers().length);
   const chips = DRAFT_CATEGORIES.filter(c => tally[c]).map(c => {
     const entry = tally[c];
     const status = draftStatus(entry);
@@ -2082,7 +2082,7 @@ function renderDraft() {
     return `<span class="draft-chip draft-chip--${status}" title="${escapeHtml(CATEGORY_META[c]?.label || c)}">
       <span class="draft-chip__emoji" aria-hidden="true">${emoji}</span>
       <span class="draft-chip__faces">${draftAvatars([...entry.wants, ...entry.bans])}</span>
-      <span class="draft-chip__state">${draftStateWord(status, entry, share)}</span>
+      <span class="draft-chip__state">${draftStateWord(status, entry)}</span>
     </span>`;
   }).join('');
   const chipsEl = $('#draft-chips');
@@ -2115,7 +2115,6 @@ function closeDraftSheet() {
 
 function renderDraftSheet() {
   const tally = draftTally(players);
-  const share = draftShare(room.settings?.questionsPerGame, humanPlayers().length);
   const mine = myDraftMove();
   $('#draft-tiles').innerHTML = DRAFT_CATEGORIES.map(c => {
     const entry = tally[c];
@@ -2139,7 +2138,7 @@ function renderDraftSheet() {
   const label = DRAFT_SHORT_LABELS[_draftSelected];
   const isMine = mine && mine.category === _draftSelected;
   actions.innerHTML = `
-    <button type="button" class="draft-act draft-act--want${isMine && mine.kind === 'want' ? ' draft-act--on' : ''}" data-draft-kind="want">👍 Want ${label} +${share}</button>
+    <button type="button" class="draft-act draft-act--want${isMine && mine.kind === 'want' ? ' draft-act--on' : ''}" data-draft-kind="want">👍 Want ${label}</button>
     <button type="button" class="draft-act draft-act--ban${isMine && mine.kind === 'ban' ? ' draft-act--on' : ''}" data-draft-kind="ban">🚫 Ban ${label}</button>
     ${mine ? '<button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear</button>' : ''}`;
 }
@@ -2249,8 +2248,8 @@ function renderSettingsCategories() {
   const icon = resolveSubcategoryIcon(room.category, room.subcategory);
   // Short label: just the leaf subcategory name
   let shortLabel = meta.label;
-  if (room.subcategory === DRAFT_KEY) {
-    shortLabel = DRAFT_LABEL;
+  if (isSpinRoom(room)) {
+    shortLabel = resolveCategoryLabel(room.category, room.subcategory);
   } else if (room.subcategory) {
     if (meta.wildCardOptions) {
       const opt = meta.wildCardOptions.find(o => o.key === room.subcategory);
@@ -2465,7 +2464,7 @@ function handleRoomChange(payload) {
     if (newRoom.questions_per_game && newRoom.questions_per_game !== room.settings.questionsPerGame) {
       room.settings.questionsPerGame = newRoom.questions_per_game;
       addSystemMessage(`Host changed to ${room.settings.questionsPerGame} questions`);
-      renderDraft(); // a want's share follows the question count
+
       changed = true;
     }
 

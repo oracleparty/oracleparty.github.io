@@ -4,6 +4,10 @@
 // ============================================
 
 // === TIMING (ms) ===
+// Draft and Random rooms: how long the category wheel spins before 3-2-1.
+// The host stamps the countdown this far in the future, so every phone's
+// wheel ends on the same server moment.
+export const CATEGORY_SPIN_MS = 4800;
 export const COUNTDOWN_DELAY_MS = 500;
 export const COUNTDOWN_STEP_MS = 900;
 export const TIMER_GRACE_MS = 500;

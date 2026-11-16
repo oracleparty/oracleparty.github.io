@@ -1,19 +1,30 @@
-// Category draft — the rules. No imports, so Node can test it.
+// Draft and Random — the rules. No imports, so Node can test it.
 //
-// The host picks "Draft" instead of a subject. In the lobby every person makes
-// ONE move: want a category or ban one. A want and a ban on the same category
-// cancel out. Each surviving want guarantees a share of the game's questions;
-// a category with more bans than wants is left out; everything else is a
-// random mix. Moves are public and may be changed until the host starts.
+// Both end in ONE SPIN at Start that picks the subject for the whole game,
+// the way the difficulty vote picks the final question's level.
 //
-// A room in Draft is stored as category 'wild-card' with this subcategory, the
-// same shape the two existing Wild Card options use, so no room column is new.
-// Each person's move lives on their own seat (players.draft_move, migration
-// 082) as "want:science" or "ban:history".
+// DRAFT: in the lobby every person makes one move. A WANT puts a block for
+// that category on the wheel. A BAN takes one of that category's blocks off
+// and keeps the category out of the upset. Wanted categories share 95% of the
+// wheel by their blocks; every category nobody touched shares the last 5%
+// (the upset, 1 in 20, the same number as the difficulty wheel). With no
+// blocks at all, every unbanned category is equally likely.
+//
+// RANDOM: no lobby step; every subject is equally likely.
+//
+// A room is stored as category 'wild-card' with one of the two subcategory
+// keys below. A move lives on its player's seat (players.draft_move:
+// "want:science" / "ban:history"); the spin's result on the room
+// (rooms.draft_pick). Both columns are migration 082.
 
 export const DRAFT_KEY = '__draft__';
 export const DRAFT_ICON = '🗳️';
 export const DRAFT_LABEL = 'Draft';
+export const RANDOM_KEY = '__random__';
+export const RANDOM_ICON = '🎰';
+export const RANDOM_LABEL = 'Random';
+/** What the difficulty wheel also keeps for options nobody chose: 1 in 20. */
+export const DRAFT_UPSET_SHARE = 0.05;
 
 /** The subjects on offer. Wild Card is not one: it is not a subject. */
 export const DRAFT_CATEGORIES = [
@@ -31,6 +42,13 @@ export const DRAFT_SHORT_LABELS = {
 
 export function isDraftRoom(room) {
   return !!room && room.subcategory === DRAFT_KEY;
+}
+export function isRandomRoom(room) {
+  return !!room && room.subcategory === RANDOM_KEY;
+}
+/** A room whose subject is chosen by the spin at Start. */
+export function isSpinRoom(room) {
+  return isDraftRoom(room) || isRandomRoom(room);
 }
 
 export function encodeDraftMove(kind, category) {
@@ -51,112 +69,91 @@ export function parseDraftMove(value) {
   return { kind, category };
 }
 
-/** People only. A bot has no opinion about tonight's subjects. */
+/** People only. A bot has no opinion about tonight's subject. */
 function movers(players) {
   return (players || []).filter(p => p && !p.is_bot);
 }
 
 /**
  * Who did what, per category. Only categories somebody touched appear.
- * { science: { wants: [player], bans: [player], net: 1 }, ... }
+ * { science: { wants: [player], bans: [player], blocks: 1 }, ... }
+ * `blocks` is what is left on the wheel: wants minus bans, never below zero.
  */
 export function draftTally(players) {
   const tally = {};
   for (const p of movers(players)) {
     const move = parseDraftMove(p.draft_move);
     if (!move) continue;
-    const entry = tally[move.category] || (tally[move.category] = { wants: [], bans: [], net: 0 });
-    if (move.kind === 'want') { entry.wants.push(p); entry.net += 1; }
-    else { entry.bans.push(p); entry.net -= 1; }
+    const entry = tally[move.category] || (tally[move.category] = { wants: [], bans: [], blocks: 0 });
+    (move.kind === 'want' ? entry.wants : entry.bans).push(p);
+  }
+  for (const entry of Object.values(tally)) {
+    entry.blocks = Math.max(0, entry.wants.length - entry.bans.length);
   }
   return tally;
 }
 
-/** 'want' (guaranteed), 'ban' (left out), or 'even' (cancelled out). */
+/**
+ * 'want' (has blocks), 'even' (wanted, and every block was banned off) or
+ * 'ban' (only banned). null for a category nobody touched.
+ */
 export function draftStatus(entry) {
   if (!entry) return null;
-  if (entry.net > 0) return 'want';
-  if (entry.net < 0) return 'ban';
-  return 'even';
-}
-
-/** How many questions one want guarantees: an equal slice of the game. */
-export function draftShare(totalQuestions, humanCount) {
-  const n = Math.max(1, Math.floor(Number(totalQuestions) || 0));
-  const people = Math.max(1, Math.floor(Number(humanCount) || 0));
-  return Math.max(1, Math.floor(n / people));
+  if (entry.blocks > 0) return 'want';
+  return entry.wants.length > 0 ? 'even' : 'ban';
 }
 
 /**
- * What the game is built from.
- *   featured: [{ category, count }]  guaranteed questions, never more than the game holds
- *   banned:   [category]             left out entirely
- *   share:    questions one want is worth
+ * The wheel: every category's chance of being picked, summing to 1.
+ * A category with a ban and no blocks left is 0, upset included.
  */
-export function draftPlan(players, totalQuestions) {
-  const total = Math.max(1, Math.floor(Number(totalQuestions) || 0));
-  const share = draftShare(total, movers(players).length);
+export function draftWeights(players) {
   const tally = draftTally(players);
-  const featured = [];
-  const banned = [];
-  for (const category of DRAFT_CATEGORIES) {
-    const entry = tally[category];
-    if (!entry) continue;
-    if (entry.net > 0) featured.push({ category, count: entry.net * share });
-    else if (entry.net < 0) banned.push(category);
+  const weights = {};
+  const wanted = DRAFT_CATEGORIES.filter(c => tally[c] && tally[c].blocks > 0);
+  const untouched = DRAFT_CATEGORIES.filter(c => !tally[c]);
+  for (const c of DRAFT_CATEGORIES) weights[c] = 0;
+
+  if (wanted.length === 0) {
+    // Nobody's want survived: every category nobody banned, equally. If the
+    // room somehow banned all of them, the bans have nothing left to mean.
+    const pool = untouched.length > 0 ? untouched : DRAFT_CATEGORIES;
+    for (const c of pool) weights[c] = 1 / pool.length;
+    return weights;
   }
-  // Never promise more than the game holds: trim the largest first.
-  let promised = featured.reduce((sum, f) => sum + f.count, 0);
-  while (promised > total) {
-    const biggest = featured.reduce((a, b) => (b.count > a.count ? b : a));
-    biggest.count -= 1;
-    promised -= 1;
+  const blocks = wanted.reduce((sum, c) => sum + tally[c].blocks, 0);
+  const upset = untouched.length > 0 ? DRAFT_UPSET_SHARE : 0;
+  for (const c of wanted) weights[c] = (1 - upset) * (tally[c].blocks / blocks);
+  for (const c of untouched) weights[c] = upset / untouched.length;
+  return weights;
+}
+
+/** Random mode's wheel: every subject, equally. */
+export function randomWeights() {
+  const weights = {};
+  for (const c of DRAFT_CATEGORIES) weights[c] = 1 / DRAFT_CATEGORIES.length;
+  return weights;
+}
+
+/** The wheel for a room, whichever kind it is. */
+export function spinWeights(room, players) {
+  return isDraftRoom(room) ? draftWeights(players) : randomWeights();
+}
+
+/** One spin. `roll` is a number in [0, 1); injectable so tests can aim it. */
+export function pickWeighted(weights, roll = Math.random()) {
+  const entries = DRAFT_CATEGORIES.map(c => [c, weights?.[c] || 0]).filter(([, w]) => w > 0);
+  if (entries.length === 0) return DRAFT_CATEGORIES[Math.floor(roll * DRAFT_CATEGORIES.length)];
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  let mark = roll * total;
+  for (const [category, w] of entries) {
+    mark -= w;
+    if (mark < 0) return category;
   }
-  return { featured: featured.filter(f => f.count > 0), banned, share };
+  return entries[entries.length - 1][0];
 }
 
-/**
- * Whose want a question answers, for the "Alice's pick" line. A question
- * counts when one of its categories was wanted and the want survived.
- */
-export function draftPickers(players, questionCategories) {
-  const cats = Array.isArray(questionCategories) ? questionCategories : [];
-  const tally = draftTally(players);
-  const names = [];
-  for (const category of cats) {
-    const entry = tally[category];
-    if (!entry || entry.net <= 0) continue;
-    for (const p of entry.wants) {
-      const name = p.display_name || 'Someone';
-      if (!names.includes(name)) names.push(name);
-    }
-  }
-  return names;
-}
-
-/**
- * The one category to show for a question in a drafted game: a wanted one if
- * it has one, else its first real subject, else Wild Card.
- */
-export function draftQuestionCategory(players, questionCategories) {
-  const cats = Array.isArray(questionCategories) ? questionCategories : [];
-  const tally = draftTally(players);
-  return cats.find(c => tally[c] && tally[c].net > 0)
-    || cats.find(c => DRAFT_CATEGORIES.includes(c))
-    || 'wild-card';
-}
-
-/** "Alice's pick", "Alice & Bob's pick", "3 players' pick", or '' for none. */
-export function draftPickLabel(names) {
-  if (!names || names.length === 0) return '';
-  if (names.length === 1) return `${names[0]}'s pick`;
-  if (names.length === 2) return `${names[0]} & ${names[1]}'s pick`;
-  return `${names.length} players' pick`;
-}
-
-/** True when a question belongs to a category the room banned. */
-export function inBannedCategory(question, banned) {
-  if (!banned || banned.length === 0) return false;
-  const cats = Array.isArray(question?.categories) ? question.categories : [];
-  return cats.some(c => banned.includes(c));
+/** A stored pick is only believed if it names a real subject. */
+export function validPick(value) {
+  return DRAFT_CATEGORIES.includes(value) ? value : null;
 }

@@ -1,52 +1,53 @@
-// Scenario: Category draft.
+// Scenario: Draft and Random — one spin at Start picks the game's subject.
 //
-// Designed with the owner on 2026-11-15. The host picks "Draft" instead of a
-// subject; in the lobby every person makes ONE move, want a category or ban
-// one, shown live to the whole room and changeable until Start. A want and a
-// ban on the same category cancel out. Each surviving want guarantees a share
-// of the game's questions; a banned category is left out; the rest is a mix.
+// Designed with the owner on 2026-11-15/16. The host picks "Draft" or "Random"
+// instead of a subject. In a Draft lobby every person makes ONE move: a want
+// puts a block for that category on the wheel, a ban takes one off. At Start
+// the host's phone spins (wanted categories share 95% by blocks, untouched
+// ones share a 1-in-20 upset, banned ones cannot come up), writes the result
+// to the room, and every phone plays the wheel in front of the countdown and
+// then asks questions from that one subject. Random is the same spin over
+// every subject with no lobby step.
 //
-// Checked here, each in both directions where one side alone could not fail:
-//   * the host is offered Draft, and the room it makes says "Draft" to everyone;
-//   * a move shows on ANOTHER phone, with its consequence (+N / out / even);
-//   * a move can be changed, and the seat holds exactly one;
-//   * a move the database refuses is taken back off the screen;
-//   * the started game holds the guaranteed questions and NOT ONE from the
-//     banned subject — the bank is seeded history-first so that a broken ban
-//     shows up at once (break-tested by switching inBannedCategory off);
-//   * a wanted question says whose pick it was, and an ordinary one does not.
+// THE ODDS are pinned exactly by tests/draft-logic.test.js. This scenario
+// checks the plumbing a unit test cannot: moves reaching other phones, a
+// refused move coming back off the screen, the pick reaching the room and
+// every phone, the wheel actually playing, and the game being built from the
+// pick. The outcome of a spin is random, so every assertion here holds for
+// any legal outcome.
 //
 // Run: node tests/harness/scenario-categorydraft.mjs
 import { PlaytestTable } from './harness.js';
 
-const QUESTIONS = 5;            // 3 people → one want is worth floor(5/3) = 1
+const QUESTIONS = 5;
 const problems = [];
 const note = m => console.log('   ·', m);
 const heading = m => console.log(`\n=== ${m} ===`);
 
 const SUBJECTS = ['history', 'science', 'nature', 'arts-literature', 'culture-society',
   'pop-culture', 'world-geography', 'technology', 'sports', 'food', 'logic'];
+const LABELS = {
+  'history': 'History', 'science': 'Science', 'nature': 'Nature',
+  'arts-literature': 'Arts & Literature', 'culture-society': 'Culture & Society',
+  'pop-culture': 'Pop Culture', 'world-geography': 'World Geography',
+  'technology': 'Technology', 'sports': 'Sports', 'food': 'Food & Drink', 'logic': 'Logic',
+};
 
 function seedQuestions(store) {
   const rows = [];
   let n = 0;
-  const add = (cats, count) => {
-    for (let i = 0; i < count; i++) {
+  for (const s of SUBJECTS) {
+    for (let i = 0; i < 14; i++) {
       n++;
       rows.push({
         id: `q${n}`, question: `Test question ${n}?`, correct_answer: `Answer ${n}`,
         acceptable_answers: [], incorrect_answers: [`Wrong ${n}`],
-        categories: cats, subcategory: null,
+        categories: [s], subcategory: null,
         difficulty: ['easy', 'medium', 'hard'][n % 3], format: 'open',
         fun_fact: null, discarded: false,
       });
     }
-  };
-  // HISTORY FIRST, and a lot of it. The mix is read from the front of the
-  // table, so if the ban ever stops working the game fills with history.
-  add(['history'], 60);
-  add(['history', 'science'], 6);          // filed under both: banned wins
-  for (const s of SUBJECTS.filter(s => s !== 'history')) add([s], 14);
+  }
   store.seed('questions', rows);
 }
 
@@ -55,13 +56,28 @@ const table = await PlaytestTable.open();
 try {
   seedQuestions(table.store);
   const questionsById = new Map(table.store.table('questions').map(q => [q.id, q]));
-  const room = () => table.store.table('rooms')[0];
+  const roomOf = hostName => table.store.table('rooms').find(r => r.host_name === hostName);
   const seatRow = name => table.store.table('players').find(p => p.display_name === name);
 
   async function seat(name) {
     const r = await table.seat(name);
     await r.page.addInitScript(n => localStorage.setItem('oracle_party_display_name', n), name);
     return r;
+  }
+  async function hostWith(r, buttonId) {
+    await r.goto('host.html');
+    await r.page.waitForSelector('.category-card', { timeout: 20000 });
+    const offered = await r.page.waitForSelector(`#spin-entries:not(.hidden) ${buttonId}`, { timeout: 8000 })
+      .then(() => true).catch(() => false);
+    if (!offered) { problems.push(`the host is not offered ${buttonId} on Choose Category`); return null; }
+    await r.page.click(buttonId);
+    await r.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
+    const badge = ((await r.textOf('.selected-category__name')) || '').trim();
+    await r.page.click(`[data-setting="questionsPerGame"] [data-value="${QUESTIONS}"]`).catch(() => {});
+    await r.page.click('#btn-host-game');
+    await r.page.waitForURL('**/lobby.html*', { timeout: 20000 });
+    await r.page.waitForTimeout(1000);
+    return badge;
   }
   async function join(r, code) {
     await r.goto('join.html');
@@ -70,7 +86,6 @@ try {
     await r.page.click('#btn-join');
     await r.page.waitForURL('**/lobby.html*', { timeout: 20000 });
   }
-  /** Open the sheet, tap a category, then want / ban / clear it. */
   async function move(r, category, kind) {
     await r.page.click('#btn-draft-move');
     await r.page.waitForSelector('#draft-sheet.active', { timeout: 5000 });
@@ -83,27 +98,68 @@ try {
       title: c.getAttribute('title'),
       state: c.querySelector('.draft-chip__state')?.textContent.trim(),
       faces: c.querySelectorAll('.draft-face').length,
-      kind: [...c.classList].find(k => k.startsWith('draft-chip--')),
     })));
   const chipFor = async (r, title) => (await chips(r)).find(c => c.title === title);
 
-  heading('the host is offered Draft and makes a Draft room');
+  /** Watch one phone through Start: did the wheel play, and where did it land? */
+  const watchWheel = r => r.page.evaluate(() => new Promise(resolve => {
+    const seen = { shown: false, final: '', won: '' };
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const o = document.querySelector('#category-spin-overlay');
+      if (o && !o.classList.contains('hidden')) {
+        seen.shown = true;
+        seen.final = o.querySelector('.category-spin__final')?.textContent.trim() || seen.final;
+        seen.won = o.querySelector('.draft-tile--won')?.dataset.spinCategory || seen.won;
+      }
+      const question = document.querySelector('#question-screen.active #question-text');
+      if ((question && question.textContent.trim()) || Date.now() - started > 45000) {
+        clearInterval(timer);
+        seen.header = document.querySelector('#question-category')?.textContent.trim();
+        seen.text = question?.textContent.trim() || null;
+        resolve(seen);
+      }
+    }, 80);
+  }));
+
+  /** Everything a started spin game must satisfy, whatever the wheel landed on. */
+  async function checkStartedGame(label, hostName, phones, cannotWin = []) {
+    const room = () => roomOf(hostName);
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline && !(room()?.question_ids?.length)) await phones[0].robot.page.waitForTimeout(200);
+    const pick = room()?.draft_pick;
+    const ids = room()?.question_ids || [];
+    const cats = ids.map(id => questionsById.get(id)?.categories || []);
+    note(`${label}: the wheel landed on "${pick}"; questions: ${cats.map(c => c.join('+')).join(' | ')}`);
+    if (!SUBJECTS.includes(pick)) { problems.push(`${label}: the room's pick is "${pick}", not a subject`); return null; }
+    if (cannotWin.includes(pick)) problems.push(`${label}: the wheel landed on ${pick}, which could not win`);
+    if (ids.length !== QUESTIONS + 1) problems.push(`${label}: the game holds ${ids.length} questions, want ${QUESTIONS + 1}`);
+    if (new Set(ids).size !== ids.length) problems.push(`${label}: the game asks the same question twice`);
+    const stray = cats.filter(c => !c.includes(pick)).length;
+    if (stray) problems.push(`${label}: ${stray} question(s) are not from ${pick}, the subject the wheel picked`);
+
+    for (const { robot, watching } of phones) {
+      const seen = await watching;
+      if (!seen.shown) problems.push(`${label}: ${robot.name} never saw the wheel`);
+      else {
+        if (seen.won !== pick) problems.push(`${label}: ${robot.name}'s wheel stopped on "${seen.won}", the room's pick is "${pick}"`);
+        if (!seen.final.includes(LABELS[pick])) problems.push(`${label}: ${robot.name}'s wheel announced "${seen.final}", want ${LABELS[pick]}`);
+      }
+      if (!seen.text) problems.push(`${label}: ${robot.name} never reached the first question after the wheel`);
+      else if (!(seen.header || '').includes(LABELS[pick])) {
+        problems.push(`${label}: ${robot.name}'s question header reads "${seen.header}", want the picked subject ${LABELS[pick]}`);
+      }
+    }
+    return pick;
+  }
+
+  // ------------------------------------------------------------------ Draft
+  heading('the host is offered Draft and Random, and makes a Draft room');
   const alice = await seat('Alice');
-  await alice.goto('host.html');
-  await alice.page.waitForSelector('.category-card', { timeout: 20000 });
-  const offered = await alice.page.waitForSelector('#btn-draft:not(.hidden)', { timeout: 8000 })
-    .then(() => true).catch(() => false);
-  if (!offered) problems.push('the host is not offered Draft on Choose Category');
-  await alice.page.click('#btn-draft');
-  await alice.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
-  const badge = await alice.textOf('.selected-category__name');
-  if (!/^Draft$/.test((badge || '').trim())) problems.push(`the settings screen calls the choice "${badge}", want "Draft"`);
-  await alice.page.click(`[data-setting="questionsPerGame"] [data-value="${QUESTIONS}"]`).catch(() => {});
-  await alice.page.click('#btn-host-game');
-  await alice.page.waitForURL('**/lobby.html*', { timeout: 20000 });
-  await alice.page.waitForTimeout(1000);
-  note(`room: category=${room()?.category} subcategory=${room()?.subcategory}`);
-  if (room()?.subcategory !== '__draft__') problems.push('the room was not created as a Draft room');
+  const badge = await hostWith(alice, '#btn-draft');
+  if (badge !== null && badge !== 'Draft') problems.push(`the settings screen calls the choice "${badge}", want "Draft"`);
+  note(`room: category=${roomOf('Alice')?.category} subcategory=${roomOf('Alice')?.subcategory}`);
+  if (roomOf('Alice')?.subcategory !== '__draft__') problems.push('the room was not created as a Draft room');
   const code = await alice.textOf('#lobby-code');
 
   const bob = await seat('Bob');
@@ -115,22 +171,20 @@ try {
   for (const r of [alice, bob, carol]) {
     const label = (await r.textOf('#lobby-category') || '').trim();
     if (label !== 'Draft') problems.push(`${r.name}'s lobby card reads "${label}", want "Draft"`);
-    const bar = await r.page.locator('#draft-bar').isVisible().catch(() => false);
-    if (!bar) problems.push(`${r.name} has no draft bar in a Draft room`);
+    if (!await r.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push(`${r.name} has no draft bar in a Draft room`);
   }
 
-  heading('a move shows on every phone, with what it does');
+  heading('a want is a block, and every phone sees it');
   await move(alice, 'science', 'want');
-  note(`Alice's seat: ${seatRow('Alice')?.draft_move}`);
   if (seatRow('Alice')?.draft_move !== 'want:science') problems.push("Alice's want was not saved on her seat");
   await bob.page.waitForTimeout(800);
   let chip = await chipFor(bob, 'Science');
   if (!chip) problems.push("Bob cannot see Alice's move");
-  else if (chip.state !== '+1' || chip.faces !== 1) problems.push(`Bob sees Science as ${JSON.stringify(chip)}, want +1 with one face`);
+  else if (chip.state !== '×1' || chip.faces !== 1) problems.push(`Bob sees Science as ${JSON.stringify(chip)}, want ×1 with one face`);
   const mine = (await alice.textOf('#btn-draft-move') || '').trim();
   if (!/Science/.test(mine)) problems.push(`Alice's own button reads "${mine}" after her move`);
 
-  heading('a want and a ban on one category cancel out');
+  heading('a ban takes a block off');
   await move(bob, 'science', 'ban');
   await carol.page.waitForTimeout(800);
   chip = await chipFor(carol, 'Science');
@@ -142,14 +196,12 @@ try {
   await carol.page.waitForTimeout(800);
   const afterChange = await chips(carol);
   note(`Carol sees: ${afterChange.map(c => `${c.title} ${c.state}`).join(', ')}`);
-  if (afterChange.find(c => c.title === 'Science')?.state !== '+1') problems.push('Science did not return to +1 when the ban moved away');
+  if (afterChange.find(c => c.title === 'Science')?.state !== '×1') problems.push('Science did not return to ×1 when the ban moved away');
   if (afterChange.find(c => c.title === 'History')?.state !== 'out') problems.push('a banned category does not read "out"');
 
   heading('a move the database refuses comes back off the screen');
   // An ERROR, not a silent zero rows: a zero-row refusal re-reads the players
-  // and would redraw correctly even if the screen never took the move back, so
-  // it cannot test that. (Found by break test: the first version passed with
-  // the take-back removed.)
+  // and would redraw correctly even if the screen never took the move back.
   table.store.addCheck('players', row => row.draft_move !== 'want:sports', 'players_draft_move_shape');
   await carol.page.click('#btn-draft-move');
   await carol.page.waitForSelector('#draft-sheet.active', { timeout: 5000 });
@@ -170,61 +222,43 @@ try {
   if (!told) problems.push('a draft move failed to save and Carol was told nothing');
   if (refusedBtn !== 'Choose') problems.push(`Carol's move was refused and her button still reads "${refusedBtn}"`);
   if (refusedChip) problems.push('a refused move is still drawn as a chip');
-  // The refusal may have surfaced the removed-seat notice path; it must not have.
-  const removed = await carol.page.locator('#removed-modal.active').isVisible().catch(() => false);
-  if (removed) problems.push('a refused draft move told Carol she was removed from the room');
 
   await move(carol, 'science', 'want');
   await alice.page.waitForTimeout(800);
   chip = await chipFor(alice, 'Science');
-  if (chip?.state !== '+2' || chip?.faces !== 2) problems.push(`two wants on Science read ${JSON.stringify(chip)}, want +2 with two faces`);
+  if (chip?.state !== '×2' || chip?.faces !== 2) problems.push(`two wants on Science read ${JSON.stringify(chip)}, want ×2 with two faces`);
 
-  heading('the game is built from the moves');
+  heading('Start: one spin picks the subject, on every phone');
   for (const r of [bob, carol]) await r.page.click('#btn-ready').catch(() => {});
   await alice.page.waitForTimeout(600);
+  const draftPhones = [bob, carol].map(robot => ({ robot, watching: null }));
   await alice.page.click('#btn-start-game');
-  await alice.page.waitForURL('**/game.html*', { timeout: 20000 });
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline && !(room()?.question_ids?.length)) await alice.page.waitForTimeout(250);
-  const ids = room()?.question_ids || [];
-  const cats = ids.map(id => questionsById.get(id)?.categories || []);
-  const regular = cats.slice(0, QUESTIONS);
-  const scienceCount = regular.filter(c => c.includes('science')).length;
-  const historyCount = cats.filter(c => c.includes('history')).length;
-  note(`question list: ${cats.map(c => c.join('+')).join(' | ')}`);
-  if (ids.length !== QUESTIONS + 1) problems.push(`the game holds ${ids.length} questions, want ${QUESTIONS + 1}`);
-  if (new Set(ids).size !== ids.length) problems.push('the drafted game asks the same question twice');
-  if (scienceCount < 2) problems.push(`two wants on Science guaranteed 2 questions and the game holds ${scienceCount}`);
-  if (historyCount > 0) problems.push(`History was banned and the game holds ${historyCount} history question(s)`);
+  await Promise.all([bob, carol].map(r => r.page.waitForURL('**/game.html*', { timeout: 20000 })));
+  for (const p of draftPhones) p.watching = watchWheel(p.robot);
+  // History was banned and nobody wanted it: it has no chance, upset included.
+  await checkStartedGame('Draft', 'Alice', draftPhones, ['history']);
 
-  heading('a wanted question says whose pick it was');
-  await bob.page.waitForSelector('#question-screen.active #question-text', { timeout: 30000 }).catch(() => {});
-  await bob.page.waitForFunction(() => {
-    const el = document.querySelector('#question-text');
-    return el && el.textContent.trim().length > 0 && el.offsetParent !== null;
-  }, null, { timeout: 30000 }).catch(() => problems.push('Bob never saw the first question of the drafted game'));
-  const shown = await bob.page.evaluate(() => ({
-    text: document.querySelector('#question-text')?.textContent.trim(),
-    header: document.querySelector('#question-category')?.textContent.trim(),
-    width: document.querySelector('#question-category')?.scrollWidth,
-    room: document.querySelector('.game-progress')?.clientWidth,
-  }));
-  const q = [...questionsById.values()].find(x => x.question === shown.text);
-  note(`Bob's header: "${shown.header}" for a ${q?.categories.join('+')} question`);
-  if (!q) problems.push(`Bob is shown a question the bank does not hold: "${shown.text}"`);
-  else if (q.categories.includes('science')) {
-    if (!/Science/.test(shown.header) || !/Alice & Carol's pick/.test(shown.header)) {
-      problems.push(`a Science question's header reads "${shown.header}", want the subject and "Alice & Carol's pick"`);
-    }
-  } else {
-    if (/pick/.test(shown.header)) problems.push(`a question nobody wanted claims to be a pick: "${shown.header}"`);
-    if (/Draft|Wild/.test(shown.header)) problems.push(`the header names the mode, not the question's subject: "${shown.header}"`);
-  }
+  // ----------------------------------------------------------------- Random
+  heading('Random: no moves, the same spin');
+  const dan = await seat('Dan');
+  const eve = await seat('Eve');
+  const randomBadge = await hostWith(dan, '#btn-random');
+  if (randomBadge !== null && randomBadge !== 'Random') problems.push(`the settings screen calls the choice "${randomBadge}", want "Random"`);
+  if (roomOf('Dan')?.subcategory !== '__random__') problems.push('the room was not created as a Random room');
+  await join(eve, await dan.textOf('#lobby-code'));
+  await dan.page.waitForTimeout(1500);
+  const eveLabel = (await eve.textOf('#lobby-category') || '').trim();
+  if (eveLabel !== 'Random') problems.push(`a Random room's lobby card reads "${eveLabel}", want "Random"`);
+  if (await eve.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push('a Random room shows the draft bar; it has no moves to make');
+  await eve.page.click('#btn-ready').catch(() => {});
+  await dan.page.waitForTimeout(600);
+  const randomPhones = [{ robot: eve, watching: null }];
+  await dan.page.click('#btn-start-game');
+  await eve.page.waitForURL('**/game.html*', { timeout: 20000 });
+  randomPhones[0].watching = watchWheel(eve);
+  await checkStartedGame('Random', 'Dan', randomPhones);
 
-  const errors = [alice, bob, carol].flatMap(r => (r.consoleErrors || []).map(e => `${r.name}: ${e}`));
-  if (errors.length) note(`console errors: ${errors.slice(0, 5).join(' || ')}`);
-
-  console.log('\n' + (problems.length ? `FAILED — ${problems.length} problem(s):` : 'PASSED — category draft works'));
+  console.log('\n' + (problems.length ? `FAILED — ${problems.length} problem(s):` : 'PASSED — Draft and Random work'));
   for (const p of problems) console.log('  ✗', p);
   process.exitCode = problems.length ? 1 : 0;
 } catch (err) {

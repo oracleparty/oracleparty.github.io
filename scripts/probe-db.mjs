@@ -1054,7 +1054,7 @@ const REQUIRED = {
   players: ['id', 'room_id', 'display_name', 'is_host', 'is_cohost', 'score',
             'last_seen_at', 'disconnected_at', 'joined_at', 'user_id',
             'avatar_color', 'avatar_emoji', 'title', 'is_ready', 'is_bot', 'score',
-            // Migration 082 — Category draft. Missing reads as a missing feature,
+            // Migration 082 — Draft and Random. Missing reads as a missing feature,
             // not a fault: draftAvailable() hides Draft from the host.
             'draft_move'],
   rooms:   ['id', 'code', 'host_name', 'category', 'subcategory', 'status', 'used_question_ids',
@@ -1066,7 +1066,10 @@ const REQUIRED = {
             'room_scores',
             // Migration 075 — Chaos mode. Missing reads as a missing feature,
             // not a fault: chaosAvailable() hides the host's switch.
-            'chaos'],
+            'chaos',
+            // Migration 082 — the spin's pick for Draft and Random rooms. Missing
+            // hides both from the host (draftAvailable()), like draft_move.
+            'draft_pick'],
   answers: ['id', 'room_id', 'player_id', 'question_number', 'question_id',
             'wager', 'submitted_answer', 'is_correct', 'auto_correct', 'score_earned',
             // Migration 043 — the marker that makes recording a round
