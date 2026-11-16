@@ -14,7 +14,12 @@ on:
 
 jobs:
   playtest-game:
-    runs-on: ubuntu-latest
+    # PINNED, not ubuntu-latest. On 2026-11-15 "latest" became Ubuntu 26.04 and
+    # Playwright 1.59 refuses to install Chromium there ("does not support
+    # chromium on ubuntu26.04-x64"), so every robot job died in 15 seconds
+    # before running a single scenario. Move this only together with a
+    # Playwright version that supports the newer image.
+    runs-on: ubuntu-24.04
     # THE SUITE OUTGREW 25 MINUTES, AND A TIMEOUT IS NOT A FAILURE — GitHub
     # cancels the job, which reads as "cancelled" rather than red, and the last
     # four steps simply never ran. That happened on 2026-09-01: fifteen steps
@@ -86,7 +91,7 @@ jobs:
   # more. Two jobs on two runners finish in about half the time, and a
   # timeout here is a CANCEL, which reads as grey rather than red.
   playtest-accounts-and-network:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: see the note on the first job
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -224,7 +229,7 @@ jobs:
   # rather than more steps on the other two: both are already 20-30 minutes, and
   # this note's own advice is to split before a job nears its limit.
   playtest-stress:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: see the note on the first job
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

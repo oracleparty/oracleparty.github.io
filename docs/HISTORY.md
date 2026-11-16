@@ -48,6 +48,13 @@
 > verbatim). The next CI probe reads both columns independently. Deployed as
 > 20261116.
 >
+> **CI's robots had stopped running and nobody had looked (me, on 11-15).**
+> `ubuntu-latest` became Ubuntu 26.04 and Playwright 1.59 will not install
+> Chromium there, so all three robot jobs failed in 15 seconds on the 11-15
+> docs push, the first push since 11-06. Found while checking the 11-16
+> deploy. The jobs are pinned to `ubuntu-24.04`. Every local run in this entry
+> used the container's own browser, so the local results stand.
+>
 > **NOT established:** nothing has run on a real phone yet.
 > How the wheel FEELS (4.8 seconds, the deceleration) is a judgement only the
 > owner can make. A spin game whose host dies between Start and the question
