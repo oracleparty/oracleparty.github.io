@@ -43,7 +43,12 @@
 > was on the clipboard. Nothing ran. 082 has changed since (it now also adds
 > `rooms.draft_pick`), so that was fortunate.
 >
-> **NOT established:** nothing has run on a real phone or the live database.
+> **082 IS APPLIED (2026-11-16):** the owner ran the revised paste and said
+> "Sql and checks worked" (six verification rows; reported, not pasted
+> verbatim). The next CI probe reads both columns independently. Deployed as
+> 20261116.
+>
+> **NOT established:** nothing has run on a real phone yet.
 > How the wheel FEELS (4.8 seconds, the deceleration) is a judgement only the
 > owner can make. A spin game whose host dies between Start and the question
 > list has no pick; the ordinary recovery paths apply and were not exercised.

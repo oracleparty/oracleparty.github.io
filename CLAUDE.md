@@ -68,7 +68,7 @@ screens, and they are usually right when they push back.
 Postgres functions (`op_*`, SECURITY DEFINER) own the rules, and clients call
 them. Supabase cannot wake itself, so a phone always initiates.
 
-| Server-side (migrations 045–081) | Function |
+| Server-side (migrations 045–082) | Function |
 |---|---|
 | judging, scoring, wagers, late refusal | `op_submit_answer`, `op_answer_matches`, `op_next_wager` |
 | blank fill, typed drafts | `op_fill_blank_answers`, `op_save_draft` |
@@ -123,8 +123,9 @@ podium (tap to continue) → results.
 - **Applied as of 2026-11-06: everything through 081.** Evidence varies
   (pasted rows, CI probe, or the owner's word); see `docs/HISTORY.md` before
   relying on a specific one.
-- **PENDING: 082 (Draft and Random).** Not run as of 2026-11-16. Until it is,
-  `draftAvailable()` hides both from the host and nothing else changes.
+- **082 (Draft and Random) is applied (2026-11-16):** the owner ran the paste
+  and reported all six verification rows `ok` (reported, not pasted). No SQL
+  is pending.
 - **`scripts/probe-db.mjs` runs in CI** (`db-probe.yml`) and is the only
   automated view of the live database. It exits 1 when something the app
   needs is missing. It runs as `anon`; row counts are what a visitor can see.
