@@ -379,10 +379,11 @@ lists are in `docs/HISTORY.md`.
 - **Parked ideas** (owner interested, not convinced): Prophecies (secret
   predictions about the night, paid at the podium). Not chosen: rivalries, a
   recap card, a daily solo game, a TV mode, player-written questions.
-- **Draft and Random, not done:** the host cannot switch an existing room to
-  or from Draft or Random (or change Spin) in the lobby's settings; a
-  rejoining player's move is lost with their old seat; the lobby does not
-  show players which Spin setting the host chose.
+- **Draft and Random in the lobby** (owner chose option B, 2026-11-17): the
+  same two buttons sit above the lobby's category list (host only), and the
+  Spin switch shows in lobby settings for a Draft or Random room.
+- **Draft and Random, not done:** a rejoining player's move is lost with their
+  old seat; the lobby card does not show players which Spin setting was chosen.
 - **Polish list from the 2026-11-14 playtest:** minor aesthetics and
   smoothness; the owner is saving it for a later session.
 
