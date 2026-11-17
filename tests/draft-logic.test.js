@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   DRAFT_KEY, RANDOM_KEY, DRAFT_CATEGORIES, DRAFT_UPSET_SHARE,
   isDraftRoom, isRandomRoom, isSpinRoom, encodeDraftMove, parseDraftMove,
-  draftTally, draftStatus, draftWeights, randomWeights, spinWeights, pickWeighted, validPick
+  draftTally, draftStatus, draftWeights, randomWeights, spinWeights, pickWeighted, validPick,
+  DRAFT_EACH_KEY, RANDOM_EACH_KEY, spinKey, spinKind, spinLabel, spinIcon, spinsEveryQuestion,
+  pickSequence, questionSubject
 } from '../js/draft-logic.js';
 import { CATEGORY_META } from '../js/categories.js';
 
@@ -150,5 +152,60 @@ describe('draft: the spin', () => {
   it('still answers when handed nothing', () => {
     expect(DRAFT_CATEGORIES).toContain(pickWeighted({}, 0.3));
     expect(DRAFT_CATEGORIES).toContain(pickWeighted(null, 0.99));
+  });
+});
+
+describe('spin: every question', () => {
+  it('is stored as its own key and still counts as the same kind of room', () => {
+    expect(spinKey('draft', false)).toBe(DRAFT_KEY);
+    expect(spinKey('draft', true)).toBe(DRAFT_EACH_KEY);
+    expect(spinKey('random', true)).toBe(RANDOM_EACH_KEY);
+    expect(spinKey('science', true)).toBeNull();
+    for (const key of [DRAFT_KEY, DRAFT_EACH_KEY]) {
+      expect(spinKind(key)).toBe('draft');
+      expect(isDraftRoom({ subcategory: key })).toBe(true);
+      expect(spinLabel(key)).toBe('Draft');
+    }
+    for (const key of [RANDOM_KEY, RANDOM_EACH_KEY]) {
+      expect(isRandomRoom({ subcategory: key })).toBe(true);
+      expect(spinLabel(key)).toBe('Random');
+      expect(spinIcon(key)).toBeTruthy();
+    }
+    expect(spinKind('__all_questions__')).toBeNull();
+    expect(spinLabel('ancient')).toBeNull();
+  });
+
+  it('knows which rooms spin every question', () => {
+    expect(spinsEveryQuestion({ subcategory: DRAFT_EACH_KEY })).toBe(true);
+    expect(spinsEveryQuestion({ subcategory: RANDOM_EACH_KEY })).toBe(true);
+    expect(spinsEveryQuestion({ subcategory: DRAFT_KEY })).toBe(false);
+    expect(spinsEveryQuestion({ subcategory: RANDOM_KEY })).toBe(false);
+    expect(spinsEveryQuestion(null)).toBe(false);
+  });
+
+  it('draws one subject per question from the same wheel, never a banned one', () => {
+    const weights = draftWeights([P('A', 'want:science'), P('B', 'ban:history')]);
+    let i = 0;
+    const rolls = [0.01, 0.5, 0.94, 0.951, 0.999, 0.3];
+    const seq = pickSequence(weights, 6, () => rolls[i++]);
+    expect(seq).toHaveLength(6);
+    expect(seq.filter(c => c === 'science')).toHaveLength(4);
+    expect(seq).not.toContain('history');
+    expect(pickSequence(weights, 0)).toEqual([]);
+  });
+
+  it('reads a question\'s subject off the question, the same on every phone', () => {
+    const even = randomWeights();
+    expect(questionSubject(even, ['science'])).toBe('science');
+    // Filed under two subjects with equal odds: the earlier one in the list.
+    expect(questionSubject(even, ['science', 'history'])).toBe('history');
+    expect(questionSubject(even, ['history', 'science'])).toBe('history');
+    // The better odds win, whichever order the question lists them in.
+    const w = draftWeights([P('A', 'want:science')]);
+    expect(questionSubject(w, ['history', 'science'])).toBe('science');
+    // Wild Card is never a subject.
+    expect(questionSubject(even, ['wild-card', 'food'])).toBe('food');
+    expect(questionSubject(even, ['wild-card'])).toBeNull();
+    expect(questionSubject(even, null)).toBeNull();
   });
 });

@@ -36,7 +36,7 @@ export {
 // --- Questions ---
 export {
   fetchCategories, fetchQuestionCount, fetchQuestionsByCategory,
-  fetchAllOpenQuestions, fetchExclusiveWildCardQuestions,
+  fetchAllOpenQuestions, fetchExclusiveWildCardQuestions, fetchQuestionsForSubjects,
   fetchAllOpenQuestionCount, fetchExclusiveWildCardCount,
   fetchQuestionHistoryForUsers, fetchQuestionByDifficulty, fetchQuestionsByIds,
   upsertQuestionHistory, recordRoundHistory, amendQuestionHistory, revokeQuestionHistory,

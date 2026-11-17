@@ -40,9 +40,10 @@ import {
   appendUsedQuestionIds,
   fetchAllOpenQuestions,
   fetchExclusiveWildCardQuestions,
+  fetchQuestionsForSubjects,
   fetchQuestionFeedback
 } from '../supabase.js';
-import { isSpinRoom, spinWeights, pickWeighted } from '../draft-logic.js';
+import { isSpinRoom, spinsEveryQuestion, spinWeights, pickWeighted, pickSequence, questionSubject } from '../draft-logic.js';
 import { cancelCategorySpin } from './category-spin.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
@@ -538,8 +539,18 @@ async function initHostGame(roomSnapshot = null) {
     // THE SPIN. Decided here, once, on the host's phone, from the moves on the
     // seats (Draft) or evenly (Random); every other phone is told the result
     // through rooms.draft_pick and only animates towards it.
-    spinPick = pickWeighted(spinWeights(state.room, state.players));
-    questions = await fetchQuestionsByCategory(spinPick, state.totalQuestions + 1, excludeIds, playerUserIds, null);
+    const weights = spinWeights(state.room, state.players);
+    if (spinsEveryQuestion(state.room)) {
+      // "Spin: Every question": a subject is drawn for each question. The big
+      // wheel still plays once, landing on question 1's subject; later
+      // questions roll their subject in the header.
+      const subjects = pickSequence(weights, state.totalQuestions + 1);
+      questions = await fetchQuestionsForSubjects(subjects, excludeIds, playerUserIds);
+      spinPick = questionSubject(weights, questions[0]?.categories) || subjects[0];
+    } else {
+      spinPick = pickWeighted(weights);
+      questions = await fetchQuestionsByCategory(spinPick, state.totalQuestions + 1, excludeIds, playerUserIds, null);
+    }
   } else {
     questions = await fetchQuestionsByCategory(state.room.category, state.totalQuestions + 1, excludeIds, playerUserIds, subcategory);
   }

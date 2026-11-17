@@ -327,6 +327,38 @@ export async function fetchAllOpenQuestions(limit, excludeIds = [], playerUserId
 }
 
 /**
+ * One question for each subject in `subjects`, in that order (an
+ * every-question Draft or Random game: the host has already drawn a subject
+ * per question). Each subject's questions come through
+ * fetchQuestionsByCategory, so the game gets the same "what has this room
+ * already met" selection as any other.
+ */
+export async function fetchQuestionsForSubjects(subjects, excludeIds = [], playerUserIds = []) {
+  const need = {};
+  for (const s of subjects) need[s] = (need[s] || 0) + 1;
+  const cats = Object.keys(need);
+  // A few spare each: a question filed under two drawn subjects can only be used once.
+  const lists = await Promise.all(
+    cats.map(c => fetchQuestionsByCategory(c, need[c] + 3, excludeIds, playerUserIds))
+  );
+  const bySubject = {};
+  cats.forEach((c, i) => { bySubject[c] = lists[i] || []; });
+
+  const taken = new Set();
+  const out = [];
+  for (const s of subjects) {
+    let q = bySubject[s].find(x => !taken.has(x.id));
+    if (!q) {
+      // The subject ran dry; any unused question beats a shorter game.
+      logger.warn('Supabase', `No unused ${s} question left for this game; using another subject`);
+      q = lists.flat().find(x => !taken.has(x.id));
+    }
+    if (q) { out.push(q); taken.add(q.id); }
+  }
+  return out;
+}
+
+/**
  * Fetch questions that are EXCLUSIVELY in wild-card (no other categories).
  * These are the ~19 weird, uncategorizable questions.
  */

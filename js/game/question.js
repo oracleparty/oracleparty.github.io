@@ -3,8 +3,9 @@
 // Wager grid, timer, answer submission.
 // ============================================
 
-import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionText, getCorrectAnswer, getAlternates,
+import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionCategoryLabel, spinRollLabels, getQuestionText, getCorrectAnswer, getAlternates,
          showScreen, _isLeaving, noteRoundShown, noteAnswerSent } from './state.js';
+import { rollLabel } from './category-spin.js';
 import { $, transitionScreens, fuzzyMatch, showToast } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { lastRequestMs } from '../db/client.js';
@@ -50,7 +51,8 @@ export function showQuestionScreen() {
     return;
   }
 
-  $('#question-category').textContent = getCategoryLabel();
+  const categoryLabel = getQuestionCategoryLabel(q);
+  $('#question-category').textContent = categoryLabel;
 
   $('#question-text').textContent = getQuestionText(q);
 
@@ -67,6 +69,12 @@ export function showQuestionScreen() {
   state._renderedQuestion = state.currentQuestion;
   state._renderedFinalRound = !!state.isFinalWagerRound;
   noteRoundShown(state.currentQuestion, q?.id);
+
+  // "Spin: Every question": each new question's subject rolls in for a second.
+  // Question 1 does not; the full wheel has just landed on it.
+  if (!sameQuestion && state.currentQuestion > 0) {
+    rollLabel($('#question-category'), categoryLabel, spinRollLabels());
+  }
 
   if (!sameQuestion) {
     $('#answer-form').classList.remove('answer-input--submitted');

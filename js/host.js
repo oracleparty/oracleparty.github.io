@@ -5,7 +5,7 @@
 
 import { $, $$, transitionScreens, showToast, navigateWithFade } from './utils.js';
 import { fetchCategories, createRoom, addPlayer, fetchCategoryPlayCounts, fetchQuestionCount, fetchMasteryCounts, fetchAllOpenQuestionCount, fetchExclusiveWildCardCount, chaosAvailable, draftAvailable } from './supabase.js';
-import { DRAFT_KEY, RANDOM_KEY } from './draft-logic.js';
+import { DRAFT_KEY, RANDOM_KEY, spinKind, spinKey } from './draft-logic.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { logger } from './logger.js';
@@ -27,7 +27,8 @@ let settings = {
   questionsPerGame: 10,
   questionTimer: 30,
   autoProceed: 0,
-  chaos: 0
+  chaos: 0,
+  spinEvery: 0   // Draft and Random only: 0 = one spin a game, 1 = every question
 };
 
 // --- DOM refs ---
@@ -686,7 +687,7 @@ function attachListeners() {
       // Update settings
       const settingKey = group.dataset.setting;
       const value = option.dataset.value;
-      if (settingKey === 'questionsPerGame' || settingKey === 'questionTimer' || settingKey === 'autoProceed' || settingKey === 'chaos') {
+      if (settingKey === 'questionsPerGame' || settingKey === 'questionTimer' || settingKey === 'autoProceed' || settingKey === 'chaos' || settingKey === 'spinEvery') {
         settings[settingKey] = parseInt(value, 10);
       } else {
         settings[settingKey] = value;
@@ -706,9 +707,12 @@ async function _updateSettingsBadge(cat) {
   $('.selected-category__icon').textContent = icon;
   $('.selected-category__name').textContent = label;
 
+  // "Spin" only means something when the subject is drawn at Start.
+  $$('[data-spin-setting]').forEach(el => el.classList.toggle('hidden', !spinKind(selectedSubcategory)));
+
   // Show subcategory count if selected, otherwise parent count
   const countEl = $('.selected-category__count');
-  if (selectedSubcategory === DRAFT_KEY || selectedSubcategory === RANDOM_KEY) {
+  if (spinKind(selectedSubcategory)) {
     countEl.textContent = '';
   } else if (selectedSubcategory === '__all_questions__') {
     countEl.textContent = '';
@@ -757,7 +761,9 @@ async function handleHostGame() {
     const { data, error } = await createRoom({
       hostName,
       category: selectedCategory.name,
-      subcategory: selectedSubcategory || null,
+      subcategory: (spinKind(selectedSubcategory)
+        ? spinKey(spinKind(selectedSubcategory), settings.spinEvery === 1)
+        : selectedSubcategory) || null,
       whoCanJoin: settings.whoCanJoin,
       questionsPerGame: settings.questionsPerGame,
       questionTimer: settings.questionTimer,

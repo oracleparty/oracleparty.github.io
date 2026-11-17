@@ -289,6 +289,16 @@ node tests/harness/scenario-<name>.mjs      # robot playtests (list: tests/harne
   Stored as `wild-card` + subcategory `__draft__` / `__random__`; moves in
   `players.draft_move` (082). Play counts and history record the picked
   subject (`playedCategory()`).
+- **Spin: Once / Every question** (built 2026-11-17): a host setting on the
+  create-room screen, shown only for Draft and Random, stored as two more
+  subcategory keys (`__draft_each__`, `__random_each__`), so it needed no SQL.
+  In "Every question" the host draws a subject per question from the same
+  odds. The full wheel still plays once, landing on question 1's subject;
+  each later question's header ROLLS for about a second and lands on its
+  subject (the owner chose this over a full wheel every round, which would
+  cost each round ~2.5s of its clock). Every phone reads a question's subject
+  off the question itself (`questionSubject`), so nothing is stored per round.
+  Such a game counts under Wild Card in play counts.
 - **Game options are independent host switches** (like Chaos), set at room
   creation and locked at Start; the classic game is the default.
 - **In game:** timer and Chaos lock at Start; Auto-Proceed stays changeable.
@@ -369,11 +379,10 @@ lists are in `docs/HISTORY.md`.
 - **Parked ideas** (owner interested, not convinced): Prophecies (secret
   predictions about the night, paid at the podium). Not chosen: rivalries, a
   recap card, a daily solo game, a TV mode, player-written questions.
-- **Draft and Random, next (owner chose the order):** a host setting "Spin:
-  once / every question"; the per-question spin is not built. Also not done:
-  the host cannot switch an existing room to or from Draft or Random in the
-  lobby's category sheet, and a rejoining player's move is lost with their
-  old seat.
+- **Draft and Random, not done:** the host cannot switch an existing room to
+  or from Draft or Random (or change Spin) in the lobby's settings; a
+  rejoining player's move is lost with their old seat; the lobby does not
+  show players which Spin setting the host chose.
 - **Polish list from the 2026-11-14 playtest:** minor aesthetics and
   smoothness; the owner is saving it for a later session.
 

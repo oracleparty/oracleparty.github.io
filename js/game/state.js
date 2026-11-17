@@ -4,7 +4,10 @@
 // ============================================
 
 import { CATEGORY_META, resolveCategoryLabel } from '../categories.js';
-import { DRAFT_ICON, DRAFT_LABEL, RANDOM_ICON, RANDOM_LABEL, isSpinRoom, isDraftRoom, validPick } from '../draft-logic.js';
+import {
+  DRAFT_ICON, DRAFT_LABEL, RANDOM_ICON, RANDOM_LABEL, DRAFT_CATEGORIES, isSpinRoom, isDraftRoom,
+  spinsEveryQuestion, spinWeights, questionSubject, validPick
+} from '../draft-logic.js';
 import { answersForCurrentGame } from './scoring-helpers.js';
 import { AWAY_GRACE_MS, FINAL_QUESTION_EXTRA_SECONDS } from '../constants.js';
 import { transitionScreens } from '../utils.js';
@@ -433,7 +436,8 @@ export function getCategoryLabel() {
   // A Draft or Random room plays the subject its spin landed on; before the
   // spin it has only its own name.
   if (isSpinRoom(state.room)) {
-    const pick = validPick(state.room.draftPick);
+    // An every-question game has no one subject: its name is the mode's.
+    const pick = spinsEveryQuestion(state.room) ? null : validPick(state.room.draftPick);
     if (pick) return `${CATEGORY_META[pick].emoji || CATEGORY_META[pick].icon} ${CATEGORY_META[pick].label}`;
     return isDraftRoom(state.room) ? `${DRAFT_ICON} ${DRAFT_LABEL}` : `${RANDOM_ICON} ${RANDOM_LABEL}`;
   }
@@ -448,7 +452,36 @@ export function getCategoryLabel() {
  */
 export function playedCategory() {
   if (!state.room) return null;
-  return (isSpinRoom(state.room) && validPick(state.room.draftPick)) || state.room.category;
+  if (isSpinRoom(state.room) && !spinsEveryQuestion(state.room)) {
+    return validPick(state.room.draftPick) || state.room.category;
+  }
+  return state.room.category;
+}
+
+/**
+ * The subject ONE question was drawn for, in a Draft or Random room; null in
+ * any other room. A single-spin game has one answer for every question. An
+ * every-question game reads it off the question (see questionSubject).
+ */
+export function subjectOfQuestion(question) {
+  if (!state.room || !isSpinRoom(state.room)) return null;
+  if (!spinsEveryQuestion(state.room)) return validPick(state.room.draftPick);
+  return questionSubject(spinWeights(state.room, state.players), question?.categories);
+}
+
+const subjectText = c => `${CATEGORY_META[c]?.emoji || CATEGORY_META[c]?.icon || ''} ${CATEGORY_META[c]?.label || c}`.trim();
+
+/** The header for one question: its own subject where it has one, else the room's label. */
+export function getQuestionCategoryLabel(question) {
+  const subject = subjectOfQuestion(question);
+  return subject ? subjectText(subject) : getCategoryLabel();
+}
+
+/** Every label the header can roll through in an every-question game. */
+export function spinRollLabels() {
+  if (!state.room || !spinsEveryQuestion(state.room)) return [];
+  const weights = spinWeights(state.room, state.players);
+  return DRAFT_CATEGORIES.filter(c => weights[c] > 0).map(subjectText);
 }
 export function playedSubcategory() {
   if (!state.room || isSpinRoom(state.room)) return null;

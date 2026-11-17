@@ -1,5 +1,47 @@
 > **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
 
+> ## 2026-11-17 — "Spin: Every question", and CI green on the 11-16 deploy
+>
+> **CI on the 11-16 deploy, read 11-17:** `ci.yml`, `db-probe.yml` and all
+> three robot jobs passed on `39744d3` (the commit that pinned the robot jobs
+> to Ubuntu 24.04), including the Draft and Random scenario. The probe passed
+> with `draft_move` and `draft_pick` on its required-column list; its log was
+> not read line by line.
+>
+> **"Spin: Every question"** — the owner asked for both spin styles and chose
+> this one second. One decision was theirs: how each question's subject is
+> revealed. They chose a quick roll in the header over a full wheel every
+> round (which would cover the question for ~2.5s while its clock runs) and
+> over no animation.
+>
+> **How it works.** The setting is two more subcategory keys, so no SQL. The
+> host draws `pickSequence(weights, N+1)` and `fetchQuestionsForSubjects`
+> takes one question per drawn subject through the ordinary fetcher. NOTHING
+> is stored per round: every phone derives a question's subject from the
+> question (`questionSubject`: of its own subjects, the best odds on the
+> wheel, earliest on a tie), which is exact for the nine in ten questions
+> filed under one subject. `rooms.draft_pick` holds question 1's subject so
+> the full wheel has somewhere to land. `getCategoryLabel()` is the ROOM's
+> label ("Random") and `getQuestionCategoryLabel(q)` the question's; only the
+> question and reveal screens use the second. The final-question swap stays
+> inside that question's subject.
+>
+> **Proven how.** Four more unit tests (key round-trips, the sequence, the
+> subject rule and its tie-break). The scenario plays an every-question
+> Random game through round 1 and records every text question 2's header
+> shows. Break-tested on copies, each failing by name: the mode ignored when
+> building the game (*"every question is arts-literature"*), the roll removed
+> (*"did not roll (it showed 1 text(s))"*), the header showing the room
+> (*"🎰 Random"*), and the host's setting not stored.
+>
+> **A tool note:** a Bash heredoc containing JavaScript with `$$(` was refused
+> by the command safety check as a possible removal. Edits now go through a
+> script file written with the Write tool.
+>
+> **NOT established:** not seen on a real phone. On a phone whose copy of the
+> players differs (a rejoined player lost their move), a question filed under
+> two wanted subjects could show a different subject there; not reproduced.
+
 > ## 2026-11-16 — Draft became a wheel, and Random joined it (migration 082 revised)
 >
 > **The 11-15 build below was replaced the next day, before it was ever

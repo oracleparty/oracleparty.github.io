@@ -737,6 +737,19 @@ export const STATES = {
   // ==========================================
   // GAME.HTML — Question
   // ==========================================
+  // The create-room settings for a Draft room: the Spin row is shown.
+  'host-settings-spin': {
+    page: 'host',
+    screen: 'settings-screen',
+    inherits: 'host-settings',
+    inject: () => {
+      document.querySelector('.selected-category__icon').textContent = '🗳️';
+      document.querySelector('.selected-category__name').textContent = 'Draft';
+      document.querySelector('.selected-category__count').textContent = '';
+      document.querySelectorAll('[data-spin-setting]').forEach(el => el.classList.remove('hidden'));
+    },
+  },
+
   // Host side: Draft and Random above the category grid. The JS un-hides them
   // once the database can save a move and a spin (082).
   'category-grid-draft': {

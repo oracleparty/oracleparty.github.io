@@ -61,7 +61,7 @@ import {
   beginRoundClock,
   judgementBusy, beginJudgement, endJudgement,
   trackOwnAdvance,
-  playedCategory, playedSubcategory,
+  playedCategory, playedSubcategory, subjectOfQuestion,
 } from './state.js';
 import { repositionChatBar, showChatBar, hideChatBar, closeChatDrawer } from './chat.js';
 import { showHostSettingsGear } from './host.js';
@@ -1043,7 +1043,9 @@ export async function handleRevealFinalQuestion() {
   // difficulty match and never the round.
   const usedIds = state.questions.map(q => q.id);
   const swap = fetchQuestionByDifficulty(
-    playedCategory(), winner, usedIds, playedSubcategory()
+    // In an every-question game the swap stays inside the subject this
+    // question was drawn for.
+    subjectOfQuestion(state.questions[state.totalQuestions]) || playedCategory(), winner, usedIds, playedSubcategory()
   ).catch(() => null);
 
   // Broadcast the slot-machine reveal to all clients via the existing vote

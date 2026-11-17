@@ -188,7 +188,8 @@ jobs:
       # Draft and Random (082): one spin at Start picks the game's subject. In
       # a Draft lobby each player wants or bans one category first. The odds
       # are unit tested; this checks the pick reaches every phone and the game
-      # is built from it.
+      # is built from it, and that "Spin: Every question" draws a subject per
+      # question and rolls it in the header.
       - name: Draft and Random — moves show live, the wheel lands, the game follows
         run: node tests/harness/scenario-categorydraft.mjs
 

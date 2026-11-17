@@ -40,11 +40,42 @@ export const DRAFT_SHORT_LABELS = {
   'technology': 'Tech', 'sports': 'Sports', 'food': 'Food', 'logic': 'Logic'
 };
 
+// "Spin: Every question" — the same wheel, drawn once per question, so a game
+// moves between subjects. Stored as two more subcategory keys, so the setting
+// needs no column of its own.
+export const DRAFT_EACH_KEY = '__draft_each__';
+export const RANDOM_EACH_KEY = '__random_each__';
+
+/** The stored key for a kind ('draft' | 'random') and how often it spins. */
+export function spinKey(kind, everyQuestion) {
+  if (kind === 'draft') return everyQuestion ? DRAFT_EACH_KEY : DRAFT_KEY;
+  if (kind === 'random') return everyQuestion ? RANDOM_EACH_KEY : RANDOM_KEY;
+  return null;
+}
+/** 'draft', 'random', or null for any other subcategory value. */
+export function spinKind(key) {
+  if (key === DRAFT_KEY || key === DRAFT_EACH_KEY) return 'draft';
+  if (key === RANDOM_KEY || key === RANDOM_EACH_KEY) return 'random';
+  return null;
+}
+export function spinLabel(key) {
+  const kind = spinKind(key);
+  return kind === 'draft' ? DRAFT_LABEL : kind === 'random' ? RANDOM_LABEL : null;
+}
+export function spinIcon(key) {
+  const kind = spinKind(key);
+  return kind === 'draft' ? DRAFT_ICON : kind === 'random' ? RANDOM_ICON : null;
+}
+
 export function isDraftRoom(room) {
-  return !!room && room.subcategory === DRAFT_KEY;
+  return !!room && spinKind(room.subcategory) === 'draft';
 }
 export function isRandomRoom(room) {
-  return !!room && room.subcategory === RANDOM_KEY;
+  return !!room && spinKind(room.subcategory) === 'random';
+}
+/** A room that draws a subject for every question rather than once. */
+export function spinsEveryQuestion(room) {
+  return !!room && (room.subcategory === DRAFT_EACH_KEY || room.subcategory === RANDOM_EACH_KEY);
 }
 /** A room whose subject is chosen by the spin at Start. */
 export function isSpinRoom(room) {
@@ -151,6 +182,30 @@ export function pickWeighted(weights, roll = Math.random()) {
     if (mark < 0) return category;
   }
   return entries[entries.length - 1][0];
+}
+
+/** One subject per question, each an independent spin of the same wheel. */
+export function pickSequence(weights, count, roll = Math.random) {
+  return Array.from({ length: Math.max(0, count) }, () => pickWeighted(weights, roll()));
+}
+
+/**
+ * The subject a question stands for in an every-question game. Every phone
+ * works this out from the question itself, so nothing has to be stored per
+ * round: of the question's own subjects, the one with the best odds on the
+ * wheel, earliest in the list on a tie. A question filed under one subject
+ * (nine in ten) has only one answer.
+ */
+export function questionSubject(weights, questionCategories) {
+  const cats = (Array.isArray(questionCategories) ? questionCategories : [])
+    .filter(c => DRAFT_CATEGORIES.includes(c));
+  if (cats.length === 0) return null;
+  let best = null;
+  for (const c of DRAFT_CATEGORIES) {
+    if (!cats.includes(c)) continue;
+    if (best === null || (weights?.[c] || 0) > (weights?.[best] || 0)) best = c;
+  }
+  return best;
 }
 
 /** A stored pick is only believed if it names a real subject. */

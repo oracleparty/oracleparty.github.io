@@ -64,7 +64,7 @@ try {
     await r.page.addInitScript(n => localStorage.setItem('oracle_party_display_name', n), name);
     return r;
   }
-  async function hostWith(r, buttonId) {
+  async function hostWith(r, buttonId, { every = false } = {}) {
     await r.goto('host.html');
     await r.page.waitForSelector('.category-card', { timeout: 20000 });
     const offered = await r.page.waitForSelector(`#spin-entries:not(.hidden) ${buttonId}`, { timeout: 8000 })
@@ -73,6 +73,9 @@ try {
     await r.page.click(buttonId);
     await r.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
     const badge = ((await r.textOf('.selected-category__name')) || '').trim();
+    const spinRow = await r.page.locator('[data-spin-setting]').isVisible().catch(() => false);
+    if (!spinRow) problems.push(`the Spin setting is not offered after choosing ${buttonId}`);
+    if (every) await r.page.click('[data-setting="spinEvery"] [data-value="1"]').catch(() => {});
     await r.page.click(`[data-setting="questionsPerGame"] [data-value="${QUESTIONS}"]`).catch(() => {});
     await r.page.click('#btn-host-game');
     await r.page.waitForURL('**/lobby.html*', { timeout: 20000 });
@@ -123,7 +126,7 @@ try {
   }));
 
   /** Everything a started spin game must satisfy, whatever the wheel landed on. */
-  async function checkStartedGame(label, hostName, phones, cannotWin = []) {
+  async function checkStartedGame(label, hostName, phones, cannotWin = [], { every = false } = {}) {
     const room = () => roomOf(hostName);
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline && !(room()?.question_ids?.length)) await phones[0].robot.page.waitForTimeout(200);
@@ -135,8 +138,18 @@ try {
     if (cannotWin.includes(pick)) problems.push(`${label}: the wheel landed on ${pick}, which could not win`);
     if (ids.length !== QUESTIONS + 1) problems.push(`${label}: the game holds ${ids.length} questions, want ${QUESTIONS + 1}`);
     if (new Set(ids).size !== ids.length) problems.push(`${label}: the game asks the same question twice`);
-    const stray = cats.filter(c => !c.includes(pick)).length;
-    if (stray) problems.push(`${label}: ${stray} question(s) are not from ${pick}, the subject the wheel picked`);
+    if (every) {
+      // A subject per question: each must be a real one, the wheel lands on
+      // question 1's, and six draws over eleven subjects do not all match.
+      const subjects = cats.map(c => c[0]);
+      if (subjects.some(s => !SUBJECTS.includes(s))) problems.push(`${label}: a question has no real subject: ${subjects.join(', ')}`);
+      if (subjects.some(s => cannotWin.includes(s))) problems.push(`${label}: a question came from a subject that could not win`);
+      if (subjects[0] !== pick) problems.push(`${label}: the wheel landed on ${pick} and question 1 is ${subjects[0]}`);
+      if (new Set(subjects).size < 2) problems.push(`${label}: every question is ${subjects[0]}; a spin per question should move between subjects`);
+    } else {
+      const stray = cats.filter(c => !c.includes(pick)).length;
+      if (stray) problems.push(`${label}: ${stray} question(s) are not from ${pick}, the subject the wheel picked`);
+    }
 
     for (const { robot, watching } of phones) {
       const seen = await watching;
@@ -257,6 +270,71 @@ try {
   await eve.page.waitForURL('**/game.html*', { timeout: 20000 });
   randomPhones[0].watching = watchWheel(eve);
   await checkStartedGame('Random', 'Dan', randomPhones);
+
+  // ------------------------------------------------- Spin: Every question
+  heading('Spin: Every question — a subject per question, rolled in the header');
+  const fay = await seat('Fay');
+  const gus = await seat('Gus');
+  await hostWith(fay, '#btn-random', { every: true });
+  if (roomOf('Fay')?.subcategory !== '__random_each__') problems.push(`"Every question" was chosen and the room is stored as ${roomOf('Fay')?.subcategory}`);
+  await join(gus, await fay.textOf('#lobby-code'));
+  await fay.page.waitForTimeout(1500);
+  const gusLabel = (await gus.textOf('#lobby-category') || '').trim();
+  if (gusLabel !== 'Random') problems.push(`an every-question Random room's lobby card reads "${gusLabel}", want "Random"`);
+  await gus.page.click('#btn-ready').catch(() => {});
+  await fay.page.waitForTimeout(600);
+  const eachPhones = [{ robot: gus, watching: null }];
+  await fay.page.click('#btn-start-game');
+  await gus.page.waitForURL('**/game.html*', { timeout: 20000 });
+  eachPhones[0].watching = watchWheel(gus);
+  await checkStartedGame('Every question', 'Fay', eachPhones, [], { every: true });
+
+  // Play round 1 and watch question 2's header roll and land on ITS subject.
+  const eachIds = roomOf('Fay')?.question_ids || [];
+  const second = questionsById.get(eachIds[1]);
+  if (second) {
+    for (const r of [fay, gus]) {
+      await r.page.waitForSelector('#answer-input', { state: 'visible', timeout: 20000 }).catch(() => {});
+      await r.page.locator('#question-screen .wager-btn:not(.wager-btn--correct):not(.wager-btn--incorrect)').first().click({ timeout: 5000 }).catch(() => {});
+      await r.page.fill('#answer-input', `${r.name} says`).catch(() => {});
+      await r.page.click('#btn-submit-answer').catch(() => {});
+    }
+    // Record every text Gus's header shows once question 2 is on screen.
+    const rolling = gus.page.evaluate(expected => new Promise(resolve => {
+      const seen = [];
+      const started = Date.now();
+      let onSecond = 0;
+      const timer = setInterval(() => {
+        const text = document.querySelector('#question-text')?.textContent.trim();
+        const active = document.querySelector('#question-screen.active');
+        if (active && text === expected) {
+          if (!onSecond) onSecond = Date.now();
+          const header = document.querySelector('#question-category')?.textContent.trim();
+          if (header && seen[seen.length - 1] !== header) seen.push(header);
+          if (Date.now() - onSecond > 2200) { clearInterval(timer); resolve(seen); }
+        } else if (Date.now() - started > 60000) { clearInterval(timer); resolve(null); }
+      }, 40);
+    }), second.question);
+    const until = Date.now() + 60000;
+    while (Date.now() < until && (roomOf('Fay')?.current_question || 0) < 1) {
+      for (const sel of ['#btn-next-question', '#btn-scores-action']) {
+        const el = fay.page.locator(sel).first();
+        if (await el.isVisible().catch(() => false) && await el.isEnabled().catch(() => false)) await el.click().catch(() => {});
+      }
+      await fay.page.waitForTimeout(700);
+    }
+    const seen = await rolling;
+    const want = LABELS[second.categories[0]];
+    note(`question 2 is ${second.categories[0]}; Gus's header showed: ${seen ? seen.join(' → ') : 'nothing'}`);
+    if (!seen) problems.push('Every question: Gus never reached question 2');
+    else {
+      if (!seen[seen.length - 1].includes(want)) problems.push(`Every question: question 2's header settled on "${seen[seen.length - 1]}", want ${want}`);
+      if (seen.length < 3) problems.push(`Every question: question 2's header did not roll (it showed ${seen.length} text(s))`);
+      if (seen.some(t => /Random|Wild/.test(t))) problems.push(`Every question: the header named the mode, not a subject: ${seen.join(' → ')}`);
+    }
+  } else {
+    problems.push('Every question: the game has no second question to check');
+  }
 
   console.log('\n' + (problems.length ? `FAILED — ${problems.length} problem(s):` : 'PASSED — Draft and Random work'));
   for (const p of problems) console.log('  ✗', p);

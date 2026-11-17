@@ -113,6 +113,37 @@ export function playCategorySpin({ overlay, weights, players, winner, emojiFor, 
   return _running;
 }
 
+/**
+ * Roll a text label through `options` and land on `finalText` (the header of
+ * an every-question game). Does nothing but set the text when there is
+ * nothing to roll through or the phone asks for reduced motion.
+ */
+export function rollLabel(el, finalText, options, durationMs = 1100) {
+  if (!el) return;
+  clearTimeout(el._rollTimer);
+  el.classList.remove('game-progress__category--rolling');
+  const pool = (options || []).filter(o => o && o !== finalText);
+  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (pool.length === 0 || still) { el.textContent = finalText; return; }
+  el.classList.add('game-progress__category--rolling');
+  const started = Date.now();
+  let last = null;
+  let delay = 70;
+  const tick = () => {
+    if (Date.now() - started >= durationMs) {
+      el.textContent = finalText;
+      el.classList.remove('game-progress__category--rolling');
+      return;
+    }
+    const choices = pool.filter(o => o !== last);
+    last = (choices.length ? choices : pool)[Math.floor(Math.random() * (choices.length || pool.length))];
+    el.textContent = last;
+    delay = Math.min(delay + 18, 220);
+    el._rollTimer = setTimeout(tick, delay);
+  };
+  tick();
+}
+
 /** Stop a wheel in flight (leaving the page, or the game moving on without it). */
 export function cancelCategorySpin(overlay) {
   overlay?._cancelSpin?.();

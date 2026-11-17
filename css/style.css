@@ -9604,3 +9604,5 @@ body.kb-open #question-screen .question-card {
 @media (prefers-reduced-motion: reduce) {
   .category-spin .draft-tile { transition: none; }
 }
+/* An every-question game: the header's subject while it is still rolling. */
+.game-progress__category--rolling { color: var(--color-primary); }
