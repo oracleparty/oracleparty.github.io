@@ -263,6 +263,37 @@ try {
   const eveLabel = (await eve.textOf('#lobby-category') || '').trim();
   if (eveLabel !== 'Random') problems.push(`a Random room's lobby card reads "${eveLabel}", want "Random"`);
   if (await eve.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push('a Random room shows the draft bar; it has no moves to make');
+
+  heading('the host switches Draft / Random and Spin in the lobby');
+  async function lobbyPick(kind) {
+    await dan.page.click('#btn-settings');
+    await dan.page.click('#settings-category-tap');
+    const offered = await dan.page.waitForSelector(`#lobby-spin-entries:not(.hidden) [data-spin-kind="${kind}"]`, { timeout: 8000 })
+      .then(() => true).catch(() => false);
+    if (!offered) { problems.push(`the lobby's category sheet does not offer ${kind}`); return; }
+    await dan.page.click(`#lobby-spin-entries [data-spin-kind="${kind}"]`);
+    await dan.page.waitForTimeout(800);
+  }
+  await lobbyPick('draft');
+  if (roomOf('Dan')?.subcategory !== '__draft__') problems.push(`switching to Draft in the lobby stored ${roomOf('Dan')?.subcategory}`);
+  await eve.page.waitForTimeout(800);
+  if ((await eve.textOf('#lobby-category') || '').trim() !== 'Draft') problems.push("Eve's lobby card did not follow the switch to Draft");
+  if (!await eve.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push('Eve has no draft bar after the switch to Draft');
+  const spinShown = await dan.page.locator('#settings-modal [data-spin-setting]').isVisible().catch(() => false);
+  if (!spinShown) problems.push('the lobby settings do not show Spin in a Draft room');
+  await dan.page.click('#settings-modal [data-setting="spinEvery"] [data-value="1"]').catch(() => {});
+  await dan.page.waitForTimeout(600);
+  if (roomOf('Dan')?.subcategory !== '__draft_each__') problems.push(`Spin: Every question in the lobby stored ${roomOf('Dan')?.subcategory}`);
+  await dan.page.click('#btn-close-settings').catch(() => {});
+  await lobbyPick('random');
+  if (roomOf('Dan')?.subcategory !== '__random_each__') problems.push(`switching to Random kept Spin as ${roomOf('Dan')?.subcategory}, want __random_each__`);
+  await dan.page.click('#settings-modal [data-setting="spinEvery"] [data-value="0"]').catch(() => {});
+  await dan.page.waitForTimeout(600);
+  if (roomOf('Dan')?.subcategory !== '__random__') problems.push(`Spin: Once in the lobby stored ${roomOf('Dan')?.subcategory}`);
+  await dan.page.click('#btn-close-settings').catch(() => {});
+  await eve.page.waitForTimeout(800);
+  if (await eve.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push('Eve still has a draft bar after the switch back to Random');
+
   await eve.page.click('#btn-ready').catch(() => {});
   await dan.page.waitForTimeout(600);
   const randomPhones = [{ robot: eve, watching: null }];
