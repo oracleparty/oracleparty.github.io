@@ -750,6 +750,40 @@ export const STATES = {
     },
   },
 
+  // Lobby: the host's category sheet, with Draft and Random above the list.
+  // Mirrors openLobbyCategorySheet() + showLobbySpinEntries() in js/lobby.js.
+  'lobby-category-sheet': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const rows = [['⏳', 'History', 1], ['⚗️', 'Science', 1], ['🌿', 'Nature', 1], ['📜', 'Arts & Literature', 1],
+        ['🏛️', 'Culture & Society', 1], ['🎬', 'Pop Culture', 1], ['🌍', 'World Geography', 1], ['💻', 'Technology', 1],
+        ['⚽', 'Sports', 1], ['🍕', 'Food', 1], ['🧩', 'Logic', 1], ['🃏', 'Wild Card', 1]];
+      document.getElementById('category-sheet-list').innerHTML = rows.map(([icon, label, drill]) => `
+        <div class="category-sheet-row">
+          <span class="category-sheet-row__icon">${icon}</span>
+          <span class="category-sheet-row__label">${label}</span>
+          ${drill ? '<span class="category-sheet-row__chevron">›</span>' : ''}
+        </div>`).join('');
+      document.getElementById('lobby-spin-entries').classList.remove('hidden');
+      document.querySelector('#lobby-spin-entries [data-spin-kind="draft"]').classList.add('draft-entry--selected');
+      document.getElementById('category-sheet').classList.add('active');
+    },
+  },
+
+  // Lobby settings in a Draft room: the Spin switch under the category row.
+  'lobby-settings-spin': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-settings',
+    inject: () => {
+      document.querySelector('#settings-category-grid .category-sheet-row__icon').textContent = '🗳️';
+      document.querySelector('#settings-category-grid .category-sheet-row__label').textContent = 'Draft';
+      document.querySelectorAll('#settings-modal [data-spin-setting]').forEach(el => el.classList.remove('hidden'));
+    },
+  },
+
   // Host side: Draft and Random above the category grid. The JS un-hides them
   // once the database can save a move and a spin (082).
   'category-grid-draft': {

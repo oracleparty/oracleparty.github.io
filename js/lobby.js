@@ -49,7 +49,8 @@ import {
   toggleMessageHeart,
   fetchAllOpenQuestionCount,
   fetchExclusiveWildCardCount,
-  chaosAvailable
+  chaosAvailable,
+  draftAvailable
 } from './supabase.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, rememberChatCutoff, rememberSeat, recallSeat } from './auth.js';
 import { initHonkSystem, sendHonk, getHonkCount, destroyHonkSystem, setHonkChaos, attachHonkSoundToggle, updateHonkBadges } from './honk.js';
@@ -62,7 +63,8 @@ import { titleWordsHtml, repaintTitleColours } from './titles.js';
 import { loadTitleWords } from './title-content.js';
 import {
   DRAFT_CATEGORIES, DRAFT_SHORT_LABELS, isDraftRoom, isSpinRoom,
-  encodeDraftMove, parseDraftMove, draftTally, draftStatus
+  encodeDraftMove, parseDraftMove, draftTally, draftStatus,
+  spinKind, spinKey, spinsEveryQuestion
 } from './draft-logic.js';
 
 // --- State ---
@@ -1378,6 +1380,14 @@ function attachSettingsListeners() {
     }
   });
 
+  // Draft and Random, above the list: the same two choices as on Choose
+  // Category when the room was made. Picking one keeps the room's Spin setting.
+  $('#lobby-spin-entries')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-spin-kind]');
+    if (!btn || !room.isHost) return;
+    selectLobbySubcategory('wild-card', spinKey(btn.dataset.spinKind, spinsEveryQuestion(room)));
+  });
+
   // Category bottom sheet — row taps (multi-level)
   $('#category-sheet-list').addEventListener('click', (e) => {
     const back = e.target.closest('[data-action="back"]');
@@ -1398,14 +1408,7 @@ function attachSettingsListeners() {
         }
       }
       // Leaf or "All" — select
-      room.category = catName;
-      room.subcategory = row.dataset.subcategory || null;
-      lobbySheetNavStack = [];
-      updateCategoryDisplay();
-      renderSettingsCategories();
-      sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
-      updateGameState(room.id, { category: catName, subcategory: room.subcategory });
-      $('#category-sheet').classList.remove('active');
+      selectLobbySubcategory(catName, row.dataset.subcategory || null);
       return;
     }
 
@@ -1435,6 +1438,12 @@ function attachSettingsListeners() {
       option.classList.add('active');
       const key = group.dataset.setting;
       let value = option.dataset.value;
+      if (key === 'spinEvery') {
+        // Stored in the subcategory key itself (see spinKey), not a column.
+        const kind = spinKind(room.subcategory);
+        if (kind) selectLobbySubcategory(room.category, spinKey(kind, value === '1'));
+        return;
+      }
       if (key === 'questionsPerGame' || key === 'questionTimer' || key === 'autoProceed') {
         value = parseInt(value, 10);
       } else if (key === 'chaos') {
@@ -2266,12 +2275,44 @@ function renderSettingsCategories() {
       <span class="category-sheet-row__chevron">\u203A</span>
     </div>
   `;
+  // "Spin" only means something when the subject is drawn at Start.
+  settingsModal.querySelectorAll('[data-spin-setting]').forEach(el => el.classList.toggle('hidden', !isSpinRoom(room)));
+}
+
+/** The host picks a category and subcategory in the lobby's sheet. */
+function selectLobbySubcategory(catName, subcategory) {
+  room.category = catName;
+  room.subcategory = subcategory || null;
+  lobbySheetNavStack = [];
+  updateCategoryDisplay();
+  renderSettingsCategories();
+  syncTogglesToSettings();
+  sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+  updateGameState(room.id, { category: catName, subcategory: room.subcategory });
+  $('#category-sheet').classList.remove('active');
+}
+
+/** Draft and Random sit above the top level of the list only, and only once
+ *  the database can save a move and a spin (082), as on the host page. */
+function showLobbySpinEntries(show) {
+  const el = $('#lobby-spin-entries');
+  if (!el) return;
+  if (!show || !room.isHost) { el.classList.add('hidden'); return; }
+  const kind = spinKind(room.subcategory);
+  el.querySelectorAll('[data-spin-kind]').forEach(b => {
+    b.classList.toggle('draft-entry--selected', b.dataset.spinKind === kind);
+  });
+  draftAvailable().then(ok => {
+    // The sheet may have drilled in while the answer was on its way.
+    if (ok && lobbySheetNavStack.length === 0) el.classList.remove('hidden');
+  });
 }
 
 function openLobbyCategorySheet() {
   lobbySheetNavStack = [];
   const sheet = $('#category-sheet');
   const list = $('#category-sheet-list');
+  showLobbySpinEntries(true);
 
   const allCats = Object.entries(CATEGORY_META);
   list.innerHTML = allCats.map(([name, meta]) => {
@@ -2297,6 +2338,7 @@ function lobbySheetDrillIn(catName, items, title, parentKey) {
 
 function renderLobbySheetLevel(catName, items, title, parentKey) {
   const list = $('#category-sheet-list');
+  showLobbySpinEntries(false);
   const allSubcategory = parentKey || '';
   list.innerHTML = `
     <div class="category-sheet-back" data-action="back">\u2190 ${title}</div>
@@ -2325,6 +2367,7 @@ function renderLobbySheetLevel(catName, items, title, parentKey) {
 function renderLobbySheetWildCardOptions(catName, meta) {
   const list = $('#category-sheet-list');
   lobbySheetNavStack.push({ catName, items: null, title: meta.label, parentKey: null, isWildCard: true });
+  showLobbySpinEntries(false);
   list.innerHTML = `
     <div class="category-sheet-back" data-action="back">\u2190 ${meta.label}</div>
     ${meta.wildCardOptions.map(opt => `
@@ -2362,7 +2405,9 @@ function syncTogglesToSettings() {
     const key = group.dataset.setting;
     // Default autoProceed to 0 for rooms created before the feature existed
     const raw = room.settings[key];
-    const currentValue = key === 'chaos'
+    const currentValue = key === 'spinEvery'
+      ? (spinsEveryQuestion(room) ? '1' : '0')
+      : key === 'chaos'
       ? (raw ? '1' : '0')
       : String(raw !== undefined && raw !== null ? raw : (key === 'autoProceed' ? 0 : ''));
     group.querySelectorAll('.toggle-option').forEach(opt => {

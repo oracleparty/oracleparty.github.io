@@ -145,6 +145,14 @@
         <div id="settings-category-grid" class="category-grid settings-category-grid"></div>
       </div>
 
+      <div class="settings-group hidden" data-spin-setting>
+        <div class="settings-group__label">Spin</div>
+        <div class="toggle-group" data-setting="spinEvery">
+          <button class="toggle-option active" data-value="0">Once</button>
+          <button class="toggle-option" data-value="1">Every question</button>
+        </div>
+      </div>
+
       <div class="settings-group">
         <div class="settings-group__label">Who Can Join</div>
         <div class="toggle-group" data-setting="whoCanJoin">
@@ -250,6 +258,16 @@
     <div class="bottom-sheet__panel">
       <div class="bottom-sheet__handle"></div>
       <div class="bottom-sheet__title">Choose Category</div>
+      <div id="lobby-spin-entries" class="spin-entries lobby-spin-entries hidden">
+        <button class="draft-entry" type="button" data-spin-kind="draft">
+          <span class="draft-entry__icon" aria-hidden="true">🗳️</span>
+          <span class="draft-entry__title">Draft</span>
+        </button>
+        <button class="draft-entry" type="button" data-spin-kind="random">
+          <span class="draft-entry__icon" aria-hidden="true">🎰</span>
+          <span class="draft-entry__title">Random</span>
+        </button>
+      </div>
       <div id="category-sheet-list"></div>
     </div>
   </div>

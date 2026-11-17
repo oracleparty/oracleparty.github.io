@@ -9427,6 +9427,8 @@ body.kb-open #question-screen .question-card {
   -webkit-tap-highlight-color: transparent;
 }
 .draft-entry:active { background: var(--color-primary-glow); }
+.draft-entry--selected { border-color: var(--color-primary); color: var(--color-primary); }
+.lobby-spin-entries { margin: var(--space-sm) var(--space-md) var(--space-md); }
 .draft-entry__icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; }
 .draft-entry__title { font-family: var(--font-heading); font-size: var(--text-base); font-weight: 700; }
 
