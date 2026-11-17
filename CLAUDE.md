@@ -283,7 +283,7 @@ node tests/harness/scenario-<name>.mjs      # robot playtests (list: tests/harne
   takes one of that category's blocks off and keeps it out of the upset.
   Wanted categories share 95% by blocks; untouched ones share a 1-in-20
   upset; with no blocks every unbanned category is equally likely.
-  **Random:** no moves, every subject equally. The host's phone spins and
+  **Random:** every subject equally, minus optional vetoes (below). The host's phone spins and
   writes `rooms.draft_pick`; every phone plays the wheel in front of the
   countdown (the countdown is stamped `CATEGORY_SPIN_MS` in the future).
   Stored as `wild-card` + subcategory `__draft__` / `__random__`; moves in
@@ -389,7 +389,7 @@ lists are in `docs/HISTORY.md`.
   same two buttons sit above the lobby's category list (host only), and the
   Spin switch shows in lobby settings for a Draft or Random room.
 - **Draft and Random, not done:** a rejoining player's move is lost with their
-  old seat; the lobby card does not show players which Spin setting was chosen.
+  old seat.
 - **Polish list from the 2026-11-14 playtest:** minor aesthetics and
   smoothness; the owner is saving it for a later session.
 
