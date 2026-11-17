@@ -8,6 +8,9 @@
 // The host stamps the countdown this far in the future, so every phone's
 // wheel ends on the same server moment.
 export const CATEGORY_SPIN_MS = 4800;
+// "Spin: Every question": the subject card before each question. Added to the
+// question's sync buffer, before the clock is stamped, so it costs no answer time.
+export const SUBJECT_CARD_MS = 1800;
 export const COUNTDOWN_DELAY_MS = 500;
 export const COUNTDOWN_STEP_MS = 900;
 export const TIMER_GRACE_MS = 500;

@@ -12,16 +12,18 @@ import { DRAFT_CATEGORIES, DRAFT_SHORT_LABELS, draftTally, draftStatus } from '.
 
 let _running = null;
 
-/** The tiles, with what the room did to each. `emojiFor` maps a category to its emoji. */
-export function spinTilesHtml(weights, players, emojiFor) {
+/**
+ * The tiles: only subjects that can come up (owner, 2026-11-17: "it should
+ * just be among what is in play"). A vetoed subject is not drawn at all.
+ * `emojiFor` maps a category to its emoji.
+ */
+export function spinTilesHtml(weights, players, emojiFor, winner = null) {
   const tally = draftTally(players);
-  return DRAFT_CATEGORIES.map(c => {
+  return DRAFT_CATEGORIES.filter(c => weights?.[c] > 0 || c === winner).map(c => {
     const entry = tally[c];
     const status = draftStatus(entry);
-    const out = !(weights?.[c] > 0);
     const cls = ['draft-tile'];
-    if (out) cls.push('draft-tile--ban');
-    else if (status === 'want') cls.push('draft-tile--want');
+    if (status === 'want') cls.push('draft-tile--want');
     const pips = entry && entry.blocks > 0 ? '<i></i>'.repeat(Math.min(entry.blocks, 6)) : '';
     return `<div class="${cls.join(' ')}" data-spin-category="${c}">
       <span class="draft-tile__emoji" aria-hidden="true">${emojiFor(c)}</span>
@@ -69,7 +71,7 @@ export function playCategorySpin({ overlay, weights, players, winner, emojiFor, 
   _running = new Promise(resolve => {
     const tilesEl = overlay.querySelector('.category-spin__tiles');
     const finalEl = overlay.querySelector('.category-spin__final');
-    tilesEl.innerHTML = spinTilesHtml(weights, players, emojiFor);
+    tilesEl.innerHTML = spinTilesHtml(weights, players, emojiFor, winner);
     finalEl.textContent = '';
     overlay.classList.remove('hidden', 'category-spin--landed');
 
@@ -114,34 +116,65 @@ export function playCategorySpin({ overlay, weights, players, winner, emojiFor, 
 }
 
 /**
- * Roll a text label through `options` and land on `finalText` (the header of
- * an every-question game). Does nothing but set the text when there is
- * nothing to roll through or the phone asks for reduced motion.
+ * THE SUBJECT CARD, "Spin: Every question". Before each question's clock
+ * starts, the screen shows the round number and a big subject that rolls
+ * through the subjects in play and lands on this question's. Replaced a
+ * one-second flicker in the header that a playtester never noticed (owner,
+ * 2026-11-17: "my friend didn't even realize what was happening").
+ *
+ * It plays inside the question's own sync buffer, which question.js lengthens
+ * by `durationMs`, and the host stamps the round clock only after that buffer:
+ * so the card never costs anyone answering time.
+ *
+ * `options` and `winner` are { emoji, label }. Resolves when it has hidden.
  */
-export function rollLabel(el, finalText, options, durationMs = 1100) {
-  if (!el) return;
-  clearTimeout(el._rollTimer);
-  el.classList.remove('game-progress__category--rolling');
-  const pool = (options || []).filter(o => o && o !== finalText);
+export function playSubjectCard({ overlay, kicker, options, winner, durationMs }) {
+  if (!overlay || !winner) return Promise.resolve(false);
+  overlay._cancelCard?.();
+  const kickerEl = overlay.querySelector('.subject-card__kicker');
+  const emojiEl = overlay.querySelector('.subject-card__emoji');
+  const labelEl = overlay.querySelector('.subject-card__label');
+  const show = o => { emojiEl.textContent = o.emoji; labelEl.textContent = o.label; };
+  kickerEl.textContent = kicker || '';
+  overlay.classList.remove('hidden', 'subject-card--landed');
+
+  const pool = (options || []).filter(o => o && o.label !== winner.label);
   const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (pool.length === 0 || still) { el.textContent = finalText; return; }
-  el.classList.add('game-progress__category--rolling');
-  const started = Date.now();
-  let last = null;
-  let delay = 70;
-  const tick = () => {
-    if (Date.now() - started >= durationMs) {
-      el.textContent = finalText;
-      el.classList.remove('game-progress__category--rolling');
-      return;
-    }
-    const choices = pool.filter(o => o !== last);
-    last = (choices.length ? choices : pool)[Math.floor(Math.random() * (choices.length || pool.length))];
-    el.textContent = last;
-    delay = Math.min(delay + 18, 220);
-    el._rollTimer = setTimeout(tick, delay);
-  };
-  tick();
+  const HOLD_MS = Math.min(900, durationMs * 0.5);
+  const rollMs = (pool.length === 0 || still) ? 0 : durationMs - HOLD_MS;
+  const timers = [];
+
+  return new Promise(resolve => {
+    const finish = landed => {
+      timers.forEach(clearTimeout);
+      overlay.classList.add('hidden');
+      overlay._cancelCard = null;
+      resolve(landed);
+    };
+    overlay._cancelCard = () => finish(false);
+    const land = () => {
+      show(winner);
+      overlay.classList.add('subject-card--landed');
+      timers.push(setTimeout(() => finish(true), durationMs - rollMs));
+    };
+    if (rollMs <= 0) { land(); return; }
+    const started = Date.now();
+    let last = null;
+    let delay = 60;
+    const tick = () => {
+      if (Date.now() - started + delay >= rollMs) { land(); return; }
+      const choices = pool.filter(o => o !== last);
+      last = (choices.length ? choices : pool)[Math.floor(Math.random() * (choices.length || pool.length))];
+      show(last);
+      delay = Math.min(delay + 16, 200);
+      timers.push(setTimeout(tick, delay));
+    };
+    tick();
+  });
+}
+
+export function cancelSubjectCard(overlay) {
+  overlay?._cancelCard?.();
 }
 
 /** Stop a wheel in flight (leaving the page, or the game moving on without it). */

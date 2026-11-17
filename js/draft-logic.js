@@ -159,16 +159,57 @@ export function draftWeights(players) {
   return weights;
 }
 
-/** Random mode's wheel: every subject, equally. */
-export function randomWeights() {
+// RANDOM WITH VETOES (owner, 2026-11-17): in a Random lobby each person may
+// veto one subject; nobody has to. Every subject nobody vetoed is equally
+// likely. A veto that would leave fewer than RANDOM_MIN_LEFT subjects is not
+// offered. A Random move is stored like a Draft ban ("ban:history"), so the
+// column and its check need nothing new; only the word on screen is "Veto".
+export const RANDOM_MIN_LEFT = 2;
+
+/** The subjects some person vetoed. Wants are ignored: Random has none. */
+export function vetoedSubjects(players) {
+  const out = new Set();
+  for (const p of movers(players)) {
+    const move = parseDraftMove(p.draft_move);
+    if (move && move.kind === 'ban') out.add(move.category);
+  }
+  return out;
+}
+
+/**
+ * Random mode's wheel: every subject nobody vetoed, equally. If two vetoes
+ * made at the same moment somehow leave nothing, the vetoes are ignored.
+ */
+export function randomWeights(players = []) {
+  const vetoed = vetoedSubjects(players);
+  let pool = DRAFT_CATEGORIES.filter(c => !vetoed.has(c));
+  if (pool.length === 0) pool = DRAFT_CATEGORIES;
   const weights = {};
-  for (const c of DRAFT_CATEGORIES) weights[c] = 1 / DRAFT_CATEGORIES.length;
+  for (const c of DRAFT_CATEGORIES) weights[c] = pool.includes(c) ? 1 / pool.length : 0;
   return weights;
+}
+
+/**
+ * May this player veto `category` in a Random room? Their own current veto is
+ * taken back first (a person holds one), and at least RANDOM_MIN_LEFT
+ * subjects must stay in play.
+ */
+export function vetoAllowed(players, playerId, category) {
+  if (!DRAFT_CATEGORIES.includes(category)) return false;
+  const others = (players || []).filter(p => String(p?.id) !== String(playerId));
+  const vetoed = vetoedSubjects(others);
+  vetoed.add(category);
+  return DRAFT_CATEGORIES.length - vetoed.size >= RANDOM_MIN_LEFT;
 }
 
 /** The wheel for a room, whichever kind it is. */
 export function spinWeights(room, players) {
-  return isDraftRoom(room) ? draftWeights(players) : randomWeights();
+  return isDraftRoom(room) ? draftWeights(players) : randomWeights(players);
+}
+
+/** Only the subjects that can come up, in the usual order. */
+export function liveSubjects(weights) {
+  return DRAFT_CATEGORIES.filter(c => weights?.[c] > 0);
 }
 
 /** One spin. `roll` is a number in [0, 1); injectable so tests can aim it. */

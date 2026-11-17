@@ -8,7 +8,7 @@ import { findNextAvailableWager, countAnswersFrom, answerScoreSig } from './scor
 import { isStaleRoomEvent } from './phase-order.js';
 import { getCountdownElapsed, isStampForCurrentRound } from './timer-helpers.js';
 import { CATEGORY_META } from '../categories.js';
-import { isSpinRoom, isDraftRoom, validPick, spinWeights } from '../draft-logic.js';
+import { isSpinRoom, isDraftRoom, validPick, spinWeights, spinsEveryQuestion } from '../draft-logic.js';
 import { playCategorySpin } from './category-spin.js';
 import { determineNextHost, findAbsentPlayers } from './host-promotion.js';
 import { logger, recordFault } from '../logger.js';
@@ -883,7 +883,7 @@ export function showCountdownScreen() {
   // A Draft or Random room spins its category wheel first. The host stamped
   // the countdown that far in the future, so the wheel fills exactly the time
   // before "3"; a phone that arrives late gets a shorter spin or none.
-  const pick = isSpinRoom(state.room) ? validPick(state.room.draftPick) : null;
+  const pick = isSpinRoom(state.room) && !spinsEveryQuestion(state.room) ? validPick(state.room.draftPick) : null;
   const untilCountdown = -getCountdownElapsed(state.countdownStartedAt, state.serverTimeOffset);
   if (pick && untilCountdown > 900) {
     playCategorySpin({

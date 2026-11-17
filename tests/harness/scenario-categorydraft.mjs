@@ -106,7 +106,7 @@ try {
 
   /** Watch one phone through Start: did the wheel play, and where did it land? */
   const watchWheel = r => r.page.evaluate(() => new Promise(resolve => {
-    const seen = { shown: false, final: '', won: '' };
+    const seen = { shown: false, final: '', won: '', tiles: [], card: null, cardAt: 0, cardGoneAt: 0 };
     const started = Date.now();
     const timer = setInterval(() => {
       const o = document.querySelector('#category-spin-overlay');
@@ -114,9 +114,22 @@ try {
         seen.shown = true;
         seen.final = o.querySelector('.category-spin__final')?.textContent.trim() || seen.final;
         seen.won = o.querySelector('.draft-tile--won')?.dataset.spinCategory || seen.won;
+        if (!seen.tiles.length) seen.tiles = [...o.querySelectorAll('[data-spin-category]')].map(t => t.dataset.spinCategory);
       }
+      const card = document.querySelector('#subject-card');
+      if (card && !card.classList.contains('hidden')) {
+        if (!seen.cardAt) seen.cardAt = Date.now();
+        if (card.classList.contains('subject-card--landed')) {
+          seen.card = { kicker: card.querySelector('.subject-card__kicker')?.textContent.trim(),
+            label: card.querySelector('.subject-card__label')?.textContent.trim() };
+        }
+      } else if (seen.cardAt && !seen.cardGoneAt) seen.cardGoneAt = Date.now();
+      // The question is on screen once its card (if any) has gone and the card
+      // under it is visible; its text is set earlier, underneath the card.
       const question = document.querySelector('#question-screen.active #question-text');
-      if ((question && question.textContent.trim()) || Date.now() - started > 45000) {
+      const cardUp = card && !card.classList.contains('hidden');
+      const shown = document.querySelector('#question-screen .question-card')?.style.visibility !== 'hidden';
+      if ((question && question.textContent.trim() && !cardUp && shown) || Date.now() - started > 45000) {
         clearInterval(timer);
         seen.header = document.querySelector('#question-category')?.textContent.trim();
         seen.text = question?.textContent.trim() || null;
@@ -153,8 +166,22 @@ try {
 
     for (const { robot, watching } of phones) {
       const seen = await watching;
+      if (every) {
+        // No opening wheel: it read as one subject for the whole game. Question
+        // 1 gets the same subject card as every other question.
+        if (seen.shown) problems.push(`${label}: ${robot.name} saw the opening wheel in an every-question game`);
+        if (!seen.card) problems.push(`${label}: ${robot.name} saw no subject card before question 1`);
+        else {
+          if (seen.card.kicker !== 'Question 1') problems.push(`${label}: the card's round reads "${seen.card.kicker}", want "Question 1"`);
+          if (seen.card.label !== LABELS[pick]) problems.push(`${label}: the card landed on "${seen.card.label}", question 1 is ${LABELS[pick]}`);
+        }
+        if (!seen.text) problems.push(`${label}: ${robot.name} never reached the first question after the card`);
+        continue;
+      }
       if (!seen.shown) problems.push(`${label}: ${robot.name} never saw the wheel`);
       else {
+        const drawnOut = seen.tiles.filter(t => cannotWin.includes(t));
+        if (drawnOut.length) problems.push(`${label}: the wheel drew ${drawnOut.join(', ')}, which could not win`);
         if (seen.won !== pick) problems.push(`${label}: ${robot.name}'s wheel stopped on "${seen.won}", the room's pick is "${pick}"`);
         if (!seen.final.includes(LABELS[pick])) problems.push(`${label}: ${robot.name}'s wheel announced "${seen.final}", want ${LABELS[pick]}`);
       }
@@ -262,7 +289,8 @@ try {
   await dan.page.waitForTimeout(1500);
   const eveLabel = (await eve.textOf('#lobby-category') || '').trim();
   if (eveLabel !== 'Random') problems.push(`a Random room's lobby card reads "${eveLabel}", want "Random"`);
-  if (await eve.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push('a Random room shows the draft bar; it has no moves to make');
+  // A Random room has a bar too now: vetoes only (owner, 2026-11-17).
+  if (!await eve.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push('a Random room shows no veto bar');
 
   heading('the host switches Draft / Random and Spin in the lobby');
   async function lobbyPick(kind) {
@@ -292,7 +320,20 @@ try {
   if (roomOf('Dan')?.subcategory !== '__random__') problems.push(`Spin: Once in the lobby stored ${roomOf('Dan')?.subcategory}`);
   await dan.page.click('#btn-close-settings').catch(() => {});
   await eve.page.waitForTimeout(800);
-  if (await eve.page.locator('#draft-bar').isVisible().catch(() => false)) problems.push('Eve still has a draft bar after the switch back to Random');
+  const eveBar = (await eve.textOf('#draft-bar .draft-bar__title') || '').trim();
+  if (!/Random/.test(eveBar)) problems.push(`back in Random, Eve's bar reads "${eveBar}", want the Random veto bar`);
+
+  heading('Random: a veto, never a want, and the vetoed subject cannot come up');
+  await eve.page.click('#btn-draft-move');
+  await eve.page.waitForSelector('#draft-sheet.active', { timeout: 5000 });
+  await eve.page.click('[data-draft-category="history"]');
+  const wantOffered = await eve.page.locator('[data-draft-kind="want"]').count();
+  if (wantOffered) problems.push('a Random room offers "Want"; it has vetoes only');
+  const vetoWord = (await eve.textOf('[data-draft-kind="ban"]') || '').trim();
+  if (!/^🚫 Veto History$/.test(vetoWord)) problems.push(`the veto button reads "${vetoWord}", want "🚫 Veto History"`);
+  await eve.page.click('[data-draft-kind="ban"]');
+  await eve.page.waitForTimeout(700);
+  if (seatRow('Eve')?.draft_move !== 'ban:history') problems.push(`Eve's veto stored ${seatRow('Eve')?.draft_move}`);
 
   await eve.page.click('#btn-ready').catch(() => {});
   await dan.page.waitForTimeout(600);
@@ -300,10 +341,10 @@ try {
   await dan.page.click('#btn-start-game');
   await eve.page.waitForURL('**/game.html*', { timeout: 20000 });
   randomPhones[0].watching = watchWheel(eve);
-  await checkStartedGame('Random', 'Dan', randomPhones);
+  await checkStartedGame('Random', 'Dan', randomPhones, ['history']);
 
   // ------------------------------------------------- Spin: Every question
-  heading('Spin: Every question — a subject per question, rolled in the header');
+  heading('Spin: Every question — no opening wheel, a subject card before each question');
   const fay = await seat('Fay');
   const gus = await seat('Gus');
   await hostWith(fay, '#btn-random', { every: true });
@@ -330,22 +371,27 @@ try {
       await r.page.fill('#answer-input', `${r.name} says`).catch(() => {});
       await r.page.click('#btn-submit-answer').catch(() => {});
     }
-    // Record every text Gus's header shows once question 2 is on screen.
-    const rolling = gus.page.evaluate(expected => new Promise(resolve => {
-      const seen = [];
+    // Watch Gus's subject card for question 2: what it rolled through, where it
+    // landed, and when it went — the round's clock must not start before that.
+    const rolling = gus.page.evaluate(() => new Promise(resolve => {
+      const seen = { labels: [], kicker: null, landed: null, goneAt: 0 };
       const started = Date.now();
-      let onSecond = 0;
       const timer = setInterval(() => {
-        const text = document.querySelector('#question-text')?.textContent.trim();
-        const active = document.querySelector('#question-screen.active');
-        if (active && text === expected) {
-          if (!onSecond) onSecond = Date.now();
-          const header = document.querySelector('#question-category')?.textContent.trim();
-          if (header && seen[seen.length - 1] !== header) seen.push(header);
-          if (Date.now() - onSecond > 2200) { clearInterval(timer); resolve(seen); }
-        } else if (Date.now() - started > 60000) { clearInterval(timer); resolve(null); }
-      }, 40);
-    }), second.question);
+        const card = document.querySelector('#subject-card');
+        const kicker = card?.querySelector('.subject-card__kicker')?.textContent.trim();
+        const up = card && !card.classList.contains('hidden') && kicker === 'Question 2';
+        if (up) {
+          seen.kicker = kicker;
+          const label = card.querySelector('.subject-card__label')?.textContent.trim();
+          if (label && seen.labels[seen.labels.length - 1] !== label) seen.labels.push(label);
+          if (card.classList.contains('subject-card--landed')) seen.landed = label;
+        } else if (seen.kicker && !seen.goneAt) {
+          seen.goneAt = Date.now();
+          clearInterval(timer); resolve(seen);
+        }
+        if (Date.now() - started > 60000) { clearInterval(timer); resolve(seen.kicker ? seen : null); }
+      }, 30);
+    }));
     const until = Date.now() + 60000;
     while (Date.now() < until && (roomOf('Fay')?.current_question || 0) < 1) {
       for (const sel of ['#btn-next-question', '#btn-scores-action']) {
@@ -356,12 +402,19 @@ try {
     }
     const seen = await rolling;
     const want = LABELS[second.categories[0]];
-    note(`question 2 is ${second.categories[0]}; Gus's header showed: ${seen ? seen.join(' → ') : 'nothing'}`);
-    if (!seen) problems.push('Every question: Gus never reached question 2');
+    note(`question 2 is ${second.categories[0]}; Gus's card showed: ${seen ? seen.labels.join(' → ') : 'nothing'}`);
+    if (!seen) problems.push('Every question: Gus never saw a subject card for question 2');
     else {
-      if (!seen[seen.length - 1].includes(want)) problems.push(`Every question: question 2's header settled on "${seen[seen.length - 1]}", want ${want}`);
-      if (seen.length < 3) problems.push(`Every question: question 2's header did not roll (it showed ${seen.length} text(s))`);
-      if (seen.some(t => /Random|Wild/.test(t))) problems.push(`Every question: the header named the mode, not a subject: ${seen.join(' → ')}`);
+      if (seen.landed !== want) problems.push(`Every question: question 2's card landed on "${seen.landed}", want ${want}`);
+      if (seen.labels.length < 3) problems.push(`Every question: question 2's card did not roll (it showed ${seen.labels.length} label(s))`);
+      // The clock: stamped after the card, so the card costs no answer time.
+      await gus.page.waitForTimeout(1500);
+      const stamp = Date.parse(roomOf('Fay')?.question_started_at || '');
+      const early = seen.goneAt - stamp;
+      note(`round 2's clock was stamped ${early > 0 ? `${early}ms BEFORE` : `${-early}ms after`} Gus's card went`);
+      if (!(stamp > 0)) problems.push('Every question: round 2 has no clock stamp');
+      else if (early > 400) problems.push(`Every question: round 2's clock started ${early}ms before the subject card went — the card ate answer time`);
+      else if (early < -500) problems.push(`Every question: round 2 started ${-early}ms after its subject card went — a blank pause`);
     }
   } else {
     problems.push('Every question: the game has no second question to check');

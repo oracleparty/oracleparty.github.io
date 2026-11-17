@@ -416,6 +416,8 @@ export const STATES = {
       document.getElementById('lobby-category-icon').textContent = '⏳';
       document.getElementById('lobby-category').textContent = 'History';
       document.getElementById('lobby-code').textContent = 'ABCD';
+      // Mirrors updateSettingsLine() in js/lobby.js.
+      document.getElementById('lobby-settings-line').innerHTML = '<span>10 Qs</span><span>30s</span>';
       const sb = document.getElementById('btn-settings');
       if (sb) sb.classList.remove('hidden');
 
@@ -820,6 +822,75 @@ export const STATES = {
     },
   },
 
+  // A Random lobby with vetoes: chips are vetoes only, and the button says Veto.
+  'lobby-random-veto': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-waiting',
+    inject: () => {
+      const face = (n, hue) => `<div class="avatar avatar--guest draft-face" style="background:hsl(${hue},45%,45%);">${n}</div>`;
+      const chip = (emoji, title, faces) => `<span class="draft-chip draft-chip--ban" title="${title}">
+        <span class="draft-chip__emoji" aria-hidden="true">${emoji}</span>
+        <span class="draft-chip__faces">${faces}</span>
+        <span class="draft-chip__state">out</span></span>`;
+      document.getElementById('lobby-category-icon').textContent = '🎰';
+      document.getElementById('lobby-category').textContent = 'Random';
+      document.getElementById('lobby-settings-line').innerHTML = '<span>10 Qs</span><span>30s</span><span>Every question</span>';
+      const bar = document.getElementById('draft-bar');
+      bar.classList.remove('hidden');
+      bar.querySelector('.draft-bar__title').innerHTML = '<span aria-hidden="true">🎰</span> Random';
+      document.getElementById('draft-chips').innerHTML = chip('⏳', 'History', face('D', 280)) + chip('⚽', 'Sports', face('B', 210) + face('C', 130));
+      document.getElementById('btn-draft-move').textContent = 'Veto';
+    },
+  },
+  // Its sheet: Veto only; with nine vetoed, the last two cannot be chosen.
+  'lobby-random-veto-sheet': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-random-veto',
+    inject: () => {
+      const face = (n, hue) => `<div class="avatar avatar--guest draft-face" style="background:hsl(${hue},45%,45%);">${n}</div>`;
+      const tiles = [
+        ['history', '⏳', 'History', 'ban', face('D', 280)], ['science', '⚗️', 'Science', 'ban', face('E', 20)],
+        ['nature', '🌿', 'Nature', 'ban', face('F', 60)], ['arts-literature', '📜', 'Arts & Lit', 'ban', face('G', 100)],
+        ['culture-society', '🏛️', 'Culture', 'ban', face('H', 140)], ['pop-culture', '🎬', 'Pop Culture', 'ban', face('I', 180)],
+        ['world-geography', '🌍', 'Geography', 'ban', face('J', 220)], ['technology', '💻', 'Tech', 'ban', face('K', 260)],
+        ['sports', '⚽', 'Sports', 'ban', face('B', 210)], ['food', '🍕', 'Food', 'locked'], ['logic', '🧩', 'Logic', 'locked'],
+      ];
+      document.querySelector('#draft-sheet .bottom-sheet__title').textContent = 'Random';
+      document.getElementById('draft-tiles').innerHTML = tiles.map(([key, emoji, label, status, faces]) =>
+        `<button type="button" class="draft-tile draft-tile--${status}" data-draft-category="${key}"${status === 'locked' ? ' disabled' : ''}>
+          <span class="draft-tile__emoji" aria-hidden="true">${emoji}</span>
+          <span class="draft-tile__label">${label}</span>
+          <span class="draft-tile__faces">${faces || ''}</span></button>`).join('');
+      document.getElementById('draft-actions').innerHTML = '';
+      document.getElementById('draft-sheet').classList.add('active');
+    },
+  },
+  'lobby-random-veto-pick': {
+    page: 'lobby',
+    screen: 'lobby-screen',
+    inherits: 'lobby-random-veto',
+    inject: () => {
+      const face = (n, hue) => `<div class="avatar avatar--guest draft-face" style="background:hsl(${hue},45%,45%);">${n}</div>`;
+      const tiles = [
+        ['history', '⏳', 'History', 'ban', face('D', 280)], ['science', '⚗️', 'Science'], ['nature', '🌿', 'Nature'],
+        ['arts-literature', '📜', 'Arts & Lit'], ['culture-society', '🏛️', 'Culture'], ['pop-culture', '🎬', 'Pop Culture'],
+        ['world-geography', '🌍', 'Geography'], ['technology', '💻', 'Tech', 'selected'],
+        ['sports', '⚽', 'Sports', 'ban', face('B', 210) + face('C', 130)], ['food', '🍕', 'Food'], ['logic', '🧩', 'Logic'],
+      ];
+      document.querySelector('#draft-sheet .bottom-sheet__title').textContent = 'Random';
+      document.getElementById('draft-tiles').innerHTML = tiles.map(([key, emoji, label, status, faces]) =>
+        `<button type="button" class="draft-tile${status ? ' draft-tile--' + status : ''}" data-draft-category="${key}">
+          <span class="draft-tile__emoji" aria-hidden="true">${emoji}</span>
+          <span class="draft-tile__label">${label}</span>
+          <span class="draft-tile__faces">${faces || ''}</span></button>`).join('');
+      document.getElementById('draft-actions').innerHTML =
+        '<button type="button" class="draft-act draft-act--ban" data-draft-kind="ban">🚫 Veto Tech</button>';
+      document.getElementById('draft-sheet').classList.add('active');
+    },
+  },
+
   // The same lobby before anybody has moved: the empty line and the gold button.
   'lobby-draft-empty': {
     page: 'lobby',
@@ -853,7 +924,7 @@ export const STATES = {
           <span class="draft-tile__faces">${faces || ''}</span></button>`).join('');
       document.getElementById('draft-actions').innerHTML = `
         <button type="button" class="draft-act draft-act--want" data-draft-kind="want">👍 Want Food</button>
-        <button type="button" class="draft-act draft-act--ban" data-draft-kind="ban">🚫 Ban Food</button>
+        <button type="button" class="draft-act draft-act--ban" data-draft-kind="ban">🚫 Veto Food</button>
         <button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear</button>`;
       document.getElementById('draft-sheet').classList.add('active');
     },
@@ -866,9 +937,10 @@ export const STATES = {
     screen: 'countdown-screen',
     inject: () => {
       const tiles = [
-        ['history', '⏳', 'History', 'ban'], ['science', '⚗️', 'Science', 'want', 2], ['nature', '🌿', 'Nature'],
+        // History and Sports were banned: only subjects in play are drawn.
+        ['science', '⚗️', 'Science', 'want', 2], ['nature', '🌿', 'Nature'],
         ['arts-literature', '📜', 'Arts & Lit'], ['culture-society', '🏛️', 'Culture'], ['pop-culture', '🎬', 'Pop Culture', 'lit'],
-        ['world-geography', '🌍', 'Geography'], ['technology', '💻', 'Tech'], ['sports', '⚽', 'Sports', 'ban'],
+        ['world-geography', '🌍', 'Geography'], ['technology', '💻', 'Tech'],
         ['food', '🍕', 'Food', 'want', 1], ['logic', '🧩', 'Logic'],
       ];
       const overlay = document.getElementById('category-spin-overlay');
@@ -890,6 +962,48 @@ export const STATES = {
       overlay.querySelector('[data-spin-category="science"]').classList.add('draft-tile--won');
       overlay.classList.add('category-spin--landed');
       overlay.querySelector('.category-spin__final').textContent = '⚗️ Science';
+    },
+  },
+
+  // Random with vetoes leaving five subjects: the short last row is centred.
+  'category-spin-few': {
+    page: 'game',
+    screen: 'countdown-screen',
+    inject: () => {
+      const tiles = [['science', '⚗️', 'Science'], ['nature', '🌿', 'Nature'], ['pop-culture', '🎬', 'Pop Culture', 'lit'],
+        ['food', '🍕', 'Food'], ['logic', '🧩', 'Logic']];
+      const overlay = document.getElementById('category-spin-overlay');
+      overlay.querySelector('.category-spin__tiles').innerHTML = tiles.map(([key, emoji, label, status]) =>
+        `<div class="draft-tile${status === 'lit' ? ' draft-tile--lit' : ''}" data-spin-category="${key}">
+          <span class="draft-tile__emoji" aria-hidden="true">${emoji}</span>
+          <span class="draft-tile__label">${label}</span>
+          <span class="draft-tile__pips"></span></div>`).join('');
+      overlay.classList.remove('hidden');
+    },
+  },
+
+  // "Spin: Every question": the subject card before a question's clock, rolling
+  // and landed. Mirrors playSubjectCard() in js/game/category-spin.js.
+  'subject-card': {
+    page: 'game',
+    screen: 'question-screen',
+    inject: () => {
+      const card = document.getElementById('subject-card');
+      card.querySelector('.subject-card__kicker').textContent = 'Question 3';
+      card.querySelector('.subject-card__emoji').textContent = '🌍';
+      card.querySelector('.subject-card__label').textContent = 'World Geography';
+      card.classList.remove('hidden');
+    },
+  },
+  'subject-card-landed': {
+    page: 'game',
+    screen: 'question-screen',
+    inherits: 'subject-card',
+    inject: () => {
+      const card = document.getElementById('subject-card');
+      card.querySelector('.subject-card__emoji').textContent = '⚗️';
+      card.querySelector('.subject-card__label').textContent = 'Science';
+      card.classList.add('subject-card--landed');
     },
   },
 

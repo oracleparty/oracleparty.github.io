@@ -4,7 +4,7 @@ import {
   isDraftRoom, isRandomRoom, isSpinRoom, encodeDraftMove, parseDraftMove,
   draftTally, draftStatus, draftWeights, randomWeights, spinWeights, pickWeighted, validPick,
   DRAFT_EACH_KEY, RANDOM_EACH_KEY, spinKey, spinKind, spinLabel, spinIcon, spinsEveryQuestion,
-  pickSequence, questionSubject
+  pickSequence, questionSubject, liveSubjects, vetoAllowed, RANDOM_MIN_LEFT
 } from '../js/draft-logic.js';
 import { CATEGORY_META } from '../js/categories.js';
 
@@ -117,11 +117,46 @@ describe('draft: the odds', () => {
     expect(draftWeights(players)[DRAFT_CATEGORIES[0]]).toBeCloseTo(1, 10);
   });
 
-  it('random mode is every subject equally, whatever the seats say', () => {
+  it('random mode ignores wants: every subject equally', () => {
     const room = { subcategory: RANDOM_KEY };
     const w = spinWeights(room, [P('A', 'want:science')]);
     for (const c of DRAFT_CATEGORIES) expect(w[c]).toBeCloseTo(1 / 11, 10);
     expect(spinWeights({ subcategory: DRAFT_KEY }, [P('A', 'want:science')]).science).toBeCloseTo(0.95, 10);
+  });
+});
+
+describe('random: vetoes', () => {
+  const room = { subcategory: RANDOM_KEY };
+  it('a vetoed subject cannot come up; the rest share the wheel equally', () => {
+    const w = spinWeights(room, [P('A', 'ban:history'), P('B', 'ban:sports'), P('C', null)]);
+    expect(w.history).toBe(0);
+    expect(w.sports).toBe(0);
+    for (const c of DRAFT_CATEGORIES.filter(c => c !== 'history' && c !== 'sports')) expect(w[c]).toBeCloseTo(1 / 9, 10);
+    expect(sum(w)).toBeCloseTo(1, 10);
+    expect(liveSubjects(w)).toHaveLength(9);
+  });
+  it('two vetoes on one subject count once', () => {
+    const w = spinWeights(room, [P('A', 'ban:history'), P('B', 'ban:history')]);
+    expect(liveSubjects(w)).toHaveLength(10);
+  });
+  it('a bot cannot veto', () => {
+    expect(spinWeights(room, [P('Bot', 'ban:history', { is_bot: true })]).history).toBeCloseTo(1 / 11, 10);
+  });
+  it('a veto may not leave fewer than two subjects', () => {
+    const nine = DRAFT_CATEGORIES.slice(0, 9).map((c, i) => P(`P${i}`, `ban:${c}`));
+    expect(RANDOM_MIN_LEFT).toBe(2);
+    expect(vetoAllowed([...nine, P('Me', null)], 'Me', DRAFT_CATEGORIES[9])).toBe(false);
+    // Moving your own veto frees the subject it held.
+    expect(vetoAllowed(nine, 'P0', DRAFT_CATEGORIES[9])).toBe(true);
+    expect(vetoAllowed([P('Me', null)], 'Me', 'history')).toBe(true);
+    expect(vetoAllowed([P('Me', null)], 'Me', 'wild-card')).toBe(false);
+  });
+  it('if simultaneous vetoes leave nothing, the vetoes are ignored', () => {
+    const all = DRAFT_CATEGORIES.map((c, i) => P(`P${i}`, `ban:${c}`));
+    expect(liveSubjects(spinWeights(room, all))).toHaveLength(11);
+  });
+  it('the wheel draws only subjects that can win', () => {
+    expect(liveSubjects(spinWeights({ subcategory: DRAFT_KEY }, [P('A', 'ban:history')]))).not.toContain('history');
   });
 });
 

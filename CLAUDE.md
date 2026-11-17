@@ -293,12 +293,18 @@ node tests/harness/scenario-<name>.mjs      # robot playtests (list: tests/harne
   create-room screen, shown only for Draft and Random, stored as two more
   subcategory keys (`__draft_each__`, `__random_each__`), so it needed no SQL.
   In "Every question" the host draws a subject per question from the same
-  odds. The full wheel still plays once, landing on question 1's subject;
-  each later question's header ROLLS for about a second and lands on its
-  subject (the owner chose this over a full wheel every round, which would
-  cost each round ~2.5s of its clock). Every phone reads a question's subject
-  off the question itself (`questionSubject`), so nothing is stored per round.
-  Such a game counts under Wild Card in play counts.
+  odds. There is no opening wheel; every question opens on a SUBJECT CARD
+  ("Question N", the subject rolling then landing, `SUBJECT_CARD_MS`) that
+  covers the sync pause before the clock is stamped, so it costs no answer
+  time (2026-11-17, after a playtester missed the old header roll). Every
+  phone reads a question's subject off the question itself
+  (`questionSubject`), so nothing is stored per round. Such a game counts
+  under Wild Card in play counts.
+- **Wheel and vetoes** (owner, 2026-11-17): the wheel draws only subjects that
+  can come up (Draft keeps its 1-in-20 upset). On screen a ban is a **Veto**.
+  **Random takes optional vetoes**: one each, the rest equally likely, at
+  least 2 subjects always left (`vetoAllowed`); nobody vetoing is fully
+  random. The lobby card shows the settings ("10 Qs · 30s · Every question").
 - **Game options are independent host switches** (like Chaos), set at room
   creation and locked at Start; the classic game is the default.
 - **In game:** timer and Chaos lock at Start; Auto-Proceed stays changeable.

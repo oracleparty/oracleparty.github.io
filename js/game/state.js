@@ -477,11 +477,14 @@ export function getQuestionCategoryLabel(question) {
   return subject ? subjectText(subject) : getCategoryLabel();
 }
 
-/** Every label the header can roll through in an every-question game. */
-export function spinRollLabels() {
-  if (!state.room || !spinsEveryQuestion(state.room)) return [];
+/** The subject card for one question of an every-question game: where it lands, and what it rolls through. */
+export function subjectCardFor(question) {
+  if (!state.room || !spinsEveryQuestion(state.room)) return null;
+  const subject = subjectOfQuestion(question);
+  if (!subject) return null;
   const weights = spinWeights(state.room, state.players);
-  return DRAFT_CATEGORIES.filter(c => weights[c] > 0).map(subjectText);
+  const face = c => ({ emoji: CATEGORY_META[c]?.emoji || CATEGORY_META[c]?.icon || '', label: CATEGORY_META[c]?.label || c });
+  return { winner: face(subject), options: DRAFT_CATEGORIES.filter(c => weights[c] > 0).map(face) };
 }
 export function playedSubcategory() {
   if (!state.room || isSpinRoom(state.room)) return null;

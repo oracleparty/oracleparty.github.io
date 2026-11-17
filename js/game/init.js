@@ -44,7 +44,7 @@ import {
   fetchQuestionFeedback
 } from '../supabase.js';
 import { isSpinRoom, spinsEveryQuestion, spinWeights, pickWeighted, pickSequence, questionSubject } from '../draft-logic.js';
-import { cancelCategorySpin } from './category-spin.js';
+import { cancelCategorySpin, cancelSubjectCard } from './category-spin.js';
 import { getDisplayName, seatTitle, ensureDisplayName, ensureAnonymousIdentity, initAuth, getCurrentUser, getAuthUserId, getVoterId,
          rememberSeat, recallSeat } from '../auth.js';
 import { loadTitleWords } from '../title-content.js';
@@ -611,7 +611,11 @@ async function initHostGame(roomSnapshot = null) {
   // wheel, so the wheel plays in front of 3-2-1 and ends on one server moment
   // for everybody. showCountdownScreen already waits out a stamp that has not
   // arrived yet.
-  const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset + (spinPick ? CATEGORY_SPIN_MS : 0)).toISOString();
+  // An every-question game has no wheel here: one wheel before question 1 read
+  // as "this is the subject for the game" (owner, 2026-11-17). Each question
+  // shows its own subject card instead (question.js).
+  const wheelMs = spinPick && !spinsEveryQuestion(state.room) ? CATEGORY_SPIN_MS : 0;
+  const countdownStartedAt = new Date(Date.now() + state.serverTimeOffset + wheelMs).toISOString();
   state.countdownStartedAt = countdownStartedAt;
   if (spinPick) state.room.draftPick = spinPick;
   // DATA FIRST, PHASE SECOND. Clients act on the phase — they re-read the
@@ -1197,6 +1201,7 @@ async function syncToCurrentState() {
 
 function cleanup() {
   cancelCategorySpin(document.getElementById('category-spin-overlay'));
+  cancelSubjectCard(document.getElementById('subject-card'));
   window.removeEventListener('popstate', handleBackButton);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   // (ResizeObserver removed — chat is now inline flex, no positioning needed)

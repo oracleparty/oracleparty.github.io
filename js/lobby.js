@@ -64,7 +64,7 @@ import { loadTitleWords } from './title-content.js';
 import {
   DRAFT_CATEGORIES, DRAFT_SHORT_LABELS, isDraftRoom, isSpinRoom,
   encodeDraftMove, parseDraftMove, draftTally, draftStatus,
-  spinKind, spinKey, spinsEveryQuestion
+  spinKind, spinKey, spinsEveryQuestion, vetoAllowed
 } from './draft-logic.js';
 
 // --- State ---
@@ -2047,6 +2047,27 @@ function updateCategoryDisplay() {
   }
   lobbyCategory.textContent = shortLabel;
   renderDraft();
+  updateSettingsLine();
+}
+
+/**
+ * The room's settings, on the card where everyone sees them (owner,
+ * 2026-11-17). Numbers and the toggles' own words only; read off the same
+ * buttons the host presses, so the two cannot disagree.
+ */
+function updateSettingsLine() {
+  const el = $('#lobby-settings-line');
+  if (!el || !room?.settings) return;
+  const s = room.settings;
+  const parts = [];
+  if (s.questionsPerGame) parts.push(`${s.questionsPerGame} Qs`);
+  if (s.questionTimer) parts.push(`${s.questionTimer}s`);
+  if (spinsEveryQuestion(room)) parts.push('Every question');
+  if (Number(s.autoProceed) > 0) {
+    const word = settingsModal?.querySelector(`[data-setting="autoProceed"] [data-value="${s.autoProceed}"]`)?.textContent.trim();
+    parts.push(word ? `Auto ${word}` : 'Auto');
+  }
+  el.innerHTML = parts.map(p => `<span>${escapeHtml(p)}</span>`).join('');
 }
 
 // ============================================
@@ -2075,15 +2096,33 @@ function draftStateWord(status, entry) {
   return 'even';
 }
 
+/**
+ * The moves that count in this room. A Random room has vetoes only (owner,
+ * 2026-11-17), so a want left on a seat from a Draft room is not shown there.
+ */
+function roomMoves() {
+  if (isDraftRoom(room)) return players;
+  return players.map(p => (parseDraftMove(p.draft_move)?.kind === 'ban' ? p : { ...p, draft_move: null }));
+}
+function myRoomMove() {
+  const mine = myDraftMove();
+  return mine && (isDraftRoom(room) || mine.kind === 'ban') ? mine : null;
+}
+
 /** The lobby's draft bar: everyone's moves as chips, and a button for yours. */
 function renderDraft() {
   const bar = $('#draft-bar');
   if (!bar || !room) return;
-  const on = isDraftRoom(room);
+  const on = isSpinRoom(room);
   bar.classList.toggle('hidden', !on);
   if (!on) { $('#draft-sheet')?.classList.remove('active'); return; }
+  const draft = isDraftRoom(room);
+  const title = draft ? '<span aria-hidden="true">🗳️</span> Draft' : '<span aria-hidden="true">🎰</span> Random';
+  bar.querySelector('.draft-bar__title').innerHTML = title;
+  const sheetTitle = $('#draft-sheet .bottom-sheet__title');
+  if (sheetTitle) sheetTitle.textContent = draft ? 'Draft' : 'Random';
 
-  const tally = draftTally(players);
+  const tally = draftTally(roomMoves());
   const chips = DRAFT_CATEGORIES.filter(c => tally[c]).map(c => {
     const entry = tally[c];
     const status = draftStatus(entry);
@@ -2098,22 +2137,22 @@ function renderDraft() {
   chipsEl.innerHTML = chips;
   chipsEl.classList.toggle('hidden', !chips);
 
-  const mine = myDraftMove();
+  const mine = myRoomMove();
   const btn = $('#btn-draft-move');
   if (mine) {
     const emoji = CATEGORY_META[mine.category]?.emoji || '';
     btn.textContent = `${mine.kind === 'want' ? '👍' : '🚫'} ${emoji} ${DRAFT_SHORT_LABELS[mine.category] || mine.category}`;
     btn.classList.add('draft-bar__btn--made');
   } else {
-    btn.textContent = 'Choose';
+    btn.textContent = draft ? 'Choose' : 'Veto';
     btn.classList.remove('draft-bar__btn--made');
   }
   if ($('#draft-sheet')?.classList.contains('active')) renderDraftSheet();
 }
 
 function openDraftSheet() {
-  if (!isDraftRoom(room)) return;
-  _draftSelected = myDraftMove()?.category || null;
+  if (!isSpinRoom(room)) return;
+  _draftSelected = myRoomMove()?.category || null;
   renderDraftSheet();
   $('#draft-sheet').classList.add('active');
 }
@@ -2123,16 +2162,22 @@ function closeDraftSheet() {
 }
 
 function renderDraftSheet() {
-  const tally = draftTally(players);
-  const mine = myDraftMove();
+  const draft = isDraftRoom(room);
+  const tally = draftTally(roomMoves());
+  const mine = myRoomMove();
+  // Random: a subject that cannot be vetoed without leaving fewer than two in
+  // play is shown, but cannot be chosen.
+  const locked = c => !draft && !vetoAllowed(players, room.playerId, c);
+  if (_draftSelected && locked(_draftSelected)) _draftSelected = null;
   $('#draft-tiles').innerHTML = DRAFT_CATEGORIES.map(c => {
     const entry = tally[c];
     const status = draftStatus(entry);
     const cls = ['draft-tile'];
     if (status) cls.push(`draft-tile--${status}`);
     if (c === _draftSelected) cls.push('draft-tile--selected');
+    if (locked(c)) cls.push('draft-tile--locked');
     const faces = entry ? draftAvatars([...entry.wants, ...entry.bans]) : '';
-    return `<button type="button" class="${cls.join(' ')}" data-draft-category="${c}" aria-pressed="${c === _draftSelected}">
+    return `<button type="button" class="${cls.join(' ')}" data-draft-category="${c}" aria-pressed="${c === _draftSelected}"${locked(c) ? ' disabled' : ''}>
       <span class="draft-tile__emoji" aria-hidden="true">${CATEGORY_META[c]?.emoji || ''}</span>
       <span class="draft-tile__label">${DRAFT_SHORT_LABELS[c]}</span>
       <span class="draft-tile__faces">${faces}</span>
@@ -2147,14 +2192,16 @@ function renderDraftSheet() {
   const label = DRAFT_SHORT_LABELS[_draftSelected];
   const isMine = mine && mine.category === _draftSelected;
   actions.innerHTML = `
-    <button type="button" class="draft-act draft-act--want${isMine && mine.kind === 'want' ? ' draft-act--on' : ''}" data-draft-kind="want">👍 Want ${label}</button>
-    <button type="button" class="draft-act draft-act--ban${isMine && mine.kind === 'ban' ? ' draft-act--on' : ''}" data-draft-kind="ban">🚫 Ban ${label}</button>
+    ${draft ? `<button type="button" class="draft-act draft-act--want${isMine && mine.kind === 'want' ? ' draft-act--on' : ''}" data-draft-kind="want">👍 Want ${label}</button>` : ''}
+    <button type="button" class="draft-act draft-act--ban${isMine && mine.kind === 'ban' ? ' draft-act--on' : ''}" data-draft-kind="ban">🚫 Veto ${label}</button>
     ${mine ? '<button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear</button>' : ''}`;
 }
 
 /** Save a move at the tap, show it at once, and take it back if it did not land. */
 async function handleDraftMove(kind) {
-  if (_draftSaving || !isDraftRoom(room)) return;
+  if (_draftSaving || !isSpinRoom(room)) return;
+  if (!isDraftRoom(room) && kind === 'want') return;
+  if (!isDraftRoom(room) && kind === 'ban' && !vetoAllowed(players, room.playerId, _draftSelected)) return;
   const me = players.find(p => String(p.id) === String(room.playerId));
   if (!me) return;
   const next = kind === 'clear' ? null : encodeDraftMove(kind, _draftSelected);
@@ -2444,6 +2491,7 @@ async function handleSettingChange(key, value) {
 
   // Persist to sessionStorage
   sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+  updateSettingsLine();
 
   if (key === 'chaos') {
     updateChaosDisplay();
@@ -2533,6 +2581,7 @@ function handleRoomChange(payload) {
 
     if (changed) {
       sessionStorage.setItem('oracle_party_room', JSON.stringify(room));
+      updateSettingsLine();
     }
   }
 }

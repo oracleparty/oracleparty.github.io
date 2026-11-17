@@ -3,13 +3,13 @@
 // Wager grid, timer, answer submission.
 // ============================================
 
-import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionCategoryLabel, spinRollLabels, getQuestionText, getCorrectAnswer, getAlternates,
+import { state, roundTimerSeconds, canControlGame, currentGameAnswers, getCategoryLabel, getQuestionCategoryLabel, subjectCardFor, getQuestionText, getCorrectAnswer, getAlternates,
          showScreen, _isLeaving, noteRoundShown, noteAnswerSent } from './state.js';
-import { rollLabel } from './category-spin.js';
+import { playSubjectCard } from './category-spin.js';
 import { $, transitionScreens, fuzzyMatch, showToast } from '../utils.js';
 import { logger, recordFault } from '../logger.js';
 import { lastRequestMs } from '../db/client.js';
-import { WAGER_AUTO_SKIP_MS, TIMER_GRACE_MS, DRAFT_SAVE_DEBOUNCE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS, DEPUTY_CLOCK_WAIT_MS } from '../constants.js';
+import { WAGER_AUTO_SKIP_MS, SUBJECT_CARD_MS, TIMER_GRACE_MS, DRAFT_SAVE_DEBOUNCE_MS, PHASE_ADVANCE_GRACE_MS, PHASE_BACKSTOP_POLL_MS, CLOCK_STAMP_TIMEOUT_MS, DEPUTY_CLOCK_WAIT_MS } from '../constants.js';
 import { updateGameState, startClockOnServer, advancePhaseOnServer, setPhaseOnServer, submitAnswer, submitAnswerViaServer, fillBlankAnswersViaServer, saveDraftOnServer, fetchAnswersForQuestion, fetchAllAnswers, insertBlankAnswers, upsertAnswers, incrementQuestionsAnswered } from '../supabase.js';
 import { computeScoreEarned, findNextAvailableWager, answersForCurrentGame, buildUsedWagersMap, buildDisqualifiedSet } from './scoring-helpers.js';
 import { getServerTimeLeft as _getServerTimeLeft } from './timer-helpers.js';
@@ -70,11 +70,6 @@ export function showQuestionScreen() {
   state._renderedFinalRound = !!state.isFinalWagerRound;
   noteRoundShown(state.currentQuestion, q?.id);
 
-  // "Spin: Every question": each new question's subject rolls in for a second.
-  // Question 1 does not; the full wheel has just landed on it.
-  if (!sameQuestion && state.currentQuestion > 0) {
-    rollLabel($('#question-category'), categoryLabel, spinRollLabels());
-  }
 
   if (!sameQuestion) {
     $('#answer-form').classList.remove('answer-input--submitted');
@@ -147,6 +142,29 @@ export function showQuestionScreen() {
 
   // Determine if we should skip the sync buffer (reconnect with existing timer)
   const isReconnect = !!state.questionStartedAt;
+
+  // "Spin: Every question": the subject card plays first. It
+  // covers the sync pause below (which waits for the longer of the two), so the host stamps the clock only once it has gone.
+  // A re-render of the same round waits out what is left of its card rather
+  // than starting the clock underneath it.
+  let cardWaitMs = 0;
+  if (!isReconnect) {
+    const card = !sameQuestion ? subjectCardFor(q) : null;
+    if (card) {
+      state._subjectCardEndsAt = Date.now() + SUBJECT_CARD_MS;
+      cardWaitMs = SUBJECT_CARD_MS;
+      playSubjectCard({
+        overlay: $('#subject-card'),
+        kicker: state.isFinalWagerRound ? 'Final Question' : `Question ${state.currentQuestion + 1}`,
+        options: card.options,
+        winner: card.winner,
+        durationMs: SUBJECT_CARD_MS,
+      });
+    } else if (sameQuestion) {
+      cardWaitMs = Math.max(0, (state._subjectCardEndsAt || 0) - Date.now());
+    }
+  }
+  if (!sameQuestion && !cardWaitMs) state._subjectCardEndsAt = 0;
 
   if (!isReconnect) {
     // Hide interactive elements during sync buffer
@@ -269,7 +287,7 @@ export function showQuestionScreen() {
 
       // Focus the answer input for quick typing
       $('#answer-input').focus({ preventScroll: true });
-    }, WAGER_AUTO_SKIP_MS);
+    }, Math.max(WAGER_AUTO_SKIP_MS, cardWaitMs));
   }
 
   $('#btn-submit-answer').onclick = handleSubmitAnswer;

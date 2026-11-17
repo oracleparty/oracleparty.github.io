@@ -1,5 +1,48 @@
 > **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
 
+> ## 2026-11-17 (later) — Draft and Random after a playtest: wheel, subject card, vetoes, settings line
+>
+> **Owner's report** (a real game with a friend): "When the random animation
+> shows, it should just be among what is in play"; "the animation for each
+> question is not very clear, my friend didn't even realize what was
+> happening"; the opening wheel in an every-question game "might imply
+> everything is that"; "ban" is the wrong word for nullifying a selection;
+> should Random allow moves; the friend wanted the settings "more outwardly
+> visible". Design items, agreed with the owner one by one before building.
+>
+> **Decided and built.**
+> - The wheel draws only subjects that can come up (`liveSubjects`, and
+>   `spinTilesHtml` filters on the weights). Draft's 1-in-20 upset stays, so
+>   untouched subjects are still drawn there; banned ones are not.
+> - "Spin: Every question" has no opening wheel (`wheelMs` in init.js). Every
+>   question, the first and the final included, opens on a SUBJECT CARD
+>   (`playSubjectCard`): "Question N", a big emoji and name rolling through
+>   the subjects in play and landing. It covers the question's sync pause,
+>   which waits `max(WAGER_AUTO_SKIP_MS, SUBJECT_CARD_MS)`, and the host
+>   stamps the clock only after it: measured in the scenario, round 2's clock
+>   was stamped 24ms before the card went, so it costs no answer time. (A
+>   first version ADDED the card to the pause and left a measured 991ms blank
+>   between the card and the question.) Replaces the header roll.
+> - "Ban" is "Veto" on screen in both modes; stored as `ban:` unchanged.
+> - Random takes optional vetoes: one per person, everything nobody vetoed
+>   equally likely; a veto that would leave fewer than `RANDOM_MIN_LEFT` (2)
+>   is greyed out (`vetoAllowed`); if simultaneous vetoes leave nothing, they
+>   are ignored. No switch: nobody vetoing is "completely random". A want left
+>   on a seat from a Draft room is not shown in a Random one.
+> - The lobby card shows "10 Qs · 30s · Every question" (+ "Auto Slow/Fast"),
+>   for everyone, read off the settings toggles.
+>
+> **Kept as designed, said to the owner:** in Draft a want plus a veto on the
+> same subject takes it out entirely (no blocks, and touched so not in the upset).
+>
+> **Proven how.** Six unit tests (vetoes, the floor of two, bots, the all-vetoed
+> fallback, only live subjects drawn). `scenario-categorydraft` now checks no
+> opening wheel, the card before question 1 and 2 (round, landing, rolling),
+> the clock against the card, vetoed subjects never drawn, Random offering
+> Veto and never Want. Seen to fail by name with the card not delaying the
+> clock ("the card ate answer time", 824ms) and with every tile drawn ("the
+> wheel drew history, which could not win").
+
 > ## 2026-11-17 — "Spin: Every question", and CI green on the 11-16 deploy
 >
 > **CI on the 11-16 deploy, read 11-17:** `ci.yml`, `db-probe.yml` and all

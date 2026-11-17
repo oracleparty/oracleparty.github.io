@@ -3018,6 +3018,24 @@ body::after {
   transition: color var(--duration-fast), opacity var(--duration-fast);
 }
 
+/* The room's settings for everyone: "10 Qs · 30s · Every question". */
+.lobby-room__settings-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 0;
+  margin-top: var(--space-sm);
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-dim);
+}
+.lobby-room__settings-line:empty { display: none; }
+.lobby-room__settings-line span + span::before {
+  content: '·';
+  margin: 0 0.5em;
+  color: var(--color-text-muted);
+}
 .lobby-room__card-bottom.copied .lobby-room__card-hint {
   color: var(--color-success);
   opacity: 1;
@@ -9527,6 +9545,8 @@ body.kb-open #question-screen .question-card {
 .draft-tile--want { border-color: var(--color-success); }
 .draft-tile--ban { border-color: var(--color-danger); }
 .draft-tile--ban .draft-tile__label { text-decoration: line-through; color: var(--color-text-muted); }
+/* Random: the last subjects in play cannot be vetoed. */
+.draft-tile--locked { opacity: 0.4; cursor: default; }
 .draft-tile--even { border-color: var(--color-surface-light); }
 .draft-tile--selected { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 
@@ -9567,19 +9587,23 @@ body.kb-open #question-screen .question-card {
   background: var(--color-bg);
 }
 .category-spin.hidden { display: none; }
+/* Only the subjects in play are drawn, so the count varies (2 to 11): four to
+   a row, and a short last row is centred rather than left-hanging. */
 .category-spin__tiles {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
   width: 100%;
   max-width: 380px;
 }
 .category-spin .draft-tile {
+  flex: 0 0 calc((100% - 18px) / 4);
+  min-width: 0;
   cursor: default;
   background: var(--color-surface);
   transition: transform 0.12s var(--ease-out), border-color 0.08s linear, opacity 0.3s linear;
 }
-.category-spin .draft-tile--ban { opacity: 0.35; }
 .draft-tile__pips { display: flex; gap: 3px; min-height: 8px; margin-top: auto; padding-bottom: 3px; }
 .draft-tile__pips i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-success); }
 .category-spin .draft-tile--lit {
@@ -9606,5 +9630,50 @@ body.kb-open #question-screen .question-card {
 @media (prefers-reduced-motion: reduce) {
   .category-spin .draft-tile { transition: none; }
 }
-/* An every-question game: the header's subject while it is still rolling. */
-.game-progress__category--rolling { color: var(--color-primary); }
+/* "Spin: Every question": the subject card before each question's clock.
+   Same ground as the wheel, so the two read as one family. */
+.subject-card {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  background: var(--color-bg);
+  text-align: center;
+}
+.subject-card.hidden { display: none; }
+.subject-card__kicker {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.subject-card__emoji {
+  font-size: 4.5rem;
+  line-height: 1.1;
+  margin-top: var(--space-md);
+}
+.subject-card__label {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-text-dim);
+  min-height: 1.2em;
+}
+.subject-card--landed .subject-card__emoji { animation: subject-card-land 0.35s var(--ease-out); }
+.subject-card--landed .subject-card__label { color: var(--color-primary); }
+@keyframes subject-card-land {
+  0% { transform: scale(0.8); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .subject-card--landed .subject-card__emoji { animation: none; }
+}
