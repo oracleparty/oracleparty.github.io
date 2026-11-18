@@ -103,6 +103,17 @@ console.log('='.repeat(70));
 // that number being high is the database; the total being high while it stays
 // low is the network.
 // ============================================
+// ============================================
+// ARE DRAFT AND RANDOM OFFERED? The exact two reads draftAvailable() makes
+// (js/db/players.js); both must succeed or the host never sees the buttons.
+// Added 2026-11-18: the owner reported the buttons missing on Choose Category.
+// ============================================
+console.log('\n--- DRAFT AND RANDOM: the two reads that decide whether hosts see them ---');
+for (const [path, label] of [['players?select=draft_move&limit=1', 'players.draft_move'], ['rooms?select=draft_pick&limit=1', 'rooms.draft_pick']]) {
+  const r = await req(path);
+  console.log(`  ${label.padEnd(20)} HTTP ${r.status}  ${r.status === 200 ? 'ok — offered' : 'FAILS — Draft and Random are hidden: ' + (r.body || '').slice(0, 200)}`);
+}
+
 console.log('\n--- HOW FAST IS THE LIVE DATABASE RIGHT NOW? (from a GitHub runner) ---');
 {
   const summarise = ms => {
