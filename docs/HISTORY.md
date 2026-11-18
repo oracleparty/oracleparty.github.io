@@ -1,5 +1,42 @@
 > **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
 
+> ## 2026-11-18 — Draft and Random missing on Choose Category; a move kept through a rejoin
+>
+> **Owner's report:** "i cant select those modes when i initially host the
+> game" — asked, they answered the buttons are MISSING (not dead) on Choose
+> Category. They had seen them there on 2026-11-17.
+>
+> **What was established.** The live database has both columns: a probe step
+> added today runs draftAvailable()'s exact two reads from GitHub as `anon`,
+> both HTTP 200 (measured). No migration limits column reads for
+> `authenticated` (read). The robot sees the buttons against the fake store
+> (reproduced as fine). So the phone's check itself failed or hung: NOT
+> reproduced on the phone, and the old check recorded nothing. It hid the
+> buttons on ANY error and waited for the answer before drawing them, so a
+> failed, slow or hung read on the phone hid them for that page view.
+>
+> **Fix.** `featureColumnsPresent` (js/db/client.js): no only on a definite
+> missing column (42703); any other failure, or no answer in 4s, is yes and is
+> recorded as `FeatureCheck` in error_logs. The create screen and the lobby
+> list draw Draft and Random at once and take them away only on a definite
+> no. Chaos had the same shape and got the same fix (habit 2).
+> **Check:** `scenario-categorydraft` hangs the players read for 20s and wants
+> the buttons within 1.5s of the cards; on the old host.js it fails by name
+> ("the host is not offered #btn-draft on Choose Category").
+> **Next time:** if it recurs, read error_logs for `FeatureCheck`.
+>
+> **A move survives a rejoin** (owner: "that should be built"). Leaving
+> deletes the seat, and the move lived on it. The move is now also kept on the
+> phone per room (`oracle_party_move_<room>`) and put back on the new seat
+> (`restoreMyDraftMove`); in Random only a veto that is still allowed. The
+> scenario has Carol leave and rejoin; with the restore removed it fails by
+> name ("her seat holds undefined, want her move want:science back").
+>
+> **"Available on all levels":** the owner means everywhere a category is
+> chosen. Those are Choose Category when hosting and the lobby's category
+> list (both have Draft and Random). In a game the category is locked at
+> Start (owner decision), and Play Again returns to the lobby.
+
 > ## 2026-11-17 (later) — Draft and Random after a playtest: wheel, subject card, vetoes, settings line
 >
 > **Owner's report** (a real game with a friend): "When the random animation

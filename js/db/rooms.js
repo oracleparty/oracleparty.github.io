@@ -2,8 +2,8 @@
 // Oracle Party — Room Database Operations
 // ============================================
 
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions } from './client.js';
-import { logger, reportWriteFailure } from '../logger.js';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions, featureColumnsPresent } from './client.js';
+import { logger, reportWriteFailure, recordFault } from '../logger.js';
 import { PUBLIC_ROOMS_LIMIT, ABANDONED_ROOM_MS } from '../constants.js';
 import { notifyConnectionLost, notifyConnectionRestored, showToast } from '../utils.js';
 
@@ -26,14 +26,17 @@ export function generateRoomCode() {
  *
  * Asked once per page and cached. The switch is shown only on a yes: offering a
  * control the database will refuse is the dead button this project keeps
- * finding. A failed read answers no, which hides the switch — the harmless way.
+ * finding. A failed read used to answer no; it now answers yes (see featureColumnsPresent).
  */
 let _chaosAvailable = null;
 export function chaosAvailable() {
   if (!_chaosAvailable) {
-    _chaosAvailable = supabase.from('rooms').select('chaos').limit(1)
-      .then(({ error }) => !error)
-      .catch(() => false);
+    // No only on a definite missing column; see featureColumnsPresent.
+    _chaosAvailable = featureColumnsPresent([supabase.from('rooms').select('chaos').limit(1)])
+      .then(({ ok, why }) => {
+        if (why) recordFault('FeatureCheck', `Chaos check: ${why}`, null, 'warn');
+        return ok;
+      });
   }
   return _chaosAvailable;
 }

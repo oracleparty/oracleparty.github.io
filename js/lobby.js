@@ -195,6 +195,7 @@ async function init() {
   // came back as a second copy of themselves. localStorage, so it survives the
   // browser closing rather than just a refresh.
   rememberSeat(room.id, room.playerId);
+  restoreMyDraftMove();
 
   // Validate room still exists (may have been deleted while player was away)
   const { data: currentRoom } = await fetchRoom(room.id);
@@ -2197,6 +2198,39 @@ function renderDraftSheet() {
     ${mine ? '<button type="button" class="draft-act draft-act--clear" data-draft-kind="clear">Clear</button>' : ''}`;
 }
 
+// A MOVE OUTLIVES ITS SEAT. Somebody who leaves and rejoins gets a new seat
+// row, and the move lived on the old one (owner, 2026-11-18: build it). So the
+// move is also kept on this phone, per room, and put back on the new seat.
+const moveKey = () => `oracle_party_move_${room?.id}`;
+function rememberMove(move) {
+  try {
+    if (move) localStorage.setItem(moveKey(), move);
+    else localStorage.removeItem(moveKey());
+  } catch (_) {}
+}
+async function restoreMyDraftMove() {
+  if (!room || !isSpinRoom(room)) return;
+  const me = players.find(p => String(p.id) === String(room.playerId));
+  if (!me) return;
+  if (me.draft_move) { rememberMove(me.draft_move); return; }
+  let saved = null;
+  try { saved = localStorage.getItem(moveKey()); } catch (_) {}
+  const move = parseDraftMove(saved);
+  if (!move) return;
+  // Random takes vetoes only, and never one that would leave fewer than two.
+  if (!isDraftRoom(room) && (move.kind !== 'ban' || !vetoAllowed(players, room.playerId, move.category))) return;
+  me.draft_move = saved;
+  renderDraft();
+  try {
+    const res = await setDraftMove(room.playerId, saved);
+    if (res?.error || res?.missing) { me.draft_move = null; renderDraft(); }
+  } catch (err) {
+    logger.warn('Lobby', 'could not put a remembered draft move back', err);
+    me.draft_move = null;
+    renderDraft();
+  }
+}
+
 /** Save a move at the tap, show it at once, and take it back if it did not land. */
 async function handleDraftMove(kind) {
   if (_draftSaving || !isSpinRoom(room)) return;
@@ -2225,6 +2259,8 @@ async function handleDraftMove(kind) {
           showRemovedNotice();
         }
       }
+    } else {
+      rememberMove(next);
     }
   } catch (err) {
     logger.error('Lobby', 'setDraftMove failed', err);
@@ -2339,8 +2375,9 @@ function selectLobbySubcategory(catName, subcategory) {
   $('#category-sheet').classList.remove('active');
 }
 
-/** Draft and Random sit above the top level of the list only, and only once
- *  the database can save a move and a spin (082), as on the host page. */
+/** Draft and Random sit above the top level of the list only. Drawn at once,
+ *  taken away only if the database definitely lacks them (082), as on the
+ *  host page. */
 function showLobbySpinEntries(show) {
   const el = $('#lobby-spin-entries');
   if (!el) return;
@@ -2349,9 +2386,9 @@ function showLobbySpinEntries(show) {
   el.querySelectorAll('[data-spin-kind]').forEach(b => {
     b.classList.toggle('draft-entry--selected', b.dataset.spinKind === kind);
   });
+  el.classList.remove('hidden');
   draftAvailable().then(ok => {
-    // The sheet may have drilled in while the answer was on its way.
-    if (ok && lobbySheetNavStack.length === 0) el.classList.remove('hidden');
+    if (!ok) el.classList.add('hidden');
   });
 }
 

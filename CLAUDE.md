@@ -388,8 +388,6 @@ lists are in `docs/HISTORY.md`.
 - **Draft and Random in the lobby** (owner chose option B, 2026-11-17): the
   same two buttons sit above the lobby's category list (host only), and the
   Spin switch shows in lobby settings for a Draft or Random room.
-- **Draft and Random, not done:** a rejoining player's move is lost with their
-  old seat.
 - **Polish list from the 2026-11-14 playtest:** minor aesthetics and
   smoothness; the owner is saving it for a later session.
 

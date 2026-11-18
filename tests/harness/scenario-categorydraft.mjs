@@ -67,8 +67,9 @@ try {
   async function hostWith(r, buttonId, { every = false } = {}) {
     await r.goto('host.html');
     await r.page.waitForSelector('.category-card', { timeout: 20000 });
-    const offered = await r.page.waitForSelector(`#spin-entries:not(.hidden) ${buttonId}`, { timeout: 8000 })
+    const offered = await r.page.waitForSelector(`#spin-entries:not(.hidden) ${buttonId}`, { timeout: 1500 })
       .then(() => true).catch(() => false);
+    table.store.normalReads('players');
     if (!offered) { problems.push(`the host is not offered ${buttonId} on Choose Category`); return null; }
     await r.page.click(buttonId);
     await r.page.waitForSelector('#btn-host-game', { state: 'visible', timeout: 15000 });
@@ -196,6 +197,10 @@ try {
   // ------------------------------------------------------------------ Draft
   heading('the host is offered Draft and Random, and makes a Draft room');
   const alice = await seat('Alice');
+  // The availability check HANGS (a read that never comes back in time). The
+  // buttons must be offered anyway: on 2026-11-18 the owner found them missing
+  // with the live database fine, because any failed check used to hide them.
+  table.store.slowReads('players', 20000);
   const badge = await hostWith(alice, '#btn-draft');
   if (badge !== null && badge !== 'Draft') problems.push(`the settings screen calls the choice "${badge}", want "Draft"`);
   note(`room: category=${roomOf('Alice')?.category} subcategory=${roomOf('Alice')?.subcategory}`);
@@ -267,6 +272,18 @@ try {
   await alice.page.waitForTimeout(800);
   chip = await chipFor(alice, 'Science');
   if (chip?.state !== '×2' || chip?.faces !== 2) problems.push(`two wants on Science read ${JSON.stringify(chip)}, want ×2 with two faces`);
+
+  heading('a move survives leaving and rejoining');
+  // Leaving deletes the seat, and the move lived on it (owner, 2026-11-18).
+  await carol.page.locator('#btn-leave').click().catch(() => {});
+  await carol.page.waitForURL('**/join.html*', { timeout: 15000 }).catch(() => {});
+  await alice.page.waitForTimeout(1000);
+  if (seatRow('Carol')) note(`Carol's old seat is still there after Leave (${seatRow('Carol').draft_move})`);
+  await join(carol, code);
+  await alice.page.waitForTimeout(1500);
+  if (seatRow('Carol')?.draft_move !== 'want:science') problems.push(`Carol left and rejoined and her seat holds "${seatRow('Carol')?.draft_move}", want her move "want:science" back`);
+  chip = await chipFor(alice, 'Science');
+  if (chip?.state !== '×2') problems.push(`after Carol rejoined, Alice sees Science as ${JSON.stringify(chip)}, want ×2`);
 
   heading('Start: one spin picks the subject, on every phone');
   for (const r of [bob, carol]) await r.page.click('#btn-ready').catch(() => {});
@@ -424,6 +441,7 @@ try {
   for (const p of problems) console.log('  ✗', p);
   process.exitCode = problems.length ? 1 : 0;
 } catch (err) {
+  for (const p of problems) console.log('  ✗', p);
   console.error('\nSCENARIO CRASHED:', err);
   process.exitCode = 1;
 } finally {

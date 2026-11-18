@@ -147,14 +147,17 @@ async function init() {
   // Listeners go on NOW. They used to wait for every read below, so a card
   // tapped while the page was still loading did nothing at all.
   attachListeners();
-  // Draft needs migration 082 (a place to save each player's move); until
-  // then it is not offered.
+  // Draft and Random (migration 082) and Chaos (075): DRAWN FIRST, taken away
+  // only if the database definitely lacks them. They used to wait on the
+  // check and stay hidden when it failed or hung; the owner found Draft and
+  // Random missing on 2026-11-18 with both columns live.
+  $('#spin-entries')?.classList.remove('hidden');
+  $$('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
   draftAvailable().then(ok => {
-    if (ok) $('#spin-entries')?.classList.remove('hidden');
+    if (!ok) $('#spin-entries')?.classList.add('hidden');
   });
-  // Chaos mode needs migration 075; until then the switch is not offered.
   chaosAvailable().then(ok => {
-    if (ok) $$('[data-chaos-setting]').forEach(el => el.classList.remove('hidden'));
+    if (!ok) $$('[data-chaos-setting]').forEach(el => el.classList.add('hidden'));
   });
   initThemeToggle();
   history.pushState({ page: 'host' }, '');

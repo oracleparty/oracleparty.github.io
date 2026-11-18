@@ -1,5 +1,5 @@
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions } from './client.js';
-import { logger, reportWriteFailure } from '../logger.js';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, noteServerFunctions, featureColumnsPresent } from './client.js';
+import { logger, reportWriteFailure, recordFault } from '../logger.js';
 import { STALE_TIMEOUT_MS } from '../constants.js';
 import { notifyConnectionLost, notifyConnectionRestored } from '../utils.js';
 import { clapGameKey } from '../game/clap-logic.js';
@@ -617,20 +617,20 @@ export async function toggleReady(playerId, isReady) {
 
 /**
  * Does the live database have what Draft and Random need (migration 082)?
- *
- * Asked once per page and cached, the same way as chaosAvailable(). Both are
- * offered only on a yes: a mode whose moves or result cannot be saved is a
- * dead control. A failed read answers no, which hides them.
+ * Asked once per page and cached, the same way as chaosAvailable(). Answers
+ * no only when a column is definitely missing; see featureColumnsPresent.
  */
 let _draftAvailable = null;
 export function draftAvailable() {
   if (!_draftAvailable) {
     // Two columns, one answer: the move on a seat and the spin's pick on the room.
-    _draftAvailable = Promise.all([
+    _draftAvailable = featureColumnsPresent([
       supabase.from('players').select('draft_move').limit(1),
       supabase.from('rooms').select('draft_pick').limit(1),
-    ]).then(results => results.every(r => !r.error))
-      .catch(() => false);
+    ]).then(({ ok, why }) => {
+      if (why) recordFault('FeatureCheck', `Draft and Random check: ${why}`, null, 'warn');
+      return ok;
+    });
   }
   return _draftAvailable;
 }

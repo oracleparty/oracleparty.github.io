@@ -76,3 +76,20 @@ let _serverFns = null;   // null = nobody has found out yet
 
 export function noteServerFunctions(present) { _serverFns = present; }
 export function serverFunctionsMissing() { return _serverFns === false; }
+
+
+// "CANNOT TELL" IS NOT "NO" (CLAUDE.md habit 7). Only a definite missing column
+// (PostgREST 42703) hides a feature. A failed, slow or hung read answers yes and
+// is recorded: on 2026-11-18 the owner reported Draft and Random missing from
+// Choose Category while the live database had both columns (probe, same day),
+// and the old check hid them on any error and never said why.
+export function featureColumnsPresent(reads, timeoutMs = 4000) {
+  const missing = r => r?.error && (r.error.code === '42703' || /column .* does not exist/i.test(r.error.message || ''));
+  const check = Promise.all(reads).then(results => {
+    if (results.some(missing)) return { ok: false, why: 'missing column' };
+    const err = results.find(r => r?.error)?.error;
+    return { ok: true, why: err ? `read failed: ${err.code || ''} ${err.message || ''}`.trim() : null };
+  }).catch(e => ({ ok: true, why: `read threw: ${e?.message || e}` }));
+  const timeout = new Promise(resolve => setTimeout(() => resolve({ ok: true, why: `no answer in ${timeoutMs}ms` }), timeoutMs));
+  return Promise.race([check, timeout]);
+}
