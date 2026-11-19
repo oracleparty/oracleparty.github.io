@@ -1523,12 +1523,12 @@ async function showRemovedNotice({ banned = false } = {}) {
     ]) : false;
   }
   if (banned) {
-    title.textContent = 'You were removed from this room';
-    body.textContent = 'The host kicked you out, so you cannot rejoin this room.';
+    title.textContent = 'Kicked by the host';
+    body.textContent = '';
     rejoin.classList.add('hidden');
   } else {
-    title.textContent = "You're no longer in this room";
-    body.textContent = 'You were removed from the lobby. You can ask to come back in, or leave.';
+    title.textContent = 'Removed by the host';
+    body.textContent = '';
     rejoin.classList.remove('hidden');
   }
   modal.classList.add('active');

@@ -1059,7 +1059,7 @@ export async function initProfilePage() {
         };
       });
     } else {
-      masteryEl.innerHTML = '<p class="profile-empty">Play games to start mastering questions</p>';
+      masteryEl.innerHTML = '<p class="profile-empty">No games yet</p>';
     }
   }
   };
@@ -1202,8 +1202,8 @@ export async function initProfilePage() {
         // use — and the sample is stated either way, which is what makes a
         // withheld number honest rather than merely absent.
         note.textContent = t.rate === null
-          ? `Clap rate needs ${CLAP_RATE_FLOOR} claps available. You have had ${t.available}.`
-          : `Out of ${t.available} claps available to you.`;
+          ? `Rate shows at ${CLAP_RATE_FLOOR} available · ${t.available} so far`
+          : `${t.available} available`;
       }
     }
   }
@@ -1352,7 +1352,7 @@ export async function initProfilePage() {
         });
       });
     } else {
-      categoriesEl.innerHTML = '<p class="profile-empty">Play some games to see category stats</p>';
+      categoriesEl.innerHTML = '<p class="profile-empty">No games yet</p>';
     }
   }
 
@@ -1822,7 +1822,7 @@ async function loadFriendsTab(userId) {
       }
     };
   } else {
-    friendsListEl.innerHTML = '<p class="profile-empty">No friends yet. Search to add some!</p>';
+    friendsListEl.innerHTML = '<p class="profile-empty">No friends</p>';
   }
 
   // Search
@@ -2211,7 +2211,7 @@ function renderMasteryMap() {
       const done = Object.entries(mastery)
         .filter(([k]) => !k.includes('|'))
         .reduce((s, [, v]) => s + v, 0);
-      captionEl.textContent = `${done} of ${totalQuestions} mastered · tap a cell to look inside`;
+      captionEl.textContent = `${done} of ${totalQuestions} mastered`;
     }
   }
 
@@ -2732,7 +2732,7 @@ async function updateTitleUniqueness(selectedWords) {
   const { count } = await query;
 
   if (count === 0) {
-    el.textContent = 'You would be the only one with this title!';
+    el.textContent = 'Only you';
   } else if (count === 1) {
     el.textContent = '1 other player uses this title';
   } else {

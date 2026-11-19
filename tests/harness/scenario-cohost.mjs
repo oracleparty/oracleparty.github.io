@@ -364,7 +364,7 @@ try {
       if (!notice) {
         problems.push('a kicked player was never told anything at all');
       } else {
-        if (!/kick/i.test(notice.body)) {
+        if (!/kick/i.test(`${notice.title} ${notice.body}`)) {
           problems.push(`a kicked player was shown the EJECT wording (${JSON.stringify(notice.body)}) — they only find out it is permanent by tapping Rejoin and being refused`);
         }
         if (notice.rejoin) {

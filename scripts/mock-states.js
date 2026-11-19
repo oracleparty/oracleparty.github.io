@@ -590,9 +590,8 @@ export const STATES = {
       // the same thing that made a first version of this mock render a lobby
       // with no sheet on it at all.
       modal.style.display = '';
-      document.getElementById('removed-title').textContent = "You're no longer in this room";
-      document.getElementById('removed-body').textContent =
-        'You were removed from the lobby. You can ask to come back in, or leave.';
+      document.getElementById('removed-title').textContent = 'Removed by the host';
+      document.getElementById('removed-body').textContent = '';
       modal.classList.add('active');
     },
   },
@@ -608,9 +607,8 @@ export const STATES = {
       const modal = document.getElementById('removed-modal');
       if (!modal) return;
       modal.style.display = '';
-      document.getElementById('removed-title').textContent = 'You were removed from this room';
-      document.getElementById('removed-body').textContent =
-        'The host kicked you out, so you cannot rejoin this room.';
+      document.getElementById('removed-title').textContent = 'Kicked by the host';
+      document.getElementById('removed-body').textContent = '';
       document.getElementById('removed-rejoin').classList.add('hidden');
       modal.classList.add('active');
     },
@@ -2475,7 +2473,7 @@ export const STATES = {
           </div>
         </div>`;
       const note = document.getElementById('lb-scope-note');
-      if (note) note.textContent = 'You and 3 friends. Questions you currently get right, counted once each.';
+      if (note) note.textContent = 'You and 3 friends';
       const list = document.getElementById('lb-list');
       if (list) {
         list.innerHTML = [
@@ -2525,7 +2523,7 @@ export const STATES = {
           </div>
         </div>`;
       const note = document.getElementById('lb-scope-note');
-      if (note) note.textContent = 'You and 3 friends. Claps other players gave your answers. Every category, all time.';
+      if (note) note.textContent = 'You and 3 friends';
       const list = document.getElementById('lb-list');
       if (list) {
         list.innerHTML = [
@@ -2546,7 +2544,7 @@ export const STATES = {
     inject: () => {
       document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
       const note = document.getElementById('lb-scope-note');
-      if (note) note.textContent = 'Just you so far \u2014 add friends to compare. Questions you currently get right, counted once each.';
+      if (note) note.textContent = 'Just you';
       const list = document.getElementById('lb-list');
       if (list) {
         list.innerHTML = '<p class="leaderboard-empty">Add friends to build a leaderboard. Tap a signed-in player in a lobby to send a request \u2014 they accept it from their own profile.</p>';
@@ -2587,7 +2585,7 @@ export const STATES = {
           </div>
         </div>`;
       const note = document.getElementById('lb-scope-note');
-      if (note) note.textContent = 'You and 3 friends. Share of the questions you have met that you currently get right. Needs 10+ met to appear.';
+      if (note) note.textContent = 'You and 3 friends · 10+ met to appear';
       const list = document.getElementById('lb-list');
       if (list) {
         list.innerHTML = [
@@ -2713,7 +2711,7 @@ export const STATES = {
           `<div class="profile-stat"><div class="profile-stat__value">${v}</div><div class="profile-stat__label">${l}</div></div>`
         ).join('');
         const note = document.getElementById('profile-claps-note');
-        if (note) note.textContent = 'Out of 124 claps available to you.';
+        if (note) note.textContent = '124 available';
       }
 
       const masteryEl = document.getElementById('profile-mastery');
@@ -2766,7 +2764,7 @@ export const STATES = {
         ];
         mapEl.innerHTML = hexmap(HEX, 4, 'Mastery by category', true);
         const cap = document.getElementById('profile-map-caption');
-        if (cap) cap.textContent = '209 of 4,859 mastered · tap a cell to look inside';
+        if (cap) cap.textContent = '209 of 4,859 mastered';
       }
 
       // The radar, with a realistic mix: some strong, some weak, several never

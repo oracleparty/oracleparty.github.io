@@ -114,7 +114,7 @@
           >
           <button id="btn-submit-answer" class="btn btn-primary">Submit</button>
         </div>
-        <p id="submit-status" class="waiting-text hidden">Answer submitted — waiting for others...</p>
+        <p id="submit-status" class="waiting-text hidden">Waiting for others</p>
       </div>
 
       <div class="game-footer"></div>
@@ -277,9 +277,8 @@
       <div class="game-content" style="justify-content: flex-start;">
         <div class="final-wager">
           <h2 class="final-wager__title">Final Wager</h2>
-          <p class="final-wager__subtitle">How confident are you?</p>
           <p class="final-wager__score">Your score: <span id="fw-current-score">0</span></p>
-          <p class="final-wager__warning">Wrong answers lose wagered points!</p>
+          <p class="final-wager__warning">Wrong answer loses your wager</p>
 
           <div class="final-wager__options">
             <button class="fw-option" data-wager="0">0</button>
@@ -288,7 +287,7 @@
           </div>
 
           <button id="btn-fw-lock" class="btn btn-primary" style="margin-top: var(--space-sm); display: none;">Lock In</button>
-          <p id="fw-status" class="waiting-text hidden">Wager locked &mdash; waiting for others...</p>
+          <p id="fw-status" class="waiting-text hidden">Waiting for others</p>
         </div>
 
         <!-- Inline difficulty vote — ABOVE the player list, so the two things
@@ -402,7 +401,6 @@
         <div class="room-settings__row"><span>Questions</span><b id="room-settings-questions"></b></div>
         <div class="room-settings__row"><span>Question Timer</span><b id="room-settings-timer"></b></div>
         <div class="room-settings__row hidden" data-chaos-setting><span>Chaos Mode</span><b id="room-settings-chaos"></b></div>
-        <p class="settings-group__hint">Set before the game started.</p>
       </div>
 
       <div class="settings-group">
@@ -413,13 +411,11 @@
           <button class="toggle-option" data-value="8">Slow</button>
           <button class="toggle-option" data-value="4">Fast</button>
         </div>
-        <p class="settings-group__hint">Auto-advances between rounds after answers are revealed.</p>
       </div>
 
       <div class="room-settings__host-only">
         <div class="host-settings-divider"></div>
         <button id="btn-return-to-lobby" class="btn btn-block btn-return-lobby">Return to Lobby</button>
-        <p class="settings-group__hint" style="text-align:center;">Ends the game and brings all players back.</p>
       </div>
     </div>
   </div>
@@ -492,8 +488,7 @@
   <!-- Display Name Modal (fallback) -->
   <div id="seat-lost-modal" class="modal-overlay">
     <div class="modal">
-      <h2 class="modal__title">You're no longer in this game</h2>
-      <p style="font-size: var(--text-sm); color: var(--color-text-dim); margin-bottom: var(--space-lg);">You were away long enough that your seat was given up. Rejoin to keep playing — your answers so far come with you.</p>
+      <h2 class="modal__title" style="margin-bottom: var(--space-lg);">You were away too long</h2>
       <button class="btn btn-primary btn-block" id="seat-lost-rejoin">Rejoin</button>
       <button class="btn btn-secondary btn-block" id="seat-lost-leave" style="margin-top: var(--space-sm);">Leave</button>
     </div>

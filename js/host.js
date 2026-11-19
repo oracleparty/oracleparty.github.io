@@ -784,7 +784,7 @@ async function handleHostGame() {
     }
 
     if (!data) {
-      hostError.textContent = 'Room was not created. Check Supabase RLS policies on the rooms table.';
+      hostError.textContent = "Couldn't create room";
       showToast('Failed to create room', 'error');
       logger.error('Host', 'createRoom returned null data with no error — likely an RLS policy issue');
       resetHostButton();

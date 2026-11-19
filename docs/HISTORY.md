@@ -1,5 +1,29 @@
 > **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
 
+> ## 2026-11-19 (later) — Explanatory copy cut across the site
+>
+> **Owner:** "remove all ai slop … keep it clean, crisp, and human", then
+> "a seamlessly clear experience is nice too". Rule agreed: text stays only
+> where a player must act or would otherwise be lost, written like a sign.
+> Each row confirmed in a table first.
+> - Removed: settings hints (Auto-Proceed, Chaos, "Ends the game…", "Set
+>   before the game started"), the three profile section hints, the join
+>   empty-state line, the final wager's "How confident are you?", the
+>   Chaos pill's tooltip.
+> - Shortened: mastery caption ("209 of 4,859 mastered"), empty lists ("No
+>   friends", "No games yet"), waiting lines ("Waiting for others"), the
+>   final wager warning ("Wrong answer loses your wager"), seat lost ("You
+>   were away too long" + Rejoin/Leave), removal ("Removed by the host" /
+>   "Kicked by the host"), Title Builder ("Only you"), the leaderboard scope
+>   line ("You and 3 friends · 10+ met to appear"; facts only), the profile
+>   clap note ("124 available" / "Rate shows at 20 available · 7 so far").
+> - Guest leaderboard: a Create Account button instead of two sentences.
+> - A developer message shown to hosts ("Check Supabase RLS policies…") is now
+>   "Couldn't create room". Admin's developer notes were left (admin only).
+> - Code comments were NOT touched: players never see them, and they are the
+>   project's record of why things are as they are.
+> - scenario-cohost looked for "kick" in the notice body; now title or body.
+
 > ## 2026-11-19 — Guest sign-up prompts removed; Draft and Random moved below the categories
 >
 > **Owner:** "I want to limit ai slop and unnecessary ai text" — asked what

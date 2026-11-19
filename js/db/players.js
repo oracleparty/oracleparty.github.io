@@ -109,7 +109,7 @@ export async function addPlayer(roomId, displayName, isHost = false, userId = nu
       banned = !!isBanned;
     }
     if (banned) {
-      reportWriteFailure('Join room', error, 'You were removed from this room');
+      reportWriteFailure('Join room', error, 'Kicked by the host');
       return { data: null, error, banned: true };
     }
     reportWriteFailure('Join room', error, "Couldn't join the room — check your connection and try again");

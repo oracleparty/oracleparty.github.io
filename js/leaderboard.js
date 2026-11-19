@@ -51,7 +51,7 @@ import {
   fetchClapHistory
 } from './supabase.js';
 import { clapTotals, CLAP_RATE_FLOOR } from './game/clap-logic.js';
-import { initAuth, getCurrentUser } from './auth.js';
+import { initAuth, getCurrentUser, showSignUpModal } from './auth.js';
 import { initThemeToggle } from './theme.js';
 import { TITLE_WORDS, buildDisplayTitle } from './titles.js';
 import { loadTitleWords } from './title-content.js';
@@ -216,8 +216,9 @@ async function load() {
 
   const currentUser = getCurrentUser();
   if (!currentUser) {
-    note.textContent = 'Ranked among you and your friends.';
-    container.innerHTML = '<p class="leaderboard-empty">Create an account to see a leaderboard. It ranks you against your friends, so you need one first.</p>';
+    note.textContent = '';
+    container.innerHTML = '<div class="leaderboard-empty"><button class="btn btn-primary" id="lb-create-account">Create Account</button></div>';
+    $('#lb-create-account').onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
     return;
   }
 
@@ -394,19 +395,13 @@ function secondaryStat(row) {
 }
 
 function scopeNote(friendCount, floor) {
-  const who = friendCount === 0 ? 'Just you so far — add friends to compare.'
-                                : `You and ${friendCount} friend${friendCount === 1 ? '' : 's'}.`;
-  // SAY THAT THE FILTERS ARE GONE BECAUSE THEY DO NOT APPLY. A category menu
-  // disappearing when you change tab reads as a glitch unless the line under it
-  // accounts for the board being every category and all time.
-  const what = onClaps()
-    ? (state.clapOrder === 'rate'
-        ? `Claps you were given out of the claps available to you. Every category, all time. Needs ${CLAP_RATE_FLOOR}+ available to appear.`
-        : 'Claps other players gave your answers. Every category, all time.')
-    : state.measure === 'proficiency'
-      ? `Share of the questions you have met that you currently get right. Needs ${floor}+ met to appear.`
-      : 'Questions you currently get right, counted once each.';
-  return `${who} ${what}`;
+  // Facts only (owner, 2026-11-19: no explanatory copy): who is on the board,
+  // and the minimum to appear on it.
+  const who = friendCount === 0 ? 'Just you' : `You and ${friendCount} friend${friendCount === 1 ? '' : 's'}`;
+  const needs = onClaps()
+    ? (state.clapOrder === 'rate' ? `${CLAP_RATE_FLOOR}+ claps available to appear` : null)
+    : (state.measure === 'proficiency' ? `${floor}+ met to appear` : null);
+  return needs ? `${who} · ${needs}` : who;
 }
 
 function emptyMessage(friendCount, floor) {
