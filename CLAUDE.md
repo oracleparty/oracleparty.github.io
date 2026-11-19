@@ -276,7 +276,8 @@ node tests/harness/scenario-<name>.mjs      # robot playtests (list: tests/harne
 - **Removal:** Eject (can rejoin) and Kick (banned from that room). A removed
   player sees a notice with Rejoin / Leave; no silent re-seat.
 - **Draft and Random** (built 2026-11-16, rules in `js/draft-logic.js`): two
-  buttons above the grid on Choose Category, chosen instead of a subject. Both
+  buttons BELOW the grid on Choose Category (moved there 2026-11-19, "visible
+  last, since they are still being fleshed out"), chosen instead of a subject. Both
   end in ONE SPIN at Start that picks the subject for the whole game, like the
   difficulty wheel. **Draft:** in the lobby each person makes one move, live
   and public, changeable until Start. A want is a block on the wheel; a ban
@@ -386,7 +387,7 @@ lists are in `docs/HISTORY.md`.
   predictions about the night, paid at the podium). Not chosen: rivalries, a
   recap card, a daily solo game, a TV mode, player-written questions.
 - **Draft and Random in the lobby** (owner chose option B, 2026-11-17): the
-  same two buttons sit above the lobby's category list (host only), and the
+  same two buttons sit below the lobby's category list (host only), and the
   Spin switch shows in lobby settings for a Draft or Random room.
 - **Polish list from the 2026-11-14 playtest:** minor aesthetics and
   smoothness; the owner is saving it for a later session.

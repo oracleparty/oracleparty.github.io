@@ -9427,7 +9427,9 @@ body.kb-open #question-screen .question-card {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-md);
-  margin-bottom: var(--space-md);
+  /* Below the categories (owner, 2026-11-19: "visible last, since they are
+     still being fleshed out"). */
+  margin-top: var(--space-md);
 }
 .draft-entry {
   min-height: 48px;
@@ -9446,7 +9448,7 @@ body.kb-open #question-screen .question-card {
 }
 .draft-entry:active { background: var(--color-primary-glow); }
 .draft-entry--selected { border-color: var(--color-primary); color: var(--color-primary); }
-.lobby-spin-entries { margin: var(--space-sm) var(--space-md) var(--space-md); }
+.lobby-spin-entries { margin: var(--space-md); }
 .draft-entry__icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; }
 .draft-entry__title { font-family: var(--font-heading); font-size: var(--text-base); font-weight: 700; }
 
