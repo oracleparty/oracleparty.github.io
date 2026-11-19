@@ -1,5 +1,24 @@
 > **ARCHIVE.** This is the full handover file as it stood on 2026-11-15, moved here unchanged when `CLAUDE.md` was rewritten as a short guide. It is the record of every fault, measurement and owner decision. Search it by keyword before re-investigating anything. Code comments that cite "CLAUDE.md #N" mean the numbered facts under "Critical Architectural Facts" below.
 
+> ## 2026-11-19 — Guest sign-up prompts removed; Draft and Random moved below the categories
+>
+> **Owner:** "I want to limit ai slop and unnecessary ai text" — asked what
+> prompts guests see; agreed to every item in the table, by name.
+> - Removed: the results-screen nudges (winner, "stats will be lost", six
+>   rotating perk lines) and the home banner after 3 games. The guest games
+>   counter (`oracle_party_guest_games`) still counts, for the guest profile.
+> - Trimmed to buttons: the guest profile ("Consult the Oracle" and five perk
+>   bullets gone; Create Account / Sign In stay, frame gone), the profile
+>   card's "Create an account to add friends", and the name box on all eight
+>   pages ("Sign in · Create account").
+> - The practice bot's caption is now just "Practice bot".
+> - Admin's "Disable Sign-up Nudges" flag removed: nothing ever read it (read).
+> - New mock `profile-guest`. Dead CSS (`guest-unlock-card*`, nudge stats,
+>   dismiss, home) removed; `signup-nudge` stays for "Host started a new game".
+>
+> **Draft and Random below the categories** on Choose Category and in the
+> lobby list (owner: "visible last, since they are still being fleshed out").
+
 > ## 2026-11-18 — Draft and Random missing on Choose Category; a move kept through a rejoin
 >
 > **Owner's report:** "i cant select those modes when i initially host the

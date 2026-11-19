@@ -1438,10 +1438,7 @@ export const STATES = {
               <div class="profile-card__name">Practice Bot</div>
             </div>
             <div class="profile-card__radar radar" id="mock-bot-radar"></div>
-            <p class="profile-card__guest-hint">
-              Practice bot &middot; gets about 50% right, across every subject.
-              Nothing it plays is recorded.
-            </p>
+            <p class="profile-card__guest-hint">Practice bot</p>
             <div class="profile-card__roles">
               <button class="role-btn role-btn--danger"><span class="role-btn__icon">\u2715</span><span class="role-btn__label">Remove</span></button>
             </div>
@@ -3021,6 +3018,31 @@ export const STATES = {
         <button class="btn btn-secondary btn-block" style="margin-top: var(--space-xs);">Cancel</button>
       `;
       zone.appendChild(box);
+    },
+  },
+
+  // A guest's own profile: games counted, the rest locked, and two account
+  // buttons with no sales copy (owner, 2026-11-19). Mirrors the guest branch
+  // of renderProfile() in js/profile.js; change them together.
+  'profile-guest': {
+    page: 'profile',
+    screen: null,
+    inject: () => {
+      document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+      const name = document.getElementById('profile-name'); if (name) name.textContent = 'QuizMasterMax';
+      const title = document.getElementById('profile-title'); if (title) title.textContent = 'Novice';
+      const stat = (v, l, locked) => `<div class="profile-stat${locked ? ' profile-stat--locked' : ''}"><div class="profile-stat__value">${v}</div><div class="profile-stat__label">${l}</div></div>`;
+      document.getElementById('profile-tab-content').innerHTML = `
+        <div class="profile-section">
+          <div class="profile-section__label">Stats</div>
+          <div class="profile-stats">${stat(4, 'Games')}${stat('\u2014', 'Wins', 1)}${stat('\u2014', 'Win Rate', 1)}${stat('\u2014', 'Accuracy', 1)}${stat('\u2014', 'Strongest', 1)}${stat('\u2014', 'Weakest', 1)}</div>
+        </div>
+        <div class="profile-section" style="padding-bottom: var(--space-2xl);">
+          <div class="guest-account-buttons">
+            <button class="btn btn-primary btn-block">Create Account</button>
+            <button class="btn btn-secondary btn-block" style="margin-top: var(--space-sm);">Sign In</button>
+          </div>
+        </div>`;
     },
   },
 

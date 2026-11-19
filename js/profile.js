@@ -419,7 +419,6 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     } else if (!viewer) {
       actionsHtml = `
         <button class="btn btn-secondary btn-block profile-card__btn--guest" id="profile-card-add-friend" data-guest="true">Add Friend</button>
-        <p class="profile-card__guest-hint">Create an account to add friends</p>
       `;
     }
 
@@ -508,12 +507,7 @@ export async function showProfileCard({ userId, displayName, avatarColor, avatar
     const axesInput = Object.entries(CATEGORY_META)
       .map(([key, meta]) => ({ key, label: meta.label, emoji: meta.emoji || meta.icon }));
     const { axes, anyData } = buildRadarAxes(axesInput, byCategory);
-    const pct = Math.round(BOT_ACCURACY * 100);
-    const caption = measured
-      ? `Practice bot &middot; this is what it has actually scored, subject by subject.`
-      : (recorded === null
-          ? `Practice bot &middot; aims for about ${pct}% on everything.`
-          : `Practice bot &middot; aims for about ${pct}% on everything. It has not played a recorded round yet.`);
+    const caption = 'Practice bot';
     statsHtml = `
       ${anyData ? `<div class="profile-card__radar radar">${renderRadarSvg(axes)}</div>` : ''}
       <p class="profile-card__guest-hint">${caption}</p>`;
@@ -761,18 +755,10 @@ export async function initProfilePage() {
         </div>
       </div>
 
-      <!-- Single unlock CTA -->
+      <!-- Account buttons only: the perk list and its heading were removed
+           (owner, 2026-11-19: no AI-written sales lines). -->
       <div class="profile-section" style="padding-bottom: var(--space-2xl);">
-        <div class="guest-unlock-card">
-          <div class="guest-unlock-card__icon">\uD83D\uDD2E</div>
-          <h3 class="guest-unlock-card__title">Consult the Oracle</h3>
-          <ul class="guest-unlock-card__perks">
-            <li>\uD83C\uDFAF Track mastery across ${Object.keys(CATEGORY_META).length} categories</li>
-            <li>\uD83D\uDCDC Save your game history and stats</li>
-            <li>\uD83D\uDC65 Add friends and see who\u2019s online</li>
-            <li>\uD83C\uDFC6 Compete on leaderboards</li>
-            <li>\u2728 Customize your avatar and title</li>
-          </ul>
+        <div class="guest-account-buttons">
           <button class="btn btn-primary btn-block" id="profile-create-account">Create Account</button>
           <button class="btn btn-secondary btn-block" id="profile-sign-in" style="margin-top: var(--space-sm);">Sign In</button>
         </div>

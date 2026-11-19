@@ -753,7 +753,6 @@ async function loadAnnouncement() {
 const FLAG_DEFS = [
   { key: 'maintenance_mode', label: 'Maintenance Mode', default: false },
   { key: 'disable_signups', label: 'Disable Account Creation', default: false },
-  { key: 'disable_nudges', label: 'Disable Sign-up Nudges', default: false },
 ];
 
 async function loadFeatureFlags() {

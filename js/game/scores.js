@@ -40,7 +40,7 @@ import {
   fetchClaps, recordClapsOnServer,
 } from '../supabase.js';
 import { favouriteAnswers } from './clap-logic.js';
-import { getDisplayName, getCurrentUser, showSignUpModal, getVoterId } from '../auth.js';
+import { getDisplayName, getCurrentUser, getVoterId } from '../auth.js';
 import { evaluateUnlocks, hasEarnedARank, planCelebration, titleWordsHtml } from '../titles.js';
 import { loadTitleWords } from '../title-content.js';
 import { showCelebration } from '../celebration.js';
@@ -1905,100 +1905,13 @@ export async function showResultsScreen() {
     }
   }
 
-  // Guest sign-up nudges — personalized with actual session data
+  // A guest's games are counted for their profile page. The sign-up prompts
+  // that used to follow here were removed (owner, 2026-11-19: no AI-written
+  // sales lines in the game).
   if (!getCurrentUser() && !state._guestNudgeProcessed) {
     state._guestNudgeProcessed = true;
-
     const count = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
     localStorage.setItem('oracle_party_guest_games', String(count + 1));
-    const gamesPlayed = count + 1;
-    const resultsList = $('#results-list');
-
-    // Compute personalized stats for the nudge
-    const guestAnswers = allAnswers.filter(a => String(a.player_id) === String(state.room.playerId));
-    const guestCorrect = guestAnswers.filter(a => a.is_correct).length;
-    const guestTotal = guestAnswers.length;
-    const guestAccuracy = guestTotal > 0 ? Math.round((guestCorrect / guestTotal) * 100) : 0;
-    const guestScore = state.scores[state.room.playerId] || 0;
-    const categoryLabel = CATEGORY_META[playedCategory()]?.label || playedCategory();
-    const isWinner = sorted[0] && String(sorted[0].id) === String(state.room.playerId);
-
-    // Rotating perks — pick a different benefit each nudge
-    const personalizedPerk = {
-      text: `Your stats from this game will be lost.`,
-      stats: `${gamesPlayed} games played \u00B7 ${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}`,
-      isPersonalized: true
-    };
-    const genericPerks = [
-      { text: 'Unlock OLED Black mode and more themes.' },
-      { text: 'Save your stats and earn Oracle titles.' },
-      { text: 'Add friends and see who\u2019s online.' },
-      { text: 'Track your mastery across thousands of questions.' },
-      { text: 'Customize your avatar with colors and emoji.' },
-      { text: 'Compete on leaderboards.' }
-    ];
-    function pickPerk() {
-      const lastPerk = sessionStorage.getItem('oracle_party_last_nudge_perk') || '';
-      const nudgeCount = parseInt(sessionStorage.getItem('oracle_party_nudge_count') || '0');
-      sessionStorage.setItem('oracle_party_nudge_count', String(nudgeCount + 1));
-      // Guarantee personalized stats perk in first 3 nudges
-      if (nudgeCount < 3 && nudgeCount === 0) {
-        sessionStorage.setItem('oracle_party_last_nudge_perk', 'personalized');
-        return personalizedPerk;
-      }
-      // Pick from generic pool, avoid repeating last shown
-      const pool = genericPerks.filter(p => p.text !== lastPerk);
-      const pick = pool[Math.floor(Math.random() * pool.length)];
-      sessionStorage.setItem('oracle_party_last_nudge_perk', pick.text);
-      return pick;
-    }
-
-    // Winner nudge — highest conversion moment (guest just won!)
-    if (isWinner && !sessionStorage.getItem('oracle_party_winner_nudge_shown')) {
-      sessionStorage.setItem('oracle_party_winner_nudge_shown', '1');
-      const nudge = document.createElement('div');
-      nudge.className = 'signup-nudge';
-      nudge.innerHTML = `
-        <p class="signup-nudge__text">\u{1F3C6} You won! Save your victory.</p>
-        <p class="signup-nudge__stats">${guestScore} points \u00B7 ${guestAccuracy}% accuracy in ${escapeHtml(categoryLabel)}</p>
-        <button class="btn btn-primary btn-block" id="nudge-signup-win">Create Account</button>
-        <button class="signup-nudge__dismiss" id="nudge-dismiss-win">Maybe later</button>
-      `;
-      resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
-      $('#nudge-signup-win').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
-      $('#nudge-dismiss-win').onclick = () => nudge.remove();
-    }
-    // First-game nudge (once per session — personalized stats, strongest hook)
-    else if (!sessionStorage.getItem('oracle_party_signup_nudge_shown')) {
-      sessionStorage.setItem('oracle_party_signup_nudge_shown', '1');
-      const perk = pickPerk();
-      const nudge = document.createElement('div');
-      nudge.className = 'signup-nudge';
-      nudge.innerHTML = `
-        <p class="signup-nudge__text">${perk.text}</p>
-        ${perk.stats ? `<p class="signup-nudge__stats">${perk.stats}</p>` : ''}
-        <button class="btn btn-primary btn-block" id="nudge-signup">Create Account</button>
-        <button class="signup-nudge__dismiss" id="nudge-dismiss">Maybe later</button>
-      `;
-      resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
-      $('#nudge-signup').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
-      $('#nudge-dismiss').onclick = () => nudge.remove();
-    }
-    // Subsequent nudges (rotating perks)
-    else if (gamesPlayed >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
-      const perk = pickPerk();
-      const nudge = document.createElement('div');
-      nudge.className = 'signup-nudge';
-      nudge.innerHTML = `
-        <p class="signup-nudge__text">${perk.text}</p>
-        ${perk.stats ? `<p class="signup-nudge__stats">${perk.stats}</p>` : ''}
-        <button class="btn btn-primary btn-block" id="nudge-signup-3">Create Account</button>
-        <button class="signup-nudge__dismiss" id="nudge-dismiss-3">Maybe later</button>
-      `;
-      resultsList.parentNode.insertBefore(nudge, resultsList.nextSibling);
-      $('#nudge-signup-3').onclick = async () => { await showSignUpModal(); if (getCurrentUser()) window.location.reload(); };
-      $('#nudge-dismiss-3').onclick = () => { nudge.remove(); localStorage.setItem('oracle_party_3game_nudge_dismissed', '1'); };
-    }
   }
 }
 

@@ -136,7 +136,7 @@
       >
       <p id="display-name-error" style="color: var(--color-danger); font-size: var(--text-sm); margin-top: var(--space-sm); min-height: 1.2em;"></p>
       <button class="btn btn-primary btn-block" id="display-name-submit" style="margin-top: var(--space-lg);">Continue</button>
-      <p class="name-modal__account">Have an account? <button type="button" class="name-modal__link" id="display-name-signin">Sign in</button><br>New here? <button type="button" class="name-modal__link" id="display-name-signup">Create an account</button></p>
+      <p class="name-modal__account"><button type="button" class="name-modal__link" id="display-name-signin">Sign in</button> · <button type="button" class="name-modal__link" id="display-name-signup">Create account</button></p>
     </div>
   </div>
 
@@ -342,36 +342,6 @@
         });
       }
 
-      // 3-game signup nudge (guests only — rotating perks)
-      if (!authUser) {
-        const gamesPlayed = parseInt(localStorage.getItem('oracle_party_guest_games') || '0');
-        if (gamesPlayed >= 3 && !localStorage.getItem('oracle_party_3game_nudge_dismissed')) {
-          const homePerks = [
-            'Unlock OLED Black mode and more themes.',
-            'Save your stats and earn Oracle titles.',
-            'Add friends and see who\u2019s online.',
-            'Track your mastery across thousands of questions.',
-            'Customize your avatar with colors and emoji.',
-            'Compete on leaderboards.',
-            `You\u2019ve played ${gamesPlayed} games \u2014 claim your Oracle identity!`
-          ];
-          const lastPerk = sessionStorage.getItem('oracle_party_last_nudge_perk') || '';
-          const pool = homePerks.filter(p => p !== lastPerk);
-          const perkText = pool[Math.floor(Math.random() * pool.length)];
-          sessionStorage.setItem('oracle_party_last_nudge_perk', perkText);
-
-          const nudge = document.createElement('div');
-          nudge.className = 'signup-nudge signup-nudge--home';
-          nudge.innerHTML = `
-            <p class="signup-nudge__text">${perkText}</p>
-            <button class="btn btn-primary" id="home-nudge-signup">Sign Up</button>
-            <button class="signup-nudge__dismiss" id="home-nudge-dismiss">&times;</button>
-          `;
-          home.querySelector('.home__actions').before(nudge);
-          $('#home-nudge-signup').onclick = async () => { const r = await showSignUpModal(); if (r) window.location.reload(); };
-          $('#home-nudge-dismiss').onclick = () => { nudge.remove(); localStorage.setItem('oracle_party_3game_nudge_dismissed', '1'); };
-        }
-      }
     }
 
     // --- Home avatar click → profile page ---
